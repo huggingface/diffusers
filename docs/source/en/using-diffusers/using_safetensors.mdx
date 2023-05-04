@@ -1,16 +1,61 @@
-# What is safetensors ? 
+# Load safetensors
 
-[safetensors](https://github.com/huggingface/safetensors) is a different format
-from the classic `.bin` which uses Pytorch which uses pickle. It contains the
-exact same data, which is just the model weights (or tensors).
+[safetensors](https://github.com/huggingface/safetensors) is a safe and fast file format for storing and loading tensors. Typically, PyTorch model weights are saved or *pickled* into a `.bin` file with Python's [`pickle`](https://docs.python.org/3/library/pickle.html) utility. However, `pickle` is not secure and pickled files may contain malicious code that can be executed. safetensors is a secure alternative to `pickle`, making it ideal for sharing model weights.
 
-Pickle is notoriously unsafe which allow any malicious file to execute arbitrary code.
-The hub itself tries to prevent issues from it, but it's not a silver bullet.
+This guide will help you load `.safetensor` weights, and how to convert model weights stored in other formats to `.safetensor`. Before you start, make sure you have safetensors installed:
 
-`safetensors` first and foremost goal is to make loading machine learning models *safe*
-in the sense that no takeover of your computer can be done.
+```bash
+!pip install safetensors
+```
 
-Hence the name.
+If you look at the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main) repository, you'll see weights inside the `text_encoder`, `unet` and `vae` subfolders are stored in the `.safetensors` format. Load these `.safetensors` weights by setting `use_safetensors=True` and passing the model repository id to the [`~DiffusionPipeline.from_pretrained`] method:
+
+```py
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+```
+
+However, model weights may not necessarily be stored in separate subfolders like in the example above. Sometimes, all the weights are stored in a single `.safetensors` file. In this case, load the file directly with the [`~diffusers.loaders.FromCkptMixin.from_ckpt`] method:
+
+```py
+from diffusers import StableDiffusionPipeline
+
+pipeline = StableDiffusionPipeline.from_ckpt(
+    "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
+)
+```
+
+## Convert to safetensors
+
+Not all weights on the Hub are available in the `.safetensors` format though, and you may encounter weights stored the `.bin` format. In this case, use the Spaces below to convert the weights to `.safetensors`. The Convert Spaces downloads the pickled weights, converts them, and opens a Pull Request to upload the newly converted `.safetensors` on the Hub. This way, if there is any malicious code contained in the pickled files, they're uploaded to the Hub - which has a [security scanner](https://huggingface.co/docs/hub/security-pickle#hubs-security-scanner) to detect unsafe files and suspicious pickle imports - instead of your computer.
+
+<iframe
+	src="https://safetensors-convert.hf.space"
+	frameborder="0"
+	width="850"
+	height="450"
+></iframe>
+
+You can use the model with the new `.safetensors` weights by specifying the reference to the Pull Request in the `revision` parameter (you can also test it in this [Spaces](https://huggingface.co/spaces/diffusers/check_pr) on the Hub), for example `refs/pr/22`:
+
+```py
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", revision="refs/pr/22")
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Why use safetensors ?
 
@@ -45,43 +90,3 @@ Performance in general is a tricky business, and there are a few things to under
 - If you're loading the model for the first time (let's say after a reboot) then your machine will have to 
   actually read the disk. It's likely to be as slow in both cases. Again the speed difference may not be as visible (this depends on hardware and the actual model).
 - The best performance benefit is when the model was already loaded previously on your computer and you're switching from one model to another. Your OS, is trying really hard not to read from disk, since this is slow, so it will keep the files around in RAM, making it loading again much faster. Since safetensors is doing zero-copy of the tensors, reloading will be faster than pytorch since it has at least once extra copy to do.
-
-# How to use safetensors ?
-
-If you have `safetensors` installed, and all the weights are available in `safetensors` format, \
-then by default it will use that instead of the pytorch weights.
-
-If you are really paranoid about this, the ultimate weapon would be disabling `torch.load`:
-```python
-import torch
-
-
-def _raise():
-    raise RuntimeError("I don't want to use pickle")
-
-
-torch.load = lambda *args, **kwargs: _raise()
-```
-
-# I want to use model X but it doesn't have safetensors weights.
-
-Just go to this [space](https://huggingface.co/spaces/diffusers/convert).
-This will create a new PR with the weights, let's say `refs/pr/22`.
-
-This space will download the pickled version, convert it, and upload it on the hub as a PR.
-If anything bad is contained in the file, it's Huggingface hub that will get issues, not your own computer.
-And we're equipped with dealing with it.
-
-Then in order to use the model, even before the branch gets accepted by the original author you can do:
-
-```python
-from diffusers import DiffusionPipeline
-
-pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", revision="refs/pr/22")
-```
-
-or you can test it directly online with this [space](https://huggingface.co/spaces/diffusers/check_pr).
-
-And that's it !
-
-Anything unclear, concerns, or found a bugs ? [Open an issue](https://github.com/huggingface/diffusers/issues/new/choose)
