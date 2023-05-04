@@ -82,8 +82,8 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
     >>> for t in scheduler.timesteps:
     ...     with torch.no_grad():
     ...         noisy_residual = model(input, t).sample
-    >>> previous_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
-    >>> input = previous_noisy_sample
+    ...     previous_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
+    ...     input = previous_noisy_sample
     ```
 
     This is the entire denoising process, and you can use this same pattern to write any diffusion system.
