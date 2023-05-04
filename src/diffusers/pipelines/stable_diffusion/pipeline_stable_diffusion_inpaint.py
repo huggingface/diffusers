@@ -34,7 +34,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def prepare_mask_and_masked_image(image, mask):
+def prepare_mask_and_masked_image(image, mask, height, width):
     """
     Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
     converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
@@ -62,6 +62,13 @@ def prepare_mask_and_masked_image(image, mask):
         tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
+
+    if image is None:
+        raise ValueError("`image` input cannot be undefined.")
+
+    if mask is None:
+        raise ValueError("`mask_image` input cannot be undefined.")
+
     if isinstance(image, torch.Tensor):
         if not isinstance(mask, torch.Tensor):
             raise TypeError(f"`image` is a torch.Tensor but `mask` (type: {type(mask)} is not")
@@ -109,8 +116,9 @@ def prepare_mask_and_masked_image(image, mask):
         # preprocess image
         if isinstance(image, (PIL.Image.Image, np.ndarray)):
             image = [image]
-
         if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
+            # resize all images w.r.t passed height an width
+            image = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in image] 
             image = [np.array(i.convert("RGB"))[None, :] for i in image]
             image = np.concatenate(image, axis=0)
         elif isinstance(image, list) and isinstance(image[0], np.ndarray):
@@ -124,6 +132,7 @@ def prepare_mask_and_masked_image(image, mask):
             mask = [mask]
 
         if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
+            mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask] 
             mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
             mask = mask.astype(np.float32) / 255.0
         elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
@@ -787,12 +796,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             negative_prompt_embeds,
         )
 
-        if image is None:
-            raise ValueError("`image` input cannot be undefined.")
-
-        if mask_image is None:
-            raise ValueError("`mask_image` input cannot be undefined.")
-
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -818,8 +821,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Preprocess mask and image
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
+        mask, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
