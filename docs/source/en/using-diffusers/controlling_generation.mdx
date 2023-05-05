@@ -37,6 +37,28 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 9. [Textual Inversion](#textual-inversion)
 10. [ControlNet](#controlnet)
 11. [Prompt Weighting](#prompt-weighting)
+12. [Custom Diffusion](#custom-diffusion)
+13. [Model Editing](#model-editing)
+14. [DiffEdit](#diffedit)
+
+For convenience, we provide a table to denote which methods are inference-only and which require fine-tuning/training. 
+
+| **Method** | **Inference only** | **Requires training /<br> fine-tuning** | **Comments** |
+|:---:|:---:|:---:|:---:|
+| [Instruct Pix2Pix](#instruct-pix2pix) | ✅ | ❌ | Can additionally be<br>fine-tuned for better <br>performance on specific <br>edit instructions. |
+| [Pix2Pix Zero](#pix2pixzero) | ✅ | ❌ |  |
+| [Attend and Excite](#attend-and-excite) | ✅ | ❌ |  |
+| [Semantic Guidance](#semantic-guidance) | ✅ | ❌ |  |
+| [Self-attention Guidance](#self-attention-guidance) | ✅ | ❌ |  |
+| [Depth2Image](#depth2image) | ✅ | ❌ |  |
+| [MultiDiffusion Panorama](#multidiffusion-panorama) | ✅ | ❌ |  |
+| [DreamBooth](#dreambooth) | ❌ | ✅ |  |
+| [Textual Inversion](#textual-inversion) | ❌ | ✅ |  |
+| [ControlNet](#controlnet) | ✅ | ❌ | A ControlNet can be <br>trained/fine-tuned on<br>a custom conditioning.  |
+| [Prompt Weighting](#prompt-weighting) | ✅ | ❌ |  |
+| [Custom Diffusion](#custom-diffusion) | ❌ | ✅ |  |
+| [Model Editing](#model-editing) | ✅ | ❌ |  |
+| [DiffEdit](#diffedit) | ✅ | ❌ |  |
 
 ## Instruct Pix2Pix
 
@@ -137,13 +159,13 @@ See [here](../api/pipelines/stable_diffusion/panorama) for more information on h
 
 In addition to pre-trained models, Diffusers has training scripts for fine-tuning models on user-provided data.
 
-### DreamBooth
+## DreamBooth
 
 [DreamBooth](../training/dreambooth) fine-tunes a model to teach it about a new subject. I.e. a few pictures of a person can be used to generate images of that person in different styles.
 
 See [here](../training/dreambooth) for more information on how to use it.
 
-### Textual Inversion
+## Textual Inversion
 
 [Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
 
@@ -165,3 +187,32 @@ Prompt weighting is a simple technique that puts more attention weight on certai
 input. 
 
 For a more in-detail explanation and examples, see [here](../using-diffusers/weighted_prompts).
+
+## Custom Diffusion 
+
+[Custom Diffusion](../training/custom_diffusion) only fine-tunes the cross-attention maps of a pre-trained 
+text-to-image diffusion model. It also allows for additionally performing textual inversion. It supports 
+multi-concept training by design. Like DreamBooth and Textual Inversion, Custom Diffusion is also used to
+teach a pre-trained text-to-image diffusion model about new concepts to generate outputs involving the 
+concept(s) of interest.
+ 
+For more details, check out our [official doc](../training/custom_diffusion). 
+
+## Model Editing 
+
+[Paper](https://arxiv.org/abs/2303.08084)
+
+The [text-to-image model editing pipeline](../api/pipelines/stable_diffusion/model_editing) helps you mitigate some of the incorrect implicit assumptions a pre-trained text-to-image
+diffusion model might make about the subjects present in the input prompt. For example, if you prompt Stable Diffusion to generate images for "A pack of roses", the roses in the generated images
+are more likely to be red. This pipeline helps you change that assumption. 
+
+To know more details, check out the [official doc](../api/pipelines/stable_diffusion/model_editing).
+
+## DiffEdit 
+
+[Paper](https://arxiv.org/abs/2210.11427)
+
+[DiffEdit](../api/pipelines/stable_diffusion/diffedit) allows for semantic editing of input images along with 
+input prompts while preserving the original input images as much as possible. 
+
+To know more details, check out the [official doc](../api/pipelines/stable_diffusion/model_editing).
