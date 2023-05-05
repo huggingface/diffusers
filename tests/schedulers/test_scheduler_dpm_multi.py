@@ -167,9 +167,11 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_solver_order_and_type(self):
-        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+        for algorithm_type in ["dpmsolver", "dpmsolver++", "sde-dpmsolver", "sde-dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
+                    if order == 3 and algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+                        continue
                     for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             solver_order=order,
