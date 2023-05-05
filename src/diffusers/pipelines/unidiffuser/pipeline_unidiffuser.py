@@ -161,7 +161,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         # TODO: handle safety checking?
         self.safety_checker = None
-    
+
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     # Add self.image_encoder, self.text_decoder to cpu_offloaded_models list
     def enable_sequential_cpu_offload(self, gpu_id=0):
@@ -756,9 +756,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
-            _, _, text_out_uncond = self.unet(
-                img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t
-            )
+            _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t)
 
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
                 img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep
@@ -992,7 +990,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         full_latents_available = latents is not None
-        individual_latents_available = prompt_latents is not None or vae_latents is not None or clip_latents is not None
+        individual_latents_available = (
+            prompt_latents is not None or vae_latents is not None or clip_latents is not None
+        )
         if full_latents_available and individual_latents_available:
             logger.warning(
                 "You have supplied both `latents` and at least one of `prompt_latents`, `vae_latents`, and"
