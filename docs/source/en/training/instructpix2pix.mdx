@@ -77,16 +77,16 @@ write_basic_config()
 ### Toy example
 
 As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
-is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
+is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to specify the dataset name in `DATASET_ID`:
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to specify the dataset name in `DATASET_ID`:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 ```
 
-Now, we can launch training:
+Now, we can launch training. The script saves all the components (`feature_extractor`, `scheduler`, `text_encoder`, `unet`, etc) in a subfolder in your repository.
 
 ```bash
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
