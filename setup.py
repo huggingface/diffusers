@@ -111,6 +111,7 @@ _deps = [
     "torch>=1.4",
     "torchvision",
     "transformers>=4.25.1",
+    "urllib3<=2.0.0",
 ]
 
 # this is a lookup table with items like:
@@ -181,7 +182,7 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
+extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
