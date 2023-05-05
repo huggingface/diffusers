@@ -122,7 +122,6 @@ else:
         AltDiffusionPipeline,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
-        ImageTextPipelineOutput,
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,
         IFInpaintingPipeline,
