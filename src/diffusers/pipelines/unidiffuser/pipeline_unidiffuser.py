@@ -30,8 +30,6 @@ from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
 
-# Temporarily set verbosity to DEBUG
-logging.set_verbosity_debug()
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -746,13 +744,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t
             )
 
-            logger.debug(f"Conditional VAE out: {img_vae_out}")
-            logger.debug(f"Conditional VAE out shape: {img_vae_out.shape}")
-            logger.debug(f"Conditional CLIP out: {img_clip_out}")
-            logger.debug(f"Conditional CLIP out shape: {img_clip_out.shape}")
-            logger.debug(f"Conditional text out: {text_out}")
-            logger.debug(f"Conditional text out shape: {text_out.shape}")
-
             x_out = self._combine_joint(img_vae_out, img_clip_out, text_out)
 
             if guidance_scale <= 1.0:
@@ -765,17 +756,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
             _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t)
 
-            logger.debug(f"Unconditional text out: {text_out_uncond}")
-            logger.debug(f"Unconditional text out shape: {text_out_uncond.shape}")
-
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
                 img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep
             )
-
-            logger.debug(f"Unconditional VAE out: {img_vae_out_uncond}")
-            logger.debug(f"Unconditional VAE out shape: {img_vae_out_uncond.shape}")
-            logger.debug(f"Unconditional CLIP out: {img_clip_out_uncond}")
-            logger.debug(f"Unconditional CLIP out shape: {img_clip_out_uncond.shape}")
 
             x_out_uncond = self._combine_joint(img_vae_out_uncond, img_clip_out_uncond, text_out_uncond)
 
@@ -1022,10 +1005,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         device = self._execution_device
         reduce_text_emb_dim = self.text_intermediate_dim < self.text_encoder_hidden_size or self.mode != "text2img"
 
-        logger.debug(f"Setting mode to {mode}")
-        logger.debug(f"Setting batch size to {batch_size}")
-        logger.debug(f"Setting execution device to {device}")
-
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -1065,14 +1044,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 prompt_latents,
             )
 
-        logger.debug(f"Text latents: {prompt_embeds}")
-        logger.debug(f"Text latents shape: {prompt_embeds.shape}")
-
         if reduce_text_emb_dim:
             prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
-
-        logger.debug(f"Low dim text latents: {prompt_embeds}")
-        logger.debug(f"Low dim text latents shape: {prompt_embeds.shape}")
 
         # 4. Encode image, if available; otherwise prepare image latents
         if mode in ["img2text"]:
@@ -1128,19 +1101,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 clip_latents,
             )
 
-        logger.debug(f"VAE latents: {image_vae_latents}")
-        logger.debug(f"VAE latents shape: {image_vae_latents.shape}")
-        logger.debug(f"CLIP latents: {image_clip_latents}")
-        logger.debug(f"CLIP latents shape: {image_clip_latents.shape}")
-
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         # max_timestep = timesteps[0]
         max_timestep = self.scheduler.num_train_timesteps
-
-        logger.debug(f"Timesteps: {timesteps}")
-        logger.debug(f"Max timestep: {max_timestep}")
 
         # 6. Prepare latent variables
         if mode == "joint":
@@ -1149,9 +1114,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
-
-        logger.debug(f"Latents: {latents}")
-        logger.debug(f"Latents shape: {latents.shape}")
 
         # 7. Check that shapes of latents and image match the UNet channels.
         # TODO
@@ -1165,9 +1127,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                logger.debug(f"Denoising loop index: {i}")
-                logger.debug(f"Current timestep: {t}")
-
                 # predict the noise residual
                 # Also applies classifier-free guidance as described in the UniDiffuser paper
                 noise_pred = self.get_noise_pred(
@@ -1185,16 +1144,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     width,
                 )
 
-                logger.debug(f"Current noise pred for step {i} / timestep {t}: {noise_pred}")
-                logger.debug(f"Current noise pred shape for step {i} / timestep {t}: {noise_pred.shape}")
-
                 # TODO: do we need to worry about sigma space stuff for the scheduler?
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
-                logger.debug(f"Current latents for step {i} / timestep {t}: {latents}")
-                logger.debug(f"Current latents shape for step {i} / timestep {t}: {latents.shape}")
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1208,23 +1161,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if mode == "joint":
             image_vae_latents, image_clip_latents, text_latents = self._split_joint(latents, height, width)
 
-            logger.debug(f"Text output: {text_latents}")
-            logger.debug(f"Text output shape: {text_latents.shape}")
-            logger.debug(f"VAE output: {image_vae_latents}")
-            logger.debug(f"VAE output shape: {image_vae_latents.shape}")
-            logger.debug(f"CLIP output: {image_clip_latents}")
-            logger.debug(f"CLIP output shape: {image_clip_latents.shape}")
-
             # Map latent VAE image back to pixel space
             gen_image = self.decode_image_latents(image_vae_latents)
 
-            logger.debug(f"VAE decoded sample: {gen_image}")
-            logger.debug(f"VAE decoded sample shape: {gen_image.shape}")
-
             # Generate text using the text decoder
             gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
-
-            logger.debug(f"Generated text: {gen_text}")
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
             gen_image = self.decode_image_latents(image_vae_latents)
