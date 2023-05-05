@@ -163,7 +163,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         # TODO: handle safety checking?
         self.safety_checker = None
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -763,9 +763,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
-            _, _, text_out_uncond = self.unet(
-                img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t
-            )
+            _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t)
 
             logger.debug(f"Unconditional text out: {text_out_uncond}")
             logger.debug(f"Unconditional text out shape: {text_out_uncond.shape}")
@@ -1007,7 +1005,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         full_latents_available = latents is not None
-        individual_latents_available = prompt_latents is not None or vae_latents is not None or clip_latents is not None
+        individual_latents_available = (
+            prompt_latents is not None or vae_latents is not None or clip_latents is not None
+        )
         if full_latents_available and individual_latents_available:
             logger.warning(
                 "You have supplied both `latents` and at least one of `prompt_latents`, `vae_latents`, and"
@@ -1064,13 +1064,13 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 prompt_latents,
             )
-        
+
         logger.debug(f"Text latents: {prompt_embeds}")
         logger.debug(f"Text latents shape: {prompt_embeds.shape}")
 
         if reduce_text_emb_dim:
             prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
-        
+
         logger.debug(f"Low dim text latents: {prompt_embeds}")
         logger.debug(f"Low dim text latents shape: {prompt_embeds.shape}")
 
@@ -1126,7 +1126,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 clip_latents,
             )
-        
+
         logger.debug(f"VAE latents: {image_vae_latents}")
         logger.debug(f"VAE latents shape: {image_vae_latents.shape}")
         logger.debug(f"CLIP latents: {image_clip_latents}")
@@ -1148,7 +1148,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
-        
+
         logger.debug(f"Latents: {latents}")
         logger.debug(f"Latents shape: {latents.shape}")
 
