@@ -226,6 +226,7 @@ def create_unidiffuser_unet_config_test():
         "pre_layer_norm": False,
         "use_timestep_embedding": False,
         "norm_elementwise_affine": True,
+        "use_patch_pos_embed": False,
         "ff_final_dropout": True,
     }
 
@@ -293,6 +294,7 @@ def create_unidiffuser_unet_config_big():
         "pre_layer_norm": False,
         "use_timestep_embedding": False,
         "norm_elementwise_affine": True,
+        "use_patch_pos_embed": False,
         "ff_final_dropout": True,
     }
 

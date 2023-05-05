@@ -19,6 +19,8 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
     deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
     logging,
     randn_tensor,
 )
@@ -28,6 +30,8 @@ from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
 
+# Temporarily set verbosity to DEBUG
+logging.set_verbosity_debug()
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -147,7 +151,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         self.num_channels_latents = vae.latent_channels
-        self.text_encoder_seq_len = clip_tokenizer.model_max_length
+        self.text_encoder_seq_len = text_encoder.config.max_position_embeddings
         self.text_encoder_hidden_size = text_encoder.config.hidden_size
         self.image_encoder_hidden_size = image_encoder.config.hidden_size
 
@@ -156,6 +160,64 @@ class UniDiffuserPipeline(DiffusionPipeline):
             self.text_intermediate_dim = self.text_decoder.prefix_hidden_dim
 
         self.mode = None
+
+        # TODO: handle safety checking?
+        self.safety_checker = None
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
+            cpu_offload(cpu_offloaded_model, device)
+
+        if self.safety_checker is not None:
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        if self.safety_checker is not None:
+            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -194,7 +256,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def _infer_mode(self, prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents):
+    def _infer_mode(self, prompt, prompt_embeds, image, latents, prompt_latents, vae_latents, clip_latents):
         r"""Infer the mode from the inputs to `__call__`."""
         prompt_available = (prompt is not None) or (prompt_embeds is not None)
         image_available = image is not None
@@ -203,8 +265,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
         prompt_latents_available = prompt_latents is not None
         vae_latents_available = vae_latents is not None
         clip_latents_available = clip_latents is not None
+        full_latents_available = latents is not None
         image_latents_available = vae_latents_available and clip_latents_available
-        all_latents_available = prompt_latents_available and image_latents_available
+        all_indv_latents_available = prompt_latents_available and image_latents_available
 
         if self.mode is not None:
             # Preferentially use the mode set by the user
@@ -215,7 +278,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             mode = "img2text"
         else:
             # Neither prompt nor image supplied, infer based on availability of latents
-            if all_latents_available:
+            if full_latents_available or all_indv_latents_available:
                 mode = "joint"
             elif prompt_latents_available:
                 mode = "text"
@@ -223,7 +286,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 mode = "img"
             else:
                 # No inputs or latents available
-                mode = "img"
+                mode = "joint"
 
         # Give warnings for ambiguous cases
         if self.mode is None and prompt_available and image_available:
@@ -677,16 +740,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # Predicts noise using the noise prediction model for the given mode.
         if mode == "joint":
             # Joint text-image generation
-            # print(f"t: {t}")
             img_vae_latents, img_clip_latents, text_latents = self._split_joint(latents, height, width)
 
-            # print("Running condtional U-Net call...")
             img_vae_out, img_clip_out, text_out = self.unet(
                 img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t
             )
-            # print(f"Image VAE out shape: {img_vae_out.shape}")
-            # print(f"Image CLIP out shape: {img_clip_out.shape}")
-            # print(f"Text out shape: {text_out.shape}")
+
+            logger.debug(f"Conditional VAE out: {img_vae_out}")
+            logger.debug(f"Conditional VAE out shape: {img_vae_out.shape}")
+            logger.debug(f"Conditional CLIP out: {img_clip_out}")
+            logger.debug(f"Conditional CLIP out shape: {img_clip_out.shape}")
+            logger.debug(f"Conditional text out: {text_out}")
+            logger.debug(f"Conditional text out shape: {text_out.shape}")
 
             x_out = self._combine_joint(img_vae_out, img_clip_out, text_out)
 
@@ -698,19 +763,25 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
-            # print(f"t_img_uncond: {t_img_uncond}")
-            # print(f"t_img_uncond shape: {t_img_uncond.shape}")
+            _, _, text_out_uncond = self.unet(
+                img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t
+            )
 
-            # print("Running unconditional U-Net call 1 for CFG...")
-            _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t)
-            # print("Running unconditional U-Net call 2 for CFG...")
+            logger.debug(f"Unconditional text out: {text_out_uncond}")
+            logger.debug(f"Unconditional text out shape: {text_out_uncond.shape}")
+
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
                 img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep
             )
 
+            logger.debug(f"Unconditional VAE out: {img_vae_out_uncond}")
+            logger.debug(f"Unconditional VAE out shape: {img_vae_out_uncond.shape}")
+            logger.debug(f"Unconditional CLIP out: {img_clip_out_uncond}")
+            logger.debug(f"Unconditional CLIP out shape: {img_clip_out_uncond.shape}")
+
             x_out_uncond = self._combine_joint(img_vae_out_uncond, img_clip_out_uncond, text_out_uncond)
 
-            return guidance_scale * x_out * (1.0 - guidance_scale) * x_out_uncond
+            return guidance_scale * x_out + (1.0 - guidance_scale) * x_out_uncond
         elif mode == "text2img":
             # Text-conditioned image generation
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
@@ -831,6 +902,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         num_samples: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
         prompt_latents: Optional[torch.FloatTensor] = None,
         vae_latents: Optional[torch.FloatTensor] = None,
         clip_latents: Optional[torch.FloatTensor] = None,
@@ -880,18 +952,24 @@ class UniDiffuserPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for joint
+                image-text generation. Can be used to tweak the same generation with different prompts. If not
+                provided, a latents tensor will be generated by sampling using the supplied random `generator`. Note
+                that this is assumed to be a full set of VAE, CLIP, and text latents, if supplied, this will override
+                the value of `prompt_latents`, `vae_latents`, and `clip_latents`.
             prompt_latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for text
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             vae_latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             clip_latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -928,13 +1006,25 @@ class UniDiffuserPipeline(DiffusionPipeline):
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
+        full_latents_available = latents is not None
+        individual_latents_available = prompt_latents is not None or vae_latents is not None or clip_latents is not None
+        if full_latents_available and individual_latents_available:
+            logger.warning(
+                "You have supplied both `latents` and at least one of `prompt_latents`, `vae_latents`, and"
+                " `clip_latents`. The value of `latents` will override the value of any individually supplied latents."
+            )
+
         # 2. Define call parameters
 
         # Recalculate mode for each call to the pipeline.
-        mode = self._infer_mode(prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents)
+        mode = self._infer_mode(prompt, prompt_embeds, image, latents, prompt_latents, vae_latents, clip_latents)
         batch_size = self._infer_batch_size(mode, prompt, prompt_embeds, image, num_samples)
         device = self._execution_device
         reduce_text_emb_dim = self.text_intermediate_dim < self.text_encoder_hidden_size or self.mode != "text2img"
+
+        logger.debug(f"Setting mode to {mode}")
+        logger.debug(f"Setting batch size to {batch_size}")
+        logger.debug(f"Setting execution device to {device}")
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -946,6 +1036,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
 
         # 3. Encode input prompt, if available; otherwise prepare text latents
+
+        if full_latents_available:
+            # Overwrite individual latents
+            vae_latents, clip_latents, prompt_latents = self._split_joint(latents, height, width)
 
         if mode in ["text2img"]:
             # 3.1. Encode input prompt, if available
@@ -970,10 +1064,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 prompt_latents,
             )
+        
+        logger.debug(f"Text latents: {prompt_embeds}")
+        logger.debug(f"Text latents shape: {prompt_embeds.shape}")
 
         if reduce_text_emb_dim:
             prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
-        # print(f"Prompt embeds shape: {prompt_embeds.shape}")
+        
+        logger.debug(f"Low dim text latents: {prompt_embeds}")
+        logger.debug(f"Low dim text latents shape: {prompt_embeds.shape}")
 
         # 4. Encode image, if available; otherwise prepare image latents
         if mode in ["img2text"]:
@@ -1017,7 +1116,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 vae_latents,
             )
-            # print(f"Image vae latent shape: {image_vae_latents.shape}")
 
             # Prepare image CLIP latents
             image_clip_latents = self.prepare_image_clip_latents(
@@ -1028,14 +1126,20 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 clip_latents,
             )
-            # print(f"Image clip latent shape: {image_clip_latents.shape}")
+        
+        logger.debug(f"VAE latents: {image_vae_latents}")
+        logger.debug(f"VAE latents shape: {image_vae_latents.shape}")
+        logger.debug(f"CLIP latents: {image_clip_latents}")
+        logger.debug(f"CLIP latents shape: {image_clip_latents.shape}")
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        max_timestep = timesteps[0]
-        # print(f"Timesteps: {timesteps}")
-        # print(f"Timesteps shape: {timesteps.shape}")
+        # max_timestep = timesteps[0]
+        max_timestep = self.scheduler.num_train_timesteps
+
+        logger.debug(f"Timesteps: {timesteps}")
+        logger.debug(f"Max timestep: {max_timestep}")
 
         # 6. Prepare latent variables
         if mode == "joint":
@@ -1044,8 +1148,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
-
-        # print(f"Latents shape: {latents.shape}")
+        
+        logger.debug(f"Latents: {latents}")
+        logger.debug(f"Latents shape: {latents.shape}")
 
         # 7. Check that shapes of latents and image match the UNet channels.
         # TODO
@@ -1053,10 +1158,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        logger.debug(f"Scheduler extra step kwargs: {extra_step_kwargs}")
+
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                logger.debug(f"Denoising loop index: {i}")
+                logger.debug(f"Current timestep: {t}")
+
                 # predict the noise residual
                 # Also applies classifier-free guidance as described in the UniDiffuser paper
                 noise_pred = self.get_noise_pred(
@@ -1074,10 +1184,16 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     width,
                 )
 
+                logger.debug(f"Current noise pred for step {i} / timestep {t}: {noise_pred}")
+                logger.debug(f"Current noise pred shape for step {i} / timestep {t}: {noise_pred.shape}")
+
                 # TODO: do we need to worry about sigma space stuff for the scheduler?
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                logger.debug(f"Current latents for step {i} / timestep {t}: {latents}")
+                logger.debug(f"Current latents shape for step {i} / timestep {t}: {latents.shape}")
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1090,14 +1206,24 @@ class UniDiffuserPipeline(DiffusionPipeline):
         gen_text = None
         if mode == "joint":
             image_vae_latents, image_clip_latents, text_latents = self._split_joint(latents, height, width)
-            # print(f"Image VAE latents shape: {image_vae_latents.shape}")
-            # print(f"VAE scale factor: {self.vae_scale_factor}")
-            # print(self.vae)
+
+            logger.debug(f"Text output: {text_latents}")
+            logger.debug(f"Text output shape: {text_latents.shape}")
+            logger.debug(f"VAE output: {image_vae_latents}")
+            logger.debug(f"VAE output shape: {image_vae_latents.shape}")
+            logger.debug(f"CLIP output: {image_clip_latents}")
+            logger.debug(f"CLIP output shape: {image_clip_latents.shape}")
+
             # Map latent VAE image back to pixel space
             gen_image = self.decode_image_latents(image_vae_latents)
-            # print(f"Decoded image shape: {gen_image.shape}")
+
+            logger.debug(f"VAE decoded sample: {gen_image}")
+            logger.debug(f"VAE decoded sample shape: {gen_image.shape}")
+
             # Generate text using the text decoder
             gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
+
+            logger.debug(f"Generated text: {gen_text}")
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
             gen_image = self.decode_image_latents(image_vae_latents)
