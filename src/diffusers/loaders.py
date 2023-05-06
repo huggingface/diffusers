@@ -1059,7 +1059,7 @@ class LoraLoaderMixin:
     def save_lora_weights(
         self,
         save_directory: Union[str, os.PathLike],
-        unet_lora_layers: Dict[str, torch.nn.Module] = None,
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
@@ -1106,15 +1106,19 @@ class LoraLoaderMixin:
         # Create a flat dictionary.
         state_dict = {}
         if unet_lora_layers is not None:
+            weights = unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
+
             unet_lora_state_dict = {
                 f"{self.unet_name}.{module_name}": param
-                for module_name, param in unet_lora_layers.state_dict().items()
+                for module_name, param in weights.items()
             }
             state_dict.update(unet_lora_state_dict)
         if text_encoder_lora_layers is not None:
+            weights = text_encoder_lora_layers.state_dict() if isinstance(text_encoder_lora_layers, torch.nn.Module) else unet_lora_layers
+
             text_encoder_lora_state_dict = {
                 f"{self.text_encoder_name}.{module_name}": param
-                for module_name, param in text_encoder_lora_layers.state_dict().items()
+                for module_name, param in weights.items()
             }
             state_dict.update(text_encoder_lora_state_dict)
 
