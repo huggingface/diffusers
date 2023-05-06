@@ -295,6 +295,14 @@ except importlib_metadata.PackageNotFoundError:
     _torchsde_available = False
 
 
+_multilingual_clip_available = importlib.util.find_spec("multilingual-clip") is not None
+try:
+    _multilingual_clip_version = importlib_metadata.version("multilingual-clip")
+    logger.debug(f"Successfully imported multilingual-clip version {_multilingual_clip_version}")
+except importlib_metadata.PackageNotFoundError:
+    _multilingual_clip_available = False
+
+    
 def is_torch_available():
     return _torch_available
 
@@ -381,6 +389,10 @@ def is_bs4_available():
 
 def is_torchsde_available():
     return _torchsde_available
+
+
+def is_multilingual_clip_available():
+    return is_multilingual_clip_available
 
 
 # docstyle-ignore
@@ -492,6 +504,12 @@ TORCHSDE_IMPORT_ERROR = """
 """
 
 
+# docstyle-ignore
+MULTILINGUAL_CLIP_IMPORT_ERROR = """
+{0} requires the multilingual-clip library but it was not found in your environment. You can install it with pip: `pip install multilingual-clip`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -512,6 +530,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
         ("torchsde", (_torchsde_available, TORCHSDE_IMPORT_ERROR)),
+        ("multilingual-clip", (_multilingual_clip_available, MULTILINGUAL_CLIP_IMPORT_ERROR)),
     ]
 )
 
