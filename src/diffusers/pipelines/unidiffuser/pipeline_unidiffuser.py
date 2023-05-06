@@ -731,6 +731,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         img_vae,
         img_clip,
         max_timestep,
+        data_type,
         guidance_scale,
         generator,
         device,
@@ -743,7 +744,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents, text_latents = self._split_joint(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t
+                img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t, data_type=data_type
             )
 
             x_out = self._combine_joint(img_vae_out, img_clip_out, text_out)
@@ -756,10 +757,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
-            _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t)
+            _, _, text_out_uncond = self.unet(
+                img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t, data_type=data_type
+            )
 
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
-                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep
+                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep, data_type=data_type
             )
 
             x_out_uncond = self._combine_joint(img_vae_out_uncond, img_clip_out_uncond, text_out_uncond)
@@ -770,7 +773,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=0
+                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=0, data_type=data_type
             )
 
             img_out = self._combine(img_vae_out, img_clip_out)
@@ -782,7 +785,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
-                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep
+                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep, data_type=data_type
             )
 
             img_out_uncond = self._combine(img_vae_out_uncond, img_clip_out_uncond)
@@ -790,7 +793,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             return guidance_scale * img_out + (1.0 - guidance_scale) * img_out_uncond
         elif mode == "img2text":
             # Image-conditioned text generation
-            img_vae_out, img_clip_out, text_out = self.unet(img_vae, img_clip, latents, t_img=0, t_text=t)
+            img_vae_out, img_clip_out, text_out = self.unet(
+                img_vae, img_clip, latents, t_img=0, t_text=t, data_type=data_type
+            )
 
             if guidance_scale <= 1.0:
                 return text_out
@@ -800,13 +805,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
-                img_vae_T, img_clip_T, latents, t_img=max_timestep, t_text=t
+                img_vae_T, img_clip_T, latents, t_img=max_timestep, t_text=t, data_type=data_type
             )
 
             return guidance_scale * text_out + (1.0 - guidance_scale) * text_out_uncond
         elif mode == "text":
             # Unconditional ("marginal") text generation (no CFG)
-            img_vae_out, img_clip_out, text_out = self.unet(img_vae, img_clip, latents, t_img=max_timestep, t_text=t)
+            img_vae_out, img_clip_out, text_out = self.unet(
+                img_vae, img_clip, latents, t_img=max_timestep, t_text=t, data_type=data_type
+            )
 
             return text_out
         elif mode == "img":
@@ -814,7 +821,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=max_timestep
+                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=max_timestep, data_type=data_type
             )
 
             img_out = self._combine(img_vae_out, img_clip_out)
@@ -877,6 +884,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        data_type: Optional[int] = 1,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -910,6 +918,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
+            data_type (`int`, *optional*, defaults to 1):
+                The data type (either 0 or 1). Only used if you are loading a checkpoint which supports a data type
+                embedding; this is added for compatibility with the UniDiffuser-v1 checkpoint.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1139,6 +1150,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     image_vae_latents,
                     image_clip_latents,
                     max_timestep,
+                    data_type,
                     guidance_scale,
                     generator,
                     device,

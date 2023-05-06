@@ -848,6 +848,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         norm_elementwise_affine: bool = True,
         use_patch_pos_embed=False,
         ff_final_dropout: bool = True,
+        use_data_type_embedding: bool = False,
     ):
         super().__init__()
 
@@ -915,6 +916,12 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         self.pos_embed_drop = nn.Dropout(p=dropout)
         trunc_normal_(self.pos_embed, std=0.02)
 
+        # 1.4. Handle data type token embeddings for UniDiffuser-V1, if necessary
+        self.use_data_type_embedding = use_data_type_embedding
+        if self.use_data_type_embedding:
+            self.data_type_token_embedding = nn.Embedding(2, self.inner_dim)
+            self.data_type_pos_embed_token = nn.Parameter(torch.zeros(1, 1, self.inner_dim))
+
         # 2. Define transformer blocks
         self.transformer = UTransformer2DModel(
             num_attention_heads=num_attention_heads,
@@ -959,6 +966,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         text: torch.FloatTensor,
         t_img: Union[torch.Tensor, float, int],
         t_text: Union[torch.Tensor, float, int],
+        data_type: Optional[Union[torch.Tensor, float, int]] = 1,
         encoder_hidden_states=None,
         timestep=None,
         class_labels=None,
@@ -1034,14 +1042,40 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         t_text_token = t_text_token.unsqueeze(dim=1)
 
         # 1.4. Concatenate all of the embeddings together.
-        hidden_states = torch.cat(
-            [t_img_token, t_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
-        )
+        if self.use_data_type_embedding:
+            assert data_type is not None, "data_type must be supplied if the model uses a data type embedding"
+            if not torch.is_tensor(data_type):
+                data_type = torch.tensor([data_type], dtype=torch.int, device=vae_hidden_states.device)
+
+            # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+            data_type = data_type * torch.ones(batch_size, dtype=data_type.dtype, device=data_type.device)
+
+            data_type_token = self.data_type_token_embedding(data_type).unsqueeze(dim=1)
+            hidden_states = torch.cat(
+                [
+                    t_img_token,
+                    t_text_token,
+                    data_type_token,
+                    text_hidden_states,
+                    clip_hidden_states,
+                    vae_hidden_states,
+                ],
+                dim=1,
+            )
+        else:
+            hidden_states = torch.cat(
+                [t_img_token, t_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
+            )
 
         # 1.5. Prepare the positional embeddings and add to hidden states
         # Note: I think img_vae should always have the proper shape, so there's no need to interpolate
         # the position embeddings.
-        pos_embed = self.pos_embed
+        if self.use_data_type_embedding:
+            pos_embed = torch.cat(
+                [self.pos_embed[:, : 1 + 1, :], self.data_type_pos_embed_token, self.pos_embed[:, 1 + 1 :, :]], dim=1
+            )
+        else:
+            pos_embed = self.pos_embed
         hidden_states = hidden_states + pos_embed
         hidden_states = self.pos_embed_drop(hidden_states)
 
@@ -1061,9 +1095,19 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         # Split out the predicted noise representation.
-        t_img_token_out, t_text_token_out, text_out, img_clip_out, img_vae_out = hidden_states.split(
-            (1, 1, num_text_tokens, 1, num_img_tokens), dim=1
-        )
+        if self.use_data_type_embedding:
+            (
+                t_img_token_out,
+                t_text_token_out,
+                data_type_token_out,
+                text_out,
+                img_clip_out,
+                img_vae_out,
+            ) = hidden_states.split((1, 1, 1, num_text_tokens, 1, num_img_tokens), dim=1)
+        else:
+            t_img_token_out, t_text_token_out, text_out, img_clip_out, img_vae_out = hidden_states.split(
+                (1, 1, num_text_tokens, 1, num_img_tokens), dim=1
+            )
 
         # print(F"img vae transformer output shape: {img_vae_out.shape}")
 

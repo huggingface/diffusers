@@ -171,6 +171,9 @@ def create_unidiffuser_unet_config(args):
             f"Config type {args.config.type} is not implemented, currently only config types"
             " 'test' and 'big' are available."
         )
+    # Unidiffuser-v1 uses data type embeddings
+    if args.version == 1:
+        unet_config["use_data_type_embedding"] = True
     return unet_config
 
 
@@ -228,6 +231,7 @@ def create_unidiffuser_unet_config_test():
         "norm_elementwise_affine": True,
         "use_patch_pos_embed": False,
         "ff_final_dropout": True,
+        "use_data_type_embedding": False,
     }
 
     return unet_config
@@ -296,6 +300,7 @@ def create_unidiffuser_unet_config_big():
         "norm_elementwise_affine": True,
         "use_patch_pos_embed": False,
         "ff_final_dropout": True,
+        "use_data_type_embedding": False,
     }
 
     return unet_config
@@ -535,6 +540,11 @@ def convert_uvit_to_diffusers(ckpt, diffusers_model):
 
     new_state_dict["pos_embed"] = uvit_state_dict["pos_embed"]
 
+    # Handle data type token embeddings for UniDiffuser-v1
+    if "token_embedding.weight" in uvit_state_dict and diffusers_model.use_data_type_embedding:
+        new_state_dict["data_type_pos_embed_token"] = uvit_state_dict["pos_embed_token"]
+        new_state_dict["data_type_token_embedding.weight"] = uvit_state_dict["token_embedding.weight"]
+
     # Also initialize the PatchEmbedding in UTransformer2DModel with the PatchEmbedding from the checkpoint.
     # This isn't used in the current implementation, so might want to remove.
     new_state_dict["transformer.pos_embed.proj.weight"] = uvit_state_dict["patch_embed.proj.weight"]
@@ -648,6 +658,7 @@ if __name__ == "__main__":
     parser.add_argument("--unet_save_dir", type=str, default=None)
     parser.add_argument("--vae_save_dir", type=str, default=None)
     parser.add_argument("--config_type", type=str, default="test")
+    parser.add_argument("--version", type=int, default=0)
 
     args = parser.parse_args()
 

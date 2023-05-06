@@ -323,7 +323,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        # TODO: should we enable attention slicing here?
+        pipe.enable_attention_slicing()
 
         inputs = self.get_inputs()
         del inputs["prompt"]
