@@ -404,13 +404,10 @@ class UNetMidBlock2D(nn.Module):
         add_attention: bool = True,
         attn_num_head_channels=1,
         output_scale_factor=1.0,
-        use_spatial_norm=False,
     ):
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
         self.add_attention = add_attention
-        self.use_spatial_norm = use_spatial_norm
-
         # there is always at least one resnet
         resnets = [
             ResnetBlock2D(
@@ -437,7 +434,7 @@ class UNetMidBlock2D(nn.Module):
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
                         norm_num_groups=resnet_groups,
-                        use_spatial_norm=use_spatial_norm,
+                        norm_type=resnet_time_scale_shift,
                         temb_channels=temb_channels
                     )
                 )
@@ -466,10 +463,8 @@ class UNetMidBlock2D(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
-                if self.use_spatial_norm:
-                    hidden_states = attn(hidden_states, temb)
-                else:
-                    hidden_states = attn(hidden_states)
+                hidden_states = attn(hidden_states, temb)
+
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -2026,7 +2021,6 @@ class AttnUpDecoderBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
-        self.use_spatial_norm = resnet_time_scale_shift == "spatial"
 
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
@@ -2052,8 +2046,8 @@ class AttnUpDecoderBlock2D(nn.Module):
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
-                    use_spatial_norm=self.use_spatial_norm,
-                    temb_channels=temb_channels
+                    temb_channels=temb_channels,
+                    norm_type=resnet_time_scale_shift
                 )
             )
 
@@ -2065,15 +2059,10 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, zq):
+    def forward(self, hidden_states, temb=None):
         for resnet, attn in zip(self.resnets, self.attentions):
-            if self.use_spatial_norm:
-                hidden_states = resnet(hidden_states, temb=zq)
-                hidden_states = attn(hidden_states, zq)
-            else:
-                hidden_states = resnet(hidden_states, temb=None)
-                hidden_states = attn(hidden_states, zq)
-            
+                hidden_states = resnet(hidden_states, temb=temb)
+                hidden_states = attn(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

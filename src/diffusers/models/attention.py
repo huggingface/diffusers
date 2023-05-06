@@ -55,15 +55,14 @@ class AttentionBlock(nn.Module):
         norm_num_groups: int = 32,
         rescale_output_factor: float = 1.0,
         eps: float = 1e-5,
-        use_spatial_norm: bool = False,
+        norm_type: str = "default", # default, spatial
         temb_channels: Optional[int] = None,
     ):
         super().__init__()
         self.channels = channels
-        self.use_spatial_norm = use_spatial_norm
 
         self.num_heads = channels // num_head_channels if num_head_channels is not None else 1
-        if use_spatial_norm:
+        if norm_type == "spatial":
             self.norm = SpatialNorm(channels, temb_channels)
         else:
             self.norm = nn.GroupNorm(num_channels=channels, num_groups=norm_num_groups, eps=eps, affine=True)
@@ -137,10 +136,10 @@ class AttentionBlock(nn.Module):
         batch, channel, height, width = hidden_states.shape
 
         # norm
-        if self.use_spatial_norm:
-            hidden_states = self.norm(hidden_states, zq=zq)
-        else:
+        if zq is None:
             hidden_states = self.norm(hidden_states)
+        else:
+            hidden_states = self.norm(hidden_states, zq=zq)
 
         hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
 
@@ -551,30 +550,22 @@ class AdaGroupNorm(nn.Module):
 
 
 class SpatialNorm(nn.Module):
+    """
+    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
+    """
     def __init__(
         self,
         f_channels,
         zq_channels,
-        norm_layer=nn.GroupNorm,
-        freeze_norm_layer=False,
-        add_conv=False,
     ):
         super().__init__()
-        self.norm_layer = norm_layer(num_channels=f_channels,num_groups=32,eps=1e-6,affine=True)
-        if freeze_norm_layer:
-            for p in self.norm_layer.parameters:
-                p.requires_grad = False
-        self.add_conv = add_conv
-        if self.add_conv:
-            self.conv = nn.Conv2d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=1)
+        self.norm_layer = nn.GroupNorm(num_channels=f_channels,num_groups=32,eps=1e-6,affine=True)
         self.conv_y = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
         self.conv_b = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, f, zq):
         f_size = f.shape[-2:]
         zq = F.interpolate(zq, size=f_size, mode="nearest")
-        if self.add_conv:
-            zq = self.conv(zq)
         norm_f = self.norm_layer(f)
         new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
         return new_f

@@ -761,13 +761,13 @@ MOVQ_CONFIG ={
                 "in_channels":3, 
                 "out_channels":3, 
                 "latent_channels":4, 
-                "use_spatial_norm":True, 
                 "down_block_types":("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "AttnDownEncoderBlock2D"), 
                 "up_block_types":("AttnUpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"),
                 "num_vq_embeddings":16384,
                 "block_out_channels":(128, 256, 256, 512),
                 "vq_embed_dim":4,
-                "layers_per_block":2
+                "layers_per_block":2,
+                "norm_type":"spatial"
             }
 
 
