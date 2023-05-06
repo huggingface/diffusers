@@ -176,10 +176,9 @@ def parse_args():
         help="Save learned_embeds.bin every X updates steps.",
     )
     parser.add_argument(
-        "--only_save_embeds",
+        "--save_as_full_pipeline",
         action="store_true",
-        default=True,
-        help="Save only the embeddings for the new concept.",
+        help="Save the complete stable diffusion pipeline.",
     )
     parser.add_argument(
         "--num_vectors",
@@ -900,11 +899,11 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        if args.push_to_hub and args.only_save_embeds:
+        if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
         else:
-            save_full_model = not args.only_save_embeds
+            save_full_model = args.save_as_full_pipeline
         if save_full_model:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
