@@ -41,7 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import pt_to_pil
         >>> import torch
 
-        >>> pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
@@ -793,7 +793,8 @@ class IFPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -805,8 +806,8 @@ class IFPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs
-                ).prev_sample
+                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -829,7 +830,7 @@ class IFPipeline(DiffusionPipeline):
 
             # 11. Apply watermark
             if self.watermarker is not None:
-                self.watermarker.apply_watermark(image, self.unet.config.sample_size)
+                image = self.watermarker.apply_watermark(image, self.unet.config.sample_size)
         elif output_type == "pt":
             nsfw_detected = None
             watermark_detected = None

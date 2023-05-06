@@ -74,7 +74,9 @@ The full training state is saved in a subfolder in the `output_dir` every 500 st
 
 ## Finetuning
 
-You're ready to launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) now! Specify the dataset name to finetune on with the `--dataset_name` argument and then save it to the path in `--output_dir`.
+You're ready to launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) now! Specify the dataset name to finetune on with the `--dataset_name` argument and then save it to the path in `--output_dir`. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
+
+The training script creates and saves a `diffusion_pytorch_model.bin` file in your repository.
 
 <Tip>
 
@@ -141,81 +143,3 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --mixed_precision="fp16" \
   --logger="wandb"
 ```
-
-## Finetuning with your own data
-
-There are two ways to finetune a model on your own dataset:
-
-- provide your own folder of images to the `--train_data_dir` argument
-- upload your dataset to the Hub and pass the dataset repository id to the `--dataset_name` argument.
-
-<Tip>
-
-💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide. 
-
-</Tip>
-
-Below, we explain both in more detail.
-
-### Provide the dataset as a folder
-
-If you provide your own dataset as a folder, the script expects the following directory structure:
-
-```bash
-data_dir/xxx.png
-data_dir/xxy.png
-data_dir/[...]/xxz.png
-```
-
-Pass the path to the folder containing the images to the `--train_data_dir` argument and launch the training:
-
-```bash
-accelerate launch train_unconditional.py \
-    --train_data_dir <path-to-train-directory> \
-    <other-arguments>
-```
-
-Internally, the script uses the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) to automatically build a dataset from the folder.
-
-### Upload your data to the Hub
-
-<Tip>
-
-💡 For more details and context about creating and uploading a dataset to the Hub, take a look at the [Image search with 🤗 Datasets](https://huggingface.co/blog/image-search-datasets) post.
-
-</Tip>
-
-To upload your dataset to the Hub, you can start by creating one with the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) feature, which creates an `image` column containing the PIL-encoded images, from 🤗 Datasets:
-
-```python
-from datasets import load_dataset
-
-# example 1: local folder
-dataset = load_dataset("imagefolder", data_dir="path_to_your_folder")
-
-# example 2: local files (supported formats are tar, gzip, zip, xz, rar, zstd)
-dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
-
-# example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)
-dataset = load_dataset(
-    "imagefolder",
-    data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip",
-)
-
-# example 4: providing several splits
-dataset = load_dataset(
-    "imagefolder", data_files={"train": ["path/to/file1", "path/to/file2"], "test": ["path/to/file3", "path/to/file4"]}
-)
-```
-
-Then you can use the [`~datasets.Dataset.push_to_hub`] method to upload it to the Hub:
-
-```python
-# assuming you have ran the huggingface-cli login command in a terminal
-dataset.push_to_hub("name_of_your_dataset")
-
-# if you want to push to a private repo, simply pass private=True:
-dataset.push_to_hub("name_of_your_dataset", private=True)
-```
-
-Now train your model by simply setting the `--dataset_name` argument to the name of your dataset on the Hub.

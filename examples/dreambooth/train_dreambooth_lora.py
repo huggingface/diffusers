@@ -746,11 +746,6 @@ def main(args):
         accelerator.register_for_checkpointing(text_encoder_lora_layers)
         del temp_pipeline
 
-    if args.scale_lr:
-        args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
-
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
@@ -1045,7 +1040,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_attn_procs(args.output_dir)
+        pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
