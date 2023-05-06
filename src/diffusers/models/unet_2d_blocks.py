@@ -734,7 +734,7 @@ class AttnDownBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, upsample_size=None):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -1720,7 +1720,7 @@ class AttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
