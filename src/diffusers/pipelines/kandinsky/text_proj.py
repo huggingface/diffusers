@@ -68,8 +68,7 @@ class KandinskyTextProjModel(ModelMixin, ConfigMixin):
           # ... and by projecting CLIP embeddings into 10
         # extra tokens of context that are concatenated to the sequence of outputs from the GLIDE text encoder"
         clip_extra_context_tokens = self.clip_extra_context_tokens_proj(image_embeddings)
-        clip_extra_context_tokens = clip_extra_context_tokens.reshape(batch_size, -1, self.clip_extra_context_tokens)
-        clip_extra_context_tokens = clip_extra_context_tokens.permute(0, 2, 1)
+        clip_extra_context_tokens = clip_extra_context_tokens.reshape(batch_size, self.clip_extra_context_tokens, -1)
 
         text_encoder_hidden_states = self.encoder_hidden_states_proj(text_encoder_hidden_states)
         text_encoder_hidden_states = torch.cat([clip_extra_context_tokens, text_encoder_hidden_states], dim=1)
