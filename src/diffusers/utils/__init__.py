@@ -75,7 +75,6 @@ from .import_utils import (
     is_transformers_version,
     is_unidecode_available,
     is_wandb_available,
-    is_multilingual_clip_available,
     is_xformers_available,
     requires_backends,
 )

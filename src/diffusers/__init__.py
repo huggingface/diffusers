@@ -13,7 +13,6 @@ from .utils import (
     is_scipy_available,
     is_torch_available,
     is_torchsde_available,
-    is_multilingual_clip_available,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
@@ -170,14 +169,6 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .pipelines import StableDiffusionKDiffusionPipeline
-
-try:
-    if not(is_torch_available() and is_transformers_available() and is_multilingual_clip_available()):
-         raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_multilingual_clip_objects import *  # noqa F403
-else:
-    from .pipelines import KandinskyPipeline
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
