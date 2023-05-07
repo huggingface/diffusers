@@ -602,8 +602,9 @@ class TextualInversionLoaderMixin:
                 f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)}"
                 f"Make sure both lists have the same length."
             )
-            
-        if len(set(tokens)) < len(tokens):
+
+        valid_tokens = [t for t in tokens if t is not None]
+        if len(set(valid_tokens)) < len(valid_tokens):
             raise ValueError(f"You have passed a list of tokens that contains duplicates: {tokens}")
 
         token_ids_and_embeddings = []
