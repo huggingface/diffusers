@@ -725,7 +725,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    accelerator.register_for_checkpointing(unet_lora_layers)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -744,47 +743,52 @@ def main(args):
         )
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
         text_encoder = temp_pipeline.text_encoder
-        accelerator.register_for_checkpointing(text_encoder_lora_layers)
         del temp_pipeline
 
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            # there are only two options here. Either are just the unet attn processor layers
-            # or there are the unet and text encoder atten layers
-            unet_lora_layers_to_save = None
-            text_encoder_lora_layers_to_save = None
+    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    def save_model_hook(models, weights, output_dir):
+        # there are only two options here. Either are just the unet attn processor layers
+        # or there are the unet and text encoder atten layers
+        unet_lora_layers_to_save = None
+        text_encoder_lora_layers_to_save = None
 
-            for model in models:
-                state_dict = model.state_dict()
+        for model in models:
+            state_dict = model.state_dict()
 
-                if text_encoder_lora_layers is not None and state_dict.keys() == text_encoder_lora_layers.state_dict().keys():
-                    # text encoder
-                    text_encoder_lora_layers_to_save = state_dict
-                elif state_dict.keys() == unet_lora_layers.state_dict().keys(): 
-                    # unet
-                    unet_lora_layers_to_save = state_dict
+            if text_encoder_lora_layers is not None and state_dict.keys() == text_encoder_lora_layers.state_dict().keys():
+                # text encoder
+                text_encoder_lora_layers_to_save = state_dict
+            elif state_dict.keys() == unet_lora_layers.state_dict().keys(): 
+                # unet
+                unet_lora_layers_to_save = state_dict
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+            # make sure to pop weight so that corresponding model is not saved again
+            weights.pop()
 
-            LoraLoaderMixin.save_lora_weights(output_dir, unet_lora_layers=unet_lora_layers_to_save, text_encoder_lora_layers=text_encoder_lora_layers_to_save)
+        LoraLoaderMixin.save_lora_weights(output_dir, unet_lora_layers=unet_lora_layers_to_save, text_encoder_lora_layers=text_encoder_lora_layers_to_save)
 
-        def load_model_hook(models, input_dir):
-            temp_pipeline = DiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
-                text_encoder=text_encoder if args.train_text_encoder else None,
-                revision=args.revision,
-                torch_dtype=weight_dtype,
-            )
-            temp_pipeline.load_lora_weights(input_dir)
-            del temp_pipeline
+    def load_model_hook(models, input_dir):
+        temp_pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            unet=accelerator.unwrap_model(unet),
+            text_encoder=accelerator.unwrap_model(text_encoder) if args.train_text_encoder else None,
+            revision=args.revision,
+            torch_dtype=weight_dtype,
+        )
+        temp_pipeline.load_lora_weights(input_dir)
 
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
+        # load lora weights into models
+        models[0].load_state_dict(AttnProcsLayers(unet.attn_processors).state_dict())
+        if len(models) > 1:
+            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
 
+        # delete temporary pipeline and pop models
+        del temp_pipeline
+        for _ in range(len(models)):
+            models.pop()
+
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices

@@ -66,6 +66,9 @@ class AttnProcsLayers(torch.nn.Module):
         self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
+        # .processor for unet, .k_proj, ".q_proj", ".v_proj", and ".out_proj" for text encoder
+        self.split_keys = [".processor", ".k_proj", ".q_proj", ".v_proj", ".out_proj"]
+
         # we add a hook to state_dict() and load_state_dict() so that the
         # naming fits with `unet.attn_processors`
         def map_to(module, state_dict, *args, **kwargs):
@@ -77,10 +80,17 @@ class AttnProcsLayers(torch.nn.Module):
 
             return new_state_dict
 
+        def remap_key(key, state_dict):
+            for k in self.split_keys:
+                if k in key:
+                    return key.split(k)[0] + k
+
+            raise ValueError(f"There seems to be a problem with the state_dict: {set(state_dict.keys())}. {key} has to have one of {self.split_keys}.")
+
         def map_from(module, state_dict, *args, **kwargs):
             all_keys = list(state_dict.keys())
             for key in all_keys:
-                replace_key = key.split(".processor")[0] + ".processor"
+                replace_key = remap_key(key, state_dict)
                 new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
                 state_dict[new_key] = state_dict[key]
                 del state_dict[key]
@@ -843,9 +853,12 @@ class LoraLoaderMixin:
             text_encoder_lora_state_dict = {
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
+            attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
             if len(text_encoder_lora_state_dict) > 0:
-                attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
                 self._modify_text_encoder(attn_procs_text_encoder)
+
+                # save lora attn procs of text encoder so that it can be easily retrieved
+                self._text_encoder_lora_attn_procs = attn_procs_text_encoder
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
         # contain the module names of the `unet` as its keys WITHOUT any prefix.
@@ -855,6 +868,12 @@ class LoraLoaderMixin:
             self.unet.load_attn_procs(state_dict)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
+
+    @property
+    def text_encoder_lora_attn_procs(self):
+        if hasattr(self, "_text_encoder_lora_attn_procs"):
+            return self._text_encoder_lora_attn_procs
+        return
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -879,6 +898,13 @@ class LoraLoaderMixin:
 
                 # Monkey-patch.
                 module.forward = new_forward
+
+    @property
+    def text_encoder_lora_procs(self):
+        for name, _ in self.text_encoder.named_modules():
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+                # Retrieve the module and its corresponding LoRA processor.
+                module = self.text_encoder.get_submodule(name)
 
     def _get_lora_layer_attribute(self, name: str) -> str:
         if "q_proj" in name:
@@ -1113,8 +1139,9 @@ class LoraLoaderMixin:
                 for module_name, param in weights.items()
             }
             state_dict.update(unet_lora_state_dict)
+
         if text_encoder_lora_layers is not None:
-            weights = text_encoder_lora_layers.state_dict() if isinstance(text_encoder_lora_layers, torch.nn.Module) else unet_lora_layers
+            weights = text_encoder_lora_layers.state_dict() if isinstance(text_encoder_lora_layers, torch.nn.Module) else text_encoder_lora_layers
 
             text_encoder_lora_state_dict = {
                 f"{self.text_encoder_name}.{module_name}": param
