@@ -900,7 +900,6 @@ class LoraLoaderMixin:
 
                 # Monkey-patch.
                 module.forward = new_forward
-                
     def _get_lora_layer_attribute(self, name: str) -> str:
         if "q_proj" in name:
             return "to_q_lora"
