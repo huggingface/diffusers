@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,10 +39,20 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, is_accelerate_available, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils import (
+    floats_tensor,
+    is_accelerate_available,
+    is_accelerate_version,
+    load_image,
+    load_numpy,
+    nightly,
+    slow,
+    torch_device,
+)
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -52,6 +62,9 @@ torch.backends.cuda.matmul.allow_tf32 = False
 class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -227,8 +240,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available(),
-        reason="CPU offload is only available with CUDA and `accelerate` installed",
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
@@ -251,10 +264,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
 
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
@@ -280,7 +289,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         if torch_device == "mps":
             expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
         else:
-            expected_slice = np.array([0.6312, 0.4984, 0.4154, 0.4788, 0.5535, 0.4599, 0.4017, 0.5359, 0.4716])
+            expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -299,9 +308,9 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         assert image.shape == (1, 32, 32, 3)
         if torch_device == "mps":
-            expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
-        else:
             expected_slice = np.array([0.6296, 0.5125, 0.3890, 0.4456, 0.5955, 0.4621, 0.3810, 0.5310, 0.4626])
+        else:
+            expected_slice = np.array([0.6012, 0.4507, 0.3769, 0.4121, 0.5566, 0.4585, 0.3803, 0.5045, 0.4631])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -323,45 +332,9 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         if torch_device == "mps":
             expected_slice = np.array([0.6501, 0.5150, 0.4939, 0.6688, 0.5437, 0.5758, 0.5115, 0.4406, 0.4551])
         else:
-            expected_slice = np.array([0.6267, 0.5232, 0.6001, 0.6738, 0.5029, 0.6429, 0.5364, 0.4159, 0.4674])
+            expected_slice = np.array([0.6557, 0.6214, 0.6254, 0.5775, 0.4785, 0.5949, 0.5904, 0.4785, 0.4730])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-    def test_stable_diffusion_depth2img_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = StableDiffusionDepth2ImgPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # test num_images_per_prompt=1 (default)
-        inputs = self.get_dummy_inputs(device)
-        images = pipe(**inputs).images
-
-        assert images.shape == (1, 32, 32, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = pipe(**inputs).images
-
-        assert images.shape == (batch_size, 32, 32, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        inputs = self.get_dummy_inputs(device)
-        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (num_images_per_prompt, 32, 32, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
     def test_stable_diffusion_depth2img_pil(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -378,9 +351,13 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         if torch_device == "mps":
             expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
         else:
-            expected_slice = np.array([0.6312, 0.4984, 0.4154, 0.4788, 0.5535, 0.4599, 0.4017, 0.5359, 0.4716])
+            expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
 
 
 @slow
@@ -420,7 +397,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.9057, 0.9365, 0.9258, 0.8937, 0.8555, 0.8541, 0.8260, 0.7747, 0.7421])
+        expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 

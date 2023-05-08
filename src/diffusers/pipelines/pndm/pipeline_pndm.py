@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class PNDMPipeline(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = randn_tensor(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
             generator=generator,
             device=self.device,
         )

@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -60,7 +60,7 @@ pipe = pipe.to("cuda")
 
 generator = torch.Generator(device="cuda").manual_seed(0)
 output = pipe(
-    original_image=original_image,
+    image=original_image,
     mask_image=mask_image,
     num_inference_steps=250,
     eta=0.0,

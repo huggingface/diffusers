@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,8 @@ from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -35,12 +36,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PaintByExamplePipeline
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+    params = IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -132,7 +129,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4701, 0.5555, 0.3994, 0.5107, 0.5691, 0.4517, 0.5125, 0.4769, 0.4539])
+        expected_slice = np.array([0.4686, 0.5687, 0.4007, 0.5218, 0.5741, 0.4482, 0.4940, 0.4629, 0.4503])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -162,19 +159,6 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
-
-    def test_paint_by_example_inpaint_with_num_images_per_prompt(self):
-        device = "cpu"
-        pipe = PaintByExamplePipeline(**self.get_dummy_components())
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs()
-
-        images = pipe(**inputs, num_images_per_prompt=2).images
-
-        # check if the output is a list of 2 images
-        assert len(images) == 2
 
 
 @slow

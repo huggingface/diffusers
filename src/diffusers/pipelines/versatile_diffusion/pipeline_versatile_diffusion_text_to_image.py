@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
-from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import AutoencoderKL, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -48,7 +48,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     tokenizer: CLIPTokenizer
-    image_feature_extractor: CLIPFeatureExtractor
+    image_feature_extractor: CLIPImageProcessor
     text_encoder: CLIPTextModelWithProjection
     image_unet: UNet2DConditionModel
     text_unet: UNetFlatConditionModel
@@ -247,7 +247,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -452,7 +452,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.image_unet.in_channels
+        num_channels_latents = self.image_unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

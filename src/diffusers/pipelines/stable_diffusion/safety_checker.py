@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -85,7 +85,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
-                images[idx] = np.zeros(images[idx].shape)  # black image
+                if torch.is_tensor(images) or torch.is_tensor(images[0]):
+                    images[idx] = torch.zeros_like(images[idx])  # black image
+                else:
+                    images[idx] = np.zeros(images[idx].shape)  # black image
 
         if any(has_nsfw_concepts):
             logger.warning(

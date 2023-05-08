@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from packaging import version
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -34,7 +35,8 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint impo
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -42,6 +44,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -148,19 +152,6 @@ class StableDiffusionInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
         assert out_pil.shape == (1, 64, 64, 3)
         assert np.abs(out_pil.flatten() - out_tensor.flatten()).max() < 5e-2
 
-    def test_stable_diffusion_inpaint_with_num_images_per_prompt(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionInpaintPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=2).images
-
-        # check if the output is a list of 2 images
-        assert len(images) == 2
-
 
 @slow
 @require_torch_gpu
@@ -224,7 +215,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.1443, 0.1218, 0.1587, 0.1594, 0.1411, 0.1284, 0.1370, 0.1506, 0.2339])
+        expected_slice = np.array([0.1350, 0.1123, 0.1350, 0.1641, 0.1328, 0.1230, 0.1289, 0.1531, 0.1687])
 
         assert np.abs(expected_slice - image_slice).max() < 5e-2
 
@@ -283,6 +274,31 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
+
+    def test_inpaint_compile(self):
+        if version.parse(torch.__version__) < version.parse("2.0"):
+            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
+            return
+
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
 
 @nightly

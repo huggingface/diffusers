@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,9 +153,12 @@ if _onnx_available:
     candidates = (
         "onnxruntime",
         "onnxruntime-gpu",
+        "ort_nightly_gpu",
         "onnxruntime-directml",
         "onnxruntime-openvino",
         "ort_nightly_directml",
+        "onnxruntime-rocm",
+        "onnxruntime-training",
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
@@ -169,6 +172,27 @@ if _onnx_available:
     if _onnx_available:
         logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
 
+# (sayakpaul): importlib.util.find_spec("opencv-python") returns None even when it's installed.
+# _opencv_available = importlib.util.find_spec("opencv-python") is not None
+try:
+    candidates = (
+        "opencv-python",
+        "opencv-contrib-python",
+        "opencv-python-headless",
+        "opencv-contrib-python-headless",
+    )
+    _opencv_version = None
+    for pkg in candidates:
+        try:
+            _opencv_version = importlib_metadata.version(pkg)
+            break
+        except importlib_metadata.PackageNotFoundError:
+            pass
+    _opencv_available = _opencv_version is not None
+    if _opencv_available:
+        logger.debug(f"Successfully imported cv2 version {_opencv_version}")
+except importlib_metadata.PackageNotFoundError:
+    _opencv_available = False
 
 _scipy_available = importlib.util.find_spec("scipy") is not None
 try:
@@ -210,6 +234,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _k_diffusion_available = False
 
+_note_seq_available = importlib.util.find_spec("note_seq") is not None
+try:
+    _note_seq_version = importlib_metadata.version("note_seq")
+    logger.debug(f"Successfully imported note-seq version {_note_seq_version}")
+except importlib_metadata.PackageNotFoundError:
+    _note_seq_available = False
+
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
@@ -230,6 +261,38 @@ try:
     logger.debug(f"Successfully imported tensorboard version {_tensorboard_version}")
 except importlib_metadata.PackageNotFoundError:
     _tensorboard_available = False
+
+
+_compel_available = importlib.util.find_spec("compel")
+try:
+    _compel_version = importlib_metadata.version("compel")
+    logger.debug(f"Successfully imported compel version {_compel_version}")
+except importlib_metadata.PackageNotFoundError:
+    _compel_available = False
+
+
+_ftfy_available = importlib.util.find_spec("ftfy") is not None
+try:
+    _ftfy_version = importlib_metadata.version("ftfy")
+    logger.debug(f"Successfully imported ftfy version {_ftfy_version}")
+except importlib_metadata.PackageNotFoundError:
+    _ftfy_available = False
+
+
+_bs4_available = importlib.util.find_spec("bs4") is not None
+try:
+    # importlib metadata under different name
+    _bs4_version = importlib_metadata.version("beautifulsoup4")
+    logger.debug(f"Successfully imported ftfy version {_bs4_version}")
+except importlib_metadata.PackageNotFoundError:
+    _bs4_available = False
+
+_torchsde_available = importlib.util.find_spec("torchsde") is not None
+try:
+    _torchsde_version = importlib_metadata.version("torchsde")
+    logger.debug(f"Successfully imported torchsde version {_torchsde_version}")
+except importlib_metadata.PackageNotFoundError:
+    _torchsde_available = False
 
 
 def is_torch_available():
@@ -264,6 +327,10 @@ def is_onnx_available():
     return _onnx_available
 
 
+def is_opencv_available():
+    return _opencv_available
+
+
 def is_scipy_available():
     return _scipy_available
 
@@ -284,6 +351,10 @@ def is_k_diffusion_available():
     return _k_diffusion_available
 
 
+def is_note_seq_available():
+    return _note_seq_available
+
+
 def is_wandb_available():
     return _wandb_available
 
@@ -294,6 +365,22 @@ def is_omegaconf_available():
 
 def is_tensorboard_available():
     return _tensorboard_available
+
+
+def is_compel_available():
+    return _compel_available
+
+
+def is_ftfy_available():
+    return _ftfy_available
+
+
+def is_bs4_available():
+    return _bs4_available
+
+
+def is_torchsde_available():
+    return _torchsde_available
 
 
 # docstyle-ignore
@@ -318,6 +405,12 @@ installation page: https://pytorch.org/get-started/locally/ and follow the ones 
 ONNX_IMPORT_ERROR = """
 {0} requires the onnxruntime library but it was not found in your environment. You can install it with pip: `pip
 install onnxruntime`
+"""
+
+# docstyle-ignore
+OPENCV_IMPORT_ERROR = """
+{0} requires the OpenCV library but it was not found in your environment. You can install it with pip: `pip
+install opencv-python`
 """
 
 # docstyle-ignore
@@ -351,6 +444,12 @@ install k-diffusion`
 """
 
 # docstyle-ignore
+NOTE_SEQ_IMPORT_ERROR = """
+{0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
+install note-seq`
+"""
+
+# docstyle-ignore
 WANDB_IMPORT_ERROR = """
 {0} requires the wandb library but it was not found in your environment. You can install it with pip: `pip
 install wandb`
@@ -368,20 +467,51 @@ TENSORBOARD_IMPORT_ERROR = """
 install tensorboard`
 """
 
+
+# docstyle-ignore
+COMPEL_IMPORT_ERROR = """
+{0} requires the compel library but it was not found in your environment. You can install it with pip: `pip install compel`
+"""
+
+# docstyle-ignore
+BS4_IMPORT_ERROR = """
+{0} requires the Beautiful Soup library but it was not found in your environment. You can install it with pip:
+`pip install beautifulsoup4`. Please note that you may need to restart your runtime after installation.
+"""
+
+# docstyle-ignore
+FTFY_IMPORT_ERROR = """
+{0} requires the ftfy library but it was not found in your environment. Checkout the instructions on the
+installation section: https://github.com/rspeer/python-ftfy/tree/master#installing and follow the ones
+that match your environment. Please note that you may need to restart your runtime after installation.
+"""
+
+# docstyle-ignore
+TORCHSDE_IMPORT_ERROR = """
+{0} requires the torchsde library but it was not found in your environment. You can install it with pip: `pip install torchsde`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
+        ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
+        ("opencv", (is_opencv_available, OPENCV_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
+        ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
+        ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
+        ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
+        ("torchsde", (_torchsde_available, TORCHSDE_IMPORT_ERROR)),
     ]
 )
 

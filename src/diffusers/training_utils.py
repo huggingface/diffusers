@@ -203,8 +203,6 @@ class EMAModel:
             else:
                 s_param.copy_(param)
 
-        torch.cuda.empty_cache()
-
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
         Copy current averaged parameters into given collection of parameters.

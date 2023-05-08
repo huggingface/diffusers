@@ -4,7 +4,6 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -17,10 +16,10 @@ from datasets import load_dataset
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 from diffusers import (
     FlaxAutoencoderKL,
@@ -34,7 +33,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.14.0.dev0")
+check_min_version("0.17.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +46,13 @@ def parse_args():
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--dataset_name",
@@ -215,16 +221,6 @@ def parse_args():
     return args
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
@@ -254,21 +250,13 @@ def main():
 
     # Handle the repository creation
     if jax.process_index() == 0:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
@@ -352,11 +340,10 @@ def main():
 
         return examples
 
-    if jax.process_index() == 0:
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+    if args.max_train_samples is not None:
+        dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+    train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -386,15 +373,17 @@ def main():
         weight_dtype = jnp.bfloat16
 
     # Load models and create wrapper for stable diffusion
-    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, revision=args.revision, subfolder="tokenizer"
+    )
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
+        args.pretrained_model_name_or_path, revision=args.revision, subfolder="text_encoder", dtype=weight_dtype
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", dtype=weight_dtype
+        args.pretrained_model_name_or_path, revision=args.revision, subfolder="vae", dtype=weight_dtype
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype
+        args.pretrained_model_name_or_path, revision=args.revision, subfolder="unet", dtype=weight_dtype
     )
 
     # Optimization
@@ -558,7 +547,7 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
         pipeline.save_pretrained(
@@ -572,7 +561,12 @@ def main():
         )
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
 
 if __name__ == "__main__":

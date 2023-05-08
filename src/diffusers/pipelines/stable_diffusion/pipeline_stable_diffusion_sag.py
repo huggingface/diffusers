@@ -1,4 +1,4 @@
-# Copyright 2022 Susung Hong and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Susung Hong and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@
 # limitations under the License.
 
 import inspect
-import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -65,8 +65,8 @@ class CrossAttnStoreProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -88,7 +88,7 @@ class CrossAttnStoreProcessor:
 
 
 # Modified to get self-attention guidance scale in this paper (https://arxiv.org/pdf/2210.00939.pdf) as an input
-class StableDiffusionSAGPipeline(DiffusionPipeline):
+class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -112,7 +112,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -125,7 +125,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -169,12 +169,16 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
@@ -226,8 +230,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -244,6 +248,10 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -288,7 +296,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -303,6 +311,10 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -354,7 +366,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -493,8 +505,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 https://arxiv.org/pdf/2210.00939.pdf. Typically chosen between [0, 1.0] for better quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -527,7 +539,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
@@ -562,7 +574,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        # and `sag_scale` is` `s` of equation (15)
+        # and `sag_scale` is` `s` of equation (16)
         # of the self-attentnion guidance paper: https://arxiv.org/pdf/2210.00939.pdf
         # `sag_scale = 0` means no self-attention guidance
         do_self_attention_guidance = sag_scale > 0.0
@@ -583,7 +595,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -602,64 +614,73 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         store_processor = CrossAttnStoreProcessor()
         self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor = store_processor
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+        map_size = None
 
-                # perform guidance
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        def get_map_size(module, input, output):
+            nonlocal map_size
+            map_size = output[0].shape[-2:]
 
-                # perform self-attention guidance with the stored self-attentnion map
-                if do_self_attention_guidance:
-                    # classifier-free guidance produces two chunks of attention map
-                    # and we only use unconditional one according to equation (24)
-                    # in https://arxiv.org/pdf/2210.00939.pdf
+        with self.unet.mid_block.attentions[0].register_forward_hook(get_map_size):
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    # predict the noise residual
+
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
+
+                    # perform guidance
                     if do_classifier_free_guidance:
-                        # DDIM-like prediction of x0
-                        pred_x0 = self.pred_x0(latents, noise_pred_uncond, t)
-                        # get the stored attention maps
-                        uncond_attn, cond_attn = store_processor.attention_probs.chunk(2)
-                        # self-attention-based degrading of latents
-                        degraded_latents = self.sag_masking(
-                            pred_x0, uncond_attn, t, self.pred_epsilon(latents, noise_pred_uncond, t)
-                        )
-                        uncond_emb, _ = prompt_embeds.chunk(2)
-                        # forward and give guidance
-                        degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=uncond_emb).sample
-                        noise_pred += sag_scale * (noise_pred_uncond - degraded_pred)
-                    else:
-                        # DDIM-like prediction of x0
-                        pred_x0 = self.pred_x0(latents, noise_pred, t)
-                        # get the stored attention maps
-                        cond_attn = store_processor.attention_probs
-                        # self-attention-based degrading of latents
-                        degraded_latents = self.sag_masking(
-                            pred_x0, cond_attn, t, self.pred_epsilon(latents, noise_pred, t)
-                        )
-                        # forward and give guidance
-                        degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=prompt_embeds).sample
-                        noise_pred += sag_scale * (noise_pred - degraded_pred)
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                    # perform self-attention guidance with the stored self-attentnion map
+                    if do_self_attention_guidance:
+                        # classifier-free guidance produces two chunks of attention map
+                        # and we only use unconditional one according to equation (25)
+                        # in https://arxiv.org/pdf/2210.00939.pdf
+                        if do_classifier_free_guidance:
+                            # DDIM-like prediction of x0
+                            pred_x0 = self.pred_x0(latents, noise_pred_uncond, t)
+                            # get the stored attention maps
+                            uncond_attn, cond_attn = store_processor.attention_probs.chunk(2)
+                            # self-attention-based degrading of latents
+                            degraded_latents = self.sag_masking(
+                                pred_x0, uncond_attn, map_size, t, self.pred_epsilon(latents, noise_pred_uncond, t)
+                            )
+                            uncond_emb, _ = prompt_embeds.chunk(2)
+                            # forward and give guidance
+                            degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=uncond_emb).sample
+                            noise_pred += sag_scale * (noise_pred_uncond - degraded_pred)
+                        else:
+                            # DDIM-like prediction of x0
+                            pred_x0 = self.pred_x0(latents, noise_pred, t)
+                            # get the stored attention maps
+                            cond_attn = store_processor.attention_probs
+                            # self-attention-based degrading of latents
+                            degraded_latents = self.sag_masking(
+                                pred_x0, cond_attn, map_size, t, self.pred_epsilon(latents, noise_pred, t)
+                            )
+                            # forward and give guidance
+                            degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=prompt_embeds).sample
+                            noise_pred += sag_scale * (noise_pred - degraded_pred)
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+                        if callback is not None and i % callback_steps == 0:
+                            callback(i, t, latents)
 
         # 8. Post-processing
         image = self.decode_latents(latents)
@@ -676,20 +697,22 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
-    def sag_masking(self, original_latents, attn_map, t, eps):
+    def sag_masking(self, original_latents, attn_map, map_size, t, eps):
         # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
         bh, hw1, hw2 = attn_map.shape
         b, latent_channel, latent_h, latent_w = original_latents.shape
-        h = self.unet.attention_head_dim
+        h = self.unet.config.attention_head_dim
         if isinstance(h, list):
             h = h[-1]
-        map_size = math.isqrt(hw1)
 
         # Produce attention mask
         attn_map = attn_map.reshape(b, h, hw1, hw2)
         attn_mask = attn_map.mean(1, keepdim=False).sum(1, keepdim=False) > 1.0
         attn_mask = (
-            attn_mask.reshape(b, map_size, map_size).unsqueeze(1).repeat(1, latent_channel, 1, 1).type(attn_map.dtype)
+            attn_mask.reshape(b, map_size[0], map_size[1])
+            .unsqueeze(1)
+            .repeat(1, latent_channel, 1, 1)
+            .type(attn_map.dtype)
         )
         attn_mask = F.interpolate(attn_mask, (latent_h, latent_w))
 

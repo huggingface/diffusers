@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,13 @@
 # limitations under the License.
 
 
-from ..utils import OptionalDependencyNotAvailable, is_flax_available, is_scipy_available, is_torch_available
+from ..utils import (
+    OptionalDependencyNotAvailable,
+    is_flax_available,
+    is_scipy_available,
+    is_torch_available,
+    is_torchsde_available,
+)
 
 
 try:
@@ -72,3 +78,11 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403
 else:
     from .scheduling_lms_discrete import LMSDiscreteScheduler
+
+try:
+    if not (is_torch_available() and is_torchsde_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+else:
+    from .scheduling_dpmsolver_sde import DPMSolverSDEScheduler

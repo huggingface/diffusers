@@ -52,7 +52,7 @@ If you have already cloned the repo, then you won't need to go through these ste
 With `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with >30GB memory.
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
-
+<!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
@@ -71,6 +71,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --output_dir="sd-pokemon-model" 
 ```
+<!-- accelerate_snippet_end -->
 
 
 To run on your own training files prepare the dataset according to the format required by `datasets`, you can find the instructions for how to do that in this [document](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder-with-metadata).
@@ -110,6 +111,47 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
+#### Training with multiple GPUs
+
+`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
+for running distributed training with `accelerate`. Here is an example command:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export dataset_name="lambdalabs/pokemon-blip-captions"
+
+accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$dataset_name \
+  --use_ema \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --max_train_steps=15000 \ 
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --output_dir="sd-pokemon-model" 
+```
+
+
+#### Training with Min-SNR weighting
+
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
+by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
+value when using it is 5.0. 
+
+You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) that compares the loss surfaces of the following setups:
+
+* Training without the Min-SNR weighting strategy
+* Training with the Min-SNR weighting strategy (`snr_gamma` set to 5.0)
+* Training with the Min-SNR weighting strategy (`snr_gamma` set to 1.0)
+
+For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
+
+Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
+
 ## Training with LoRA
 
 Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
@@ -127,7 +169,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://hf.colambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -185,6 +227,21 @@ pipe.to("cuda")
 prompt = "A pokemon with green eyes and red legs."
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
 image.save("pokemon.png")
+```
+
+If you are loading the LoRA parameters from the Hub and if the Hub repository has
+a `base_model` tag (such as [this](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/README.md?code=true#L4)), then
+you can do: 
+
+```py 
+from huggingface_hub.repocard import RepoCard
+
+lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+...
 ```
 
 ## Training with Flax/JAX

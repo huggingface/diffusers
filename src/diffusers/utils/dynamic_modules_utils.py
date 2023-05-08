@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -267,7 +267,7 @@ def get_cached_module_file(
 
         # retrieve github version that matches
         if revision is None:
-            revision = latest_version if latest_version in available_versions else "main"
+            revision = latest_version if latest_version[1:] in available_versions else "main"
             logger.info(f"Defaulting to latest_version: {revision}.")
         elif revision in available_versions:
             revision = f"v{revision}"

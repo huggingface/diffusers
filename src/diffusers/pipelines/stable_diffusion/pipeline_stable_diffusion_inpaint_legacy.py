@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -40,25 +41,25 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)
 
 
-def preprocess_image(image):
+def preprocess_image(image, batch_size):
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
-    image = image[None].transpose(0, 3, 1, 2)
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask, scale_factor=8):
+def preprocess_mask(mask, batch_size, scale_factor=8):
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
-        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
         mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
-        mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+        mask = np.vstack([mask[None]] * batch_size)
         mask = 1 - mask  # repaint white, keep black
         mask = torch.from_numpy(mask)
         return mask
@@ -76,17 +77,27 @@ def preprocess_mask(mask, scale_factor=8):
         # (potentially) reduce mask channel dimension from 3 to 1 for broadcasting to latent shape
         mask = mask.mean(dim=1, keepdim=True)
         h, w = mask.shape[-2:]
-        h, w = map(lambda x: x - x % 32, (h, w))  # resize to integer multiple of 32
+        h, w = (x - x % 8 for x in (h, w))  # resize to integer multiple of 8
         mask = torch.nn.functional.interpolate(mask, (h // scale_factor, w // scale_factor))
         return mask
 
 
-class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
+class StableDiffusionInpaintPipelineLegacy(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    In addition the pipeline inherits the following loading methods:
+        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+        - *Ckpt*: [`loaders.FromCkptMixin.from_ckpt`]
+
+    as well as the following saving methods:
+        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -105,7 +116,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["feature_extractor"]
@@ -119,7 +130,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -209,12 +220,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
@@ -233,9 +248,13 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
@@ -291,8 +310,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -309,6 +328,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -353,7 +376,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -368,6 +391,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -419,7 +446,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -490,18 +517,18 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+    def prepare_latents(self, image, timestep, num_images_per_prompt, dtype, device, generator):
         image = image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = self.vae.config.scaling_factor * init_latents
 
         # Expand init_latents for batch_size and num_images_per_prompt
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
@@ -513,7 +540,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         strength: float = 0.8,
@@ -603,10 +630,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -626,9 +659,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # 4. Preprocess image and mask
         if not isinstance(image, torch.FloatTensor):
-            image = preprocess_image(image)
+            image = preprocess_image(image, batch_size)
 
-        mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        mask_image = preprocess_mask(mask_image, batch_size, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -638,12 +671,12 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig, noise = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            image, latent_timestep, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
 
         # 7. Prepare mask latent
         mask = mask_image.to(device=self.device, dtype=latents.dtype)
-        mask = torch.cat([mask] * batch_size * num_images_per_prompt)
+        mask = torch.cat([mask] * num_images_per_prompt)
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -657,7 +690,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds, return_dict=False)[
+                    0
+                ]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -665,7 +700,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 # masking
                 if add_predicted_noise:
                     init_latents_proper = self.scheduler.add_noise(

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
 
-    def __init__(self, unet: UNet2DModel, scheduler: DiffusionPipeline):
+    def __init__(self, unet: UNet2DModel, scheduler: ScoreSdeVeScheduler):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 

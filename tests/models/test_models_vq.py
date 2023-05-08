@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import torch
 from diffusers import VQModel
 from diffusers.utils import floats_tensor, torch_device
 
-from ..test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -85,9 +85,6 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps":
-                _ = model(image)
             output = model(image).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()

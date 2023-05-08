@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,10 +79,15 @@ class DDIMPipeline(DiffusionPipeline):
         """
 
         # Sample gaussian noise to begin loop
-        if isinstance(self.unet.sample_size, int):
-            image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        if isinstance(self.unet.config.sample_size, int):
+            image_shape = (
+                batch_size,
+                self.unet.config.in_channels,
+                self.unet.config.sample_size,
+                self.unet.config.sample_size,
+            )
         else:
-            image_shape = (batch_size, self.unet.in_channels, *self.unet.sample_size)
+            image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,6 +88,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
+        use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
 
     """
 
@@ -111,6 +113,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     dtype: jnp.dtype = jnp.float32
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
+    use_memory_efficient_attention: bool = False
 
     def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
@@ -169,6 +172,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
+                    use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
             else:
@@ -190,6 +194,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             dropout=self.dropout,
             attn_num_head_channels=attention_head_dim[-1],
             use_linear_projection=self.use_linear_projection,
+            use_memory_efficient_attention=self.use_memory_efficient_attention,
             dtype=self.dtype,
         )
 
@@ -217,6 +222,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     dropout=self.dropout,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
+                    use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
             else:
@@ -249,6 +255,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
+        down_block_additional_residuals=None,
+        mid_block_additional_residual=None,
         return_dict: bool = True,
         train: bool = False,
     ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
@@ -291,8 +299,22 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                 sample, res_samples = down_block(sample, t_emb, deterministic=not train)
             down_block_res_samples += res_samples
 
+        if down_block_additional_residuals is not None:
+            new_down_block_res_samples = ()
+
+            for down_block_res_sample, down_block_additional_residual in zip(
+                down_block_res_samples, down_block_additional_residuals
+            ):
+                down_block_res_sample += down_block_additional_residual
+                new_down_block_res_samples += (down_block_res_sample,)
+
+            down_block_res_samples = new_down_block_res_samples
+
         # 4. mid
         sample = self.mid_block(sample, t_emb, encoder_hidden_states, deterministic=not train)
+
+        if mid_block_additional_residual is not None:
+            sample += mid_block_additional_residual
 
         # 5. up
         for up_block in self.up_blocks:

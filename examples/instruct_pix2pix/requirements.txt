@@ -1,0 +1,6 @@
+accelerate>=0.16.0
+torchvision
+transformers>=4.25.1
+datasets
+ftfy
+tensorboard

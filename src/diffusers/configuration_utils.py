@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,15 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
-from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, DummyObject, deprecate, logging
+from .utils import (
+    DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    DummyObject,
+    deprecate,
+    extract_commit_hash,
+    http_user_agent,
+    logging,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -101,12 +109,6 @@ class ConfigMixin:
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
-        for key, value in kwargs.items():
-            try:
-                setattr(self, key, value)
-            except AttributeError as err:
-                logger.error(f"Can't set {key} with value {value} for {self}")
-                raise err
 
         if not hasattr(self, "_internal_dict"):
             internal_dict = kwargs
@@ -116,6 +118,24 @@ class ConfigMixin:
             logger.debug(f"Updating config from {previous_dict} to {internal_dict}")
 
         self._internal_dict = FrozenDict(internal_dict)
+
+    def __getattr__(self, name: str) -> Any:
+        """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
+        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129
+
+        Tihs funtion is mostly copied from PyTorch's __getattr__ overwrite:
+        https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
+        """
+
+        is_in_config = "_internal_dict" in self.__dict__ and hasattr(self.__dict__["_internal_dict"], name)
+        is_attribute = name in self.__dict__
+
+        if is_in_config and not is_attribute:
+            deprecation_message = f"Accessing config attribute `{name}` directly via '{type(self).__name__}' object attribute is deprecated. Please access '{name}' over '{type(self).__name__}'s config object instead, e.g. 'scheduler.config.{name}'."
+            deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
+            return self._internal_dict[name]
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
@@ -231,7 +251,11 @@ class ConfigMixin:
 
     @classmethod
     def load_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
+        cls,
+        pretrained_model_name_or_path: Union[str, os.PathLike],
+        return_unused_kwargs=False,
+        return_commit_hash=False,
+        **kwargs,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         r"""
         Instantiate a Python class from a config dictionary
@@ -271,6 +295,10 @@ class ConfigMixin:
             subfolder (`str`, *optional*, defaults to `""`):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False):
+                Whether unused keyword arguments of the config shall be returned.
+            return_commit_hash (`bool`, *optional*, defaults to `False):
+                Whether the commit_hash of the loaded configuration shall be returned.
 
         <Tip>
 
@@ -295,8 +323,10 @@ class ConfigMixin:
         revision = kwargs.pop("revision", None)
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
 
-        user_agent = {"file_type": "config"}
+        user_agent = {**user_agent, "file_type": "config"}
+        user_agent = http_user_agent(user_agent)
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
@@ -336,7 +366,6 @@ class ConfigMixin:
                     subfolder=subfolder,
                     revision=revision,
                 )
-
             except RepositoryNotFoundError:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
@@ -378,13 +407,23 @@ class ConfigMixin:
         try:
             # Load config dict
             config_dict = cls._dict_from_json_file(config_file)
+
+            commit_hash = extract_commit_hash(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 
-        if return_unused_kwargs:
-            return config_dict, kwargs
+        if not (return_unused_kwargs or return_commit_hash):
+            return config_dict
 
-        return config_dict
+        outputs = (config_dict,)
+
+        if return_unused_kwargs:
+            outputs += (kwargs,)
+
+        if return_commit_hash:
+            outputs += (commit_hash,)
+
+        return outputs
 
     @staticmethod
     def _get_init_keys(cls):
@@ -393,7 +432,7 @@ class ConfigMixin:
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
         # 0. Copy origin config dict
-        original_dict = {k: v for k, v in config_dict.items()}
+        original_dict = dict(config_dict.items())
 
         # 1. Retrieve expected config attributes from __init__ signature
         expected_keys = cls._get_init_keys(cls)
@@ -512,6 +551,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
+        # Don't save "_ignore_files"
+        config_dict.pop("_ignore_files", None)
+
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
@@ -583,7 +625,7 @@ def flax_register_to_config(cls):
             )
 
         # Ignore private kwargs in the init. Retrieve all passed attributes
-        init_kwargs = {k: v for k, v in kwargs.items()}
+        init_kwargs = dict(kwargs.items())
 
         # Retrieve default values
         fields = dataclasses.fields(self)

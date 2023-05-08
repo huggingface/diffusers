@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -19,7 +19,6 @@ We'll discuss how the following settings impact performance and memory.
 |                  | Latency | Speedup |
 | ---------------- | ------- | ------- |
 | original         | 9.50s   | x1      |
-| cuDNN auto-tuner | 9.37s   | x1.01   |
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
@@ -30,18 +29,6 @@ We'll discuss how the following settings impact performance and memory.
   the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM
   steps.
 </em>
-
-## Enable cuDNN auto-tuner
-
-[NVIDIA cuDNN](https://developer.nvidia.com/cudnn) supports many algorithms to compute a convolution. Autotuner runs a short benchmark and selects the kernel with the best performance on a given hardware for a given input size.
-
-Since we’re using **convolutional networks** (other types currently not supported), we can enable cuDNN autotuner before launching the inference by setting:
-
-```python
-import torch
-
-torch.backends.cudnn.benchmark = True
-```
 
 ### Use tf32 instead of fp32 (on Ampere and later CUDA devices)
 
@@ -58,7 +45,10 @@ torch.backends.cuda.matmul.allow_tf32 = True
 To save more GPU memory and get more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
-pipe = StableDiffusionPipeline.from_pretrained(
+import torch
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     
     torch_dtype=torch.float16,
@@ -85,13 +75,13 @@ For even additional memory savings, you can use a sliced version of attention th
   each head which can save a significant amount of memory.
 </Tip>
 
-To perform the attention computation sequentially over each head, you only need to invoke [`~StableDiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
+To perform the attention computation sequentially over each head, you only need to invoke [`~DiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
 
 ```Python
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     
     torch_dtype=torch.float16,
@@ -131,6 +121,34 @@ images = pipe([prompt] * 32).images
 ```
 
 You may see a small performance boost in VAE decode on multi-image batches. There should be no performance impact on single-image batches.
+
+
+## Tiled VAE decode and encode for large images
+
+Tiled VAE processing makes it possible to work with large images on limited VRAM. For example, generating 4k images in 8GB of VRAM. Tiled VAE decoder splits the image into overlapping tiles, decodes the tiles, and blends the outputs to make the final image.
+
+You want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing`] or [`~StableDiffusionPipeline.enable_xformers_memory_efficient_attention`] to further minimize memory use.
+
+To use tiled VAE processing, invoke [`~StableDiffusionPipeline.enable_vae_tiling`] in your pipeline before inference. For example:
+
+```python
+import torch
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+prompt = "a beautiful landscape photograph"
+pipe.enable_vae_tiling()
+pipe.enable_xformers_memory_efficient_attention()
+
+image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
+```
+
+The output image will have some tile-to-tile tone variation from the tiles having separate decoders, but you shouldn't see sharp seams between the tiles. The tiling is turned off for images that are 512x512 or smaller.
 
 
 <a name="sequential_offloading"></a>
@@ -184,6 +202,8 @@ image = pipe(prompt).images[0]
 
 **Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
 
+**Note**: `enable_sequential_cpu_offload()` is a stateful operation that installs hooks on the models.
+
 
 <a name="model_offloading"></a>
 ## Model offloading for fast inference and memory savings
@@ -193,7 +213,7 @@ image = pipe(prompt).images[0]
 Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent _modules_. This results in a negligible impact on inference time (compared with moving the pipeline to `cuda`), while still providing some memory savings.
 
 In this scenario, only one of the main components of the pipeline (typically: text encoder, unet and vae)
-will be in the GPU while the others wait in the CPU. Compoments like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
+will be in the GPU while the others wait in the CPU. Components like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
 
 This feature can be enabled by invoking `enable_model_cpu_offload()` on the pipeline, as shown below.
 
@@ -232,6 +252,11 @@ image = pipe(prompt).images[0]
 <Tip>
 This feature requires `accelerate` version 0.17.0 or larger.
 </Tip>
+
+**Note**: `enable_model_cpu_offload()` is a stateful operation that installs hooks on the models and state on the pipeline. In order to properly offload
+models after they are called, it is required that the entire pipeline is run and models are called in the order the pipeline expects them to be. Exercise caution
+if models are re-used outside the context of the pipeline after hooks have been installed. See [accelerate](https://huggingface.co/docs/accelerate/v0.18.0/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
+for further docs on removing hooks.
 
 ## Using Channels Last memory format
 
@@ -387,10 +412,10 @@ To leverage it just make sure you have:
  - Cuda available
  - [Installed the xformers library](xformers).
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")

@@ -4,7 +4,6 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +16,7 @@ import transformers
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
@@ -25,7 +24,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 from diffusers import (
     FlaxAutoencoderKL,
@@ -57,7 +56,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.14.0.dev0")
+check_min_version("0.17.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +121,12 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
+        "--save_steps",
+        type=int,
+        default=500,
+        help="Save learned_embeds.bin every X updates steps.",
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-4,
@@ -135,6 +140,13 @@ def parse_args():
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -326,16 +338,6 @@ class TextualInversionDataset(Dataset):
         return example
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def resize_token_embeddings(model, new_num_tokens, initializer_token_id, placeholder_token_id, rng):
     if model.config.vocab_size == new_num_tokens or new_num_tokens is None:
         return
@@ -367,21 +369,13 @@ def main():
         set_seed(args.seed)
 
     if jax.process_index() == 0:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -420,9 +414,15 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = FlaxCLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae, vae_params = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = FlaxCLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    )
+    vae, vae_params = FlaxAutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+    )
+    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+    )
 
     # Create sampling rng
     rng = jax.random.PRNGKey(args.seed)
@@ -619,6 +619,14 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+            if global_step % args.save_steps == 0:
+                learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"][
+                    "embedding"
+                ][placeholder_token_id]
+                learned_embeds_dict = {args.placeholder_token: learned_embeds}
+                jnp.save(
+                    os.path.join(args.output_dir, "learned_embeds-" + str(global_step) + ".npy"), learned_embeds_dict
+                )
 
         train_metric = jax_utils.unreplicate(train_metric)
 
@@ -640,7 +648,7 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
         pipeline.save_pretrained(
@@ -661,7 +669,12 @@ def main():
         jnp.save(os.path.join(args.output_dir, "learned_embeds.npy"), learned_embeds_dict)
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
 
 if __name__ == "__main__":

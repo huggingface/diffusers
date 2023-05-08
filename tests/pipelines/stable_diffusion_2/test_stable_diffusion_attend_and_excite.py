@@ -29,19 +29,22 @@ from diffusers import (
 from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 @skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
-            layers_per_block=2,
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -108,7 +111,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
             "prompt": "a cat and a frog",
             "token_indices": [2, 5],
             "generator": generator,
-            "num_inference_steps": 2,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             "output_type": "numpy",
             "max_iter_to_alter": 2,
@@ -130,13 +133,17 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
 
         self.assertEqual(image.shape, (1, 64, 64, 3))
         expected_slice = np.array(
-            [0.5644937, 0.60543084, 0.48239064, 0.5206757, 0.55623394, 0.46045133, 0.5100435, 0.48919064, 0.4759359]
+            [0.63905364, 0.62897307, 0.48599017, 0.5133624, 0.5550048, 0.45769516, 0.50326973, 0.5023139, 0.45384496]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_inference_batch_consistent(self):
+        # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
+        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=False)
+        self._test_inference_batch_single_identical(batch_size=2)
 
 
 @require_torch_gpu
@@ -151,7 +158,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(51)
 
         pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to("cuda")
 
@@ -163,8 +170,9 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
             token_indices=token_indices,
             guidance_scale=7.5,
             generator=generator,
-            num_inference_steps=50,
-            max_iter_to_alter=25,
+            num_inference_steps=5,
+            max_iter_to_alter=5,
+            output_type="numpy",
         ).images[0]
 
         expected_image = load_numpy(

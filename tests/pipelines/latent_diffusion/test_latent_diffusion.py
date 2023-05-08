@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, LDMTextToImagePipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -31,6 +32,18 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = LDMTextToImagePipeline
+    params = TEXT_TO_IMAGE_PARAMS - {
+        "negative_prompt",
+        "negative_prompt_embeds",
+        "cross_attention_kwargs",
+        "prompt_embeds",
+    }
+    required_optional_params = PipelineTesterMixin.required_optional_params - {
+        "num_images_per_prompt",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):
@@ -112,7 +125,7 @@ class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 16, 16, 3)
-        expected_slice = np.array([0.59450, 0.64078, 0.55509, 0.51229, 0.69640, 0.36960, 0.59296, 0.60801, 0.49332])
+        expected_slice = np.array([0.6101, 0.6156, 0.5622, 0.4895, 0.6661, 0.3804, 0.5748, 0.6136, 0.5014])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
