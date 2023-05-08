@@ -110,7 +110,6 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = 8
     dropout: float = 0.0
-    use_linear_projection: bool = False
     dtype: jnp.dtype = jnp.float32
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
@@ -166,7 +165,6 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     num_layers=self.layers_per_block,
                     attn_num_head_channels=attention_head_dim[i],
                     add_downsample=not is_final_block,
-                    use_linear_projection=self.use_linear_projection,
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
@@ -188,7 +186,6 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
             in_channels=block_out_channels[-1],
             dropout=self.dropout,
             attn_num_head_channels=attention_head_dim[-1],
-            use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
             dtype=self.dtype,
         )
@@ -215,7 +212,6 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     attn_num_head_channels=reversed_attention_head_dim[i],
                     add_upsample=not is_final_block,
                     dropout=self.dropout,
-                    use_linear_projection=self.use_linear_projection,
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
