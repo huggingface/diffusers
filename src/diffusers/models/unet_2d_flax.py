@@ -189,7 +189,6 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
         up_blocks = []
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
-        only_cross_attention = list(reversed(only_cross_attention))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(self.up_block_types):
             prev_output_channel = output_channel

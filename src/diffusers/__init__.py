@@ -211,8 +211,8 @@ except OptionalDependencyNotAvailable:
 else:
     from .models.controlnet_flax import FlaxControlNetModel
     from .models.modeling_flax_utils import FlaxModelMixin
-    from .models.unet_2d_flax import FlaxUNet2DModel
     from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
+    from .models.unet_2d_flax import FlaxUNet2DModel
     from .models.vae_flax import FlaxAutoencoderKL
     from .pipelines import FlaxDiffusionPipeline
     from .schedulers import (
