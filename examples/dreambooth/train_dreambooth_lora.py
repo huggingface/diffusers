@@ -30,7 +30,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import create_repo, model_info, upload_folder
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -536,6 +536,16 @@ class PromptDataset(Dataset):
         return example
 
 
+def model_has_vae(args):
+    config_file_name = os.path.join("vae", AutoencoderKL.config_name)
+    if os.path.isdir(args.pretrained_model_name_or_path):
+        config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
+        return os.path.isfile(config_file_name)
+    else:
+        files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
+        return any(file.rfilename == config_file_name for file in files_in_repo)
+
+
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -656,13 +666,20 @@ def main(args):
     text_encoder = text_encoder_cls.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    if model_has_vae(args):
+        vae = AutoencoderKL.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+        )
+    else:
+        vae = None
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     # We only train the additional adapter LoRA layers
-    vae.requires_grad_(False)
+    if vae is not None:
+        vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
 
@@ -676,7 +693,8 @@ def main(args):
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
+    if vae is not None:
+        vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
@@ -896,32 +914,39 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
+                pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+
+                if vae is not None:
+                    # Convert images to latent space
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                    model_input = model_input * vae.config.scaling_factor
+                else:
+                    model_input = pixel_values
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
+                noise = torch.randn_like(model_input)
+                bsz = model_input.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                )
                 timesteps = timesteps.long()
 
-                # Add noise to the latents according to the noise magnitude at each timestep
+                # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    target = noise_scheduler.get_velocity(model_input, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
