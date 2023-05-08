@@ -79,7 +79,7 @@ else:
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
-    from .kandinsky import KandinskyPipeline
+    from .kandinsky import KandinskyPipeline, KandinskyPriorPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
