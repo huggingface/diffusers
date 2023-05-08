@@ -24,16 +24,16 @@ from ..utils import BaseOutput
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from .modeling_flax_utils import FlaxModelMixin
 from .unet_2d_blocks_flax import (
-    FlaxCrossAttnDownBlock2D,
-    FlaxCrossAttnUpBlock2D,
+    FlaxAttnDownBlock2D,
+    FlaxAttnUpBlock2D,
     FlaxDownBlock2D,
-    FlaxUNetMidBlock2DCrossAttn,
+    FlaxUNetMidBlock2D,
     FlaxUpBlock2D,
 )
 
 
 @flax.struct.dataclass
-class FlaxUNet2DConditionOutput(BaseOutput):
+class FlaxUNet2DOutput(BaseOutput):
     """
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
@@ -44,10 +44,10 @@ class FlaxUNet2DConditionOutput(BaseOutput):
 
 
 @flax_register_to_config
-class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
+class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a
-    timestep and returns sample shaped output.
+    FlaxUNet2DModel is a 2D UNet model that takes in a noisy sample and a
+    timestep, then returns sample shaped output.
 
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
@@ -81,8 +81,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of layers per block.
         attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
-        cross_attention_dim (`int`, *optional*, defaults to 768):
-            The dimension of the cross attention features.
         dropout (`float`, *optional*, defaults to 0):
             Dropout probability for down, up and bottleneck blocks.
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
@@ -97,17 +95,20 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     in_channels: int = 4
     out_channels: int = 4
     down_block_types: Tuple[str] = (
-        "CrossAttnDownBlock2D",
-        "CrossAttnDownBlock2D",
-        "CrossAttnDownBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
         "DownBlock2D",
     )
-    up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
-    only_cross_attention: Union[bool, Tuple[bool]] = False
+    up_block_types: Tuple[str] = (
+        "UpBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D"
+    )
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = 8
-    cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
     dtype: jnp.dtype = jnp.float32
@@ -120,12 +121,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
         timesteps = jnp.ones((1,), dtype=jnp.int32)
-        encoder_hidden_states = jnp.zeros((1, 1, self.cross_attention_dim), dtype=jnp.float32)
 
         params_rng, dropout_rng = jax.random.split(rng)
         rngs = {"params": params_rng, "dropout": dropout_rng}
 
-        return self.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
+        return self.init(rngs, sample, timesteps)["params"]
 
     def setup(self):
         block_out_channels = self.block_out_channels
@@ -146,10 +146,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         )
         self.time_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
 
-        only_cross_attention = self.only_cross_attention
-        if isinstance(only_cross_attention, bool):
-            only_cross_attention = (only_cross_attention,) * len(self.down_block_types)
-
         attention_head_dim = self.attention_head_dim
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(self.down_block_types)
@@ -162,8 +158,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            if down_block_type == "CrossAttnDownBlock2D":
-                down_block = FlaxCrossAttnDownBlock2D(
+            if down_block_type == "AttnDownBlock2D":
+                down_block = FlaxAttnDownBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     dropout=self.dropout,
@@ -171,7 +167,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     attn_num_head_channels=attention_head_dim[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
-                    only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
@@ -189,7 +184,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.down_blocks = down_blocks
 
         # mid
-        self.mid_block = FlaxUNetMidBlock2DCrossAttn(
+        self.mid_block = FlaxUNetMidBlock2D(
             in_channels=block_out_channels[-1],
             dropout=self.dropout,
             attn_num_head_channels=attention_head_dim[-1],
@@ -211,8 +206,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
             is_final_block = i == len(block_out_channels) - 1
 
-            if up_block_type == "CrossAttnUpBlock2D":
-                up_block = FlaxCrossAttnUpBlock2D(
+            if up_block_type == "AttnUpBlock2D":
+                up_block = FlaxAttnUpBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
@@ -221,7 +216,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     add_upsample=not is_final_block,
                     dropout=self.dropout,
                     use_linear_projection=self.use_linear_projection,
-                    only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
                     dtype=self.dtype,
                 )
@@ -254,26 +248,24 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self,
         sample,
         timesteps,
-        encoder_hidden_states,
         down_block_additional_residuals=None,
         mid_block_additional_residual=None,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
+    ) -> Union[FlaxUNet2DOutput, Tuple]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
-            encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
+                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DOutput`] instead of a
                 plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`.
+            [`~models.unet_2d_flax.FlaxUNet2DOutput`] or `tuple`:
+            [`~models.unet_2d_flax.FlaxUNet2DOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
@@ -293,10 +285,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         # 3. down
         down_block_res_samples = (sample,)
         for down_block in self.down_blocks:
-            if isinstance(down_block, FlaxCrossAttnDownBlock2D):
-                sample, res_samples = down_block(sample, t_emb, encoder_hidden_states, deterministic=not train)
-            else:
-                sample, res_samples = down_block(sample, t_emb, deterministic=not train)
+            sample, res_samples = down_block(sample, t_emb, deterministic=not train)
             down_block_res_samples += res_samples
 
         if down_block_additional_residuals is not None:
@@ -311,7 +300,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             down_block_res_samples = new_down_block_res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, t_emb, encoder_hidden_states, deterministic=not train)
+        sample = self.mid_block(sample, t_emb, deterministic=not train)
 
         if mid_block_additional_residual is not None:
             sample += mid_block_additional_residual
@@ -320,16 +309,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         for up_block in self.up_blocks:
             res_samples = down_block_res_samples[-(self.layers_per_block + 1) :]
             down_block_res_samples = down_block_res_samples[: -(self.layers_per_block + 1)]
-            if isinstance(up_block, FlaxCrossAttnUpBlock2D):
-                sample = up_block(
-                    sample,
-                    temb=t_emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    res_hidden_states_tuple=res_samples,
-                    deterministic=not train,
-                )
-            else:
-                sample = up_block(sample, temb=t_emb, res_hidden_states_tuple=res_samples, deterministic=not train)
+            sample = up_block(sample, temb=t_emb, res_hidden_states_tuple=res_samples, deterministic=not train)
 
         # 6. post-process
         sample = self.conv_norm_out(sample)
@@ -340,4 +320,4 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if not return_dict:
             return (sample,)
 
-        return FlaxUNet2DConditionOutput(sample=sample)
+        return FlaxUNet2DOutput(sample=sample)
