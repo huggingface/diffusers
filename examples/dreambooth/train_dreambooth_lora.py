@@ -27,7 +27,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-import accelerate
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -755,17 +754,24 @@ def main(args):
         for model in models:
             state_dict = model.state_dict()
 
-            if text_encoder_lora_layers is not None and state_dict.keys() == text_encoder_lora_layers.state_dict().keys():
+            if (
+                text_encoder_lora_layers is not None
+                and state_dict.keys() == text_encoder_lora_layers.state_dict().keys()
+            ):
                 # text encoder
                 text_encoder_lora_layers_to_save = state_dict
-            elif state_dict.keys() == unet_lora_layers.state_dict().keys(): 
+            elif state_dict.keys() == unet_lora_layers.state_dict().keys():
                 # unet
                 unet_lora_layers_to_save = state_dict
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
 
-        LoraLoaderMixin.save_lora_weights(output_dir, unet_lora_layers=unet_lora_layers_to_save, text_encoder_lora_layers=text_encoder_lora_layers_to_save)
+        LoraLoaderMixin.save_lora_weights(
+            output_dir,
+            unet_lora_layers=unet_lora_layers_to_save,
+            text_encoder_lora_layers=text_encoder_lora_layers_to_save,
+        )
 
     def load_model_hook(models, input_dir):
         temp_pipeline = DiffusionPipeline.from_pretrained(

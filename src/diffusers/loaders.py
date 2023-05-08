@@ -85,7 +85,9 @@ class AttnProcsLayers(torch.nn.Module):
                 if k in key:
                     return key.split(k)[0] + k
 
-            raise ValueError(f"There seems to be a problem with the state_dict: {set(state_dict.keys())}. {key} has to have one of {self.split_keys}.")
+            raise ValueError(
+                f"There seems to be a problem with the state_dict: {set(state_dict.keys())}. {key} has to have one of {self.split_keys}."
+            )
 
         def map_from(module, state_dict, *args, **kwargs):
             all_keys = list(state_dict.keys())
@@ -904,7 +906,7 @@ class LoraLoaderMixin:
         for name, _ in self.text_encoder.named_modules():
             if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
                 # Retrieve the module and its corresponding LoRA processor.
-                module = self.text_encoder.get_submodule(name)
+                self.text_encoder.get_submodule(name)
 
     def _get_lora_layer_attribute(self, name: str) -> str:
         if "q_proj" in name:
@@ -1100,7 +1102,8 @@ class LoraLoaderMixin:
                 Directory to which to save. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the UNet. Specifying this helps to make the
-                serialization process easier and cleaner. Values can be both LoRA torch.nn.Modules layers or torch weights.
+                serialization process easier and cleaner. Values can be both LoRA torch.nn.Modules layers or torch
+                weights.
             text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Since the `text_encoder` comes from
                 `transformers`, we cannot rejig it. That is why we have to explicitly pass the text encoder LoRA state
@@ -1132,20 +1135,22 @@ class LoraLoaderMixin:
         # Create a flat dictionary.
         state_dict = {}
         if unet_lora_layers is not None:
-            weights = unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
+            weights = (
+                unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
+            )
 
-            unet_lora_state_dict = {
-                f"{self.unet_name}.{module_name}": param
-                for module_name, param in weights.items()
-            }
+            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
             state_dict.update(unet_lora_state_dict)
 
         if text_encoder_lora_layers is not None:
-            weights = text_encoder_lora_layers.state_dict() if isinstance(text_encoder_lora_layers, torch.nn.Module) else text_encoder_lora_layers
+            weights = (
+                text_encoder_lora_layers.state_dict()
+                if isinstance(text_encoder_lora_layers, torch.nn.Module)
+                else text_encoder_lora_layers
+            )
 
             text_encoder_lora_state_dict = {
-                f"{self.text_encoder_name}.{module_name}": param
-                for module_name, param in weights.items()
+                f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
             }
             state_dict.update(text_encoder_lora_state_dict)
 

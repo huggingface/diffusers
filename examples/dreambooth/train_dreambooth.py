@@ -22,7 +22,6 @@ import os
 import warnings
 from pathlib import Path
 
-import accelerate
 import numpy as np
 import torch
 import torch.nn.functional as F
