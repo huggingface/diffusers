@@ -438,6 +438,9 @@ def parse_args(input_args=None):
         if args.class_prompt is not None:
             warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
+    if args.train_text_encoder and args.pre_compute_text_embeddings:
+        raise ValueError("`--train_text_encoder` cannot be used with `--pre_compute_text_embeddings`")
+
     return args
 
 
