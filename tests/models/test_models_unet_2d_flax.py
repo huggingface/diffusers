@@ -3,7 +3,7 @@ import unittest
 
 from parameterized import parameterized
 
-from diffusers import FlaxUNet2DConditionModel
+from diffusers import FlaxUNet2DModel, FlaxUNet2DConditionModel
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import load_hf_numpy, require_flax, slow
 
@@ -124,15 +124,10 @@ class FlaxUNet2DModelIntegrationTests(unittest.TestCase):
         dtype = jnp.bfloat16 if fp16 else jnp.float32
         revision = "bf16" if fp16 else None
 
-        model, params = FlaxUNet2DConditionModel.from_pretrained(
+        model, params = FlaxUNet2DModel.from_pretrained(
             model_id, subfolder="unet", dtype=dtype, revision=revision
         )
         return model, params
-
-    def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
-        dtype = jnp.bfloat16 if fp16 else jnp.float32
-        hidden_states = jnp.array(load_hf_numpy(self.get_file_format(seed, shape)), dtype=dtype)
-        return hidden_states
 
     @parameterized.expand(
         [
@@ -147,13 +142,11 @@ class FlaxUNet2DModelIntegrationTests(unittest.TestCase):
     def test_compvis_sd_v1_4_flax_vs_torch_fp16(self, seed, timestep, expected_slice):
         model, params = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4", fp16=True)
         latents = self.get_latents(seed, fp16=True)
-        encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
         sample = model.apply(
             {"params": params},
             latents,
             jnp.array(timestep, dtype=jnp.int32),
-            encoder_hidden_states=encoder_hidden_states,
         ).sample
 
         assert sample.shape == latents.shape
@@ -177,13 +170,11 @@ class FlaxUNet2DModelIntegrationTests(unittest.TestCase):
     def test_stabilityai_sd_v2_flax_vs_torch_fp16(self, seed, timestep, expected_slice):
         model, params = self.get_unet_model(model_id="stabilityai/stable-diffusion-2", fp16=True)
         latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
-        encoder_hidden_states = self.get_encoder_hidden_states(seed, shape=(4, 77, 1024), fp16=True)
 
         sample = model.apply(
             {"params": params},
             latents,
             jnp.array(timestep, dtype=jnp.int32),
-            encoder_hidden_states=encoder_hidden_states,
         ).sample
 
         assert sample.shape == latents.shape
