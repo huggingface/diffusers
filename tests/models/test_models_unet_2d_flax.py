@@ -124,9 +124,7 @@ class FlaxUNet2DModelIntegrationTests(unittest.TestCase):
         dtype = jnp.bfloat16 if fp16 else jnp.float32
         revision = "bf16" if fp16 else None
 
-        model, params = FlaxUNet2DModel.from_pretrained(
-            model_id, subfolder="unet", dtype=dtype, revision=revision
-        )
+        model, params = FlaxUNet2DModel.from_pretrained(model_id, subfolder="unet", dtype=dtype, revision=revision)
         return model, params
 
     @parameterized.expand(
@@ -184,4 +182,3 @@ class FlaxUNet2DModelIntegrationTests(unittest.TestCase):
 
         # Found torch (float16) and flax (bfloat16) outputs to be within this tolerance, on the same hardware
         assert jnp.allclose(output_slice, expected_output_slice, atol=1e-2)
-

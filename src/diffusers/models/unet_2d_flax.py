@@ -100,12 +100,7 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
         "AttnDownBlock2D",
         "DownBlock2D",
     )
-    up_block_types: Tuple[str] = (
-        "UpBlock2D",
-        "AttnUpBlock2D",
-        "AttnUpBlock2D",
-        "AttnUpBlock2D"
-    )
+    up_block_types: Tuple[str] = ("UpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D")
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = 8
