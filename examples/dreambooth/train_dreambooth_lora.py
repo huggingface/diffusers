@@ -1092,7 +1092,17 @@ def main(args):
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+
+                # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
+                variance_type = pipeline.scheduler.config.variance_type
+
+                if variance_type in ["learned", "learned_range"]:
+                    variance_type = "fixed_small"
+
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                    pipeline.scheduler.config, variance_type=variance_type
+                )
+
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -1143,7 +1153,17 @@ def main(args):
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+
+        # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
+        variance_type = pipeline.scheduler.config.variance_type
+
+        if variance_type in ["learned", "learned_range"]:
+            variance_type = "fixed_small"
+
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+            pipeline.scheduler.config, variance_type=variance_type
+        )
+
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
