@@ -575,6 +575,31 @@ class DownloadTests(unittest.TestCase):
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
             assert out.shape == (1, 128, 128, 3)
 
+        # multi embedding load
+        with tempfile.TemporaryDirectory() as tmpdirname1:
+            with tempfile.TemporaryDirectory() as tmpdirname2:
+                ten = {"<*****>": torch.ones((32,))}
+                torch.save(ten, os.path.join(tmpdirname1, "learned_embeds.bin"))
+
+                ten = {"<******>": 2 * torch.ones((1, 32))}
+                torch.save(ten, os.path.join(tmpdirname2, "learned_embeds.bin"))
+
+                pipe.load_textual_inversion([tmpdirname1, tmpdirname2])
+
+                token = pipe.tokenizer.convert_tokens_to_ids("<*****>")
+                assert token == num_tokens + 8, "Added token must be at spot `num_tokens`"
+                assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 32
+                assert pipe._maybe_convert_prompt("<*****>", pipe.tokenizer) == "<*****>"
+
+                token = pipe.tokenizer.convert_tokens_to_ids("<******>")
+                assert token == num_tokens + 9, "Added token must be at spot `num_tokens`"
+                assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
+                assert pipe._maybe_convert_prompt("<******>", pipe.tokenizer) == "<******>"
+
+                prompt = "hey <*****> <******>"
+                out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+                assert out.shape == (1, 128, 128, 3)
+
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
         with tempfile.TemporaryDirectory() as tmpdirname:
