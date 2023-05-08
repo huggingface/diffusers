@@ -942,6 +942,12 @@ def main(args):
                 # Predict the noise residual
                 model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
 
+                # if model predicts variance, throw away the prediction. we will only train on the
+                # simplified training objective. This means that all schedulers using the fine tuned
+                # model must be configured to use one of the fixed variance variance types.
+                if model_pred.shape[1] == 6:
+                    model_pred, _ = torch.chunk(model_pred, 2, dim=1)
+
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
