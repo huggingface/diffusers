@@ -531,7 +531,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        method. The pipeline can easily be re-loaded using the [`~DiffusionPipeline.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -1087,7 +1087,7 @@ class DiffusionPipeline(ConfigMixin):
         Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
 
         Parameters:
-             pretrained_model_name (`str` or `os.PathLike`, *optional*):
+            pretrained_model_name (`str` or `os.PathLike`, *optional*):
                 Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
                 https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                 `CompVis/ldm-text2im-large-256`.
