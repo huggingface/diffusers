@@ -1159,13 +1159,18 @@ def main(args):
                 )
 
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
-                variance_type = pipeline.scheduler.config.variance_type
+                scheduler_args = {}
 
-                if variance_type in ["learned", "learned_range"]:
-                    variance_type = "fixed_small"
+                if "variance_type" in pipeline.scheduler.config:
+                    variance_type = pipeline.scheduler.config.variance_type
+
+                    if variance_type in ["learned", "learned_range"]:
+                        variance_type = "fixed_small"
+
+                    scheduler_args["variance_type"] = variance_type
 
                 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                    pipeline.scheduler.config, variance_type=variance_type
+                    pipeline.scheduler.config, **scheduler_args
                 )
 
                 pipeline = pipeline.to(accelerator.device)
@@ -1220,14 +1225,17 @@ def main(args):
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
-        variance_type = pipeline.scheduler.config.variance_type
+        scheduler_args = {}
 
-        if variance_type in ["learned", "learned_range"]:
-            variance_type = "fixed_small"
+        if "variance_type" in pipeline.scheduler.config:
+            variance_type = pipeline.scheduler.config.variance_type
 
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-            pipeline.scheduler.config, variance_type=variance_type
-        )
+            if variance_type in ["learned", "learned_range"]:
+                variance_type = "fixed_small"
+
+            scheduler_args["variance_type"] = variance_type
+
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
         pipeline = pipeline.to(accelerator.device)
 
