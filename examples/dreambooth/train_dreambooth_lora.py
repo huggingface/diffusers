@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import gc
 import hashlib
 import itertools
 import logging
@@ -397,6 +398,11 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument(
+        "--pre_compute_text_embeddings",
+        action="store_true",
+        help="Whether or not to pre-compute text embeddings. If text embeddings are pre-computed, the text encoder will not be kept in memory during training and will leave more GPU memory available for training the rest of the model. This is not compatible with `--train_text_encoder`.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -438,10 +444,12 @@ class DreamBoothDataset(Dataset):
         class_num=None,
         size=512,
         center_crop=False,
+        encoder_hidden_states=None,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
+        self.encoder_hidden_states = encoder_hidden_states
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
@@ -483,13 +491,17 @@ class DreamBoothDataset(Dataset):
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
-        example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
-            truncation=True,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids
+
+        if self.encoder_hidden_states is not None:
+            example["instance_prompt_ids"] = self.encoder_hidden_states
+        else:
+            example["instance_prompt_ids"] = self.tokenizer(
+                self.instance_prompt,
+                truncation=True,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                return_tensors="pt",
+            ).input_ids
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
@@ -816,6 +828,44 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
+    if args.pre_compute_text_embeddings:
+
+        def compute_text_embeddings(prompt):
+            with torch.no_grad():
+                text_inputs = tokenizer(
+                    prompt,
+                    padding="max_length",
+                    max_length=77,
+                    truncation=True,
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                )
+
+                text_input_ids = text_inputs.input_ids
+                attention_mask = text_inputs.attention_mask.to(text_encoder.device)
+
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(text_encoder.device),
+                    attention_mask=attention_mask,
+                )
+                prompt_embeds = prompt_embeds[0]
+
+            return prompt_embeds
+
+        pre_computed_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        validation_prompt_encoder_hidden_states = compute_text_embeddings(args.validation_prompt)
+        validation_prompt_negative_prompt_embeds = compute_text_embeddings("")
+
+        text_encoder = None
+        tokenizer = None
+
+        gc.collect()
+        torch.cuda.empty_cache()
+    else:
+        pre_computed_encoder_hidden_states = None
+        validation_prompt_encoder_hidden_states = None
+        validation_prompt_negative_prompt_embeds = None
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -826,6 +876,7 @@ def main(args):
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        encoder_hidden_states=pre_computed_encoder_hidden_states,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -952,7 +1003,10 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                if args.pre_compute_text_embeddings:
+                    encoder_hidden_states = batch["input_ids"]
+                else:
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
                 model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
@@ -1034,7 +1088,7 @@ def main(args):
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    text_encoder=None if args.pre_compute_text_embeddings else accelerator.unwrap_model(text_encoder),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
@@ -1043,10 +1097,16 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                if args.pre_compute_text_embeddings:
+                    pipeline_args = {
+                        "prompt_embeds": validation_prompt_encoder_hidden_states,
+                        "negative_prompt_embeds": validation_prompt_negative_prompt_embeds,
+                    }
+                else:
+                    pipeline_args = {"prompt": args.validation_prompt}
                 images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-                    for _ in range(args.num_validation_images)
+                    pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)
                 ]
 
                 for tracker in accelerator.trackers:
@@ -1070,7 +1130,8 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        text_encoder = text_encoder.to(torch.float32)
+        if text_encoder is not None:
+            text_encoder = text_encoder.to(torch.float32)
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
