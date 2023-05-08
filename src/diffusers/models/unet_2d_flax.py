@@ -37,7 +37,7 @@ class FlaxUNet2DOutput(BaseOutput):
     """
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
-            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+            Hidden states output. Output of last layer of model.
     """
 
     sample: jnp.ndarray
@@ -46,8 +46,7 @@ class FlaxUNet2DOutput(BaseOutput):
 @flax_register_to_config
 class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    FlaxUNet2DModel is a 2D UNet model that takes in a noisy sample and a
-    timestep, then returns sample shaped output.
+    FlaxUNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep, then returns sample shaped output.
 
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
@@ -69,12 +68,12 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4):
             The number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
-            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "DownBlock2D")`):
+            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxAttnDownBlock2D",
+            "FlaxAttnDownBlock2D", "FlaxAttnDownBlock2D", "FlaxDownBlock2D"
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D",)`):
             The tuple of upsample blocks to use. The corresponding class names will be: "FlaxUpBlock2D",
-            "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
+            "FlaxAttnUpBlock2D", "FlaxAttnUpBlock2D", "FlaxAttnUpBlock2D"
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
@@ -248,15 +247,13 @@ class FlaxUNet2DModel(nn.Module, FlaxModelMixin, ConfigMixin):
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`models.unet_2d_flax.FlaxUNet2DOutput`] instead of a plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
-            [`~models.unet_2d_flax.FlaxUNet2DOutput`] or `tuple`:
-            [`~models.unet_2d_flax.FlaxUNet2DOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`~models.unet_2d_flax.FlaxUNet2DOutput`] or `tuple`: [`~models.unet_2d_flax.FlaxUNet2DOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
         if not isinstance(timesteps, jnp.ndarray):
