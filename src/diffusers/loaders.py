@@ -900,14 +900,6 @@ class LoraLoaderMixin:
 
                 # Monkey-patch.
                 module.forward = new_forward
-
-    @property
-    def text_encoder_lora_procs(self):
-        for name, _ in self.text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                # Retrieve the module and its corresponding LoRA processor.
-                self.text_encoder.get_submodule(name)
-
     def _get_lora_layer_attribute(self, name: str) -> str:
         if "q_proj" in name:
             return "to_q_lora"
