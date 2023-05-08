@@ -35,7 +35,7 @@ from ..test_pipelines_common import (
 )
 
 
-class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableUnCLIPImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
