@@ -5,6 +5,10 @@ personal_workspace/finetune/experiments
 personal_workspace/dreambooth/experiments
 personal_workspace/dreambooth/datasets
 personal_workspace/dreambooth/class_data
+personal_workspace/db_inpainting_org/experiments
+personal_workspace/db_inpainting_org/datasets
+personal_workspace/db_inpainting_org/class_data
+personal_workspace/db_inpainting_org/test_data
 personal_workspace/db_inpainting/experiments
 personal_workspace/db_inpainting/datasets
 personal_workspace/db_inpainting/class_data

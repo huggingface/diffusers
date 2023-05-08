@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2022-12-30 09:57:16
- # @LastEditTime: 2023-02-28 19:34:18
+ # @LastEditTime: 2023-03-01 17:00:02
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/db_inpainting/train_db_inpainting.sh
@@ -11,10 +11,10 @@ printf -v DATE '%(%Y-%m-%dT%H:%M:%S)T' -1
 export CURDIR="$( cd "$( dirname $0 )" && pwd )"
 export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 
-export GPU_ID="3"
+export GPU_ID="2"
 export EXPERIMENT_NAME="test-mask"
 export EXPERIMENT_NAME="$DATE-$EXPERIMENT_NAME"
-export INSTANCE_DIR="$CURDIR/datasets/test"
+export INSTANCE_DIR="$CURDIR/datasets/t0"
 export MAX_STEP=1200
 export CLASS_NAME="woman" # "man", "man2", "<ID-PHOTO>", "woman", "person", "cat", "dog" ...
 # MODEL_NAME ect. "CompVis/stable-diffusion-v1-4", "runwayml/stable-diffusion-v1-5"
@@ -77,6 +77,6 @@ accelerate launch ./train_dreambooth_inpaint.py \
 --mixed_precision="fp16" \
 --gradient_accumulation_steps=1 \
 --train_text_encoder \
-# --with_prior_preservation \
+--with_prior_preservation \
 # --enable_xformers \
 # --enable_xformers_memory_efficient_attention

@@ -15,7 +15,12 @@ import random
 from datetime import datetime
 from diffusers import StableDiffusionPipeline
 from diffusers import UniPCMultistepScheduler, DDIMScheduler, PNDMScheduler, DDPMScheduler
+from transformers import CLIPTokenizer, CLIPTextModel
 from tqdm import tqdm
+import sys
+_project_dir_ = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(_project_dir_)
+from personal_workspace.code.cutoff_diffusers import cutoff_text_encoder
 
 
 def get_args():
@@ -44,6 +49,17 @@ def main():
         args.pretrained_model_name_or_path, 
         torch_dtype=torch.float16)
     pipe.to(f"cuda:{args.gpu_id}")
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, 
+         subfolder="tokenizer",
+        torch_dtype=torch.float16
+    )
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, 
+        subfolder="text_encoder",
+        torch_dtype=torch.float16
+    )
+    text_encoder.to(f"cuda:{args.gpu_id}")
     # change sampler_method
     print(f"Using {args.sampler_method} as sampler method ...... ")
     if args.sampler_method == "UniPC":
@@ -77,9 +93,23 @@ def main():
     os.makedirs(image_output_dir, exist_ok=True)
     for i in tqdm(range(args.image_num)):
         seed = seed_ + i  if seed_ != -1 else random.randint(0, 1000000)
+        tensor = cutoff_text_encoder(
+            [args.prompt], 
+            text_encoder, 
+            tokenizer, 
+            targets=['red', 'blue', 'white', 'green', 'yellow', 'pink', 
+                     'black', 'gray', 'orange', 'purple', 'cyan', 'brown']
+            )
+        tk = tokenizer(
+            args.negative_prompt, 
+            max_length=tokenizer.model_max_length, 
+            padding="max_length", 
+            truncation=True, 
+            return_tensors="pt").to(text_encoder.device)
+        tensor_neg = text_encoder(tk["input_ids"])[0]
         image = pipe(
-            prompt=args.prompt,
-            negative_prompt=args.negative_prompt,
+            prompt_embeds=tensor,
+            negative_prompt_embeds=tensor_neg,
             guidance_scale=args.guidance_scale,
             width=args.width,
             height=args.height,

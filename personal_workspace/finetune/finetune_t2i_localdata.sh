@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2023-02-03 15:45:03
- # @LastEditTime: 2023-02-27 18:21:59
+ # @LastEditTime: 2023-04-10 20:34:30
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/finetune/finetune_t2i_localdata.sh
@@ -12,11 +12,13 @@ export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 # export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export MODEL_NAME="/home/junkai/code/diffusers_fork/personal_workspace/base_model/Realistic_Vision_V1.3"
 
-export CUDA_VISIBLE_DEVICES="1"
+export CUDA_VISIBLE_DEVICES="3"
+export TRAIN_FILE="train_text_to_image_ddim_cutoff" #[train_text_to_image, train_text_to_image_ddim, train_text_to_image_ddim_cutoff]
 # export EXPERIMENT_NAME="idphoto-<ID-PHOTO>"
-export EXPERIMENT_NAME="idphoto0216_5manual_r1.3"
+export EXPERIMENT_NAME="idphoto0507_cutoff_6add_r1.3_wb"
 # export TRAIN_DIR="/RAID5/user/junkai/data/IDPhoto/IDphoto-blip2-captions"
-export TRAIN_DIR="/home/junkai/data/IDPhoto0216_5manual/IDphoto-blip2-captions"
+export TRAIN_DIR="/home/junkai/data/IDPhoto0507_6add_cutoff/IDphoto-blip2-captions"
+# export TRAIN_DIR="/home/junkai/data/IDPhoto0302_6add/IDphoto-blip2-captions"
 export OUTPUT_DIR="$CURDIR/experiments/$EXPERIMENT_NAME/models"
 
 if [[ ! -e $OUTPUT_DIR ]]; then
@@ -26,7 +28,7 @@ elif [[ ! -d $OUTPUT_DIR ]]; then
 fi
 
 cd $PROJECT_DIR/examples/text_to_image && \
-accelerate launch train_text_to_image.py \
+accelerate launch $TRAIN_FILE.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$TRAIN_DIR \
   --use_ema \

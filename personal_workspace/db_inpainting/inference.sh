@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2023-02-03 15:45:03
- # @LastEditTime: 2023-02-22 18:12:55
+ # @LastEditTime: 2023-03-01 17:22:01
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/db_inpainting/inference.sh
@@ -11,12 +11,12 @@ export CURDIR="$( cd "$( dirname $0 )" && pwd )"
 export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 
 export GPU_ID="1"
-export EXPERIMENT_NAME="2023-02-22T17:42:43-test-2000"
+export EXPERIMENT_NAME="2023-03-01T17:00:50-test-mask"
 # Test
-export PROMPT="Symmetry!!,highly detailed, digital photo, a photo of <?> woman."
+export PROMPT="a photo of <?> woman."
 
-export IMG_PATH="./test_data/1i.png"
-export MSK_PATH="./test_data/1m.png"
+export IMG_PATH="./test_data/2i.png"
+export MSK_PATH="./test_data/2m.png"
 export BASE_SEED=-1
 export IMAGE_NUM=10
 export IMAGE_WIDTH=512
