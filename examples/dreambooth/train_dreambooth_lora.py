@@ -754,13 +754,13 @@ def main(args):
         for model in models:
             state_dict = model.state_dict()
 
-            if (
-                text_encoder_lora_layers is not None
-                and state_dict.keys() == text_encoder_lora_layers.state_dict().keys()
-            ):
+            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
+            unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
+
+            if text_encoder_lora_layers is not None and state_dict.keys() == text_encoder_keys:
                 # text encoder
                 text_encoder_lora_layers_to_save = state_dict
-            elif state_dict.keys() == unet_lora_layers.state_dict().keys():
+            elif state_dict.keys() == unet_keys:
                 # unet
                 unet_lora_layers_to_save = state_dict
 
@@ -774,10 +774,13 @@ def main(args):
         )
 
     def load_model_hook(models, input_dir):
+        # Note we DON'T pass the unet and text encoder here an purpose 
+        # so that the we don't accidentally override the LoRA layers of
+        # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
+        # with new torch.nn.Modules / weights. We simply use the pipeline class as 
+        # an easy way to load the lora checkpoints
         temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder) if args.train_text_encoder else None,
             revision=args.revision,
             torch_dtype=weight_dtype,
         )
@@ -1008,10 +1011,11 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    accelerator.save_state(save_path)
-                    logger.info(f"Saved state to {save_path}")
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1085,6 +1089,7 @@ def main(args):
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
+        images = []
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
