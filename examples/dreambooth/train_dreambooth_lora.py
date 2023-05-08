@@ -403,6 +403,19 @@ def parse_args(input_args=None):
         action="store_true",
         help="Whether or not to pre-compute text embeddings. If text embeddings are pre-computed, the text encoder will not be kept in memory during training and will leave more GPU memory available for training the rest of the model. This is not compatible with `--train_text_encoder`.",
     )
+    parser.add_argument(
+        "--tokenizer_max_length",
+        type=int,
+        default=None,
+        required=False,
+        help="The maximum length of the tokenizer. If not set, will default to the tokenizer's max length.",
+    )
+    parser.add_argument(
+        "--text_encoder_use_attention_mask",
+        action="store_true",
+        required=False,
+        help="Whether to use attention mask for the text encoder",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -445,11 +458,15 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         encoder_hidden_states=None,
+        instance_prompt_encoder_hidden_states=None,
+        tokenizer_max_length=None,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.encoder_hidden_states = encoder_hidden_states
+        self.instance_prompt_encoder_hidden_states = instance_prompt_encoder_hidden_states
+        self.tokenizer_max_length = tokenizer_max_length
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
@@ -495,39 +512,46 @@ class DreamBoothDataset(Dataset):
         if self.encoder_hidden_states is not None:
             example["instance_prompt_ids"] = self.encoder_hidden_states
         else:
-            example["instance_prompt_ids"] = self.tokenizer(
-                self.instance_prompt,
-                truncation=True,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                return_tensors="pt",
-            ).input_ids
+            text_inputs = tokenize_prompt(
+                self.tokenizer, self.instance_prompt, tokenizer_max_length=self.tokenizer_max_length
+            )
+            example["instance_prompt_ids"] = text_inputs.input_ids
+            example["instance_attention_mask"] = text_inputs.attention_mask
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
-            example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompt,
-                truncation=True,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                return_tensors="pt",
-            ).input_ids
+
+            if self.instance_prompt_encoder_hidden_states is not None:
+                example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
+            else:
+                class_text_inputs = tokenize_prompt(
+                    self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
+                )
+                example["class_prompt_ids"] = class_text_inputs.input_ids
+                example["class_attention_mask"] = class_text_inputs.attention_mask
 
         return example
 
 
 def collate_fn(examples, with_prior_preservation=False):
+    has_attention_mask = "instance_attention_mask" in examples[0]
+
     input_ids = [example["instance_prompt_ids"] for example in examples]
     pixel_values = [example["instance_images"] for example in examples]
+
+    if has_attention_mask:
+        attention_mask = [example["instance_attention_mask"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
         input_ids += [example["class_prompt_ids"] for example in examples]
         pixel_values += [example["class_images"] for example in examples]
+        if has_attention_mask:
+            attention_mask += [example["class_attention_mask"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -538,6 +562,10 @@ def collate_fn(examples, with_prior_preservation=False):
         "input_ids": input_ids,
         "pixel_values": pixel_values,
     }
+
+    if has_attention_mask:
+        batch["attention_mask"] = attention_mask
+
     return batch
 
 
@@ -566,6 +594,40 @@ def model_has_vae(args):
     else:
         files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
         return any(file.rfilename == config_file_name for file in files_in_repo)
+
+
+def tokenize_prompt(tokenizer, prompt, tokenizer_max_length=None):
+    if tokenizer_max_length is not None:
+        max_length = tokenizer_max_length
+    else:
+        max_length = tokenizer.model_max_length
+
+    text_inputs = tokenizer(
+        prompt,
+        truncation=True,
+        padding="max_length",
+        max_length=max_length,
+        return_tensors="pt",
+    )
+
+    return text_inputs
+
+
+def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_attention_mask=None):
+    text_input_ids = input_ids.to(text_encoder.device)
+
+    if text_encoder_use_attention_mask:
+        attention_mask = attention_mask.to(text_encoder.device)
+    else:
+        attention_mask = None
+
+    prompt_embeds = text_encoder(
+        text_input_ids,
+        attention_mask=attention_mask,
+    )
+    prompt_embeds = prompt_embeds[0]
+
+    return prompt_embeds
 
 
 def main(args):
@@ -832,29 +894,24 @@ def main(args):
 
         def compute_text_embeddings(prompt):
             with torch.no_grad():
-                text_inputs = tokenizer(
-                    prompt,
-                    padding="max_length",
-                    max_length=77,
-                    truncation=True,
-                    add_special_tokens=True,
-                    return_tensors="pt",
+                text_inputs = tokenize_prompt(tokenizer, prompt, tokenizer_max_length=args.tokenizer_max_length)
+                prompt_embeds = encode_prompt(
+                    text_encoder,
+                    text_inputs.input_ids,
+                    text_inputs.attention_mask,
+                    text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                 )
-
-                text_input_ids = text_inputs.input_ids
-                attention_mask = text_inputs.attention_mask.to(text_encoder.device)
-
-                prompt_embeds = text_encoder(
-                    text_input_ids.to(text_encoder.device),
-                    attention_mask=attention_mask,
-                )
-                prompt_embeds = prompt_embeds[0]
 
             return prompt_embeds
 
         pre_computed_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
         validation_prompt_encoder_hidden_states = compute_text_embeddings(args.validation_prompt)
         validation_prompt_negative_prompt_embeds = compute_text_embeddings("")
+
+        if args.instance_prompt is not None:
+            pre_computed_instance_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        else:
+            pre_computed_instance_prompt_encoder_hidden_states = None
 
         text_encoder = None
         tokenizer = None
@@ -865,6 +922,7 @@ def main(args):
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
         validation_prompt_negative_prompt_embeds = None
+        pre_computed_instance_prompt_encoder_hidden_states = None
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -877,6 +935,8 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         encoder_hidden_states=pre_computed_encoder_hidden_states,
+        instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+        tokenizer_max_length=args.tokenizer_max_length,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -1006,7 +1066,12 @@ def main(args):
                 if args.pre_compute_text_embeddings:
                     encoder_hidden_states = batch["input_ids"]
                 else:
-                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    encoder_hidden_states = encode_prompt(
+                        text_encoder,
+                        batch["input_ids"],
+                        batch["attention_mask"],
+                        text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
+                    )
 
                 # Predict the noise residual
                 model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
