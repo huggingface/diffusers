@@ -409,7 +409,7 @@ class ModelMixin(torch.nn.Module):
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the pipeline will load the `safetensors` weights if they're availabe **and** if the
                 `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
-                `safetensors` weights. If the to `False` the pipeline will *not* use `safetensors`.
+                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
 
         <Tip>
 
