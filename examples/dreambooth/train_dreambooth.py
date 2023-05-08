@@ -735,7 +735,7 @@ def main(args):
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
         for model in models:
-            sub_dir = "unet" if type(model) == type(unet) else "text_encoder"
+            sub_dir = "unet" if type(model) == type(accelerator.unwrap_model(unet)) else "text_encoder"
             model.save_pretrained(os.path.join(output_dir, sub_dir))
 
             # make sure to pop weight so that corresponding model is not saved again
@@ -746,7 +746,7 @@ def main(args):
             # pop models so that they are not loaded again
             model = models.pop()
 
-            if type(model) == type(text_encoder):
+            if type(model) == type(accelerator.unwrap_model(text_encoder)):
                 # load transformers style into model
                 load_model = text_encoder_cls.from_pretrained(input_dir, subfolder="text_encoder")
                 model.config = load_model.config
