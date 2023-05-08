@@ -48,7 +48,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
-from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.models.attention_processor import (
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    LoRAAttnAddedKVProcessor,
+    LoRAAttnProcessor,
+    SlicedAttnAddedKVProcessor,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -725,7 +731,7 @@ def main(args):
 
     # Set correct lora layers
     unet_lora_attn_procs = {}
-    for name in unet.attn_processors.keys():
+    for name, attn_processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
@@ -736,7 +742,12 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        unet_lora_attn_procs[name] = LoRAAttnProcessor(
+        if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
+            lora_attn_processor_class = LoRAAttnAddedKVProcessor
+        else:
+            lora_attn_processor_class = LoRAAttnProcessor
+
+        unet_lora_attn_procs[name] = lora_attn_processor_class(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
         )
 
