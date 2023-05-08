@@ -936,7 +936,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 5. Prepare image
+        # 4. Prepare image
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
