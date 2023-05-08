@@ -1098,13 +1098,13 @@ class LoraLoaderMixin:
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module`]):
+            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the UNet. Specifying this helps to make the
-                serialization process easier and cleaner.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module`]):
+                serialization process easier and cleaner. Values can be both LoRA torch.nn.Modules layers or torch weights.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Since the `text_encoder` comes from
                 `transformers`, we cannot rejig it. That is why we have to explicitly pass the text encoder LoRA state
-                dict.
+                dict. Values can be both LoRA torch.nn.Modules layers or torch weights.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful when in distributed training like
                 TPUs and need to call this function on all processes. In this case, set `is_main_process=True` only on
