@@ -905,8 +905,12 @@ def main(args):
             return prompt_embeds
 
         pre_computed_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
-        validation_prompt_encoder_hidden_states = compute_text_embeddings(args.validation_prompt)
         validation_prompt_negative_prompt_embeds = compute_text_embeddings("")
+
+        if args.validation_prompt is not None:
+            validation_prompt_encoder_hidden_states = compute_text_embeddings(args.validation_prompt)
+        else:
+            validation_prompt_encoder_hidden_states = None
 
         if args.instance_prompt is not None:
             pre_computed_instance_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
