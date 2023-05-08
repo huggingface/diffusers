@@ -28,7 +28,7 @@ from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -38,7 +38,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PaintByExamplePipeline
     params = IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([]) # TO_DO: update the image_prams once refactored VaeImageProcessor.preprocess
+    image_params = frozenset([])  # TO_DO: update the image_prams once refactored VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)

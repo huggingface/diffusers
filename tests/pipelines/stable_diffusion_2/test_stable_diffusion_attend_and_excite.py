@@ -34,7 +34,9 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 @skip_mps
-class StableDiffusionAttendAndExcitePipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionAttendAndExcitePipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
     params = TEXT_TO_IMAGE_PARAMS

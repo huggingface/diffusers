@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -727,7 +728,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

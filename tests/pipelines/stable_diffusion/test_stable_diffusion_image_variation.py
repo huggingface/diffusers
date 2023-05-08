@@ -39,11 +39,15 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionImageVariationPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionImageVariationPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionImageVariationPipeline
     params = IMAGE_VARIATION_PARAMS
     batch_params = IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([])  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)

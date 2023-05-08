@@ -47,7 +47,9 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
     pipeline_class = StableDiffusionPix2PixZeroPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([])  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     @classmethod
     def setUpClass(cls):

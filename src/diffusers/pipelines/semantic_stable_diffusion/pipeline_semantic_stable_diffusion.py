@@ -718,7 +718,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-
         if not return_dict:
             return (image, has_nsfw_concept)
 

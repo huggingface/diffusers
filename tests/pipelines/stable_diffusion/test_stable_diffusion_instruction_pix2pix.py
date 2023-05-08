@@ -41,11 +41,15 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionInstructPix2PixPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionInstructPix2PixPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)
