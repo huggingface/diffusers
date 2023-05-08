@@ -17,6 +17,7 @@ import jax.numpy as jnp
 
 from .attention_flax import FlaxTransformer2DModel
 from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
+from .attention_flax import FlaxAttention
 
 
 class FlaxCrossAttnDownBlock2D(nn.Module):
@@ -103,8 +104,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
 
 class FlaxAttnDownBlock2D(nn.Module):
     r"""
-    Cross Attention 2D Downsizing block - original architecture from Unet transformers:
-    https://arxiv.org/abs/2103.06104
+    Attention 2D Downsizing block
 
     Parameters:
         in_channels (:obj:`int`):
@@ -130,8 +130,6 @@ class FlaxAttnDownBlock2D(nn.Module):
     num_layers: int = 1
     attn_num_head_channels: int = 1
     add_downsample: bool = True
-    use_linear_projection: bool = False
-    only_cross_attention: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
@@ -150,13 +148,11 @@ class FlaxAttnDownBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxTransformer2DModel(
-                in_channels=self.out_channels,
-                n_heads=self.attn_num_head_channels,
-                d_head=self.out_channels // self.attn_num_head_channels,
-                depth=1,
-                use_linear_projection=self.use_linear_projection,
-                only_cross_attention=self.only_cross_attention,
+            attn_block = FlaxAttention(
+                query_dim=self.out_channels,
+                heads=self.attn_num_head_channels,
+                dim_head=self.out_channels // self.attn_num_head_channels,
+                dropout=self.dropout,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
                 dtype=self.dtype,
             )
@@ -168,12 +164,12 @@ class FlaxAttnDownBlock2D(nn.Module):
         if self.add_downsample:
             self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
-    def __call__(self, hidden_states, temb, encoder_hidden_states, deterministic=True):
+    def __call__(self, hidden_states, temb, deterministic=True):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
-            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
+            hidden_states = attn(hidden_states, deterministic=deterministic)
             output_states += (hidden_states,)
 
         if self.add_downsample:
@@ -327,8 +323,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
 
 class FlaxAttnUpBlock2D(nn.Module):
     r"""
-    Cross Attention 2D Upsampling block - original architecture from Unet transformers:
-    https://arxiv.org/abs/2103.06104
+    Attention 2D Upsampling block
 
     Parameters:
         in_channels (:obj:`int`):
@@ -355,8 +350,6 @@ class FlaxAttnUpBlock2D(nn.Module):
     num_layers: int = 1
     attn_num_head_channels: int = 1
     add_upsample: bool = True
-    use_linear_projection: bool = False
-    only_cross_attention: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
@@ -376,13 +369,11 @@ class FlaxAttnUpBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxTransformer2DModel(
-                in_channels=self.out_channels,
-                n_heads=self.attn_num_head_channels,
-                d_head=self.out_channels // self.attn_num_head_channels,
-                depth=1,
-                use_linear_projection=self.use_linear_projection,
-                only_cross_attention=self.only_cross_attention,
+            attn_block = FlaxAttention(
+                query_dim=self.out_channels,
+                heads=self.attn_num_head_channels,
+                dim_head=self.out_channels // self.attn_num_head_channels,
+                dropout=self.dropout,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
                 dtype=self.dtype,
             )
@@ -394,7 +385,7 @@ class FlaxAttnUpBlock2D(nn.Module):
         if self.add_upsample:
             self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
-    def __call__(self, hidden_states, res_hidden_states_tuple, temb, encoder_hidden_states, deterministic=True):
+    def __call__(self, hidden_states, res_hidden_states_tuple, temb, deterministic=True):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -402,7 +393,7 @@ class FlaxAttnUpBlock2D(nn.Module):
             hidden_states = jnp.concatenate((hidden_states, res_hidden_states), axis=-1)
 
             hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
-            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
+            hidden_states = attn(hidden_states, deterministic=deterministic)
 
         if self.add_upsample:
             hidden_states = self.upsamplers_0(hidden_states)
@@ -546,7 +537,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
 
 class FlaxUNetMidBlock2D(nn.Module):
     r"""
-    Cross Attention 2D Mid-level block - original architecture from Unet transformers: https://arxiv.org/abs/2103.06104
+    Attention 2D Mid-level block
 
     Parameters:
         in_channels (:obj:`int`):
@@ -566,7 +557,6 @@ class FlaxUNetMidBlock2D(nn.Module):
     dropout: float = 0.0
     num_layers: int = 1
     attn_num_head_channels: int = 1
-    use_linear_projection: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
@@ -584,12 +574,11 @@ class FlaxUNetMidBlock2D(nn.Module):
         attentions = []
 
         for _ in range(self.num_layers):
-            attn_block = FlaxTransformer2DModel(
-                in_channels=self.in_channels,
-                n_heads=self.attn_num_head_channels,
-                d_head=self.in_channels // self.attn_num_head_channels,
-                depth=1,
-                use_linear_projection=self.use_linear_projection,
+            attn_block = FlaxAttention(
+                query_dim=self.in_channels,
+                heads=self.attn_num_head_channels,
+                dim_head=self.in_channels // self.attn_num_head_channels,
+                dropout=self.dropout,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
                 dtype=self.dtype,
             )
@@ -606,10 +595,10 @@ class FlaxUNetMidBlock2D(nn.Module):
         self.resnets = resnets
         self.attentions = attentions
 
-    def __call__(self, hidden_states, temb, encoder_hidden_states, deterministic=True):
+    def __call__(self, hidden_states, temb, deterministic=True):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
+            hidden_states = attn(hidden_states, deterministic=deterministic)
             hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
 
         return hidden_states
