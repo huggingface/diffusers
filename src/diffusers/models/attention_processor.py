@@ -716,7 +716,6 @@ class AttnProcessor2_0:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-        inner_dim = hidden_states.shape[-1]
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -734,6 +733,7 @@ class AttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        inner_dim = query.shape[-1] # since the inner_dim sometimes is not equal to query_dim in some cases
         head_dim = inner_dim // attn.heads
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
