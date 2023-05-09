@@ -489,8 +489,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.prepare_image_latents
-    # Rename: prepare_image_latents() -> encode_image_vae_latents()
+    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.prepare_image_latents
+    # Rename: prepare_image_latents -> encode_image_vae_latents
     def encode_image_vae_latents(
         self, image, batch_size, num_images_per_prompt, dtype, device, do_classifier_free_guidance, generator=None
     ):
@@ -598,11 +598,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         return image_latents
 
     # Note that the CLIP latents are not decoded for image generation.
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    # Rename: decode_latents() -> decode_image_latents()
+    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
+    # Rename: decode_latents -> decode_image_latents
     def decode_image_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -626,8 +626,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    # Rename: prepare_latents() -> prepare_image_vae_latents
+    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    # Rename: prepare_latents -> prepare_image_vae_latents
     def prepare_image_vae_latents(
         self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
     ):
