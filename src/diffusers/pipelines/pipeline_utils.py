@@ -815,7 +815,7 @@ class DiffusionPipeline(ConfigMixin):
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the pipeline will load the `safetensors` weights if they're availabe **and** if the
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
                 `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):

@@ -1206,7 +1206,7 @@ class FromCkptMixin:
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
             use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the pipeline will load the `safetensors` weights if they're availabe **and** if the
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
                 `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for

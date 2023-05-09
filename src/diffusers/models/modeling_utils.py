@@ -407,9 +407,9 @@ class ModelMixin(torch.nn.Module):
                 If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
                 ignored when using `from_flax`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the pipeline will load the `safetensors` weights if they're availabe **and** if the
-                `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
-                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
+                If set to `None`, the `safetensors` weights will be downloaded if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the model will be forcibly loaded from
+                `safetensors` weights. If set to `False`, loading will *not* use `safetensors`.
 
         <Tip>
 
