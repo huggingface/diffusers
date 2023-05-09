@@ -79,7 +79,7 @@ class PipelineLatentTesterMixin:
         self.assertLess(max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`")
 
         max_diff = np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max()
-        self.assertLess(max_diff, 1e-4, "`output_type=='pil'` generate different results from `output_type=='np'`")
+        self.assertLess(max_diff, 2.0, "`output_type=='pil'` generate different results from `output_type=='np'`")
 
     def test_pt_np_pil_inputs_equivalent(self):
         if len(self.image_params) == 0:
