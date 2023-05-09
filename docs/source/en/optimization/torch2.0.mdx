@@ -358,6 +358,36 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - controlnet | OOM after 2nd iteration | OOM after 2nd iteration | OOM after warmup | OOM after warmup |
 | IF * | 1.44 | 1.44 | ❌ | 1.94 |
 
+### RTX 3090 (batch size: 1)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 22.56 | 22.84 | 23.84 | 25.69 |
+| SD - img2img | 22.25 | 22.61 | 24.1 | 25.83 |
+| SD - inpaint | 22.22 | 22.54 | 24.26 | 26.02 |
+| SD - controlnet | 16.03 | 16.33 | 17.38 | 18.56 |
+| IF | 27.08 / <br>9.07 / <br>31.23 | 26.75 / <br>8.92 / <br>31.47 | ❌ | 68.08 / <br>11.16 / <br>65.29 |
+
+### RTX 3090 (batch size: 4)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 6.46 | 6.35 | 7.29 | 7.3 |
+| SD - img2img | 6.33 | 6.27 | 7.31 | 7.26 |
+| SD - inpaint | 6.47 | 6.4 | 7.44 | 7.39 |
+| SD - controlnet | 4.59 | 4.54 | 5.27 | 5.26 |
+| IF | 16.81 | 16.62 | ❌ | 21.57 |
+
+### RTX 3090 (batch size: 16)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 1.7 | 1.69 | 1.93 | 1.91 |
+| SD - img2img | 1.68 | 1.67 | 1.93 | 1.9 |
+| SD - inpaint | 1.72 | 1.71 | 1.97 | 1.94 |
+| SD - controlnet | 1.23 | 1.22 | 1.4 | 1.38 |
+| IF | 5.01 | 5.00 | ❌ | 6.33 |
+
 ### RTX 4090 (batch size: 1)
 
 | **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
