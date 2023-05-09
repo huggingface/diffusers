@@ -60,7 +60,7 @@ pip install --upgrade torch torchvision diffusers
 
     This should be as fast and memory efficient as `xFormers`. More details [in our benchmark](#benchmark).
 
-    If you want to use the vanilla attention processor (([`~diffusers.models.attention_processor.AttnProcessor`])) as shown below:
+    If you want to revert to use the vanilla attention processor (([`~diffusers.models.attention_processor.AttnProcessor`])) which can help to make the pipeline more deterministic, you can use the [`~UNet2DModel.set_default_attn_processor`] function:
 
     ```Python
     import torch
@@ -68,7 +68,7 @@ pip install --upgrade torch torchvision diffusers
     from diffusers.models.attention_processor import AttnProcessor
 
     pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
-    pipe.unet.set_attn_processor(AttnProcessor())
+    pipe.unet.set_default_attn_processor()
 
     prompt = "a photo of an astronaut riding a horse on mars"
     image = pipe(prompt).images[0]
@@ -93,7 +93,7 @@ pip install --upgrade torch torchvision diffusers
 
     Depending on the type of GPU, `compile()` can yield between 2-9% of _additional speed-up_ over the accelerated transformer optimizations. Note, however, that compilation is able to squeeze more performance improvements in more recent GPU architectures such as Ampere (A100, 3090), Ada (4090) and Hopper (H100).
     
-    Compilation takes some time to complete, so it is best suited for situations where you need to prepare your pipeline once and then perform the same type of inference operations multiple times. Calling the compiled pipeline on a different type of input will retrigger compilation which can be expensive.
+    Compilation takes some time to complete, so it is best suited for situations where you need to prepare your pipeline once and then perform the same type of inference operations multiple times. Calling the compiled pipeline on a different image size will re-trigger compilation which can be expensive.
 
 
 ## Benchmark
