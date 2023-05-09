@@ -321,7 +321,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
-    
+
     def test_unidiffuser_text2img_multiple_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -340,7 +340,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["num_prompts_per_image"] = 3
         image = unidiffuser_pipe(**inputs).images
         assert image.shape == (2, 32, 32, 3)
-    
+
     def test_unidiffuser_img2text_multiple_prompts(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -360,7 +360,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text = unidiffuser_pipe(**inputs).text
 
         assert len(text) == 3
-    
+
     def test_unidiffuser_text2img_multiple_images_with_latents(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -379,7 +379,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["num_prompts_per_image"] = 3
         image = unidiffuser_pipe(**inputs).images
         assert image.shape == (2, 32, 32, 3)
-    
+
     def test_unidiffuser_img2text_multiple_prompts_with_latents(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
