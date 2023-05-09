@@ -247,10 +247,6 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
-        # torch.manual_seed(0)
-        # if torch.cuda.is_available():
-        #     torch.cuda.manual_seed_all(0)
-
         batch_size = 4
         num_channels = 3
         sizes = (256, 256)
@@ -271,10 +267,6 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained_ve_large(self):
         model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
         model.to(torch_device)
-
-        # torch.manual_seed(0)
-        # if torch.cuda.is_available():
-        #     torch.cuda.manual_seed_all(0)
 
         batch_size = 4
         num_channels = 3
