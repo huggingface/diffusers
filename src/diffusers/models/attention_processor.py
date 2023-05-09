@@ -181,7 +181,7 @@ class Attention(nn.Module):
             elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
                 warnings.warn(
                     "You have specified using flash attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "So, we will default to native efficient flash attention implementation provided by PyTorch 2.0."
+                    "We will default to PyTorch's native efficient flash attention implementation provided by PyTorch 2.0."
                 )
             else:
                 try:
