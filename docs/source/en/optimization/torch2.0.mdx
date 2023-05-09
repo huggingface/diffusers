@@ -80,7 +80,6 @@ pip install --upgrade torch torchvision diffusers
     [torch compile docs](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
 
     ```python
-
     pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
     images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
     ```
@@ -359,10 +358,39 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - controlnet | OOM after 2nd iteration | OOM after 2nd iteration | OOM after warmup | OOM after warmup |
 | IF * | 1.44 | 1.44 | ❌ | 1.94 |
 
+### RTX 4090 (batch size: 1)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 40.5 | 41.89 | 44.65 | 49.81 |
+| SD - img2img | 40.39 | 41.95 | 44.46 | 49.8 |
+| SD - inpaint | 40.51 | 41.88 | 44.58 | 49.72 |
+| SD - controlnet | 29.27 | 30.29 | 32.26 | 36.03 |
+| IF | 69.71 / <br>18.78 / <br>85.49 | 69.13 / <br>18.80 / <br>85.56 | ❌ | 124.60 / <br>26.37 / <br>138.79 |
+
+### RTX 4090 (batch size: 4)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 12.62 | 12.84 | 15.32 | 15.59 |
+| SD - img2img | 12.61 | 12,.79 | 15.35 | 15.66 |
+| SD - inpaint | 12.65 | 12.81 | 15.3 | 15.58 |
+| SD - controlnet | 9.1 | 9.25 | 11.03 | 11.22 |
+| IF | 31.88 | 31.14 | ❌ | 43.92 |
+
+### RTX 4090 (batch size: 16)
+
+| **Pipeline** | **torch 2.0 - <br>no compile** | **torch nightly - <br>no compile** | **torch 2.0 - <br>compile** | **torch nightly - <br>compile** |
+|:---:|:---:|:---:|:---:|:---:|
+| SD - txt2img | 3.17 | 3.2 | 3.84 | 3.85 |
+| SD - img2img | 3.16 | 3.2 | 3.84 | 3.85 |
+| SD - inpaint | 3.17 | 3.2 | 3.85 | 3.85 |
+| SD - controlnet | 2.23 | 2.3 | 2.7 | 2.75 |
+| IF | 9.26 | 9.2 | ❌ | 13.31 |
+
 ## Notes 
 
 * Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
 * For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1. 
-
 
 *Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile` in Diffusers.*
