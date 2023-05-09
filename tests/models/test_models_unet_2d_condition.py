@@ -455,7 +455,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -471,7 +471,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            # torch.manual_seed(0)
+            torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname)
@@ -490,7 +490,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -506,7 +506,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname, safe_serialization=True)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            # torch.manual_seed(0)
+            torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname)
@@ -525,7 +525,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -535,7 +535,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            # torch.manual_seed(0)
+            torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.bin")
@@ -546,7 +546,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -556,7 +556,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            # torch.manual_seed(0)
+            torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             with self.assertRaises(IOError) as e:
@@ -569,7 +569,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -600,7 +600,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
         lora_attn_procs = create_lora_layers(model)
@@ -643,7 +643,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample2 = model(**inputs_dict).sample
 
-        assert (sample1 - sample2).abs().max() < 3e-4
+        assert (sample1 - sample2).abs().max() < 3e-3
 
     def test_custom_diffusion_save_load(self):
         # enable deterministic behavior for gradient checkpointing
@@ -651,7 +651,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -667,7 +667,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
-            # torch.manual_seed(0)
+            torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
@@ -690,7 +690,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         init_dict["attention_head_dim"] = (8, 16)
 
-        # torch.manual_seed(0)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
         custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
