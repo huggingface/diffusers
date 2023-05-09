@@ -12,6 +12,8 @@ env:
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
+  # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+  CUBLAS_WORKSPACE_CONFIG: :16:8 
 
 jobs:
   run_slow_tests:
