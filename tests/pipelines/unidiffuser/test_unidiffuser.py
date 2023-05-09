@@ -321,6 +321,84 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
+    
+    def test_unidiffuser_text2img_multiple_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        unidiffuser_pipe = UniDiffuserPipeline(**components)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'text2img'
+        unidiffuser_pipe.set_text_to_image_mode()
+        assert unidiffuser_pipe.mode == "text2img"
+
+        inputs = self.get_dummy_inputs(device)
+        # Delete image for text-conditioned image generation
+        del inputs["image"]
+        inputs["num_images_per_prompt"] = 2
+        inputs["num_prompts_per_image"] = 3
+        image = unidiffuser_pipe(**inputs).images
+        assert image.shape == (2, 32, 32, 3)
+    
+    def test_unidiffuser_img2text_multiple_prompts(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        unidiffuser_pipe = UniDiffuserPipeline(**components)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'img2text'
+        unidiffuser_pipe.set_image_to_text_mode()
+        assert unidiffuser_pipe.mode == "img2text"
+
+        inputs = self.get_dummy_inputs(device)
+        # Delete text for image-conditioned text generation
+        del inputs["prompt"]
+        inputs["num_images_per_prompt"] = 2
+        inputs["num_prompts_per_image"] = 3
+        text = unidiffuser_pipe(**inputs).text
+
+        assert len(text) == 3
+    
+    def test_unidiffuser_text2img_multiple_images_with_latents(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        unidiffuser_pipe = UniDiffuserPipeline(**components)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'text2img'
+        unidiffuser_pipe.set_text_to_image_mode()
+        assert unidiffuser_pipe.mode == "text2img"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete image for text-conditioned image generation
+        del inputs["image"]
+        inputs["num_images_per_prompt"] = 2
+        inputs["num_prompts_per_image"] = 3
+        image = unidiffuser_pipe(**inputs).images
+        assert image.shape == (2, 32, 32, 3)
+    
+    def test_unidiffuser_img2text_multiple_prompts_with_latents(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        unidiffuser_pipe = UniDiffuserPipeline(**components)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'img2text'
+        unidiffuser_pipe.set_image_to_text_mode()
+        assert unidiffuser_pipe.mode == "img2text"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete text for image-conditioned text generation
+        del inputs["prompt"]
+        inputs["num_images_per_prompt"] = 2
+        inputs["num_prompts_per_image"] = 3
+        text = unidiffuser_pipe(**inputs).text
+
+        assert len(text) == 3
 
 
 @slow
