@@ -42,6 +42,8 @@
       title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
       title: Text-guided depth-to-image
+    - local: training/distributed_inference
+      title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
@@ -78,8 +80,6 @@
       title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
-    - local: training/distributed_inference
-      title: Distributed inference with multiple GPUs
     title: Training
   - sections:
     - local: using-diffusers/rl
