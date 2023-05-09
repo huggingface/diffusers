@@ -217,6 +217,34 @@ class FlaxAttention(nn.Module):
         return hidden_states
 
 
+class FlaxAttention2D(FlaxAttention):
+    r"""
+    Same as FlaxAttention, but takes in 2D hidden_states with shape (batch, height, width, channel)
+
+    Parameters:
+        query_dim (:obj:`int`):
+            Input hidden states dimension
+        heads (:obj:`int`, *optional*, defaults to 8):
+            Number of heads
+        dim_head (:obj:`int`, *optional*, defaults to 64):
+            Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+
+    """
+
+    def __call__(self, hidden_states, context=None, deterministic=True):
+        batch, height, width, channels = hidden_states.shape
+        hidden_states = hidden_states.reshape(batch, height * width, channels)
+        hidden_states = super().__call__(hidden_states, context=context, deterministic=deterministic)
+        hidden_states = hidden_states.reshape(batch, height, width, channels)
+        return hidden_states
+
+
 class FlaxBasicTransformerBlock(nn.Module):
     r"""
     A Flax transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
