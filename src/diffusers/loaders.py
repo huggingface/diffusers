@@ -21,9 +21,13 @@ import torch
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    SlicedAttnAddedKVProcessor,
 )
 from .utils import (
     DIFFUSERS_CACHE,
@@ -250,10 +254,22 @@ class UNet2DConditionLoadersMixin:
 
             for key, value_dict in lora_grouped_dict.items():
                 rank = value_dict["to_k_lora.down.weight"].shape[0]
-                cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRAAttnProcessor(
+                attn_processor = self
+                for sub_key in key.split("."):
+                    attn_processor = getattr(attn_processor, sub_key)
+
+                if isinstance(
+                    attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
+                ):
+                    cross_attention_dim = value_dict["add_k_proj_lora.down.weight"].shape[1]
+                    attn_processor_class = LoRAAttnAddedKVProcessor
+                else:
+                    cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
+                    attn_processor_class = LoRAAttnProcessor
+
+                attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
                 )
                 attn_processors[key].load_state_dict(value_dict)
