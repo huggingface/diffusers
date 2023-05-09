@@ -16,12 +16,12 @@ import inspect
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPTextModelWithProjection, CLIPVisionModelWithProjection, CLIPTokenizer, XLMRobertaTokenizerFast
 
 from ...models import PriorTransformer, UNet2DConditionModel
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
-
+from .multiclip import MultilingualCLIP
 from ...utils import (
     logging, 
     randn_tensor,
@@ -39,6 +39,8 @@ class KandinskyPipeline(DiffusionPipeline):
     Args:
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen image-encoder.
         prior_tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
@@ -46,14 +48,21 @@ class KandinskyPipeline(DiffusionPipeline):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
+        multiclip ([`MultilingualCLIP`]):
+            A multilingual text encoder.
+        multiclip_tokenizer ([`XLMRobertaTokenizerFast`]):
+            Tokenizer for multiclip
     """
 
     def __init__(
         self,
         prior: PriorTransformer,
         text_encoder: CLIPTextModelWithProjection,
+        image_encoder: CLIPVisionModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
         prior_scheduler: UnCLIPScheduler,
+        multiclip: MultilingualCLIP,
+        multiclip_tokenizer: XLMRobertaTokenizerFast,
     ):
         super().__init__()
 
@@ -62,6 +71,9 @@ class KandinskyPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
+            image_encoder=image_encoder,
+            multiclip=multiclip,
+            multiclip_tokenizer=multiclip_tokenizer,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
