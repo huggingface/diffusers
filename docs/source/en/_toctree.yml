@@ -78,6 +78,8 @@
       title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
+    - local: training/distributed_inference
+      title: Distributed inference with multiple GPUs
     title: Training
   - sections:
     - local: using-diffusers/rl
