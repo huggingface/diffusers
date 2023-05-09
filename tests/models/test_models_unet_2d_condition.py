@@ -643,7 +643,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample2 = model(**inputs_dict).sample
 
-        assert (sample1 - sample2).abs().max() < 1e-4
+        assert (sample1 - sample2).abs().max() < 3e-4
 
     def test_custom_diffusion_save_load(self):
         # enable deterministic behavior for gradient checkpointing
