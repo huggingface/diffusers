@@ -102,7 +102,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "CrossAttnDownBlock3D",
             "DownBlock3D",
         ),
-        mid_block_type: str = "UNetMidBlock3DCrossAttn",
         up_block_types: Tuple[str] = ("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
@@ -235,8 +234,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.down_blocks.append(down_block)
 
         # mid
-        if mid_block_type == "UNetMidBlock3DCrossAttn":
-            self.mid_block = UNetMidBlock3DCrossAttn(
+        self.mid_block = UNetMidBlock3DCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=time_embed_dim,
                 resnet_eps=norm_eps,
@@ -253,8 +251,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 use_temporal_conv=use_temporal_conv,
                 sub_blocks_type=sub_blocks_type,
             )
-        else:
-            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
 
         # count how many layers upsample the videos
         self.num_upsamplers = 0
