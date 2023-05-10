@@ -21,8 +21,8 @@ from ...models import ModelMixin
 
 class KandinskyTextProjModel(ModelMixin, ConfigMixin):
     """
-    Utility class for Kandingsky text embeddings. Used to combine the image and text embeddings into a format usable by the
-    unet diffusion model.
+    Utility class for Kandingsky text embeddings. Used to combine the image and text embeddings into a format usable by
+    the unet diffusion model.
     """
 
     @register_to_config
