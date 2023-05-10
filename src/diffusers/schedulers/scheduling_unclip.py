@@ -267,7 +267,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
-        # YiYi notes: added for testing kandinsky (will try to remove)
         batch_size: Optional[int] = None,
     ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
@@ -348,16 +347,15 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            # YiYi Notes: test to see if we can sampling with latent shape [batch_size, ...] and change this back
-            variance_noise = randn_tensor(
-                (batch_size if batch_size is not None else model_output.shape[0], *model_output.shape[1:]) , dtype=model_output.dtype, generator=generator, device=model_output.device
-            )     
-            # variance_noise = randn_tensor(
-            #     model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
-            # )
-
             if batch_size is not None:
+                assert batch_size * 2 == model_output.shape[0]
+                variance_noise = randn_tensor(
+                    (batch_size, *model_output.shape[1:]) , dtype=model_output.dtype, generator=generator, device=model_output.device
+                )     
+
                 variance_noise = torch.cat([variance_noise, variance_noise], dim=0)
+            else:
+                variance_noise = randn_tensor(model_output.shape , dtype=model_output.dtype, generator=generator, device=model_output.device)  
 
             variance = self._get_variance(
                 t,
