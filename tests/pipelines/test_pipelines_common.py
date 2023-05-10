@@ -188,7 +188,7 @@ class PipelineTesterMixin:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_save_load_local(self):
+    def test_save_load_local(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -207,7 +207,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
+        self.assertLess(max_diff, expected_max_difference)
 
     def test_pipeline_call_signature(self):
         self.assertTrue(
@@ -459,7 +459,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    def test_save_load_optional_components(self):
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
 
@@ -491,7 +491,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
+        self.assertLess(max_diff, expected_max_difference)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
