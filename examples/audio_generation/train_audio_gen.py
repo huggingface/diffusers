@@ -41,13 +41,13 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate
 from diffusers.utils.import_utils import is_xformers_available
 from audio_gen_files.AudiosetDataset import AudiosetDataset
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel, ClapAudioModelWithProjection
 
 from encodec import EncodecModel
 from encodec.utils import convert_audio
@@ -321,6 +321,14 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--ddim",
+        action="store_true",
+        default=False,
+        required=False,
+        help="use flag to use ddim scheduler instead of ddpm",
+    )
+    
+    parser.add_argument(
         "--custom_unet",
         type=str,
         default=None,
@@ -328,6 +336,12 @@ def parse_args():
         help="Path to custom unet config, this will not load a checkpoint and provide a random initialization for the unet",
     )
     
+    parser.add_argument(
+        "--unfreeze_step",
+        type=int,
+        default=5000,
+        help="freeze the Unet first layer till it learns something",
+    )
     
     parser.add_argument(
         "--log_level",
@@ -431,22 +445,39 @@ def main():
                     gitignore.write("epoch_*\n")
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
-
+            with open(os.path.join(args.output_dir, "cmd_line_args.json"), 'w') as f:
+                json.dump(vars(args), f)
+            
     # Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-    )
+    if (args.ddim):
+        noise_scheduler = DDIMScheduler.from_pretrained("/u/li19/data_folder/model_cache/audio_journey_128_ddim_2", subfolder="scheduler")
+        
+    else:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    print(f'We are using scheduler: {noise_scheduler}')
+    
+    if ("clap" in args.pretrained_model_name_or_path):
+        print("Using CLAP text encoder and tokenizer")
+        # tokenizer = AutoTokenizer.from_pretrained( args.pretrained_model_name_or_path, subfolder="tokenizer")
+        # text_encoder = ClapAudioModelWithProjection.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", )
+        
+        tokenizer = AutoTokenizer.from_pretrained("cvssp/audioldm-m-full", model_max_length=512,  subfolder="tokenizer")
+        text_encoder = T5EncoderModel.from_pretrained("cvssp/audioldm-m-full", subfolder="text_encoder")
+    
+    elif ("journey" in args.pretrained_model_name_or_path):
+        print("Using T5 text encoder and tokenizer")
+        tokenizer = AutoTokenizer.from_pretrained("t5-large", model_max_length=512)
+        text_encoder = T5EncoderModel.from_pretrained("t5-large")
+    else:
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        )
+        text_encoder = CLIPTextModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        )
     
     
-    
-    # tokenizer = AutoTokenizer.from_pretrained("t5-small")
-    # text_encoder = T5EncoderModel.from_pretrained("t5-small")
-    
-    
+
     vae = EncodecModel.encodec_model_24khz()
     # The number of codebooks used will be determined bythe bandwidth selected.
     # E.g. for a bandwidth of 6kbps, `n_q = 8` codebooks are used.
@@ -454,6 +485,9 @@ def main():
     # For the 48 kHz model, only 3, 6, 12, and 24 kbps are supported. The number
     # of codebooks for each is half that of the 24 kHz model as the frame rate is twice as much.
     vae.set_target_bandwidth(6.0)
+    
+    kl_vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+
     
     if (args.custom_unet):
     
@@ -463,12 +497,21 @@ def main():
     
     else:
         unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision,
+            low_cpu_mem_usage=False, device_map=None
         )
     
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    
+    for layer in unet.up_blocks:
+        layer.requires_grad_(False)
+    
+    unet.mid_block.requires_grad_(False)
+    
+    for layer in unet.down_blocks:
+        layer.requires_grad_(False)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -685,10 +728,7 @@ def main():
         f = open(args.audio_conf)
         data = json.load(f)
         f.close()
-        dataset_json_file = data["dataset_json_file"]
-        latent_folder = data["latent_folder_path"]
-        wav_folder = data["wav_folder"]
-        
+
         weight_dtype = torch.float32
         if accelerator.mixed_precision == "fp16":
             weight_dtype = torch.float16
@@ -699,8 +739,8 @@ def main():
         sampler=None
 
         train_dataloader = torch.utils.data.DataLoader( 
-                AudiosetDataset(dataset_json_file, latent_folder=latent_folder, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, label_csv=None, wav_folder=wav_folder, logger=logger, channels=1),
-                batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
+                AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1),
+                batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers, shuffle=True)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -747,7 +787,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+        accelerator.init_trackers(args.output_dir.split("/")[-1]+"_tensorboard", config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -790,7 +830,45 @@ def main():
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
+    
+    channel_means = [  2.2741,  11.2872,  -3.3938,  -1.5556,  -0.0302,   7.6089,  -5.5797,
+          0.2140,  -0.3536,   6.0188,   1.8582,  -0.1103,   2.2026,  -7.0081,
+         -0.0721,  -8.7742,  -2.4182,   4.4447,  -0.2184,  -0.5209, -11.9494,
+         -4.0776,  -1.4555,  -1.6505,   6.4522,   0.0997,  10.4067,  -3.9268,
+         -7.0161,  -3.1253,  -8.5145,   3.1156,   2.2279,  -5.2728,   2.8541,
+         -3.3980,  -1.1775,  -9.7662,   0.3048,   3.8765,   4.5021,   2.6239,
+         14.1057,   3.2852,   1.9702,  -1.6345,  -4.3733,   3.8198,   1.1421,
+         -4.4388,  -5.3498,  -6.6044,  -0.4426,   2.8000,  -7.0858,   2.4989,
+         -1.4915,  -6.1275,  -3.0896,   1.1227,  -8.7984,  -4.9831,  -0.3888,
+         -3.1017,  -7.5745,  -2.4760,   1.0540,  -2.5350,   0.0999,   0.6126,
+         -1.2301,  -5.8328,  -0.7275,  -1.2316,  -2.2532, -11.5017,   0.9166,
+         -2.2268,  -2.8496,  -0.5093,  -0.3037,  -6.3689,  -9.5225,   4.5965,
+          3.1329,  -1.8315,   5.3135,  -3.8361,   1.6335,  -0.1705,  11.0513,
+          5.3907,  -0.2660,   4.6109,  -8.9019,   6.5515,   0.8596,  16.6196,
+         -0.7732,   4.1237,   2.9267,   9.9652,   4.6615,   1.4660,  -9.7225,
+         -1.5841,  -0.5714,  -4.3343,  -0.1914,   2.8624, -11.2139,  -2.5840,
+         -6.7120,   0.2601,  -5.4195,   0.3554,   3.0438,  -1.0295,   1.3360,
+         -4.1767,   0.6468,   1.8145,   1.7140,   3.0185,   0.4881,   0.5796,
+         -2.4755,   2.6202]
+    channel_stds = [1.7524, 1.2040, 1.1098, 1.1021, 1.3688, 1.1374, 1.8660, 0.9791, 1.4331,
+            1.7740, 1.2690, 1.0297, 0.9953, 1.5363, 1.2166, 1.6564, 1.4858, 1.2349,
+            1.5086, 1.0814, 1.4421, 0.9258, 0.9343, 1.2007, 1.3848, 1.2732, 1.7759,
+            1.3544, 1.4707, 1.2685, 1.7004, 1.2947, 1.2967, 1.8925, 0.9231, 0.7637,
+            1.3777, 1.6680, 0.9658, 0.9257, 0.5259, 0.9949, 1.7375, 1.0734, 1.2916,
+            0.8570, 0.6263, 0.9911, 0.9574, 0.9979, 1.5969, 1.1886, 1.1147, 1.2280,
+            2.0169, 1.1813, 1.2589, 1.1162, 1.3689, 1.2516, 1.2139, 1.0343, 1.1895,
+            1.1726, 1.1923, 1.2714, 1.0043, 0.6465, 1.3860, 1.4449, 0.9567, 1.0218,
+            0.9560, 1.4757, 1.0544, 0.8112, 1.4364, 1.0843, 1.2569, 1.0138, 1.1886,
+            0.8627, 1.1016, 1.4231, 1.3607, 1.1215, 1.9759, 1.5381, 0.9219, 0.8572,
+            0.6288, 0.8029, 1.1699, 1.1962, 1.5783, 0.9037, 1.2214, 2.0878, 1.3015,
+            1.2254, 1.2898, 1.5421, 1.2834, 1.7237, 1.3471, 0.8689, 1.2807, 1.2174,
+            1.2048, 0.6644, 1.5379, 1.4997, 0.7932, 0.7638, 0.8680, 1.3108, 1.8261,
+            1.3964, 1.2147, 1.1391, 1.0011, 1.5988, 1.5721, 1.0963, 1.4303, 1.3737,
+            1.5043, 1.3079]
 
+    
+    flipped = False
+    
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -805,12 +883,45 @@ def main():
                 # Convert images to latent space
                 # latents = vae.encode(batch["waveform"])[0][0].to(weight_dtype)[None, :, :, :]
                 
+                
+                if (step >= args.unfreeze_step and not flipped):
+                    for layer in unet.up_blocks:
+                        layer.requires_grad_(True)
+
+                    unet.mid_block.requires_grad_(True)
+
+                    for layer in unet.down_blocks:
+                        layer.requires_grad_(True)
+                    flipped = True
+                
+                
                 latents = batch["latent"]
 
                 final_type = latents.dtype
                 if (args.post_quant):
                     latents = [vae.quantizer.decode(l.transpose(0,1).to(dtype=torch.int32)) for l in latents]
                     latents = torch.stack(latents, dim=0).to(accelerator.device, dtype=final_type)
+
+                    latents = torch.Tensor.view(latents, [latents.shape[0], 128, 24, 21])
+        
+#                     mean = -0.50601
+#                     std = 5.22701
+                
+                    transform = transforms.Compose([
+                        transforms.Normalize(channel_means, channel_stds)
+                    ])
+                    latents = transform(latents)
+            
+            
+                    # for img in latents:
+                    #     means = img.mean(axis=(1,2))
+                    #     stds = img.std(axis=(1,2))
+                    #     print(f'MEAN: mean {means.mean()} -- std {means.std()}')
+                    #     print(f'STD: mean {stds.mean()} -- std {stds.std()}')
+                    #     print()
+
+                    
+                    latents = torch.Tensor.view(latents, [latents.shape[0], 1, 128, 504])
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -824,10 +935,8 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # # Get the text embedding for conditioning
-                # print("LOOK HERE FOR INFO ON BATCH ID: ")
-                # print(batch["input_ids"].shape)
-                # print(batch["input_ids"].dtype)
-                # print(batch["input_ids"].device)
+                logger.info(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
+
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 logger.info(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
@@ -840,11 +949,7 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # Predict the noise residual and compute loss
-                
-                print("===============")
-                print(timesteps.shape)
-                print(encoder_hidden_states.shape)
+                # Predict the noise residual and compute loss)
                 
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -867,6 +972,12 @@ def main():
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
+                # accelerator.log({"learning_rate": lr_scheduler.get_last_lr()[0]}, step=global_step)
+                # latents
+                # noisy_latents
+                
+                accelerator.log({"learning_rate": lr_scheduler.get_last_lr()[0]}, step=global_step)
+                
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
@@ -874,6 +985,8 @@ def main():
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+                        with open(os.path.join(save_path, "cmd_line_args.json"), 'w') as f:
+                            json.dump(vars(args), f)
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -892,7 +1005,7 @@ def main():
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             text_encoder=text_encoder,
-            vae=vae,
+            vae=kl_vae,
             unet=unet,
             revision=args.revision,
         )
