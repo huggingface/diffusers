@@ -39,4 +39,4 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 ```
 
-The pretrained weights of the other components from the text-to-image model are initialized from their checkpoints, but the `unet` model weights are randomly initialized. It is important to finetune the model for inpainting now because otherwise the model returns noise.
+The pretrained weights of the other components from the text-to-image model are initialized from their checkpoints, but the input channel weights (`conv_in.weight`) of the `unet` are randomly initialized. It is important to finetune the model for inpainting because otherwise the model returns noise.
