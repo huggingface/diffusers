@@ -17,13 +17,13 @@ from typing import Callable, Optional
 import torch
 import torch.nn.functional as F
 
-# from einops import rearrange, repeat
 from torch import nn
 
 from ..utils import maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
 from .attention_processor import Attention
-from .cross_attention import CrossAttention, TuneAVideoCrossAttnProcessor
+from .cross_attention import CrossAttention
+from .attention_processor import TuneAVideoAttnProcessor
 from .embeddings import CombinedTimestepLabelEmbeddings
 
 
@@ -573,7 +573,7 @@ class BasicSparseTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-            processor=TuneAVideoCrossAttnProcessor(),
+            processor=TuneAVideoAttnProcessor(),
         )
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
