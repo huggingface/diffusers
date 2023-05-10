@@ -70,7 +70,7 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
-        self.test_float16_inference(expected_max_diff=1e-1)
+        super().test_float16_inference(expected_max_diff=1e-1)
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(expected_max_diff=1e-2)

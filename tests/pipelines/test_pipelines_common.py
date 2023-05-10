@@ -411,7 +411,7 @@ class PipelineTesterMixin:
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self):
+    def test_float16_inference(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -425,7 +425,7 @@ class PipelineTesterMixin:
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
+        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self, expected_max_diff=1e-2):
