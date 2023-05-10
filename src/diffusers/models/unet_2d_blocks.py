@@ -1714,7 +1714,13 @@ class KCrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
 
@@ -1730,29 +1736,23 @@ class KCrossAttnDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                    )
+                ckpt_kwargs: Dict[str, Any] = {'use_reentrant': False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # emb
+                    attention_mask,
+                    cross_attention_kwargs,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
@@ -1761,6 +1761,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_attention_mask=encoder_attention_mask,
                 )
 
             if self.downsamplers is None:
@@ -2835,13 +2836,14 @@ class KCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        res_hidden_states_tuple,
-        temb=None,
-        encoder_hidden_states=None,
-        cross_attention_kwargs=None,
-        upsample_size=None,
-        attention_mask=None,
+        hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
@@ -2859,29 +2861,23 @@ class KCrossAttnUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )[0]
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                    )[0]
+                ckpt_kwargs: Dict[str, Any] = {'use_reentrant': False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # emb
+                    attention_mask,
+                    cross_attention_kwargs,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
@@ -2890,6 +2886,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_attention_mask=encoder_attention_mask,
                 )
 
         if self.upsamplers is not None:
@@ -2968,11 +2965,12 @@ class KAttentionBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        encoder_hidden_states=None,
-        emb=None,
-        attention_mask=None,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        emb: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
@@ -2986,6 +2984,7 @@ class KAttentionBlock(nn.Module):
             attn_output = self.attn1(
                 norm_hidden_states,
                 encoder_hidden_states=None,
+                attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
             attn_output = self._to_4d(attn_output, height, weight)
@@ -3000,6 +2999,7 @@ class KAttentionBlock(nn.Module):
         attn_output = self.attn2(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask if encoder_hidden_states is None else encoder_attention_mask,
             **cross_attention_kwargs,
         )
         attn_output = self._to_4d(attn_output, height, weight)
