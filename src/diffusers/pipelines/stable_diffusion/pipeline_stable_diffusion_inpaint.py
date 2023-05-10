@@ -120,7 +120,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
             image = [image]
         if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
             # resize all images w.r.t passed height an width
-            image = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in image] 
+            image = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in image]
             image = [np.array(i.convert("RGB"))[None, :] for i in image]
             image = np.concatenate(image, axis=0)
         elif isinstance(image, list) and isinstance(image[0], np.ndarray):
@@ -134,7 +134,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
             mask = [mask]
 
         if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
-            mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask] 
+            mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask]
             mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
             mask = mask.astype(np.float32) / 255.0
         elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
