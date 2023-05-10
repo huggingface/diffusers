@@ -34,7 +34,6 @@ def get_down_block(
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
-    dual_cross_attention=False,
     use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
@@ -73,7 +72,6 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
@@ -98,7 +96,6 @@ def get_up_block(
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
-    dual_cross_attention=False,
     use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
@@ -137,7 +134,6 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
@@ -164,7 +160,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
-        dual_cross_attention=False,
         use_linear_projection=True,
         upcast_attention=False,
         use_temporal_transformer=True,  # False for TuneAVideo
@@ -224,8 +219,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             attention_head_dim = in_channels // attn_num_head_channels
 
         for _ in range(num_layers):
-            if dual_cross_attention:
-                raise NotImplementedError
             attentions.append(
                 transformer_class(
                     num_attention_heads,
@@ -336,7 +329,6 @@ class CrossAttnDownBlock3D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
-        dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
@@ -381,8 +373,6 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
             )
 
-            if dual_cross_attention:
-                raise NotImplementedError
 
             if use_temporal_conv:
                 temp_convs.append(
@@ -605,7 +595,6 @@ class CrossAttnUpBlock3D(nn.Module):
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
-        dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
@@ -660,8 +649,6 @@ class CrossAttnUpBlock3D(nn.Module):
                 )
             )
 
-            if dual_cross_attention:
-                raise NotImplementedError
 
             if use_temporal_conv:
                 temp_convs.append(
