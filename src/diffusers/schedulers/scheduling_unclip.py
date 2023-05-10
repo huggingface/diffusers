@@ -120,12 +120,10 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         sample_min_value: Optional[float] = None,
         sample_max_value: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
-        beta_schedule: str = "squaredcos_cap_v2", # "linear"
+        beta_schedule: str = "squaredcos_cap_v2",  # "linear"
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-
     ):
-
         if beta_schedule == "squaredcos_cap_v2":
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         elif beta_schedule == "linear":
@@ -134,7 +132,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start * scale, beta_end * scale, num_train_timesteps, dtype=torch.float64)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
-
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -215,7 +212,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             # this is log variance
             variance = frac * max_log + (1 - frac) * min_log
 
-
         return variance
 
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -241,7 +237,9 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
         s = torch.clamp(
-            s, min=self.config.sample_min_value, max=self.config.sample_max_value,
+            s,
+            min=self.config.sample_min_value,
+            max=self.config.sample_max_value,
         )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
 
         s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
@@ -317,7 +315,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
                 " for the UnCLIPScheduler."
             )
 
-        # 3. Clip/threhold "predicted x_0" 
+        # 3. Clip/threhold "predicted x_0"
         if self.config.clip_sample:
             pred_original_sample = torch.clamp(
                 pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
@@ -325,7 +323,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.thresholding:
             pred_original_sample = self._threshold_sample(pred_original_sample)
-            
+
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
         pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * beta) / beta_prod_t
@@ -341,12 +339,17 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             if batch_size is not None:
                 assert batch_size * 2 == model_output.shape[0]
                 variance_noise = randn_tensor(
-                    (batch_size, *model_output.shape[1:]) , dtype=model_output.dtype, generator=generator, device=model_output.device
-                )     
+                    (batch_size, *model_output.shape[1:]),
+                    dtype=model_output.dtype,
+                    generator=generator,
+                    device=model_output.device,
+                )
 
                 variance_noise = torch.cat([variance_noise, variance_noise], dim=0)
             else:
-                variance_noise = randn_tensor(model_output.shape , dtype=model_output.dtype, generator=generator, device=model_output.device)  
+                variance_noise = randn_tensor(
+                    model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
+                )
 
             variance = self._get_variance(
                 t,

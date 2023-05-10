@@ -3,9 +3,10 @@ import tempfile
 
 import torch
 from accelerate import load_checkpoint_and_dispatch
+
+from diffusers import UNet2DConditionModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
-from diffusers import UNet2DConditionModel
 
 
 """
@@ -213,52 +214,54 @@ def prior_ff_to_diffusers(checkpoint, *, diffusers_ff_prefix, original_ff_prefix
 
 # done prior
 
-# unet 
+# unet
 
 # We are hardcoding the model configuration for now. If we need to generalize to more model configurations, we can
 # update then.
 
 UNET_CONFIG = {
-  "act_fn":"silu",
-  "attention_head_dim": 64,
-  "block_out_channels": (384, 768, 1152, 1536),
-  "center_input_sample": False,
-  "class_embed_type": "identity",
-  "cross_attention_dim": 768,
-  "down_block_types": (
-    "ResnetDownsampleBlock2D",
-    "SimpleCrossAttnDownBlock2D",
-    "SimpleCrossAttnDownBlock2D",
-    "SimpleCrossAttnDownBlock2D",
-  ),
-  "downsample_padding": 1,
-  "dual_cross_attention": False,
-  "flip_sin_to_cos": True,
-  "freq_shift": 0,
-  "in_channels": 4,
-  "layers_per_block": 3,
-  "mid_block_scale_factor": 1,
-  "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
-  "norm_eps": 1e-05,
-  "norm_num_groups": 32,
-  "only_cross_attention": False,
-  "out_channels": 8,
-  "resnet_time_scale_shift": "scale_shift",
-  "sample_size": 64,
-  "up_block_types": (
-    "SimpleCrossAttnUpBlock2D",
-    "SimpleCrossAttnUpBlock2D",
-    "SimpleCrossAttnUpBlock2D",
-    "ResnetUpsampleBlock2D",
-  ),
-  "upcast_attention": False,
-  "use_linear_projection": False
+    "act_fn": "silu",
+    "attention_head_dim": 64,
+    "block_out_channels": (384, 768, 1152, 1536),
+    "center_input_sample": False,
+    "class_embed_type": "identity",
+    "cross_attention_dim": 768,
+    "down_block_types": (
+        "ResnetDownsampleBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+    ),
+    "downsample_padding": 1,
+    "dual_cross_attention": False,
+    "flip_sin_to_cos": True,
+    "freq_shift": 0,
+    "in_channels": 4,
+    "layers_per_block": 3,
+    "mid_block_scale_factor": 1,
+    "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
+    "norm_eps": 1e-05,
+    "norm_num_groups": 32,
+    "only_cross_attention": False,
+    "out_channels": 8,
+    "resnet_time_scale_shift": "scale_shift",
+    "sample_size": 64,
+    "up_block_types": (
+        "SimpleCrossAttnUpBlock2D",
+        "SimpleCrossAttnUpBlock2D",
+        "SimpleCrossAttnUpBlock2D",
+        "ResnetUpsampleBlock2D",
+    ),
+    "upcast_attention": False,
+    "use_linear_projection": False,
 }
+
 
 def unet_model_from_original_config():
     model = UNet2DConditionModel(**UNET_CONFIG)
 
     return model
+
 
 def unet_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     diffusers_checkpoint = {}
@@ -319,15 +322,18 @@ def unet_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
 
     return diffusers_checkpoint
 
+
 # done unet
 
-# text proj 
+# text proj
 
 TEXT_PROJ_CONFIG = {}
+
 
 def text_proj_from_original_config():
     model = KandinskyTextProjModel(**TEXT_PROJ_CONFIG)
     return model
+
 
 # Note that the input checkpoint is the original text2img model checkpoint
 def text_proj_original_checkpoint_to_diffusers_checkpoint(checkpoint):
@@ -351,7 +357,9 @@ def text_proj_original_checkpoint_to_diffusers_checkpoint(checkpoint):
 
     return diffusers_checkpoint
 
+
 # unet utils
+
 
 # <original>.time_embed -> <diffusers>.time_embedding
 def unet_time_embeddings(checkpoint):
@@ -368,6 +376,7 @@ def unet_time_embeddings(checkpoint):
 
     return diffusers_checkpoint
 
+
 # <original>.input_blocks.0 -> <diffusers>.conv_in
 def unet_conv_in(checkpoint):
     diffusers_checkpoint = {}
@@ -380,6 +389,7 @@ def unet_conv_in(checkpoint):
     )
 
     return diffusers_checkpoint
+
 
 # <original>.out.0 -> <diffusers>.conv_norm_out
 def unet_conv_norm_out(checkpoint):
@@ -394,6 +404,7 @@ def unet_conv_norm_out(checkpoint):
 
     return diffusers_checkpoint
 
+
 # <original>.out.2 -> <diffusers>.conv_out
 def unet_conv_out(checkpoint):
     diffusers_checkpoint = {}
@@ -406,6 +417,7 @@ def unet_conv_out(checkpoint):
     )
 
     return diffusers_checkpoint
+
 
 # <original>.input_blocks -> <diffusers>.down_blocks
 def unet_downblock_to_diffusers_checkpoint(
@@ -464,6 +476,7 @@ def unet_downblock_to_diffusers_checkpoint(
     num_original_down_blocks = num_resnets
 
     return diffusers_checkpoint, num_original_down_blocks
+
 
 # <original>.middle_block -> <diffusers>.mid_block
 def unet_midblock_to_diffusers_checkpoint(model, checkpoint, *, num_head_channels):
@@ -721,29 +734,25 @@ def prior(*, args, checkpoint_map_location):
 
 
 def text2img(*, args, checkpoint_map_location):
-    
     print("loading text2img")
 
     text2img_checkpoint = torch.load(args.text2img_checkpoint_path, map_location=checkpoint_map_location)
 
     unet_model = unet_model_from_original_config()
 
-    unet_diffusers_checkpoint = unet_original_checkpoint_to_diffusers_checkpoint(
-        unet_model, text2img_checkpoint
-    )
+    unet_diffusers_checkpoint = unet_original_checkpoint_to_diffusers_checkpoint(unet_model, text2img_checkpoint)
 
     # text proj interlude
-    
+
     # The original decoder implementation includes a set of parameters that are used
     # for creating the `encoder_hidden_states` which are what the U-net is conditioned
     # on. The diffusers conditional unet directly takes the encoder_hidden_states. We pull
     # the parameters into the KandinskyTextProjModel class
     text_proj_model = text_proj_from_original_config()
-    
+
     text_proj_checkpoint = text_proj_original_checkpoint_to_diffusers_checkpoint(text2img_checkpoint)
 
     load_checkpoint_to_model(text_proj_checkpoint, text_proj_model, strict=True)
-    
 
     del text2img_checkpoint
 
@@ -762,7 +771,6 @@ def load_checkpoint_to_model(checkpoint, model, strict=False):
             model.load_state_dict(torch.load(file.name), strict=True)
         else:
             load_checkpoint_and_dispatch(model, file.name, device_map="auto")
-
 
 
 if __name__ == "__main__":
@@ -817,7 +825,7 @@ if __name__ == "__main__":
     elif args.debug == "prior":
         prior_model = prior(args=args, checkpoint_map_location=checkpoint_map_location)
         prior_model.save_pretrained(args.dump_path)
-    elif args.debug == 'text2img':
+    elif args.debug == "text2img":
         unet_model, text_proj_model = text2img(args=args, checkpoint_map_location=checkpoint_map_location)
         unet_model.save_pretrained(f"{args.dump_path}/unet")
         text_proj_model.save_pretrained(f"{args.dump_path}/text_proj")

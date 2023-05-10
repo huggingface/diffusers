@@ -12,24 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPVisionModelWithProjection, CLIPTokenizer, XLMRobertaTokenizerFast
+from transformers import (
+    XLMRobertaTokenizerFast,
+)
 
-from ...models import PriorTransformer, UNet2DConditionModel
+from ...models import UNet2DConditionModel
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
-
-from .pipeline_kandinsky_prior import KandinskyPriorPipeline
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+)
 from .text_encoder import MultilingualCLIP
 from .text_proj import KandinskyTextProjModel
 
-from ...utils import (
-    logging, 
-    randn_tensor,
-)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -43,6 +44,7 @@ def get_new_h_w(h, w):
         new_w += 1
     return new_h * 8, new_w * 8
 
+
 class KandinskyPipeline(DiffusionPipeline):
     """
     Pipeline for image based on text prompt and image prior for Kandinsky
@@ -51,9 +53,9 @@ class KandinskyPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        text_encoder: 
+        text_encoder:
             to-add
-        tokenizer: 
+        tokenizer:
             to-add
         scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
@@ -62,7 +64,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_proj ([`KandinskyTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
     """
-    
+
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
@@ -100,7 +102,6 @@ class KandinskyPipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         negative_prompt=None,
     ):
-        
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -118,19 +119,17 @@ class KandinskyPipeline(DiffusionPipeline):
 
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-            text_input_ids, untruncated_ids
-        ):
-            removed_text = self.tokenizer.batch_decode(
-                untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-            )
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
 
-        prompt_embeds, text_encoder_hidden_states = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)
+        prompt_embeds, text_encoder_hidden_states = self.text_encoder(
+            input_ids=text_input_ids, attention_mask=text_mask
+        )
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
@@ -168,7 +167,9 @@ class KandinskyPipeline(DiffusionPipeline):
             uncond_text_input_ids = uncond_input.input_ids.to(device)
             uncond_text_mask = uncond_input.attention_mask.to(device)
 
-            negative_prompt_embeds, uncond_text_encoder_hidden_states = self.text_encoder(input_ids=uncond_text_input_ids, attention_mask=uncond_text_mask)
+            negative_prompt_embeds, uncond_text_encoder_hidden_states = self.text_encoder(
+                input_ids=uncond_text_input_ids, attention_mask=uncond_text_mask
+            )
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
@@ -194,7 +195,7 @@ class KandinskyPipeline(DiffusionPipeline):
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -272,7 +273,7 @@ class KandinskyPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
+        prompt: Union[str, List[str]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 100,
@@ -281,40 +282,36 @@ class KandinskyPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        #prompt_embeds: Optional[torch.FloatTensor] = None,
-        #text_encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_embeds: Optional[torch.FloatTensor] = None,
         negative_image_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
-        return_dict:  bool = True,
+        return_dict: bool = True,
     ):
-
-        if prompt is not None:
-            if isinstance(prompt, str):
-                batch_size = 1
-            elif isinstance(prompt, list):
-                batch_size = len(prompt)
-            else:
-                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0] //2
-        
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt)
+        prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
         # TO_DO [2] add a step to create negative_image_embeds https://github.com/ai-forever/Kandinsky-2/blob/main/kandinsky2/kandinsky2_1_model.py#L322
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
-        
+
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
             prompt_embeds=prompt_embeds,
             text_encoder_hidden_states=text_encoder_hidden_states,
-            )
+        )
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
@@ -324,7 +321,7 @@ class KandinskyPipeline(DiffusionPipeline):
         height = height or self.unet.config.sample_size
         width = width or self.unet.config.sample_size
         height, width = get_new_h_w(height, width)
-        
+
         # create initial latent
         latents = self.prepare_latents(
             (batch_size, num_channels_latents, height, width),
@@ -334,28 +331,28 @@ class KandinskyPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-        
+
         # expand the latents if we are doing classifier free guidance
         latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        
+
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             noise_pred = self.unet(
-                sample=latents, #[2, 4, 96, 96]
+                sample=latents,  # [2, 4, 96, 96]
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 class_labels=additive_clip_time_embeddings,
             ).sample
 
-            # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline, 
-              # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond) 
-              # this means the our latent shape is batch_size *2 instad batch_size
+            # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
+            # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond)
+            # this means the our latent shape is batch_size *2 instad batch_size
 
             if do_classifier_free_guidance:
                 noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 variance_pred_uncond, variance_pred_text = variance_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                noise_pred = torch.cat([noise_pred] * 2) 
+                noise_pred = torch.cat([noise_pred] * 2)
                 variance_pred = torch.cat([variance_pred_uncond, variance_pred_text])
                 noise_pred = torch.cat([noise_pred, variance_pred], dim=1)
 
@@ -366,10 +363,14 @@ class KandinskyPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
-                noise_pred, t, latents, prev_timestep=prev_timestep, generator=generator, batch_size=batch_size,
+                noise_pred,
+                t,
+                latents,
+                prev_timestep=prev_timestep,
+                generator=generator,
+                batch_size=batch_size,
             ).prev_sample
 
         _, latents = latents.chunk(2)
 
-
-        return latents 
+        return latents

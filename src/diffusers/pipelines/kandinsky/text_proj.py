@@ -30,7 +30,7 @@ class KandinskyTextProjModel(ModelMixin, ConfigMixin):
         self,
         *,
         clip_extra_context_tokens: int = 10,
-        clip_text_encoder_hidden_states_dim: int = 1024, 
+        clip_text_encoder_hidden_states_dim: int = 1024,
         clip_embeddings_dim: int = 768,
         time_embed_dim: int = 1536,
         cross_attention_dim: int = 768,
@@ -50,7 +50,6 @@ class KandinskyTextProjModel(ModelMixin, ConfigMixin):
         self.encoder_hidden_states_proj = nn.Linear(clip_text_encoder_hidden_states_dim, cross_attention_dim)
 
     def forward(self, *, image_embeddings, prompt_embeds, text_encoder_hidden_states):
-
         # The image embeddings batch size and the text embeddings batch size are equal
         assert image_embeddings.shape[0] == prompt_embeds.shape[0] == text_encoder_hidden_states.shape[0]
 
@@ -62,10 +61,6 @@ class KandinskyTextProjModel(ModelMixin, ConfigMixin):
         time_projected_image_embeddings = self.clip_image_embeddings_project_to_time_embeddings(image_embeddings)
         additive_clip_time_embeddings = time_projected_image_embeddings + time_projected_prompt_embeds
 
-        # image_embeddings -> linear (2 x 7680) -> (2, 10, 768)
-        # text_encoder_hidden_states -> linear -> (2, 77, 768)
-         # (2, 87, 768)
-          # ... and by projecting CLIP embeddings into 10
         # extra tokens of context that are concatenated to the sequence of outputs from the GLIDE text encoder"
         clip_extra_context_tokens = self.clip_extra_context_tokens_proj(image_embeddings)
         clip_extra_context_tokens = clip_extra_context_tokens.reshape(batch_size, self.clip_extra_context_tokens, -1)
