@@ -548,7 +548,6 @@ class KandinskyPipeline(DiffusionPipeline):
               # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond) 
               # this means the our latent shape is batch_size *2 instad batch_size
 
-            # YiYi's TO-DO: test it to see if we can do it differently: apply cfg to predicted noise and only take cond portion in predicted variance
             if do_classifier_free_guidance:
                 noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)

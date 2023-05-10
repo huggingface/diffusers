@@ -23,14 +23,6 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
-def dynamic_threholding_test(x):
-    x2 = torch.clone(x).cpu().detach().numpy()
-    p = 99.5
-    s = np.percentile(np.abs(x2), p, axis=tuple(range(1, x2.ndim)))[0]
-    s = max(s, 1.0)
-    x = torch.clip(x, -s, s) / s
-    return x  # x.clamp(-1, 1)
-
 
 @dataclass
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->UnCLIP
@@ -125,7 +117,8 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         clip_sample_range: Optional[float] = 1.0,
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
-        sample_max_value: float = 1.0,
+        sample_min_value: Optional[float] = None,
+        sample_max_value: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
         beta_schedule: str = "squaredcos_cap_v2", # "linear"
         beta_start: float = 0.0001,
@@ -248,7 +241,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
         s = torch.clamp(
-            s, min=1, max=self.config.sample_max_value
+            s, min=self.config.sample_min_value, max=self.config.sample_max_value,
         )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
 
         s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
@@ -331,9 +324,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.config.thresholding:
-            # yiyi Notes, testing with dynamic_threholding_test, need to make it work with _threshold_sample
-            #pred_original_sample = self._threshold_sample(pred_original_sample)
-            pred_original_sample = dynamic_threholding_test(pred_original_sample)
+            pred_original_sample = self._threshold_sample(pred_original_sample)
             
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
