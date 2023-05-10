@@ -47,16 +47,16 @@ def get_new_h_w(h, w):
 
 class KandinskyPipeline(DiffusionPipeline):
     """
-    Pipeline for image based on text prompt and image prior for Kandinsky
+    Pipeline for text-to-image generation using Kandinsky
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        text_encoder:
-            to-add
-        tokenizer:
-            to-add
+        text_encoder ([`MultilingualCLIP`]):
+            Frozen text-encoder.
+        tokenizer ([`XLMRobertaTokenizerFast`]):
+            Tokenizer of class
         scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):

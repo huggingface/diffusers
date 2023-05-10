@@ -41,19 +41,15 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     Args:
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+        prior_image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        image_encoder ([`CLIPVisionModelWithProjection`]):
-            Frozen image-encoder.
         prior_tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         prior_scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        multiclip ([`MultilingualCLIP`]):
-            A multilingual text encoder.
-        multiclip_tokenizer ([`XLMRobertaTokenizerFast`]):
-            Tokenizer for multiclip
     """
 
     def __init__(
