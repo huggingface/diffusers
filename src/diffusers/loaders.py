@@ -21,9 +21,13 @@ import torch
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    SlicedAttnAddedKVProcessor,
 )
 from .utils import (
     DIFFUSERS_CACHE,
@@ -250,10 +254,22 @@ class UNet2DConditionLoadersMixin:
 
             for key, value_dict in lora_grouped_dict.items():
                 rank = value_dict["to_k_lora.down.weight"].shape[0]
-                cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRAAttnProcessor(
+                attn_processor = self
+                for sub_key in key.split("."):
+                    attn_processor = getattr(attn_processor, sub_key)
+
+                if isinstance(
+                    attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
+                ):
+                    cross_attention_dim = value_dict["add_k_proj_lora.down.weight"].shape[1]
+                    attn_processor_class = LoRAAttnAddedKVProcessor
+                else:
+                    cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
+                    attn_processor_class = LoRAAttnProcessor
+
+                attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
                 )
                 attn_processors[key].load_state_dict(value_dict)
@@ -1205,10 +1221,10 @@ class FromCkptMixin:
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
-            use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
-                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
-                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
+                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
                 checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults
                 to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for

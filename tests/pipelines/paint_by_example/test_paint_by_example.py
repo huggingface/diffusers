@@ -38,6 +38,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PaintByExamplePipeline
     params = IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])  # TO_DO: update the image_prams once refactored VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)

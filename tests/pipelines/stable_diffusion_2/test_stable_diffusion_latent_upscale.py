@@ -32,13 +32,13 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_d
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionLatentUpscalePipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
         "height",
@@ -49,6 +49,10 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
     }
     required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+
     test_cpu_offload = True
 
     @property
