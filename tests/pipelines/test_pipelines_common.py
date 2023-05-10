@@ -308,8 +308,8 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
 
-    def test_inference_batch_single_identical(self, batch_size=3):
-        self._test_inference_batch_single_identical(batch_size=batch_size)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
+        self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def _test_inference_batch_single_identical(
         self,
@@ -525,8 +525,8 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass()
+    def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
+        self._test_attention_slicing_forward_pass(expected_max_diff=expected_max_diff)
 
     def _test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3

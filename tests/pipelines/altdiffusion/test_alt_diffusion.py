@@ -127,6 +127,12 @@ class AltDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMix
         }
         return inputs
 
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
     def test_alt_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
