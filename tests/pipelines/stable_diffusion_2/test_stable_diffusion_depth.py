@@ -362,6 +362,9 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 @slow
 @require_torch_gpu

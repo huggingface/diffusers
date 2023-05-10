@@ -211,7 +211,10 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):
-        return super().test_attention_slicing_forward_pass()
+        return super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

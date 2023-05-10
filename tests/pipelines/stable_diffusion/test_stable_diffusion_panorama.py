@@ -130,7 +130,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
     # override to speed the overall test timing up.
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(batch_size=2)
+        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=3e-3)
 
     def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

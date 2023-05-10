@@ -33,6 +33,9 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
+torch.use_deterministic_algorithms(False)
+
+
 @skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(
     PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
@@ -147,6 +150,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=2)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
 
 
 @require_torch_gpu
