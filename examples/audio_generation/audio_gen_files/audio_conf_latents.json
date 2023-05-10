@@ -1,4 +1,6 @@
 {"dataset_json_file": "/u/li19/data_folder/AudioTaggingDoneRight/egs/audioset/data/datafiles/delta_bal_alpaca_train.json",
  "latent_folder_path": "/u/li19/data_folder/AudioTaggingDoneRight/egs/audioset/data/datafiles/bal_latent_raw",
- "wav_folder": "/u/li19/data_folder/audioSetAudio/balance_wav"
+ "wav_folder": "/u/li19/data_folder/audioSetAudio/balance_wav",
+ "norm_mean": 0.5,
+ "norm_std": 0.5
 }

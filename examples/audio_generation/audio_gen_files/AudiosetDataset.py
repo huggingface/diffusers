@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 import random
 from pathlib import Path
 import os
+from torchvision import transforms
 
 def make_index_dict(label_csv):
     index_lookup = {}
@@ -46,20 +47,30 @@ def preemphasis(signal,coeff=0.97):
     return np.append(signal[0],signal[1:]-coeff*signal[:-1])
 
 class AudiosetDataset(Dataset):
-    def __init__(self, dataset_json_file, tokenizer=None, device=None, dtype=None, latent_folder=None, label_csv=None, wav_folder=None, channels=4, logger=None):
+    def __init__(self, audio_conf, tokenizer=None, device=None, dtype=None, latent_folder=None, label_csv=None, wav_folder=None, channels=4, logger=None):
         """
         Dataset that manages audio recordings
         :param audio_conf: Dictionary containing the audio loading and preprocessing settings
         :param dataset_json_file
         """
-        self.datapath = dataset_json_file
-        self.latent_folder = latent_folder
-        with open(dataset_json_file, 'r') as fp:
+        self.datapath = audio_conf["dataset_json_file"]
+        self.latent_folder = audio_conf["latent_folder_path"]
+        self.wav_folder = audio_conf["wav_folder"]
+        
+        
+        if ("norm_mean" in audio_conf.keys() and "norm_std" in audio_conf.keys()):
+            self.norm_mean = audio_conf["norm_mean"]
+            self.norm_std = audio_conf["norm_std"]
+        else:
+            self.norm_mean = None
+            self.norm_std = None
+        
+        
+        with open(self.datapath, 'r') as fp:
             data_json = json.load(fp)
 
         self.data = data_json['data']
-        self.dataset = dataset_json_file
-        self.wav_folder = wav_folder
+        self.dataset = self.datapath
         self.tokenizer = tokenizer
         self.device = device
         self.channels = channels
@@ -153,18 +164,24 @@ class AudiosetDataset(Dataset):
         datum = self.data[index]
         
         # do mix-up for this sample (controlled by the given mixup rate)
-        if (self.wav_folder):
-            path = datum['wav'].split("/")[-1]
-            path = os.path.join(self.wav_folder, path)
-            waveform, sr = torchaudio.load(path)
+        if (self.latent_folder is None):
+            if (self.wav_folder):
+                path = datum['wav'].split("/")[-1]
+                path = os.path.join(self.wav_folder, path)
+                waveform, sr = torchaudio.load(path)
+            else:
+                waveform, sr = torchaudio.load(datum['wav'])
+            waveform = waveform - waveform.mean()
+            m = torch.nn.ConstantPad1d((0, 1_000), 0)    
+            waveform = m(waveform)
         else:
-            waveform, sr = torchaudio.load(datum['wav'])
-        waveform = waveform - waveform.mean()
+            waveform = torch.Tensor([0])
+            sr = 1
+            
         label = datum["caption"]
         
         if (self.logger):
             self.logger.info(datum['wav'])
-            self.logger.info(f'WAVEFORM_PRE_PAD: {waveform.shape}')
             self.logger.info(f'LABEL: {label}')
             
         input_ids = []
@@ -174,13 +191,10 @@ class AudiosetDataset(Dataset):
             )
             input_ids = input_ids.input_ids[0]
             
-        m = torch.nn.ConstantPad1d((0, 1_000), 0)    
-        waveform = m(waveform)
         
         latent = None
         
         if (self.logger):
-            self.logger.info(f'WAVEFORM_POST_PAD: {waveform.shape}')
             self.logger.info(f'INPUT_IDS: {input_ids}')
         
         if (self.latent_folder):
@@ -198,11 +212,6 @@ class AudiosetDataset(Dataset):
         
         
         batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "latent": latent}
-        if (self.logger):
-            self.logger.info(f'''BATCH; 
-                             wavform shape: {batch['waveform'].shape}, 
-                             batch ids: {batch["input_ids"].shape}, 
-                             latent shape: {batch['latent'].shape}''')
         
         return batch
 
