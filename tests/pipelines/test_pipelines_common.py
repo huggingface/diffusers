@@ -428,7 +428,7 @@ class PipelineTesterMixin:
         self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_save_load_float16(self):
+    def test_save_load_float16(self, expected_max_difference=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
             if hasattr(module, "half"):
@@ -457,7 +457,9 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-2, "The output of the fp16 pipeline changed after saving and loading.")
+        self.assertLess(
+            max_diff, expected_max_difference, "The output of the fp16 pipeline changed after saving and loading."
+        )
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
