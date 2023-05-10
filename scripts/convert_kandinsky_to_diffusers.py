@@ -1075,19 +1075,19 @@ def movq_attention_to_diffusers_checkpoint_spatial_norm(checkpoint, *, diffusers
         f"{diffusers_attention_prefix}.norm.conv_b.weight": checkpoint[f"{attention_prefix}.norm.conv_b.weight"],
         f"{diffusers_attention_prefix}.norm.conv_b.bias": checkpoint[f"{attention_prefix}.norm.conv_b.bias"],
         # query
-        f"{diffusers_attention_prefix}.query.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.query.bias": checkpoint[f"{attention_prefix}.q.bias"],
+        f"{diffusers_attention_prefix}.attention.to_q.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.attention.to_q.bias": checkpoint[f"{attention_prefix}.q.bias"],
         # key
-        f"{diffusers_attention_prefix}.key.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.key.bias": checkpoint[f"{attention_prefix}.k.bias"],
+        f"{diffusers_attention_prefix}.attention.to_k.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.attention.to_k.bias": checkpoint[f"{attention_prefix}.k.bias"],
         # value
-        f"{diffusers_attention_prefix}.value.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.value.bias": checkpoint[f"{attention_prefix}.v.bias"],
+        f"{diffusers_attention_prefix}.attention.to_v.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.attention.to_v.bias": checkpoint[f"{attention_prefix}.v.bias"],
         # proj_attn
-        f"{diffusers_attention_prefix}.proj_attn.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
+        f"{diffusers_attention_prefix}.attention.to_out.0.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
             :, :, 0, 0
         ],
-        f"{diffusers_attention_prefix}.proj_attn.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
+        f"{diffusers_attention_prefix}.attention.to_out.0.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
     }
 
 

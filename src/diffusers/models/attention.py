@@ -55,17 +55,12 @@ class AttentionBlock(nn.Module):
         norm_num_groups: int = 32,
         rescale_output_factor: float = 1.0,
         eps: float = 1e-5,
-        norm_type: str = "default", # default, spatial
-        temb_channels: Optional[int] = None,
     ):
         super().__init__()
         self.channels = channels
 
         self.num_heads = channels // num_head_channels if num_head_channels is not None else 1
-        if norm_type == "spatial":
-            self.norm = SpatialNorm(channels, temb_channels)
-        else:
-            self.norm = nn.GroupNorm(num_channels=channels, num_groups=norm_num_groups, eps=eps, affine=True)
+        self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=norm_num_groups, eps=eps, affine=True)
 
         # define q,k,v as linear layers
         self.query = nn.Linear(channels, channels)
@@ -131,15 +126,12 @@ class AttentionBlock(nn.Module):
         self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
         self._attention_op = attention_op
 
-    def forward(self, hidden_states, zq=None):
+    def forward(self, hidden_states):
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
         # norm
-        if zq is None:
-            hidden_states = self.norm(hidden_states)
-        else:
-            hidden_states = self.norm(hidden_states, zq=zq)
+        hidden_states = self.group_norm(hidden_states)
 
         hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
 
@@ -547,25 +539,3 @@ class AdaGroupNorm(nn.Module):
         x = F.group_norm(x, self.num_groups, eps=self.eps)
         x = x * (1 + scale) + shift
         return x
-
-
-class SpatialNorm(nn.Module):
-    """
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
-    """
-    def __init__(
-        self,
-        f_channels,
-        zq_channels,
-    ):
-        super().__init__()
-        self.norm_layer = nn.GroupNorm(num_channels=f_channels,num_groups=32,eps=1e-6,affine=True)
-        self.conv_y = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-        self.conv_b = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, f, zq):
-        f_size = f.shape[-2:]
-        zq = F.interpolate(zq, size=f_size, mode="nearest")
-        norm_f = self.norm_layer(f)
-        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
-        return new_f
