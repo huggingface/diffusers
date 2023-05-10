@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Accelerated PyTorch 2.0 support in Diffusers
 
-Starting from version `0.13.0`, Diffusers supports the latest optimization from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) release. These include:
+Starting from version `0.13.0`, Diffusers supports the latest optimization from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). These include:
 1. Support for accelerated transformers implementation with memory-efficient attention – no extra dependencies (such as `xformers`) required.
 2. [torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) support for extra performance boost when individual models are compiled.
 
@@ -60,7 +60,7 @@ pip install --upgrade torch torchvision diffusers
 
     This should be as fast and memory efficient as `xFormers`. More details [in our benchmark](#benchmark).
 
-    If you want to revert to use the vanilla attention processor ([`~AttnProcessor`]) which can help to make the pipeline more deterministic, you can use the [`~UNet2DModel.set_default_attn_processor`] function:
+    It is possible to revert to the vanilla attention processor ([`~AttnProcessor`]), which can be helpful to make the pipeline more deterministic, or if you need to convert a fine-tuned model to other formats such as [Core ML](https://huggingface.co/docs/diffusers/v0.16.0/en/optimization/coreml#how-to-run-stable-diffusion-with-core-ml). To use the normal attention processor you can use the [`~UNet2DModel.set_default_attn_processor`] function:
 
     ```Python
     import torch
@@ -91,7 +91,7 @@ pip install --upgrade torch torchvision diffusers
 
 ## Benchmark
 
-We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and different batch sizes for five of our most used pipelines. 
+We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and batch sizes for five of our most used pipelines. We used `diffusers 0.17.0.dev0`, which [makes sure `torch.compile()` is leveraged optimally](https://github.com/huggingface/diffusers/pull/3286).
 
 ### Benchmarking code 
 
