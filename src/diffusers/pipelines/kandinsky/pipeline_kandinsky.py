@@ -70,13 +70,13 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     def __init__(
         self,
         prior: PriorTransformer,
-        text_encoder: CLIPTextModelWithProjection,
-        image_encoder: CLIPVisionModelWithProjection,
+        #text_encoder: CLIPTextModelWithProjection,
+        prior_image_encoder: CLIPVisionModelWithProjection,
         prior_text_encoder: CLIPTextModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
         prior_scheduler: UnCLIPScheduler,
-        multiclip: MultilingualCLIP,
-        multiclip_tokenizer: XLMRobertaTokenizerFast,
+        #multiclip: MultilingualCLIP,
+        #multiclip_tokenizer: XLMRobertaTokenizerFast,
     ):
         super().__init__()
 
@@ -85,9 +85,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
-            image_encoder=image_encoder,
-            multiclip=multiclip,
-            multiclip_tokenizer=multiclip_tokenizer,
+            prior_image_encoder=prior_image_encoder,
+            #multiclip=multiclip,
+            #multiclip_tokenizer=multiclip_tokenizer,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -100,6 +100,12 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
+
+    def create_zero_img_emb(self, batch_size, device):
+        zero_img = torch.zeros(1, 3, 224, 224).to(device=device)
+        zero_image_emb = self.prior_image_encoder(zero_img)["image_embeds"]
+        zero_image_emb = zero_image_emb.repeat(batch_size,1)
+        return zero_image_emb
 
     def _encode_prompt(
         self,
@@ -237,60 +243,66 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         batch_size = batch_size * num_images_per_prompt
 
-        do_classifier_free_guidance = prior_guidance_scale > 1.0
-        prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-        )
+        if prompt == '' or prompt[0] == '':
+            
+            image_embeddings = self.create_zero_img_emb(batch_size=batch_size, device=device)
+        
+        else:
 
-        # prior
-        self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
-        prior_timesteps_tensor = self.prior_scheduler.timesteps
+            do_classifier_free_guidance = prior_guidance_scale > 1.0
+            prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
+                prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
 
-        embedding_dim = self.prior.config.embedding_dim
+            # prior
+            self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
+            prior_timesteps_tensor = self.prior_scheduler.timesteps
 
-        prior_latents = self.prepare_latents(
-            (batch_size, embedding_dim),
-            prompt_embeds.dtype,
-            device,
-            generator,
-            prior_latents,
-            self.prior_scheduler,
-        )
+            embedding_dim = self.prior.config.embedding_dim
 
-        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
+            prior_latents = self.prepare_latents(
+                (batch_size, embedding_dim),
+                prompt_embeds.dtype,
+                device,
+                generator,
+                prior_latents,
+                self.prior_scheduler,
+            )
 
-            predicted_image_embedding = self.prior(
-                latent_model_input,
-                timestep=t,
-                proj_embedding=prompt_embeds,
-                encoder_hidden_states=text_encoder_hidden_states,
-                attention_mask=text_mask,
-            ).predicted_image_embedding
+            for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
 
-            if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
-                )
+                predicted_image_embedding = self.prior(
+                    latent_model_input,
+                    timestep=t,
+                    proj_embedding=prompt_embeds,
+                    encoder_hidden_states=text_encoder_hidden_states,
+                    attention_mask=text_mask,
+                ).predicted_image_embedding
 
-            if i + 1 == prior_timesteps_tensor.shape[0]:
-                prev_timestep = None
-            else:
-                prev_timestep = prior_timesteps_tensor[i + 1]
+                if do_classifier_free_guidance:
+                    predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                    predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
+                        predicted_image_embedding_text - predicted_image_embedding_uncond
+                    )
 
-            prior_latents = self.prior_scheduler.step(
-                predicted_image_embedding,
-                timestep=t,
-                sample=prior_latents,
-                generator=generator,
-                prev_timestep=prev_timestep,
-            ).prev_sample
+                if i + 1 == prior_timesteps_tensor.shape[0]:
+                    prev_timestep = None
+                else:
+                    prev_timestep = prior_timesteps_tensor[i + 1]
 
-        prior_latents = self.prior.post_process_latents(prior_latents)
+                prior_latents = self.prior_scheduler.step(
+                    predicted_image_embedding,
+                    timestep=t,
+                    sample=prior_latents,
+                    generator=generator,
+                    prev_timestep=prev_timestep,
+                ).prev_sample
 
-        image_embeddings = prior_latents
+            prior_latents = self.prior.post_process_latents(prior_latents)
+
+            image_embeddings = prior_latents
 
         return image_embeddings
 

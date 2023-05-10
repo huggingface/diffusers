@@ -15,3 +15,4 @@ except OptionalDependencyNotAvailable:
 else:
     from .pipeline_kandinsky import KandinskyPipeline, KandinskyPriorPipeline
     from .text_proj import KandinskyTextProjModel
+    from .text_encoder import MultilingualCLIP
