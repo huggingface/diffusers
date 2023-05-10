@@ -21,7 +21,10 @@ from transformers import CLIPTextModelWithProjection, CLIPVisionModelWithProject
 from ...models import PriorTransformer, UNet2DConditionModel
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
+
 from .multiclip import MultilingualCLIP
+from .text_proj import KandinskyTextProjModel
+
 from ...utils import (
     logging, 
     randn_tensor,
@@ -29,7 +32,17 @@ from ...utils import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-class KandinskyPipeline(DiffusionPipeline):
+
+def get_new_h_w(h, w):
+    new_h = h // 64
+    if h % 64 != 0:
+        new_h += 1
+    new_w = w // 64
+    if w % 64 != 0:
+        new_w += 1
+    return new_h * 8, new_w * 8
+
+class KandinskyPriorPipeline(DiffusionPipeline):
     """
     Pipeline for generate image prior for Kandinsky
 
@@ -37,16 +50,16 @@ class KandinskyPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        text_encoder ([`CLIPTextModelWithProjection`]):
+        prior ([`PriorTransformer`]):
+            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+        prior_text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
-        scheduler ([`UnCLIPScheduler`]):
+        prior_scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
         multiclip ([`MultilingualCLIP`]):
             A multilingual text encoder.
@@ -59,6 +72,7 @@ class KandinskyPipeline(DiffusionPipeline):
         prior: PriorTransformer,
         text_encoder: CLIPTextModelWithProjection,
         image_encoder: CLIPVisionModelWithProjection,
+        prior_text_encoder: CLIPTextModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
         prior_scheduler: UnCLIPScheduler,
         multiclip: MultilingualCLIP,
@@ -68,7 +82,7 @@ class KandinskyPipeline(DiffusionPipeline):
 
         self.register_modules(
             prior=prior,
-            text_encoder=text_encoder,
+            prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
             image_encoder=image_encoder,
@@ -122,7 +136,7 @@ class KandinskyPipeline(DiffusionPipeline):
             )
             text_input_ids = text_input_ids[:, : self.prior_tokenizer.model_max_length]
 
-        text_encoder_output = self.text_encoder(text_input_ids.to(device))
+        text_encoder_output = self.prior_text_encoder(text_input_ids.to(device))
 
         prompt_embeds = text_encoder_output.text_embeds
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
@@ -159,7 +173,7 @@ class KandinskyPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             uncond_text_mask = uncond_input.attention_mask.bool().to(device)
-            negative_prompt_embeds_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
+            negative_prompt_embeds_text_encoder_output = self.prior_text_encoder(uncond_input.input_ids.to(device))
 
             negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.text_embeds
             uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
@@ -279,3 +293,169 @@ class KandinskyPipeline(DiffusionPipeline):
         image_embeddings = prior_latents
 
         return image_embeddings
+
+
+class KandinskyPipeline(DiffusionPipeline):
+    """
+    Pipeline for image based on text prompt and image prior for Kandinsky
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        text_encoder: 
+            to-add
+        tokenizer: 
+            to-add
+        image_encoder: 
+            to-add
+        scheduler ([`UnCLIPScheduler`]):
+            A scheduler to be used in combination with `unet` to generate image latents.
+        unet ([`UNet2DConditionModel`]):
+            Conditional U-Net architecture to denoise the image embedding.
+        text_proj ([`KandinskyTextProjModel`]):
+            Utility class to prepare and combine the embeddings before they are passed to the decoder.
+    """
+    
+    def __init__(
+        self,
+        text_proj: KandinskyTextProjModel,
+        unet: UNet2DConditionModel,
+        scheduler: UnCLIPScheduler,
+    ):
+        super().__init__()
+
+        self.register_modules(
+            text_proj=text_proj,
+            unet=unet,
+            scheduler=scheduler,
+        )
+
+    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        latents = latents * scheduler.init_noise_sigma
+        return latents
+
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        # TO_DO
+        return self.device
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Optional[Union[str, List[str]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 100,
+        guidance_scale: float = 4.0,
+        num_images_per_prompt: int = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        text_encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
+        negative_image_embeds: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict:  bool = True,
+    ):
+
+        if prompt is not None:
+            if isinstance(prompt, str):
+                batch_size = 1
+            elif isinstance(prompt, list):
+                batch_size = len(prompt)
+            else:
+                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        else:
+            batch_size = prompt_embeds.shape[0] //2
+        
+        device = self._execution_device
+
+        batch_size = batch_size * num_images_per_prompt
+
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        #  TO_DO[1] add encode_text step https://github.com/ai-forever/Kandinsky-2/blob/main/kandinsky2/kandinsky2_1_model.py#L208
+        #  Here we pass prompt_embeds and text_encoder_hidden_states directly 
+        
+        # prompt_embeds, text_encoder_hidden_states = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
+
+        # TO_DO [2] add a step to create negative_image_embeds https://github.com/ai-forever/Kandinsky-2/blob/main/kandinsky2/kandinsky2_1_model.py#L322
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
+        
+        text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
+            image_embeddings=image_embeds,
+            prompt_embeds=prompt_embeds,
+            text_encoder_hidden_states=text_encoder_hidden_states,
+            )
+
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps_tensor = self.scheduler.timesteps
+
+        num_channels_latents = self.unet.config.in_channels
+
+        height = height or self.unet.config.sample_size
+        width = width or self.unet.config.sample_size
+        height, width = get_new_h_w(height, width)
+        
+        # create initial latent
+        latents = self.prepare_latents(
+            (batch_size, num_channels_latents, height, width),
+            text_encoder_hidden_states.dtype,
+            device,
+            generator,
+            latents,
+            self.scheduler,
+        )
+        
+        # expand the latents if we are doing classifier free guidance
+        latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        
+        for i, t in enumerate(self.progress_bar(timesteps_tensor)):
+            noise_pred = self.unet(
+                sample=latents, #[2, 4, 96, 96]
+                timestep=t,
+                encoder_hidden_states=text_encoder_hidden_states,
+                class_labels=additive_clip_time_embeddings,
+            ).sample
+
+            # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline, 
+              # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond) 
+              # this means the our latent shape is batch_size *2 instad batch_size
+
+            # YiYi's TO-DO: test it to see if we can do it differently: apply cfg to predicted noise and only take cond portion in predicted variance
+            if do_classifier_free_guidance:
+                noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                variance_pred_uncond, variance_pred_text = variance_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = torch.cat([noise_pred] * 2) 
+                variance_pred = torch.cat([variance_pred_uncond, variance_pred_text])
+                noise_pred = torch.cat([noise_pred, variance_pred], dim=1)
+
+            if i + 1 == timesteps_tensor.shape[0]:
+                prev_timestep = None
+            else:
+                prev_timestep = timesteps_tensor[i + 1]
+
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(
+                noise_pred, t, latents, prev_timestep=prev_timestep, generator=generator, batch_size=batch_size,
+            ).prev_sample
+
+        _, latents = latents.chunk(2)
+
+
+        return latents 

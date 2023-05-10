@@ -154,6 +154,7 @@ else:
         TextToVideoZeroPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
+        KandinskyPriorPipeline,
         KandinskyPipeline,
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
