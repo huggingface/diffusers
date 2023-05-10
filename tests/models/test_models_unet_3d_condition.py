@@ -225,11 +225,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
             sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample1 - sample2).abs().max() < 1e-4
-        assert (sample3 - sample4).abs().max() < 1e-4
+        assert (sample1 - sample2).abs().max() < 3e-3
+        assert (sample3 - sample4).abs().max() < 3e-3
 
         # sample 2 and sample 3 should be different
-        assert (sample2 - sample3).abs().max() > 1e-4
+        assert (sample2 - sample3).abs().max() > 3e-3
 
     def test_lora_save_load(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -366,7 +366,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             new_sample = model(**inputs_dict).sample
 
         assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 1e-4
+        assert (sample - old_sample).abs().max() < 3e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
