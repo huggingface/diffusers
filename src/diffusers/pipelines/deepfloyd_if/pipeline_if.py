@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
+from ...loaders import LoraLoaderMixin
 from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -85,7 +86,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class IFPipeline(DiffusionPipeline):
+class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -803,6 +804,9 @@ class IFPipeline(DiffusionPipeline):
                     noise_pred_text, predicted_variance = noise_pred_text.split(model_input.shape[1], dim=1)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
+
+                if self.scheduler.config.variance_type not in ["learned", "learned_range"]:
+                    noise_pred, _ = noise_pred.split(model_input.shape[1], dim=1)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(
