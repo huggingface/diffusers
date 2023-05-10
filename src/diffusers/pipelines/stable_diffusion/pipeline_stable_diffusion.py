@@ -20,7 +20,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -168,7 +168,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 1
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):
@@ -649,7 +650,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
+        # num_channels_latents = self.unet.config.in_channels
+        num_channels_latents = 1
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -660,6 +662,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
             generator,
             latents,
         )
+        
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -684,10 +687,35 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
+                    
+                noise_pred_peek = torch.Tensor.view(noise_pred.clone(), [latents.shape[0], 128, 24, 21])
+              
+                for img in noise_pred_peek:
+                    means = img.mean(axis=(1,2))
+                    stds = img.std(axis=(1,2))
+                    
+                    print(f'Noise Mean: {means}')
+                    print(f'Noise std:  {stds}')
+                    # print(f'MEAN: mean {means.mean()} -- std {means.std()}')
+                    # print(f'STD: mean {stds.mean()} -- std {stds.std()}')
+                    print()
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
+                
+                
+                latents = torch.Tensor.view(latents, [latents.shape[0], 128, 24, 21])
+                for img in latents:
+                    means = img.mean(axis=(1,2))
+                    stds = img.std(axis=(1,2))
+                    
+                    print(means)
+                    print(stds)
+                    # print(f'MEAN: mean {means.mean()} -- std {means.std()}')
+                    # print(f'STD: mean {stds.mean()} -- std {stds.std()}')
+                    print()
+                latents = torch.Tensor.view(latents, [latents.shape[0], 1, 128, 504])
+        
+        
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
