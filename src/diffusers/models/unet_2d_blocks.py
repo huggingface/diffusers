@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .attention import AdaGroupNorm, AttentionBlock
+from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
@@ -427,12 +427,16 @@ class UNetMidBlock2D(nn.Module):
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
-                    AttentionBlock(
+                    Attention(
                         in_channels,
-                        num_head_channels=attn_num_head_channels,
+                        heads=in_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                        dim_head=attn_num_head_channels if attn_num_head_channels is not None else in_channels,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
                         norm_num_groups=resnet_groups,
+                        residual_connection=True,
+                        bias=True,
+                        upcast_softmax=True,
                     )
                 )
             else:
@@ -711,12 +715,16 @@ class AttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
 
@@ -1060,12 +1068,16 @@ class AttnDownEncoderBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
 
@@ -1134,11 +1146,16 @@ class AttnSkipDownBlock2D(nn.Module):
                 )
             )
             self.attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
+                    norm_num_groups=32,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
 
@@ -1703,12 +1720,16 @@ class AttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
 
@@ -2037,12 +2058,16 @@ class AttnUpDecoderBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
 
@@ -2109,11 +2134,16 @@ class AttnSkipUpBlock2D(nn.Module):
             )
 
         self.attentions.append(
-            AttentionBlock(
+            Attention(
                 out_channels,
-                num_head_channels=attn_num_head_channels,
+                heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
+                norm_num_groups=32,
+                residual_connection=True,
+                bias=True,
+                upcast_softmax=True,
             )
         )
 

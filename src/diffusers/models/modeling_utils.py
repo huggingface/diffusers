@@ -583,6 +583,7 @@ class ModelMixin(torch.nn.Module):
                 if device_map is None:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
+                    cls.convert_deprecated_attention_blocks(state_dict)
                     # move the params from meta device to cpu
                     missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
                     if len(missing_keys) > 0:
@@ -625,6 +626,7 @@ class ModelMixin(torch.nn.Module):
                 model = cls.from_config(config, **unused_kwargs)
 
                 state_dict = load_state_dict(model_file, variant=variant)
+                cls.convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                     model,
@@ -760,6 +762,42 @@ class ModelMixin(torch.nn.Module):
             )
 
         return model, missing_keys, unexpected_keys, mismatched_keys, error_msgs
+
+    @classmethod
+    def convert_deprecated_attention_blocks(cls, state_dict):
+        # We check for the deprecated attention block via the `proj_attn` layer in the state dict
+        # The only other class with a layer called `proj_attn` is in `SelfAttention1d` which is used
+        # by only the top level model, `UNet1DModel`. Since, `UNet1DModel` wont have any of the deprecated
+        # attention blocks, we can just early return.
+        if cls.__name__ == "UNet1DModel":
+            return
+
+        deprecated_attention_block_paths = []
+
+        for k in state_dict.keys():
+            if "proj_attn.weight" in k:
+                index = k.index("proj_attn.weight")
+                path = k[: index - 1]
+                deprecated_attention_block_paths.append(path)
+
+        for path in deprecated_attention_block_paths:
+            # group_norm path stays the same
+
+            # query -> to_q
+            state_dict[f"{path}.to_q.weight"] = state_dict.pop(f"{path}.query.weight")
+            state_dict[f"{path}.to_q.bias"] = state_dict.pop(f"{path}.query.bias")
+
+            # key -> to_k
+            state_dict[f"{path}.to_k.weight"] = state_dict.pop(f"{path}.key.weight")
+            state_dict[f"{path}.to_k.bias"] = state_dict.pop(f"{path}.key.bias")
+
+            # value -> to_v
+            state_dict[f"{path}.to_v.weight"] = state_dict.pop(f"{path}.value.weight")
+            state_dict[f"{path}.to_v.bias"] = state_dict.pop(f"{path}.value.bias")
+
+            # proj_attn -> to_out.0
+            state_dict[f"{path}.to_out.0.weight"] = state_dict.pop(f"{path}.proj_attn.weight")
+            state_dict[f"{path}.to_out.0.bias"] = state_dict.pop(f"{path}.proj_attn.bias")
 
     @property
     def device(self) -> device:
