@@ -391,7 +391,7 @@ class PipelineTesterMixin:
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
-    def test_dict_tuple_outputs_equivalent(self):
+    def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -401,7 +401,7 @@ class PipelineTesterMixin:
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
-        self.assertLess(max_diff, 1e-4)
+        self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()

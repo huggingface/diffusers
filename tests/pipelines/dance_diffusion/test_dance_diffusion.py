@@ -28,7 +28,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-# torch.use_deterministic_algorithms(True)
 
 
 class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -116,6 +115,9 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
 
 
 @slow
