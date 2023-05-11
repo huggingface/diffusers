@@ -437,6 +437,7 @@ class UNetMidBlock2D(nn.Module):
                         residual_connection=True,
                         bias=True,
                         upcast_softmax=True,
+                        _from_deprecated_attn_block=True,
                     )
                 )
             else:
@@ -725,6 +726,7 @@ class AttnDownBlock2D(nn.Module):
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1078,6 +1080,7 @@ class AttnDownEncoderBlock2D(nn.Module):
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1156,6 +1159,7 @@ class AttnSkipDownBlock2D(nn.Module):
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1730,6 +1734,7 @@ class AttnUpBlock2D(nn.Module):
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -2068,6 +2073,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -2144,6 +2150,7 @@ class AttnSkipUpBlock2D(nn.Module):
                 residual_connection=True,
                 bias=True,
                 upcast_softmax=True,
+                _from_deprecated_attn_block=True,
             )
         )
 

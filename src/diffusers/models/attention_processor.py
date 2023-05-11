@@ -68,6 +68,7 @@ class Attention(nn.Module):
         eps: float = 1e-5,
         rescale_output_factor: float = 1.0,
         residual_connection: bool = False,
+        _from_deprecated_attn_block=False,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
@@ -77,6 +78,10 @@ class Attention(nn.Module):
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
+
+        # we make use of this private variable to know whether this class is loaded
+        # with an deprecated state dict so that we can convert it on the fly
+        self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
         self.scale = dim_head**-0.5 if self.scale_qk else 1.0
