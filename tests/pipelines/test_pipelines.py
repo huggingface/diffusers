@@ -68,6 +68,7 @@ from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_num
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class DownloadTests(unittest.TestCase):
