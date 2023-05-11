@@ -558,7 +558,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
-        if guess_mode:
+        if guess_mode and not self.config.global_pool_conditions:
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
 
             scales = scales * conditioning_scale
