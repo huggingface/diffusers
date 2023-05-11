@@ -22,8 +22,11 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
-# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
+def betas_for_alpha_bar(
+    num_diffusion_timesteps,
+    max_beta=0.999,
+    alpha_bar_fn=None,
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -44,11 +47,14 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     def alpha_bar(time_step):
         return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
 
+    if alpha_bar_fn is None:
+        alpha_bar_fn = alpha_bar
+
     betas = []
     for i in range(num_diffusion_timesteps):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+        betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
 
 
@@ -106,6 +112,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
+        elif beta_schedule == "exp":
+            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_bar_fn=lambda t: math.exp(t * -12.0))
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -152,6 +160,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         device: Union[str, torch.device] = None,
         num_train_timesteps: Optional[int] = None,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
+        use_karras_sigmas: Optional[bool] = None,  # overwrite the self.config.use_karras_sigma
     ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -166,15 +177,25 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
 
-        timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+        if sigma_min is not None and sigma_max is not None:
+            sigmas = torch.tensor([sigma_max, sigma_min])
 
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        log_sigmas = np.log(sigmas)
-        sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+        else:
+            timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
 
-        if self.use_karras_sigmas:
+            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+            log_sigmas = np.log(sigmas)
+            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+
+        if use_karras_sigmas is None:
+            use_karras_sigmas = self.use_karras_sigmas
+
+        if use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            if self.config.beta_schedule == "exp":
+                timesteps = np.array([self._sigma_to_t_yiyi(sigma) for sigma in sigmas])
+            else:
+                timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -220,6 +241,22 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
+    # YiYi Notes: Taking from the origional repo, will refactor and not introduce dependency on spicy
+    def _sigma_to_t_yiyi(self, sigma):
+        alpha_cumprod = 1.0 / (sigma**2 + 1)
+
+        if alpha_cumprod > self.alphas_cumprod[0]:
+            return 0
+        elif alpha_cumprod <= self.alphas_cumprod[-1]:
+            return len(self.alphas_cumprod) - 1
+        else:
+            from scipy import interpolate
+
+            timestep = interpolate.interp1d(self.alphas_cumprod, np.arange(0, len(self.alphas_cumprod)))(
+                alpha_cumprod
+            )  # yiyi testing, origin implementation
+        return int(timestep)
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
@@ -244,6 +281,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.FloatTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
+        step_index: Optional[int] = None,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Args:
@@ -258,7 +296,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        step_index = self.index_for_timestep(timestep)
+        if step_index is None:
+            step_index = self.index_for_timestep(timestep)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
@@ -284,7 +323,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 sample / (sigma_input**2 + 1)
             )
         elif self.config.prediction_type == "sample":
-            raise NotImplementedError("prediction_type not implemented yet: sample")
+            pred_original_sample = model_output
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
