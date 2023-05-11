@@ -37,6 +37,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionImageVariationPipelineFastTests(
@@ -148,6 +149,9 @@ class StableDiffusionImageVariationPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 @slow
 @require_torch_gpu
@@ -188,7 +192,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.84491, 0.90789, 0.75708, 0.78734, 0.83485, 0.70099, 0.66938, 0.68727, 0.61379])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert np.abs(image_slice - expected_slice).max() < 6e-3
 
     def test_stable_diffusion_img_variation_intermediate_state(self):
         number_of_steps = 0

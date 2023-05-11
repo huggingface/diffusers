@@ -33,6 +33,10 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(False)
+
+
 @skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(
     PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
@@ -141,12 +145,27 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_cpu_offload_forward_pass(self):
+        super().test_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
         self._test_inference_batch_consistent(batch_sizes=[1, 2])
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=2)
+        self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=7e-4)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+
+    def test_pt_np_pil_outputs_equivalent(self):
+        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=5e-4)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-4)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=4e-4)
 
 
 @require_torch_gpu

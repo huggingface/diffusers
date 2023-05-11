@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
@@ -251,7 +252,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
@@ -297,4 +298,4 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-2

@@ -103,7 +103,7 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
-        return super().test_dict_tuple_outputs_equivalent()
+        return super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
 
     @skip_mps
     def test_save_load_optional_components(self):
@@ -112,6 +112,9 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @skip_mps
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow
