@@ -774,10 +774,10 @@ def main(args):
         )
 
     def load_model_hook(models, input_dir):
-        # Note we DON'T pass the unet and text encoder here an purpose 
+        # Note we DON'T pass the unet and text encoder here an purpose
         # so that the we don't accidentally override the LoRA layers of
         # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
-        # with new torch.nn.Modules / weights. We simply use the pipeline class as 
+        # with new torch.nn.Modules / weights. We simply use the pipeline class as
         # an easy way to load the lora checkpoints
         temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -787,7 +787,7 @@ def main(args):
         temp_pipeline.load_lora_weights(input_dir)
 
         # load lora weights into models
-        models[0].load_state_dict(AttnProcsLayers(unet.attn_processors).state_dict())
+        models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
         if len(models) > 1:
             models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
 
@@ -1071,6 +1071,10 @@ def main(args):
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
         text_encoder = text_encoder.to(torch.float32)
+        unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+        text_encoder_lora_layers = (
+            accelerator.unwrap_model(text_encoder_lora_layers) if args.train_text_encoder else None
+        )
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
