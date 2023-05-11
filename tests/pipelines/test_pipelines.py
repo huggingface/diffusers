@@ -58,13 +58,19 @@ from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     floats_tensor,
-    is_flax_available,
     nightly,
     require_torch_2,
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import CaptureLogger, require_flax, get_tests_dir, load_numpy, require_compel, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    get_tests_dir,
+    load_numpy,
+    require_compel,
+    require_flax,
+    require_torch_gpu,
+)
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
