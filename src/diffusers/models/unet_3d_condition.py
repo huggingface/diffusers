@@ -148,17 +148,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
 
-        if conv_type == "inflated_conv_3d":
-            self.conv_in = InflatedConv3d(
-                in_channels,
-                block_out_channels[0],
-                kernel_size=conv_in_kernel,
-                padding=(conv_in_padding, conv_in_padding),
-            )
-        else:
-            self.conv_in = nn.Conv2d(
-                in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
-            )
+        self.conv_in = nn.Conv2d(
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+        )
         # time
         time_embed_dim = block_out_channels[0] * 4
         self.time_proj = Timesteps(block_out_channels[0], True, 0)
@@ -307,14 +299,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         conv_out_padding = (conv_out_kernel - 1) // 2
 
-        if conv_type == "inflated_conv_3d":
-            self.conv_out = InflatedConv3d(
-                block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
-            )
-        else:
-            self.conv_out = nn.Conv2d(
-                block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
-            )
+        self.conv_out = nn.Conv2d(
+            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+        )
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -542,8 +529,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             emb = emb + class_emb
 
         # 2. pre-process
-        # If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
-        if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
+        # If not using temporal transfomer, use num_frames in unet
+        if not self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
@@ -552,7 +539,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             sample = self.transformer_in(sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs).sample
         else:
+            video_length = sample.shape[2]
+            # b c f h w -> (b f) c h w
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            sample = sample.flatten(0, 1)
             sample = self.conv_in(sample)
+            # (b f) c h w -> b c f h w (f=video_length)
+            sample = sample.reshape([-1, video_length, *sample.shape[1:]])
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -634,12 +629,20 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
 
-        sample = self.conv_out(sample)
-
         # reshape to (batch, channel, framerate, width, height)
-        if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
+        if self.transformer_in:
+            sample = self.conv_out(sample)
             sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
-
+        else:
+            video_length = sample.shape[2]
+            # b c f h w -> (b f) c h w
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            sample = sample.flatten(0, 1)
+            sample = self.conv_out(sample)
+            # (b f) c h w -> b c f h w (f=video_length)
+            sample = sample.reshape([-1, video_length, *sample.shape[1:]])
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            
         if not return_dict:
             return (sample,)
 
