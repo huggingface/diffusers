@@ -771,9 +771,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         img_vae, img_clip = x.split([img_vae_dim, self.image_encoder_hidden_size], dim=1)
 
-        img_vae = torch.reshape(
-            img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width)
-        )
+        img_vae = torch.reshape(img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width))
         img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_hidden_size))
         return img_vae, img_clip
 
@@ -800,9 +798,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         img_vae, img_clip, text = x.split([img_vae_dim, self.image_encoder_hidden_size, text_dim], dim=1)
 
-        img_vae = torch.reshape(
-            img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width)
-        )
+        img_vae = torch.reshape(img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width))
         img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_hidden_size))
         text = torch.reshape(text, (batch_size, self.text_encoder_seq_len, self.text_encoder_hidden_size))
         return img_vae, img_clip, text
