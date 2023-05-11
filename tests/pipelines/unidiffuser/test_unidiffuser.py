@@ -454,7 +454,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         expected_img_slice = np.array([0.5757, 0.6270, 0.6567, 0.4966, 0.4639, 0.5664, 0.5259, 0.5068, 0.5713])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
-    
+
     @require_torch_gpu
     def test_unidiffuser_default_img2text_v1_cuda_fp16(self):
         device = "cuda"
