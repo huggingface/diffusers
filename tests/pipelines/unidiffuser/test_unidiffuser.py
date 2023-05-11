@@ -422,7 +422,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
             "output_type": "numpy",
         }
         return inputs
-    
+
     def test_unidiffuser_default_joint(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
