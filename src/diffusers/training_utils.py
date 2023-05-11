@@ -1,14 +1,14 @@
+import contextlib
 import copy
 import os
 import random
 from typing import Any, Dict, Iterable, Optional, Union
-import contextlib
 
 import numpy as np
 import torch
-import transformers
 
 from .utils import deprecate, is_transformers_available
+
 
 if is_transformers_available():
     import transformers
