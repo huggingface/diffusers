@@ -44,8 +44,8 @@ from io import BytesIO
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers-test"
-pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+model_id_or_path = "dg845/unidiffuser-diffusers"
+pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path)
 pipe.to(device)
 
 # Joint image-text generation. The generation task is automatically inferred.
