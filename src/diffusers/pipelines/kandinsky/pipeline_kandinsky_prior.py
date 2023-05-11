@@ -48,7 +48,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        prior_scheduler ([`UnCLIPScheduler`]):
+        scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
