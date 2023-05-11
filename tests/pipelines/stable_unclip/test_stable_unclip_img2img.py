@@ -34,6 +34,7 @@ from ..test_pipelines_common import (
     assert_mean_pixel_difference,
 )
 
+
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.use_deterministic_algorithms(True)
 

@@ -43,6 +43,10 @@ from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARA
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
+
+
 class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = UnCLIPImageVariationPipeline
     params = IMAGE_VARIATION_PARAMS - {"height", "width", "guidance_scale"}
