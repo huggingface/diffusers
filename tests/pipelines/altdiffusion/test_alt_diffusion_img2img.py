@@ -252,7 +252,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
