@@ -36,6 +36,9 @@ from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+from accelerate.state import AcceleratorState
+from transformers.utils import ContextManagers
+
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
@@ -462,20 +465,11 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
 
-    from accelerate.state import AcceleratorState
-    from transformers.utils import ContextManagers
-
-    def get_deepspeed_plugin():
-        if accelerate.state.is_initialized():
-            return AcceleratorState().deepspeed_plugin
-        else:
-            return None
-
     def deepspeed_zero_init_disabled_context_manager():
         """
         returns either a context list that includes one that will disable zero.Init or an empty context list
         """
-        deepspeed_plugin = get_deepspeed_plugin()
+        deepspeed_plugin = AcceleratorState() if accelerate.state.is_initialized() else None
         if deepspeed_plugin is None:
             return []
 

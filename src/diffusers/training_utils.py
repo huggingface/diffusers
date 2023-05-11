@@ -2,12 +2,16 @@ import copy
 import os
 import random
 from typing import Any, Dict, Iterable, Optional, Union
+import contextlib
 
 import numpy as np
 import torch
 import transformers
 
-from .utils import deprecate
+from .utils import deprecate, is_transformers_available
+
+if is_transformers_available():
+    import transformers
 
 
 def enable_full_determinism(seed: int):
@@ -198,13 +202,15 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
-        if transformers.deepspeed.is_deepspeed_zero3_enabled():
+        context_manager = contextlib.nullcontext
+        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
             import deepspeed
-        context_manager = []
+
         for s_param, param in zip(self.shadow_params, parameters):
-            if transformers.deepspeed.is_deepspeed_zero3_enabled():
-                context_manager = [deepspeed.zero.GatheredParameters(param, modifier_rank=None)]
-            with transformers.utils.ContextManagers(context_manager):
+            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+                context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+
+            with context_manager():
                 if param.requires_grad:
                     s_param.sub_(one_minus_decay * (s_param - param))
                 else:
