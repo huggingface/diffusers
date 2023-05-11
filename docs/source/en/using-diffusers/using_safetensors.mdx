@@ -52,7 +52,7 @@ pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
 There are several reasons for using safetensors:
 
 - Safety is the number one reason for using safetensors. As open-source and model distribution grows, it is important to be able to trust the model weights you downloaded don't contain any malicious code. The current size of the header in safetensors prevents parsing extremely large JSON files.
-- Loading speed between switching models is another reason to use safetensors, which performs zero-copy of the tensors. It is especially fast compared to `pickle` if you're loading it on a CPU, and just as fast if not faster on a GPU. You'll only notice the performance difference if the model is already loaded, and not if you're downloading the weights or loading the model for the first time.
+- Loading speed between switching models is another reason to use safetensors, which performs zero-copy of the tensors. It is especially fast compared to `pickle` if you're loading the weights to CPU (the default case), and just as fast if not faster when directly loading the weights to GPU. You'll only notice the performance difference if the model is already loaded, and not if you're downloading the weights or loading the model for the first time.
 
 	The time it takes to load the entire pipeline:
 
