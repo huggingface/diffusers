@@ -176,6 +176,9 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineLatentTesterMixin, Pi
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
