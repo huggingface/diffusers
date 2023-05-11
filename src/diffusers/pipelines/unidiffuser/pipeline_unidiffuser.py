@@ -1317,7 +1317,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
-        
+
         print(f"Initial latents: {latents}")
 
         # 7. Check that shapes of latents and image match the UNet channels.
