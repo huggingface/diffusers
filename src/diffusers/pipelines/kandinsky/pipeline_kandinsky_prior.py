@@ -55,10 +55,10 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     def __init__(
         self,
         prior: PriorTransformer,
-        prior_image_encoder: CLIPVisionModelWithProjection,
-        prior_text_encoder: CLIPTextModelWithProjection,
-        prior_tokenizer: CLIPTokenizer,
-        prior_scheduler: UnCLIPScheduler,
+        image_encoder: CLIPVisionModelWithProjection,
+        text_encoder: CLIPTextModelWithProjection,
+        tokenizer: CLIPTokenizer,
+        scheduler: UnCLIPScheduler,
     ):
         super().__init__()
 
