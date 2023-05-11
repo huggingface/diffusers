@@ -35,13 +35,14 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)

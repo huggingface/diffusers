@@ -64,6 +64,8 @@ snapshot_download(
 )
 ```
 
+To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
+
 ## Finetuning
 
 <Tip warning={true}>
@@ -76,7 +78,7 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 <pt>
 Set the `INSTANCE_DIR` environment variable to the path of the directory containing the dog images.
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`] argument. The `instance_prompt` argument is a text prompt that contains a unique identifier, such as `sks`, and the class the image belongs to, which in this example is `a photo of a sks dog`.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -111,7 +113,7 @@ Before running the script, make sure you have the requirements installed:
 pip install -U -r requirements.txt
 ```
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`] argument. The `instance_prompt` argument is a text prompt that contains a unique identifier, such as `sks`, and the class the image belongs to, which in this example is `a photo of a sks dog`.
 
 Now you can launch the training script with the following command:
 

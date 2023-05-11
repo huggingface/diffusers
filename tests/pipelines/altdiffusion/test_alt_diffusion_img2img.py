@@ -123,6 +123,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         tokenizer.model_max_length = 77
 
         init_image = self.dummy_image.to(device)
+        init_image = init_image / 2 + 0.5
 
         # make sure here that pndm scheduler skips prk
         alt_pipe = AltDiffusionImg2ImgPipeline(
@@ -134,7 +135,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
+        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=True)
         alt_pipe = alt_pipe.to(device)
         alt_pipe.set_progress_bar_config(disable=None)
 
