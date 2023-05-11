@@ -751,13 +751,14 @@ def main(args):
         unet_lora_layers_to_save = None
         text_encoder_lora_layers_to_save = None
 
+        if args.train_text_encoder:
+            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
+        unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
+
         for model in models:
             state_dict = model.state_dict()
 
-            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
-            unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
-
-            if text_encoder_lora_layers is not None and state_dict.keys() == text_encoder_keys:
+            if text_encoder_lora_layers is not None and text_encoder_keys is not None and state_dict.keys() == text_encoder_keys:
                 # text encoder
                 text_encoder_lora_layers_to_save = state_dict
             elif state_dict.keys() == unet_keys:
@@ -774,7 +775,7 @@ def main(args):
         )
 
     def load_model_hook(models, input_dir):
-        # Note we DON'T pass the unet and text encoder here an purpose 
+        # Note we DON'T pass the unet and text encoder here on purpose 
         # so that the we don't accidentally override the LoRA layers of
         # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
         # with new torch.nn.Modules / weights. We simply use the pipeline class as 
