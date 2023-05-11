@@ -1,21 +1,35 @@
 # Convert the original UniDiffuser checkpoints into diffusers equivalents.
 
 import argparse
+from argparse import Namespace
 
 import torch
+from transformers import (
+    GPT2Tokenizer,
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModel,
+)
 
 from diffusers import (
     AutoencoderKL,
+    DPMSolverMultistepScheduler,
     UniDiffuserModel,
+    UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
 
-
-# from ...utils import logging
-
-
-# logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
+SCHEDULER_CONFIG = Namespace(
+    **{
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "solver_order": 3,
+    }
+)
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.shave_segments
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -146,7 +160,7 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_vae_diffusers_config(args):
+def create_vae_diffusers_config(config_type):
     # Hardcoded for now
     if args.config_type == "test":
         vae_config = create_vae_diffusers_config_test()
@@ -154,13 +168,13 @@ def create_vae_diffusers_config(args):
         vae_config = create_vae_diffusers_config_big()
     else:
         raise NotImplementedError(
-            f"Config type {args.config.type} is not implemented, currently only config types"
+            f"Config type {config_type} is not implemented, currently only config types"
             " 'test' and 'big' are available."
         )
     return vae_config
 
 
-def create_unidiffuser_unet_config(args):
+def create_unidiffuser_unet_config(config_type, version):
     # Hardcoded for now
     if args.config_type == "test":
         unet_config = create_unidiffuser_unet_config_test()
@@ -168,16 +182,16 @@ def create_unidiffuser_unet_config(args):
         unet_config = create_unidiffuser_unet_config_big()
     else:
         raise NotImplementedError(
-            f"Config type {args.config.type} is not implemented, currently only config types"
+            f"Config type {config_type} is not implemented, currently only config types"
             " 'test' and 'big' are available."
         )
     # Unidiffuser-v1 uses data type embeddings
-    if args.version == 1:
+    if version == 1:
         unet_config["use_data_type_embedding"] = True
     return unet_config
 
 
-def create_text_decoder_config(args):
+def create_text_decoder_config(config_type):
     # Hardcoded for now
     if args.config_type == "test":
         text_decoder_config = create_text_decoder_config_test()
@@ -185,7 +199,7 @@ def create_text_decoder_config(args):
         text_decoder_config = create_text_decoder_config_big()
     else:
         raise NotImplementedError(
-            f"Config type {args.config.type} is not implemented, currently only config types"
+            f"Config type {config_type} is not implemented, currently only config types"
             " 'test' and 'big' are available."
         )
     return text_decoder_config
@@ -203,7 +217,6 @@ def create_vae_diffusers_config_test():
         "latent_channels": 4,
         "layers_per_block": 1,
     }
-
     return vae_config
 
 
@@ -233,7 +246,6 @@ def create_unidiffuser_unet_config_test():
         "ff_final_dropout": True,
         "use_data_type_embedding": False,
     }
-
     return unet_config
 
 
@@ -255,7 +267,6 @@ def create_text_decoder_config_test():
         "layer_norm_epsilon": 1e-5,
         "initializer_range": 0.02,
     }
-
     return text_decoder_config
 
 
@@ -272,7 +283,6 @@ def create_vae_diffusers_config_big():
         "latent_channels": 4,
         "layers_per_block": 2,
     }
-
     return vae_config
 
 
@@ -302,7 +312,6 @@ def create_unidiffuser_unet_config_big():
         "ff_final_dropout": True,
         "use_data_type_embedding": False,
     }
-
     return unet_config
 
 
@@ -325,7 +334,6 @@ def create_text_decoder_config_big():
         "layer_norm_epsilon": 1e-5,
         "initializer_range": 0.02,
     }
-
     return text_decoder_config
 
 
@@ -622,44 +630,153 @@ def convert_caption_decoder_to_diffusers(ckpt, diffusers_model):
     return diffusers_model
 
 
-def main(args):
-    # Create corresponding models, hardcoded for now.
-    vae_config = create_vae_diffusers_config(args)
-    vae = AutoencoderKL(**vae_config)
-
-    unet_config = create_unidiffuser_unet_config(args)
-    unet = UniDiffuserModel(**unet_config)
-
-    text_decoder_config = create_text_decoder_config(args)
-    text_decoder = UniDiffuserTextDecoder(**text_decoder_config)
-
-    print("Converting VAE checkpoint...")
-    vae = convert_vae_to_diffusers(args.vae_ckpt, vae)
-    vae.save_pretrained(args.vae_save_dir)
-    print("DONE")
-
-    print("Converting U-ViT checkpoint...")
-    unet = convert_uvit_to_diffusers(args.uvit_ckpt, unet)
-    unet.save_pretrained(args.unet_save_dir)
-    print("DONE")
-
-    print("Converting caption decoder checkpoint...")
-    text_decoder = convert_caption_decoder_to_diffusers(args.text_decoder_ckpt, text_decoder)
-    text_decoder.save_pretrained(args.text_decoder_save_dir)
-    print("DONE")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--text_decoder_ckpt", type=str, default=None)
-    parser.add_argument("--uvit_ckpt", type=str, default=None)
-    parser.add_argument("--vae_ckpt", type=str, default=None)
-    parser.add_argument("--text_decoder_save_dir", type=str, default=None)
-    parser.add_argument("--unet_save_dir", type=str, default=None)
-    parser.add_argument("--vae_save_dir", type=str, default=None)
-    parser.add_argument("--config_type", type=str, default="test")
-    parser.add_argument("--version", type=int, default=0)
+
+    parser.add_argument(
+        "--caption_decoder_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to caption decoder checkpoint to convert.",
+    )
+    parser.add_argument(
+        "--uvit_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to U-ViT checkpoint to convert."
+    )
+    parser.add_argument(
+        "--vae_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to VAE checkpoint to convert.",
+    )
+    parser.add_argument(
+        "--pipeline_output_path",
+        default=None,
+        type=str,
+        required=True,
+        help="Path to save the output pipeline to.",
+    )
+    parser.add_argument(
+        "--config_type",
+        default="test",
+        type=str,
+        help=(
+            "Config type to use. Should be 'test' to create small models for testing or 'big' to convert a full"
+            " checkpoint."
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        default=0,
+        type=int,
+        help="The UniDiffuser model type to convert to. Should be 0 for UniDiffuser-v0 and 1 for UniDiffuser-v1."
+    )
 
     args = parser.parse_args()
 
-    main(args)
+    # Convert the VAE model.
+    if args.vae_checkpoint_path is not None:
+        vae_config = create_vae_diffusers_config(args.config_type)
+        vae = AutoencoderKL(**vae_config)
+        vae = convert_vae_to_diffusers(args.vae_checkpoint_path, vae)
+    
+    # Convert the U-ViT ("unet") model.
+    if args.uvit_checkpoint_path is not None:
+        unet_config = create_unidiffuser_unet_config(args.config_type, args.version)
+        unet = UniDiffuserModel(**unet_config)
+        unet = convert_uvit_to_diffusers(args.uvit_checkpoint_path, unet)
+    
+    # Convert the caption decoder ("text_decoder") model.
+    if args.caption_decoder_checkpoint_path is not None:
+        text_decoder_config = create_text_decoder_config(args.config_type)
+        text_decoder = UniDiffuserTextDecoder(**text_decoder_config)
+        text_decoder = convert_caption_decoder_to_diffusers(args.caption_decoder_checkpoint_path, text_decoder)
+    
+    # Scheduler is the same for both the test and big models.
+    scheduler_config = SCHEDULER_CONFIG
+    scheduler = DPMSolverMultistepScheduler(
+        beta_start = scheduler_config.beta_start,
+        beta_end=scheduler_config.beta_end,
+        beta_schedule=scheduler_config.beta_schedule,
+        solver_order=scheduler_config.solver_order,
+    )
+
+    if args.config_type == "test":
+        # Make a small random CLIPTextModel
+        torch.manual_seed(0)
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(clip_text_encoder_config)
+        clip_tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # Make a small random CLIPVisionModel and accompanying CLIPImageProcessor
+        torch.manual_seed(0)
+        clip_image_encoder_config = CLIPVisionConfig(
+            image_size=32,
+            patch_size=2,
+            num_channels=3,
+            hidden_size=32,
+            projection_dim=32,
+            num_hidden_layers=5,
+            num_attention_heads=4,
+            intermediate_size=37,
+            dropout=0.1,
+            attention_dropout=0.1,
+            initializer_range=0.02,
+        )
+        image_encoder = CLIPVisionModel(clip_image_encoder_config)
+        image_processor = CLIPImageProcessor(crop_size=32, size=32)
+
+        # Note that the text_decoder should already have its token embeddings resized.
+        text_tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-GPT2Model")
+        eos = '<|EOS|>'
+        special_tokens_dict = {'eos_token': eos}
+        text_tokenizer.add_special_tokens(special_tokens_dict)
+    elif args.config_type == "big":
+        text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+        clip_tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+
+        image_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
+        image_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+        # Note that the text_decoder should already have its token embeddings resized.
+        text_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        eos = '<|EOS|>'
+        special_tokens_dict = {'eos_token': eos}
+        text_tokenizer.add_special_tokens(special_tokens_dict)
+    else:
+        raise NotImplementedError(
+            f"Config type {args.config_type} is not implemented, currently only config types"
+            " 'test' and 'big' are available."
+        )
+    
+    pipeline = UniDiffuserPipeline(
+        vae=vae,
+        text_encoder=text_encoder,
+        image_encoder=image_encoder,
+        image_processor=image_processor,
+        clip_tokenizer=clip_tokenizer,
+        text_decoder=text_decoder,
+        text_tokenizer=text_tokenizer,
+        unet=unet,
+        scheduler=scheduler,
+    )
+    pipeline.save_pretrained(args.pipeline_output_path)
+
+
+
+
