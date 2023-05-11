@@ -930,6 +930,13 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         if isinstance(self.controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(self.controlnet.nets)
 
+        global_pool_conditions = (
+            self.controlnet.config.global_pool_conditions
+            if isinstance(self.controlnet, ControlNetModel)
+            else self.controlnet.nets[0].config.global_pool_conditions
+        )
+        guess_mode = guess_mode or global_pool_conditions
+
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
             prompt,
