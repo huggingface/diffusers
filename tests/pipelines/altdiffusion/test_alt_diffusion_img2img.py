@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
