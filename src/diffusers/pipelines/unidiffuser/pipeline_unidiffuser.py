@@ -1102,8 +1102,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality. Note that the original [UniDiffuser
-                paper](https://arxiv.org/pdf/2303.06555.pdf) uses a different definition of the guidance scale `w'`, which
-                satisfies `w = w' + 1`.
+                paper](https://arxiv.org/pdf/2303.06555.pdf) uses a different definition of the guidance scale `w'`,
+                which satisfies `w = w' + 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
