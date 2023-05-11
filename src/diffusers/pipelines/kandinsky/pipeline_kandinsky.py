@@ -304,7 +304,6 @@ class KandinskyPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # TO_DO [2] add a step to create negative_image_embeds https://github.com/ai-forever/Kandinsky-2/blob/main/kandinsky2/kandinsky2_1_model.py#L322
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(

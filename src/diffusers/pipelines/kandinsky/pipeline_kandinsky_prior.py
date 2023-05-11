@@ -64,10 +64,10 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         self.register_modules(
             prior=prior,
-            prior_text_encoder=prior_text_encoder,
-            prior_tokenizer=prior_tokenizer,
-            prior_scheduler=prior_scheduler,
-            prior_image_encoder=prior_image_encoder,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            scheduler=scheduler,
+            image_encoder=image_encoder,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -83,7 +83,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
     def create_zero_img_emb(self, batch_size, device):
         zero_img = torch.zeros(1, 3, 224, 224).to(device=device)
-        zero_image_emb = self.prior_image_encoder(zero_img)["image_embeds"]
+        zero_image_emb = self.image_encoder(zero_img)["image_embeds"]
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
 
@@ -170,29 +170,29 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     ):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
-        text_inputs = self.prior_tokenizer(
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
-            max_length=self.prior_tokenizer.model_max_length,
+            max_length=self.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
         text_mask = text_inputs.attention_mask.bool().to(device)
 
-        untruncated_ids = self.prior_tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.prior_tokenizer.batch_decode(
-                untruncated_ids[:, self.prior_tokenizer.model_max_length - 1 : -1]
+            removed_text = self.tokenizer.batch_decode(
+                untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
             )
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.prior_tokenizer.model_max_length} tokens: {removed_text}"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-            text_input_ids = text_input_ids[:, : self.prior_tokenizer.model_max_length]
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
 
-        text_encoder_output = self.prior_text_encoder(text_input_ids.to(device))
+        text_encoder_output = self.text_encoder(text_input_ids.to(device))
 
         prompt_embeds = text_encoder_output.text_embeds
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
@@ -221,15 +221,15 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            uncond_input = self.prior_tokenizer(
+            uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
-                max_length=self.prior_tokenizer.model_max_length,
+                max_length=self.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             uncond_text_mask = uncond_input.attention_mask.bool().to(device)
-            negative_prompt_embeds_text_encoder_output = self.prior_text_encoder(uncond_input.input_ids.to(device))
+            negative_prompt_embeds_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
 
             negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.text_embeds
             uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
@@ -293,8 +293,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             )
 
             # prior
-            self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
-            prior_timesteps_tensor = self.prior_scheduler.timesteps
+            self.scheduler.set_timesteps(prior_num_inference_steps, device=device)
+            prior_timesteps_tensor = self.scheduler.timesteps
 
             embedding_dim = self.prior.config.embedding_dim
 
@@ -304,7 +304,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 device,
                 generator,
                 prior_latents,
-                self.prior_scheduler,
+                self.scheduler,
             )
 
             for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
@@ -332,7 +332,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 else:
                     prev_timestep = prior_timesteps_tensor[i + 1]
 
-                prior_latents = self.prior_scheduler.step(
+                prior_latents = self.scheduler.step(
                     predicted_image_embedding,
                     timestep=t,
                     sample=prior_latents,
