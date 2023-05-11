@@ -627,9 +627,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
             encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
             encoder_attention_mask (`torch.Tensor`):
-                (batch, sequence_length) cross-attention mask (or bias), applied to encoder_hidden_states. If a
-                BoolTensor is provided, it will be turned into a bias, by adding a large negative value. False = hide
-                token. Other tensor types will be used as-is as bias values.
+                (batch, sequence_length) cross-attention mask, applied to encoder_hidden_states. True = keep, False = discard.
+                Mask will be converted into a bias, which adds large negative values to attention scores corresponding to
+                "discard" tokens.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
@@ -656,16 +656,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             logger.info("Forward upsample size to force interpolation output size.")
             forward_upsample_size = True
 
-        # prepare attention_mask
+        # ensure attention_mask is a bias, and make it broadcastable over multi-head-attention channels
         if attention_mask is not None:
+            # assume that mask is expressed as:
+            #   (1 = keep,      0 = discard)
+            # convert mask into a bias that can be added to attention scores:
+            #       (keep = +0,     discard = -10000.0)
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # ensure encoder_attention_mask is a bias, and make it broadcastable over multi-head-attention channels
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None:
-            # if it's a mask: turn it into a bias. otherwise: assume it's already a bias
-            if encoder_attention_mask.dtype is torch.bool:
-                encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 0. center input if necessary
