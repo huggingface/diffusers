@@ -43,7 +43,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
-        prior_text_encoder ([`CLIPTextModelWithProjection`]):
+        text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
         prior_tokenizer (`CLIPTokenizer`):
             Tokenizer of class
