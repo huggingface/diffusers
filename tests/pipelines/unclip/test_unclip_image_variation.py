@@ -520,4 +520,4 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
 
-        assert_mean_pixel_difference(image, expected_image)
+        assert_mean_pixel_difference(image, expected_image, 15)

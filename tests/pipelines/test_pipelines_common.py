@@ -661,8 +661,8 @@ class PipelineTesterMixin:
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
 # This helper function is used to check that the image doesn't deviate on average more than 10 pixels from a
 # reference image.
-def assert_mean_pixel_difference(image, expected_image):
+def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
     image = np.asarray(DiffusionPipeline.numpy_to_pil(image)[0], dtype=np.float32)
     expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
     avg_diff = np.abs(image - expected_image).mean()
-    assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"
+    assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
