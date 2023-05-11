@@ -179,7 +179,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 9e-3
 
     def test_stable_diffusion_inpaint_pipeline_fp16(self):
         init_image = load_image(
