@@ -38,6 +38,7 @@ from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
