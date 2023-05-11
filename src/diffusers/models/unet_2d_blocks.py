@@ -1747,7 +1747,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # emb
+                    temb,
                     attention_mask,
                     cross_attention_kwargs,
                     encoder_attention_mask,
@@ -2872,7 +2872,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # emb
+                    temb,
                     attention_mask,
                     cross_attention_kwargs,
                     encoder_attention_mask,
