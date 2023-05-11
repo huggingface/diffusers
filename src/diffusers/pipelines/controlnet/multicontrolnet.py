@@ -1,8 +1,10 @@
-from ...models.modeling_utils import ModelMixin
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from ...models.controlnet import ControlNetOutput, ControlNetModel
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import torch
 from torch import nn
+
+from ...models.controlnet import ControlNetModel, ControlNetOutput
+from ...models.modeling_utils import ModelMixin
 
 
 class MultiControlNetModel(ModelMixin):

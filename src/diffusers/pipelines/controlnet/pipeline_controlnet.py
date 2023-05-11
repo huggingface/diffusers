@@ -22,14 +22,11 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
-from ...models.controlnet import ControlNetOutput
-from ...models.modeling_utils import ModelMixin
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
@@ -40,9 +37,8 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
 from ..stable_diffusion import StableDiffusionPipelineOutput
-from ..stable_diffusion .safety_checker import StableDiffusionSafetyChecker
+from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .multicontrolnet import MultiControlNetModel
 
 

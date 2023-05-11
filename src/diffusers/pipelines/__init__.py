@@ -44,6 +44,11 @@ except OptionalDependencyNotAvailable:
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .audioldm import AudioLDMPipeline
+    from .controlnet import (
+        StableDiffusionControlNetImg2ImgPipeline,
+        StableDiffusionControlNetInpaintPipeline,
+        StableDiffusionControlNetPipeline,
+    )
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,
@@ -74,11 +79,6 @@ else:
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
-    )
-    from .controlnet import (
-        StableDiffusionControlNetPipeline,
-        StableDiffusionControlNetImg2ImgPipeline,
-        StableDiffusionControlNetInpaintPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline

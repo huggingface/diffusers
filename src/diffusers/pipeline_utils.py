@@ -19,6 +19,7 @@
 from .pipelines import DiffusionPipeline, ImagePipelineOutput  # noqa: F401
 from .utils import deprecate
 
+
 deprecate(
     "pipelines_utils",
     "0.22.0",
