@@ -530,7 +530,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 2. pre-process
         # If not using temporal transfomer, use num_frames in unet
-        if not self.transformer_in:
+        if self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
