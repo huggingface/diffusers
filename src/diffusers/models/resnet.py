@@ -606,20 +606,6 @@ class Mish(torch.nn.Module):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
 
-class InflatedConv3d(nn.Conv2d):
-    def forward(self, x):
-        video_length = x.shape[2]
-        # x = rearrange(x, "b c f h w -> (b f) c h w")
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-        x = x.flatten(0, 1)
-        x = super().forward(x)
-        # x = rearrange(x, "(b f) c h w -> b c f h w", f=video_length)
-        x = x.reshape([-1, video_length, *x.shape[1:]])
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-
-        return x
-
-
 class Upsample3D(nn.Module):
     def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
         super().__init__()

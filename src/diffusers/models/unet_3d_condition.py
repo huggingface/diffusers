@@ -27,7 +27,6 @@ from ..utils import BaseOutput, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .resnet import InflatedConv3d
 from .transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
