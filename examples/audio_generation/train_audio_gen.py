@@ -504,14 +504,25 @@ def main():
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+
     
+    # for layer in unet.up_blocks:
+    #     layer.requires_grad_(False)
+        
     for layer in unet.up_blocks:
-        layer.requires_grad_(False)
+        is_frozen = all(param.requires_grad == False for param in layer.parameters())
+        print(f'UNET up blocks Frozen: {is_frozen}')
     
-    unet.mid_block.requires_grad_(False)
+    # unet.mid_block.requires_grad_(False)
+    is_frozen = all(param.requires_grad == False for param in unet.mid_block.parameters())
+    print(f'UNET mid blocks Frozen: {is_frozen}')
     
+    # for layer in unet.down_blocks:
+    #     layer.requires_grad_(False)
+        
     for layer in unet.down_blocks:
-        layer.requires_grad_(False)
+        is_frozen = all(param.requires_grad == False for param in layer.parameters())
+        print(f'UNET down blocks Frozen: {is_frozen}')
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -883,17 +894,31 @@ def main():
                 # Convert images to latent space
                 # latents = vae.encode(batch["waveform"])[0][0].to(weight_dtype)[None, :, :, :]
                 
+#                 print('I AM HERE!!!!!!!!!!!!!!!', step)
                 
-                if (step >= args.unfreeze_step and not flipped):
-                    for layer in unet.up_blocks:
-                        layer.requires_grad_(True)
+#                 if (step >= args.unfreeze_step and not flipped):
+#                     for layer in unet.module.up_blocks:
+#                         layer.requires_grad_(True)
 
-                    unet.mid_block.requires_grad_(True)
+#                     unet.module.mid_block.requires_grad_(True)
 
-                    for layer in unet.down_blocks:
-                        layer.requires_grad_(True)
-                    flipped = True
-                
+#                     for layer in unet.module.down_blocks:
+#                         layer.requires_grad_(True)
+#                     for param in unet.parameters():
+#                         param.requires_grad = True
+#                     flipped = True
+#                     print('unfrozen step !!!!!!!!!!!!!!!!!!!!')
+    
+#                 for layer in unet.module.up_blocks:
+#                     is_frozen = all(param.requires_grad == False for param in layer.parameters())
+#                     print(f'UNET up blocks are Frozen: {is_frozen}')
+#                 unet.module.mid_block.requires_grad_(False)
+#                 is_frozen = all(param.requires_grad == False for param in unet.module.mid_block.parameters())
+#                 print(f'UNET mid block is Frozen: {is_frozen}')
+#                 for layer in unet.module.down_blocks:
+#                     is_frozen = all(param.requires_grad == False for param in layer.parameters())
+#                     print(f'UNET down blocks are Frozen: {is_frozen}')
+
                 
                 latents = batch["latent"]
 
