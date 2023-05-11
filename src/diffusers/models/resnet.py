@@ -20,7 +20,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from einops import rearrange
 from .attention import AdaGroupNorm
 
 
@@ -630,12 +629,9 @@ class Upsample3D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
 
-        conv = None
-        if use_conv_transpose:
-            raise NotImplementedError
-        elif use_conv:
-            conv = InflatedConv3d(self.channels, self.out_channels, 3, padding=1)
+        conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
             self.conv = conv
         else:
@@ -668,10 +664,20 @@ class Upsample3D(nn.Module):
             hidden_states = hidden_states.to(dtype)
 
         if self.use_conv:
+            #Inflate
+            video_length = hidden_states.shape[2]
+            # b c f h w -> (b f) c h w
+            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            hidden_states = hidden_states.flatten(0, 1)
+
             if self.name == "conv":
                 hidden_states = self.conv(hidden_states)
             else:
                 hidden_states = self.Conv2d_0(hidden_states)
+            #Deflate
+            # (b f) c h w -> b c f h w (f=video_length)
+            hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         return hidden_states
 
@@ -690,7 +696,8 @@ class Downsample3D(nn.Module):
             conv = InflatedConv3d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             raise NotImplementedError
-
+        
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
             self.Conv2d_0 = conv
             self.conv = conv
