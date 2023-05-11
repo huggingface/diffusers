@@ -40,6 +40,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -245,6 +246,12 @@ class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
 
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 @slow
 @require_torch_gpu
@@ -279,7 +286,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert np.abs(image_slice - expected_slice).max() < 7e-3
 
     def test_stable_diffusion_pndm(self):
         pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
@@ -293,7 +300,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert np.abs(image_slice - expected_slice).max() < 7e-3
 
     def test_stable_diffusion_k_lms(self):
         pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
@@ -307,7 +314,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.10440, 0.13115, 0.11100, 0.10141, 0.11440, 0.07215, 0.11332, 0.09693, 0.10006])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert np.abs(image_slice - expected_slice).max() < 3e-3
 
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()

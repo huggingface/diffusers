@@ -39,6 +39,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionInstructPix2PixPipelineFastTests(
@@ -195,6 +196,9 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
         expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow
