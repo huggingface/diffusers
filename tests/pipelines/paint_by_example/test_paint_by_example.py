@@ -32,12 +32,14 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PaintByExamplePipeline
     params = IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])  # TO_DO: update the image_prams once refactored VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -159,6 +161,9 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

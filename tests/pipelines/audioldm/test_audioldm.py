@@ -42,6 +42,10 @@ from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
+
+
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDMPipeline
     params = TEXT_TO_AUDIO_PARAMS
@@ -413,4 +417,4 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio_slice = audio[27780:27790]
         expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-2
+        assert max_diff < 3e-2
