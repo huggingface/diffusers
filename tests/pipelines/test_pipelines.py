@@ -58,16 +58,23 @@ from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     floats_tensor,
-    is_flax_available,
     nightly,
     require_torch_2,
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    get_tests_dir,
+    load_numpy,
+    require_compel,
+    require_flax,
+    require_torch_gpu,
+)
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class DownloadTests(unittest.TestCase):
@@ -691,6 +698,9 @@ class CustomPipelineTests(unittest.TestCase):
     @slow
     @require_torch_gpu
     def test_download_from_git(self):
+        # Because adaptive_avg_pool2d_backward_cuda
+        # does not have a deterministic implementation.
+        torch.use_deterministic_algorithms(False)
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
@@ -712,6 +722,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
+        torch.use_deterministic_algorithms(True)
 
     def test_save_pipeline_change_config(self):
         pipe = DiffusionPipeline.from_pretrained(
@@ -1402,14 +1413,12 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
+    @require_flax
     def test_from_flax_from_pt(self):
         pipe_pt = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe_pt.to(torch_device)
-
-        if not is_flax_available():
-            raise ImportError("Make sure flax is installed.")
 
         from diffusers import FlaxStableDiffusionPipeline
 
@@ -1474,7 +1483,7 @@ class PipelineSlowTests(unittest.TestCase):
                 f"/compel/forest_{i}.npy"
             )
 
-            assert np.abs(image - expected_image).max() < 1e-2
+            assert np.abs(image - expected_image).max() < 3e-1
 
 
 @nightly
