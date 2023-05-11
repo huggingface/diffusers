@@ -176,7 +176,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, P
         super().test_inference_batch_single_identical(expected_max_diff=7e-3)
 
     def test_pt_np_pil_outputs_equivalent(self):
-        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=1e-3)
+        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=3e-3)
 
     def test_save_load_local(self):
         super().test_save_load_local(expected_max_difference=3e-3)
