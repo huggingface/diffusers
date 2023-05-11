@@ -65,7 +65,7 @@ class PipelineLatentTesterMixin:
 
         return inputs
 
-    def test_pt_np_pil_outputs_equivalent(self):
+    def test_pt_np_pil_outputs_equivalent(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -76,7 +76,7 @@ class PipelineLatentTesterMixin:
         output_pil = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="pil"))[0]
 
         max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
-        self.assertLess(max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`")
+        self.assertLess(max_diff, expected_max_diff, "`output_type=='pt'` generate different results from `output_type=='np'`")
 
         max_diff = np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max()
         self.assertLess(max_diff, 2.0, "`output_type=='pil'` generate different results from `output_type=='np'`")
@@ -559,7 +559,7 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
-    def test_cpu_offload_forward_pass(self):
+    def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         if not self.test_cpu_offload:
             return
 
@@ -576,7 +576,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
-        self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
+        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
