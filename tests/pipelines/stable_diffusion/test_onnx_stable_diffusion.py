@@ -29,7 +29,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import is_onnx_available, nightly, require_onnxruntime, require_torch_gpu
 
-from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
+from ..test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 
 if is_onnx_available():

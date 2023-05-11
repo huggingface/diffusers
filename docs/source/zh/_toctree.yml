@@ -4,51 +4,79 @@
   - local: quicktour
     title: 快速入门
   - local: stable_diffusion
-    title: Stable Diffusion
+    title: Effective and efficient diffusion
   - local: installation
     title: 安装
   title: 开始
 - sections:
+  - local: tutorials/tutorial_overview
+    title: Overview
+  - local: using-diffusers/write_own_pipeline
+    title: Understanding models and schedulers
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
 - sections:
   - sections:
+    - local: using-diffusers/loading_overview
+      title: Overview
     - local: using-diffusers/loading
-      title: Loading Pipelines, Models, and Schedulers
+      title: Load pipelines, models, and schedulers
     - local: using-diffusers/schedulers
-      title: Using different Schedulers
-    - local: using-diffusers/configuration
-      title: Configuring Pipelines, Models, and Schedulers
+      title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Loading and Adding Custom Pipelines
+      title: Load community pipelines
     - local: using-diffusers/kerascv
-      title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
+      title: Load KerasCV Stable Diffusion checkpoints
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
     - local: using-diffusers/unconditional_image_generation
-      title: Unconditional Image Generation
+      title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-Image Generation
+      title: Text-to-image generation
     - local: using-diffusers/img2img
-      title: Text-Guided Image-to-Image
+      title: Text-guided image-to-image
     - local: using-diffusers/inpaint
-      title: Text-Guided Image-Inpainting
+      title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
-      title: Text-Guided Depth-to-Image
-    - local: using-diffusers/controlling_generation
-      title: Controlling generation
+      title: Text-guided depth-to-image
     - local: using-diffusers/reusing_seeds
-      title: Reusing seeds for deterministic generation
+      title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
-      title: Reproducibility
+      title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
-      title: Community Pipelines
+      title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a Pipeline
+      title: How to contribute a community pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: Stable Diffusion in JAX/Flax
+    - local: using-diffusers/weighted_prompts
+      title: Weighting Prompts
     title: Pipelines for Inference
+  - sections:
+    - local: training/overview
+      title: Overview
+    - local: training/unconditional_training
+      title: Unconditional image generation
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/lora
+      title: Low-Rank Adaptation of Large Language Models (LoRA)
+    - local: training/controlnet
+      title: ControlNet
+    - local: training/instructpix2pix
+      title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
+    title: Training
   - sections:
     - local: using-diffusers/rl
       title: Reinforcement Learning
@@ -59,6 +87,8 @@
     title: Taking Diffusers Beyond Images
   title: Using Diffusers
 - sections:
+  - local: optimization/opt_overview
+    title: Overview
   - local: optimization/fp16
     title: Memory and Speed
   - local: optimization/torch2.0
@@ -69,32 +99,26 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
-- sections:
-  - local: training/overview
-    title: Overview
-  - local: training/unconditional_training
-    title: Unconditional Image Generation
-  - local: training/text_inversion
-    title: Textual Inversion
-  - local: training/dreambooth
-    title: DreamBooth
-  - local: training/text2image
-    title: Text-to-image
-  - local: training/lora
-    title: Low-Rank Adaptation of Large Language Models (LoRA)
-  title: Training
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
+  - local: using-diffusers/controlling_generation
+    title: Controlled generation
   - local: conceptual/contribution
     title: How to contribute?
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
+  - local: conceptual/evaluation
+    title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
   - sections:
@@ -118,6 +142,8 @@
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
+    - local: api/pipelines/audioldm
+      title: AudioLDM
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -128,6 +154,8 @@
       title: DDPM
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/if
+      title: IF
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -142,6 +170,8 @@
       title: Score SDE VE
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/spectrogram_diffusion
+      title: "Spectrogram Diffusion"
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -171,6 +201,8 @@
         title: MultiDiffusion Panorama
       - local: api/pipelines/stable_diffusion/controlnet
         title: Text-to-Image Generation with ControlNet Conditioning
+      - local: api/pipelines/stable_diffusion/model_editing
+        title: Text-to-Image Model Editing
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -178,6 +210,10 @@
       title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
+    - local: api/pipelines/text_to_video
+      title: Text-to-Video
+    - local: api/pipelines/text_to_video_zero
+      title: Text-to-Video Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond

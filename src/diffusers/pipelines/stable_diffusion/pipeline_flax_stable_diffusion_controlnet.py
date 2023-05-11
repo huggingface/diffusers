@@ -83,7 +83,7 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32
         ... )
         >>> pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.float32
+        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, revision="flax", dtype=jnp.float32
         ... )
         >>> params["controlnet"] = controlnet_params
 

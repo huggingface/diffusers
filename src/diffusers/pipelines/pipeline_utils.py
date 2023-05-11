@@ -19,6 +19,7 @@ import importlib
 import inspect
 import os
 import re
+import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,7 +30,6 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
-from PIL import Image
 from tqdm.auto import tqdm
 
 import diffusers
@@ -55,6 +55,7 @@ from ..utils import (
     is_torch_version,
     is_transformers_available,
     logging,
+    numpy_to_pil,
 )
 
 
@@ -200,24 +201,24 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     # .bin, .safetensors, ...
     weight_suffixs = [w.split(".")[-1] for w in weight_names]
     # -00001-of-00002
-    transformers_index_format = "\d{5}-of-\d{5}"
+    transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
         # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetenstors`
         variant_file_re = re.compile(
-            f"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
+            rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
         # `text_encoder/pytorch_model.bin.index.fp16.json`
         variant_index_re = re.compile(
-            f"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
         )
 
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetenstors`
     non_variant_file_re = re.compile(
-        f"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
+        rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
     )
     # `text_encoder/pytorch_model.bin.index.json`
-    non_variant_index_re = re.compile(f"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
+    non_variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
 
     if variant is not None:
         variant_weights = {f for f in filenames if variant_file_re.match(f.split("/")[-1]) is not None}
@@ -507,7 +508,7 @@ class DiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def __setattr__(self, name: str, value: Any):
-        if hasattr(self, name) and hasattr(self.config, name):
+        if name in self.__dict__ and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
                 if value is not None and self.config[name][0] is not None:
@@ -530,7 +531,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        method. The pipeline can easily be re-loaded using the [`~DiffusionPipeline.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -540,11 +541,9 @@ class DiffusionPipeline(ConfigMixin):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
-        self.save_config(save_directory)
-
         model_index_dict = dict(self.config)
-        model_index_dict.pop("_class_name")
-        model_index_dict.pop("_diffusers_version")
+        model_index_dict.pop("_class_name", None)
+        model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
@@ -557,7 +556,6 @@ class DiffusionPipeline(ConfigMixin):
             return True
 
         model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
-
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
@@ -571,7 +569,13 @@ class DiffusionPipeline(ConfigMixin):
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
             for library_name, library_classes in LOADABLE_CLASSES.items():
-                library = importlib.import_module(library_name)
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {pipeline_component_name} as {library_classes} from {library_name}"
+                    )
+
                 for base_class, save_load_methods in library_classes.items():
                     class_candidate = getattr(library, base_class, None)
                     if class_candidate is not None and issubclass(model_cls, class_candidate):
@@ -580,6 +584,12 @@ class DiffusionPipeline(ConfigMixin):
                         break
                 if save_method_name is not None:
                     break
+
+            if save_method_name is None:
+                logger.warn(f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                # make sure that unsaveable components are not tried to be loaded afterward
+                self.register_to_config(**{pipeline_component_name: (None, None)})
+                continue
 
             save_method = getattr(sub_model, save_method_name)
 
@@ -596,6 +606,9 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
+        # finally save the config
+        self.save_config(save_directory)
+
     def to(
         self,
         torch_device: Optional[Union[str, torch.device]] = None,
@@ -610,7 +623,9 @@ class DiffusionPipeline(ConfigMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+            return hasattr(module, "_hf_hook") and not isinstance(
+                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
+            )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -635,26 +650,38 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if hasattr(self, m)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for name in module_names:
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
+        for module in modules:
+            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+
+            if is_loaded_in_8bit and torch_dtype is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                )
+
+            if is_loaded_in_8bit and torch_device is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                )
+            else:
                 module.to(torch_device, torch_dtype)
-                if (
-                    module.dtype == torch.float16
-                    and str(torch_device) in ["cpu"]
-                    and not silence_dtype_warnings
-                    and not is_offloaded
-                ):
-                    logger.warning(
-                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
-                        " is not recommended to move them to `cpu` as running them will fail. Please make"
-                        " sure to use an accelerator to run the pipeline in inference, due to the lack of"
-                        " support for`float16` operations on this device in PyTorch. Please, remove the"
-                        " `torch_dtype=torch.float16` argument, or use another device for inference."
-                    )
+
+            if (
+                module.dtype == torch.float16
+                and str(torch_device) in ["cpu"]
+                and not silence_dtype_warnings
+                and not is_offloaded
+            ):
+                logger.warning(
+                    "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
+                    " is not recommended to move them to `cpu` as running them will fail. Please make"
+                    " sure to use an accelerator to run the pipeline in inference, due to the lack of"
+                    " support for`float16` operations on this device in PyTorch. Please, remove the"
+                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                )
         return self
 
     @property
@@ -664,12 +691,12 @@ class DiffusionPipeline(ConfigMixin):
             `torch.device`: The torch device on which the pipeline is located.
         """
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if hasattr(self, m)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for name in module_names:
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                return module.device
+        for module in modules:
+            return module.device
+
         return torch.device("cpu")
 
     @classmethod
@@ -787,10 +814,10 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-            use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
-                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
-                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
+                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -874,6 +901,9 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.load_config(cached_folder)
+
+        # pop out "_ignore_files" as it is only needed for download
+        config_dict.pop("_ignore_files", None)
 
         # 2. Define which model components should load variants
         # We retrieve the information by matching whether variant
@@ -1045,8 +1075,8 @@ class DiffusionPipeline(ConfigMixin):
 
         return_cached_folder = kwargs.pop("return_cached_folder", False)
         if return_cached_folder:
-            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.17.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
-            deprecate("return_cached_folder", "0.17.0", message, take_from=kwargs)
+            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.18.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
+            deprecate("return_cached_folder", "0.18.0", message)
             return model, cached_folder
 
         return model
@@ -1057,7 +1087,7 @@ class DiffusionPipeline(ConfigMixin):
         Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
 
         Parameters:
-             pretrained_model_name (`str` or `os.PathLike`, *optional*):
+            pretrained_model_name (`str` or `os.PathLike`, *optional*):
                 Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
                 https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                 `CompVis/ldm-text2im-large-256`.
@@ -1192,16 +1222,23 @@ class DiffusionPipeline(ConfigMixin):
             )
 
             config_dict = cls._dict_from_json_file(config_file)
+
+            ignore_filenames = config_dict.pop("_ignore_files", [])
+
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
+            # remove ignored filenames
+            model_filenames = set(model_filenames) - set(ignore_filenames)
+            variant_filenames = set(variant_filenames) - set(ignore_filenames)
+
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.17.0"):
+            ) >= version.parse("0.18.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
@@ -1358,16 +1395,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
-        if images.ndim == 3:
-            images = images[None, ...]
-        images = (images * 255).round().astype("uint8")
-        if images.shape[-1] == 1:
-            # special case for grayscale (single channel) images
-            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
-        else:
-            pil_images = [Image.fromarray(image) for image in images]
-
-        return pil_images
+        return numpy_to_pil(images)
 
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
@@ -1438,13 +1466,12 @@ class DiffusionPipeline(ConfigMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [m for m in module_names if hasattr(self, m)]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module):
-                fn_recursive_set_mem_eff(module)
+        for module in modules:
+            fn_recursive_set_mem_eff(module)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -1471,10 +1498,9 @@ class DiffusionPipeline(ConfigMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [m for m in module_names if hasattr(self, m)]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size)
+        for module in modules:
+            module.set_attention_slice(slice_size)
