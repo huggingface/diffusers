@@ -432,6 +432,49 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
 
+    @require_torch_gpu
+    def test_unidiffuser_default_text2img_v1_cuda_fp16(self):
+        device = "cuda"
+        unidiffuser_pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-test-v1", torch_dtype=torch.float16)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'text2img'
+        unidiffuser_pipe.set_text_to_image_mode()
+        assert unidiffuser_pipe.mode == "text2img"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete prompt and image for joint inference.
+        del inputs["image"]
+        inputs["data_type"] = 1
+        sample = unidiffuser_pipe(**inputs)
+        image = sample.images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_img_slice = np.array([0.5757, 0.6270, 0.6567, 0.4966, 0.4639, 0.5664, 0.5259, 0.5068, 0.5713])
+        assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
+    
+    @require_torch_gpu
+    def test_unidiffuser_default_img2text_v1_cuda_fp16(self):
+        device = "cuda"
+        unidiffuser_pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-test-v1", torch_dtype=torch.float16)
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'img2text'
+        unidiffuser_pipe.set_image_to_text_mode()
+        assert unidiffuser_pipe.mode == "img2text"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete prompt and image for joint inference.
+        del inputs["prompt"]
+        inputs["data_type"] = 1
+        text = unidiffuser_pipe(**inputs).text
+
+        expected_text_prefix = " no no no "
+        assert text[0][:10] == expected_text_prefix
+
 
 @slow
 @require_torch_gpu

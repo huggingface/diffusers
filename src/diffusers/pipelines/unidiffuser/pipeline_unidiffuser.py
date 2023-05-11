@@ -694,7 +694,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         else:
             # latents is assumed to have shace (B, L, D)
             latents = latents.repeat(num_images_per_prompt, 1, 1)
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -731,7 +731,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         else:
             # latents is assumed to have shape (B, C, H, W)
             latents = latents.repeat(num_prompts_per_image, 1, 1, 1)
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -753,7 +753,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         else:
             # latents is assumed to have shape (B, L, D)
             latents = latents.repeat(num_prompts_per_image, 1, 1)
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -1239,14 +1239,14 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 num_images_per_prompt=multiplier,
                 seq_len=self.text_encoder_seq_len,
                 hidden_size=self.text_encoder_hidden_size,
-                dtype=torch.float32,  # TODO: Placeholder, need to determine correct thing to do for dtype
+                dtype=self.text_encoder.dtype,  # Should work with both full precision and mixed precision
                 device=device,
                 generator=generator,
                 latents=prompt_latents,
             )
 
         if reduce_text_emb_dim:
-            prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
+            prompt_embeds = self.text_decoder.encode(prompt_embeds)
 
         # 4. Encode image, if available; otherwise prepare image latents
         if mode in ["img2text"]:
