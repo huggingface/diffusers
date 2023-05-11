@@ -692,10 +692,8 @@ class Downsample3D(nn.Module):
         stride = 2
         self.name = name
 
-        if use_conv:
-            conv = InflatedConv3d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            raise NotImplementedError
+
+        conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -712,8 +710,17 @@ class Downsample3D(nn.Module):
             raise NotImplementedError
 
         assert hidden_states.shape[1] == self.channels
-        hidden_states = self.conv(hidden_states)
 
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
+        #Conv
+        hidden_states = self.conv(hidden_states)
+        # (b f) c h w -> b c f h w (f=video_length)
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        
         return hidden_states
 
 
