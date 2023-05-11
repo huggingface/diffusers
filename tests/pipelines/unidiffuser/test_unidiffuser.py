@@ -3,7 +3,6 @@ import random
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -440,7 +439,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         # TODO: get correct image slice
         expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4465, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_unidiffuser_default_img2text(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
@@ -455,5 +454,3 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         # TODO: get correct text prefix
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
-    
-
