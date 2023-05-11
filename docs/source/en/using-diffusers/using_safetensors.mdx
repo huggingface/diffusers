@@ -57,11 +57,11 @@ There are several reasons for using safetensors:
 	The time it takes to load the entire pipeline:
 
 	```py
-	from diffusers import StableDiffusionPipeline
+ from diffusers import StableDiffusionPipeline
 
-	pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
-	"Loaded in safetensors 0:00:02.033658"
-	"Loaded in PyTorch 0:00:02.663379"
+ pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+ "Loaded in safetensors 0:00:02.033658"
+ "Loaded in PyTorch 0:00:02.663379"
 	```
 
 	But the actual time it takes to load 500MB of the model weights is only:
