@@ -758,7 +758,11 @@ def main(args):
         for model in models:
             state_dict = model.state_dict()
 
-            if text_encoder_lora_layers is not None and text_encoder_keys is not None and state_dict.keys() == text_encoder_keys:
+            if (
+                text_encoder_lora_layers is not None
+                and text_encoder_keys is not None
+                and state_dict.keys() == text_encoder_keys
+            ):
                 # text encoder
                 text_encoder_lora_layers_to_save = state_dict
             elif state_dict.keys() == unet_keys:
