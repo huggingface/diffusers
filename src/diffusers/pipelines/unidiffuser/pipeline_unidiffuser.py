@@ -1246,7 +1246,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
             )
 
         if reduce_text_emb_dim:
-            prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
+            with torch.autocast(device_type=device.type):
+                prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
 
         # 4. Encode image, if available; otherwise prepare image latents
         if mode in ["img2text"]:
