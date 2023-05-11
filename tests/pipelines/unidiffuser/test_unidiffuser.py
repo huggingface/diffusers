@@ -424,8 +424,24 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
-    @pytest.mark.xfail(reason="haven't gotten expected output yet")
-    def test_unidiffuser_default_joint(self):
+    def test_unidiffuser_default_text2img(self):
+        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        del inputs["image"]
+        sample = pipe(**inputs)
+        image = sample.images
+        assert image.shape == (1, 512, 512, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        # TODO: get correct image slice
+        expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4465, 0.4690, 0.5454, 0.5093, 0.4321])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    
+    def test_unidiffuser_default_img2text(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -433,15 +449,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
         inputs = self.get_inputs()
         del inputs["prompt"]
-        del inputs["image"]
         sample = pipe(**inputs)
-        image = sample.images
-        text = sample.text
+        text = sample.images
 
-        image_slice = image[0, -3:, -3:, -1]
-        # TODO: get correct image slice
-        expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4465, 0.4690, 0.5454, 0.5093, 0.4321])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        # TODO: get correct text prefix
+        expected_text_prefix = " no no no "
+        assert text[0][:10] == expected_text_prefix
+    
 
-        # TODO: need to figure out correct text output
-        print(text)
