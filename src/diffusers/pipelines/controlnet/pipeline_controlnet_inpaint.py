@@ -15,6 +15,7 @@
 
 import inspect
 import os
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -24,6 +25,7 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...models.controlnet import ControlNetOutput
@@ -91,6 +93,65 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
+
+
+def prepare_image(image):
+    if isinstance(image, torch.Tensor):
+        # Batch single image
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+
+        image = image.to(dtype=torch.float32)
+    else:
+        # preprocess image
+        if isinstance(image, (PIL.Image.Image, np.ndarray)):
+            image = [image]
+
+        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
+            image = [np.array(i.convert("RGB"))[None, :] for i in image]
+            image = np.concatenate(image, axis=0)
+        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
+            image = np.concatenate([i[None, :] for i in image], axis=0)
+
+        image = image.transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
+    return image
+
+
+def prepare_mask_image(mask_image):
+    if isinstance(mask_image, torch.Tensor):
+        if mask_image.ndim == 2:
+            # Batch and add channel dim for single mask
+            mask_image = mask_image.unsqueeze(0).unsqueeze(0)
+        elif mask_image.ndim == 3 and mask_image.shape[0] == 1:
+            # Single mask, the 0'th dimension is considered to be
+            # the existing batch size of 1
+            mask_image = mask_image.unsqueeze(0)
+        elif mask_image.ndim == 3 and mask_image.shape[0] != 1:
+            # Batch of mask, the 0'th dimension is considered to be
+            # the batching dimension
+            mask_image = mask_image.unsqueeze(1)
+
+        # Binarize mask
+        mask_image[mask_image < 0.5] = 0
+        mask_image[mask_image >= 0.5] = 1
+    else:
+        # preprocess mask
+        if isinstance(mask_image, (PIL.Image.Image, np.ndarray)):
+            mask_image = [mask_image]
+
+        if isinstance(mask_image, list) and isinstance(mask_image[0], PIL.Image.Image):
+            mask_image = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask_image], axis=0)
+            mask_image = mask_image.astype(np.float32) / 255.0
+        elif isinstance(mask_image, list) and isinstance(mask_image[0], np.ndarray):
+            mask_image = np.concatenate([m[None, None, :] for m in mask_image], axis=0)
+
+        mask_image[mask_image < 0.5] = 0
+        mask_image[mask_image >= 0.5] = 1
+        mask_image = torch.from_numpy(mask_image)
+
+    return mask_image
 
 
 class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
@@ -734,7 +795,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
+        mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
+        control_image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -889,6 +952,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
+        # 4. Prepare mask, image, and controlnet_conditioning_image
+        image = prepare_image(image)
+        mask_image = prepare_mask_image(mask_image)
+
         # 4. Prepare image
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
@@ -898,8 +965,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            image = self.prepare_image(
-                image=image,
+            control_image = self.prepare_image(
+                image=control_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -914,11 +981,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             or is_compiled
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
-            images = []
+            control_images = []
 
-            for image_ in image:
-                image_ = self.prepare_image(
-                    image=image_,
+            for control_image_ in control_image:
+                control_image_  = self.prepare_image(
+                    image=control_image_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -929,11 +996,13 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     guess_mode=guess_mode,
                 )
 
-                images.append(image_)
+                control_images.append(control_image)
 
-            image = images
+            control_image = control_images
         else:
             assert False
+
+        masked_image = image * (mask_image < 0.5)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -952,6 +1021,27 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             latents,
         )
 
+        mask_image_latents = self.prepare_mask_latents(
+            mask_image,
+            batch_size * num_images_per_prompt,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            do_classifier_free_guidance,
+        )
+
+        masked_image_latents = self.prepare_masked_image_latents(
+            masked_image,
+            batch_size * num_images_per_prompt,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            do_classifier_free_guidance,
+        )
+
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
@@ -962,6 +1052,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                inpainting_latent_model_input = torch.cat(
+                    [latent_model_input, mask_image_latents, masked_image_latents], dim=1
+                )
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
@@ -976,7 +1070,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     controlnet_latent_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image,
+                    controlnet_cond=control_image,
                     conditioning_scale=controlnet_conditioning_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
@@ -991,7 +1085,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
                 # predict the noise residual
                 noise_pred = self.unet(
-                    latent_model_input,
+                    inpainting_latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,

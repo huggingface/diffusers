@@ -15,6 +15,7 @@
 
 import inspect
 import os
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -24,6 +25,7 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...models.controlnet import ControlNetOutput
@@ -91,6 +93,30 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
+
+
+def prepare_image(image):
+    if isinstance(image, torch.Tensor):
+        # Batch single image
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+
+        image = image.to(dtype=torch.float32)
+    else:
+        # preprocess image
+        if isinstance(image, (PIL.Image.Image, np.ndarray)):
+            image = [image]
+
+        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
+            image = [np.array(i.convert("RGB"))[None, :] for i in image]
+            image = np.concatenate(image, axis=0)
+        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
+            image = np.concatenate([i[None, :] for i in image], axis=0)
+
+        image = image.transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
+    return image
 
 
 class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
@@ -674,22 +700,46 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
 
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
+        image = image.to(device=device, dtype=dtype)
+
+        batch_size = batch_size * num_images_per_prompt
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if isinstance(generator, list):
+            init_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
         else:
-            latents = latents.to(device)
+            init_latents = self.vae.encode(image).latent_dist.sample(generator)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        init_latents = self.vae.config.scaling_factor * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        shape = init_latents.shape
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        # get latents
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+
         return latents
 
     def _default_height_width(self, height, width, image):
@@ -735,8 +785,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
         self,
         prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        control_image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -888,8 +940,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
+        # 4. Prepare image, and controlnet_conditioning_image
+        image = prepare_image(image)
 
-        # 4. Prepare image
+        # 5. Prepare image
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
@@ -898,8 +952,8 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            image = self.prepare_image(
-                image=image,
+            control_image = self.prepare_image(
+                image=control_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -914,11 +968,11 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             or is_compiled
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
-            images = []
+            control_images = []
 
-            for image_ in image:
-                image_ = self.prepare_image(
-                    image=image_,
+            for control_image_ in control_image:
+                control_image_  = self.prepare_image(
+                    image=control_image_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -929,27 +983,26 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
                     guess_mode=guess_mode,
                 )
 
-                images.append(image_)
+                control_images.append(control_image)
 
-            image = images
+            control_image = control_images
         else:
             assert False
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
-            latents,
         )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -976,7 +1029,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
                     controlnet_latent_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image,
+                    controlnet_cond=control_image,
                     conditioning_scale=controlnet_conditioning_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
