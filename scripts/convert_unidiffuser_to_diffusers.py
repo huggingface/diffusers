@@ -5,13 +5,13 @@ from argparse import Namespace
 
 import torch
 from transformers import (
-    GPT2Tokenizer,
     CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
     CLIPVisionConfig,
     CLIPVisionModel,
+    GPT2Tokenizer,
 )
 
 from diffusers import (
@@ -22,6 +22,7 @@ from diffusers import (
     UniDiffuserTextDecoder,
 )
 
+
 SCHEDULER_CONFIG = Namespace(
     **{
         "beta_start": 0.00085,
@@ -30,6 +31,7 @@ SCHEDULER_CONFIG = Namespace(
         "solver_order": 3,
     }
 )
+
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.shave_segments
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -641,11 +643,7 @@ if __name__ == "__main__":
         help="Path to caption decoder checkpoint to convert.",
     )
     parser.add_argument(
-        "--uvit_checkpoint_path",
-        default=None,
-        type=str,
-        required=False,
-        help="Path to U-ViT checkpoint to convert."
+        "--uvit_checkpoint_path", default=None, type=str, required=False, help="Path to U-ViT checkpoint to convert."
     )
     parser.add_argument(
         "--vae_checkpoint_path",
@@ -674,7 +672,7 @@ if __name__ == "__main__":
         "--version",
         default=0,
         type=int,
-        help="The UniDiffuser model type to convert to. Should be 0 for UniDiffuser-v0 and 1 for UniDiffuser-v1."
+        help="The UniDiffuser model type to convert to. Should be 0 for UniDiffuser-v0 and 1 for UniDiffuser-v1.",
     )
 
     args = parser.parse_args()
@@ -684,23 +682,23 @@ if __name__ == "__main__":
         vae_config = create_vae_diffusers_config(args.config_type)
         vae = AutoencoderKL(**vae_config)
         vae = convert_vae_to_diffusers(args.vae_checkpoint_path, vae)
-    
+
     # Convert the U-ViT ("unet") model.
     if args.uvit_checkpoint_path is not None:
         unet_config = create_unidiffuser_unet_config(args.config_type, args.version)
         unet = UniDiffuserModel(**unet_config)
         unet = convert_uvit_to_diffusers(args.uvit_checkpoint_path, unet)
-    
+
     # Convert the caption decoder ("text_decoder") model.
     if args.caption_decoder_checkpoint_path is not None:
         text_decoder_config = create_text_decoder_config(args.config_type)
         text_decoder = UniDiffuserTextDecoder(**text_decoder_config)
         text_decoder = convert_caption_decoder_to_diffusers(args.caption_decoder_checkpoint_path, text_decoder)
-    
+
     # Scheduler is the same for both the test and big models.
     scheduler_config = SCHEDULER_CONFIG
     scheduler = DPMSolverMultistepScheduler(
-        beta_start = scheduler_config.beta_start,
+        beta_start=scheduler_config.beta_start,
         beta_end=scheduler_config.beta_end,
         beta_schedule=scheduler_config.beta_schedule,
         solver_order=scheduler_config.solver_order,
@@ -743,8 +741,8 @@ if __name__ == "__main__":
 
         # Note that the text_decoder should already have its token embeddings resized.
         text_tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-GPT2Model")
-        eos = '<|EOS|>'
-        special_tokens_dict = {'eos_token': eos}
+        eos = "<|EOS|>"
+        special_tokens_dict = {"eos_token": eos}
         text_tokenizer.add_special_tokens(special_tokens_dict)
     elif args.config_type == "big":
         text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
@@ -755,15 +753,15 @@ if __name__ == "__main__":
 
         # Note that the text_decoder should already have its token embeddings resized.
         text_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        eos = '<|EOS|>'
-        special_tokens_dict = {'eos_token': eos}
+        eos = "<|EOS|>"
+        special_tokens_dict = {"eos_token": eos}
         text_tokenizer.add_special_tokens(special_tokens_dict)
     else:
         raise NotImplementedError(
             f"Config type {args.config_type} is not implemented, currently only config types"
             " 'test' and 'big' are available."
         )
-    
+
     pipeline = UniDiffuserPipeline(
         vae=vae,
         text_encoder=text_encoder,
@@ -776,7 +774,3 @@ if __name__ == "__main__":
         scheduler=scheduler,
     )
     pipeline.save_pretrained(args.pipeline_output_path)
-
-
-
-
