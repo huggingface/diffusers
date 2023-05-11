@@ -12,6 +12,55 @@ from ...models import ModelMixin
 
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py
 class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+    """
+    Text decoder model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is used to
+    generate text from the UniDiffuser image-text embedding.
+
+    Parameters:
+        prefix_length (`int`):
+            Max number of prefix tokens that will be supplied to the model.
+        prefix_inner_dim (`int`):
+            The hidden size of the the incoming prefix embeddings. For UniDiffuser, this would be the hidden dim of the
+            CLIP text encoder.
+        prefix_hidden_dim (`int`, *optional*):
+            Hidden dim of the MLP if we encode the prefix.
+        vocab_size (`int`, *optional*, defaults to 50257):
+            Vocabulary size of the GPT-2 model. Defines the number of different tokens that can be represented by the
+            `inputs_ids` passed when calling [`GPT2Model`] or [`TFGPT2Model`].
+        n_positions (`int`, *optional*, defaults to 1024):
+            The maximum sequence length that this model might ever be used with. Typically set this to something large
+            just in case (e.g., 512 or 1024 or 2048).
+        n_embd (`int`, *optional*, defaults to 768):
+            Dimensionality of the embeddings and hidden states.
+        n_layer (`int`, *optional*, defaults to 12):
+            Number of hidden layers in the Transformer encoder.
+        n_head (`int`, *optional*, defaults to 12):
+            Number of attention heads for each attention layer in the Transformer encoder.
+        n_inner (`int`, *optional*, defaults to None):
+            Dimensionality of the inner feed-forward layers. `None` will set it to 4 times n_embd
+        activation_function (`str`, *optional*, defaults to `"gelu"`):
+            Activation function, to be selected in the list `["relu", "silu", "gelu", "tanh", "gelu_new"]`.
+        resid_pdrop (`float`, *optional*, defaults to 0.1):
+            The dropout probability for all fully connected layers in the embeddings, encoder, and pooler.
+        embd_pdrop (`float`, *optional*, defaults to 0.1):
+            The dropout ratio for the embeddings.
+        attn_pdrop (`float`, *optional*, defaults to 0.1):
+            The dropout ratio for the attention.
+        layer_norm_epsilon (`float`, *optional*, defaults to 1e-5):
+            The epsilon to use in the layer normalization layers.
+        initializer_range (`float`, *optional*, defaults to 0.02):
+            The standard deviation of the truncated_normal_initializer for initializing all weight matrices.
+        scale_attn_weights (`bool`, *optional*, defaults to `True`):
+            Scale attention weights by dividing by sqrt(hidden_size)..
+        use_cache (`bool`, *optional*, defaults to `True`):
+            Whether or not the model should return the last key/values attentions (not used by all models).
+        scale_attn_by_inverse_layer_idx (`bool`, *optional*, defaults to `False`):
+            Whether to additionally scale attention weights by `1 / layer_idx + 1`.
+        reorder_and_upcast_attn (`bool`, *optional*, defaults to `False`):
+            Whether to scale keys (K) prior to computing attention (dot-product) and upcast attention
+            dot-product/softmax to float() when training with mixed precision.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -35,17 +84,6 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         scale_attn_by_inverse_layer_idx: bool = False,
         reorder_and_upcast_attn: bool = False,
     ):
-        """
-        Text decoder model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is used to
-        generate text from the UniDiffuser image-text embedding.
-
-        Parameters:
-            prefix_length (`int`):
-                Max number of prefix tokens that will be supplied to the model.
-            prefix_hidden_dim (`int`, *optional*):
-                Hidden dim of the MLP if we encode the prefix.
-            TODO: add GPT2 config args
-        """
         super().__init__()
 
         self.prefix_length = prefix_length
@@ -104,7 +142,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             mask (`torch.Tensor` of shape `(N, prefix_length + max_seq_len, 768)`, *optional*):
                 Attention mask for the prefix embedding.
             labels (`torch.Tensor`, *optional*):
-                TODO
+                Labels to use for language modeling.
         """
         embedding_text = self.transformer.transformer.wte(tokens)
         hidden = self.encode_prefix(prefix)
@@ -131,12 +169,15 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         Args:
             tokenizer (`GPT2Tokenizer`):
                 Tokenizer of class
-                [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) for
-                tokenizing input to the text decoder model.
+                [`GPT2Tokenizer`](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
+                for tokenizing input to the text decoder model.
             features (`torch.Tensor` of shape `(B, L, D)`):
                 Text embedding features to generate captions from.
             device:
                 Device to perform text generation on.
+
+        Returns:
+            `List[str]`: A list of strings generated from the decoder model.
         """
 
         features = torch.split(features, 1, dim=0)
@@ -157,12 +198,33 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         beam_size: int = 5,
         entry_length: int = 67,
         temperature: float = 1.0,
-        stop_token: str = "<|EOS|>",
     ):
         """
-        Generates text using the given tokenizer and text prompt or token embedding via beam search.
+        Generates text using the given tokenizer and text prompt or token embedding via beam search. This
+        implementation is based on the beam search implementation from the [original UniDiffuser
+        code](https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py#L89).
 
-        TODO: args
+        Args:
+            tokenizer (`GPT2Tokenizer`):
+                Tokenizer of class
+                [`GPT2Tokenizer`](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
+                for tokenizing input to the text decoder model.
+            prompt (`str`, *optional*):
+                A raw text prompt to use as the prefix for beam search. One of `prompt` and `embed` must be supplied.
+            embed (`torch.Tensor` of shape `(B, L, D)`, *optional*):
+                An embedded representation to directly pass to the transformer as a perfix for beam search. One of
+                `prompt` and `embed` must be supplied.
+            device:
+                The device to perform beam search on.
+            beam_size (`int`, *optional*, defaults to `5`):
+                The number of best states to store during beam search.
+            entry_length (`int`, *optional*, defaults to `67`):
+                The number of iterations to run beam search.
+            temperature (`float`, *optional*, defaults to 1.0):
+                The temperature to use when performing the softmax over logits from the decoding model.
+
+        Returns:
+            `List[str]`: A list of strings generated from the decoder model via beam search.
         """
         # Generates text until stop_token is reached using beam search with the desired beam size.
         stop_token_index = tokenizer.eos_token_id
@@ -219,10 +281,6 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
 
         scores = scores / seq_lengths
         output_list = tokens.cpu().numpy()
-        # print(f"Output list: {output_list}")
-        # print(f"Output list length: {len(output_list)}")
-        # print(f"Seq lengths: {seq_lengths}")
-        # print(f"Seq lengths length: {len(seq_lengths)}")
         output_texts = [
             tokenizer.decode(output[: int(length)], skip_special_tokens=True)
             for output, length in zip(output_list, seq_lengths)
