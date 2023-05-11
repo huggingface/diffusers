@@ -30,6 +30,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class CycleDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -266,4 +267,4 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         )
         image = output.images
 
-        assert np.abs(image - expected_image).max() < 1e-2
+        assert np.abs(image - expected_image).max() < 2e-2

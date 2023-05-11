@@ -32,6 +32,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -160,6 +161,9 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

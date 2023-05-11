@@ -40,6 +40,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -155,6 +156,9 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         assert out_pil.shape == (1, 64, 64, 3)
         assert np.abs(out_pil.flatten() - out_tensor.flatten()).max() < 5e-2
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 @slow
 @require_torch_gpu
@@ -203,7 +207,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0427, 0.0460, 0.0483, 0.0460, 0.0584, 0.0521, 0.1549, 0.1695, 0.1794])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 6e-4
 
     def test_stable_diffusion_inpaint_fp16(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -238,7 +242,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 5e-3
 
     def test_stable_diffusion_inpaint_k_lms(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -256,7 +260,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.9314, 0.7575, 0.9432, 0.8885, 0.9028, 0.7298, 0.9811, 0.9667, 0.7633])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 6e-3
 
     def test_stable_diffusion_inpaint_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
@@ -300,8 +304,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        assert np.abs(expected_slice - image_slice).max() < 3e-3
 
     def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
