@@ -323,7 +323,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([13, 16, 27])
     @require_torch_gpu
-    @unittest.skipIf(not is_xformers_available())
+    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
         model = self.get_sd_vae_model(fp16=True)
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
@@ -341,7 +341,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([13, 16, 37])
     @require_torch_gpu
-    @unittest.skipIf(not is_xformers_available())
+    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
