@@ -9,7 +9,7 @@ from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
     CLIPTokenizer,
-    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
     GPT2Tokenizer,
 )
 
@@ -121,7 +121,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
-        image_encoder: CLIPVisionModel,
+        image_encoder: CLIPVisionModelWithProjection,
         image_processor: CLIPImageProcessor,
         clip_tokenizer: CLIPTokenizer,
         text_decoder: UniDiffuserTextDecoder,
@@ -154,7 +154,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.num_channels_latents = vae.config.latent_channels
         self.text_encoder_seq_len = text_encoder.config.max_position_embeddings
         self.text_encoder_hidden_size = text_encoder.config.hidden_size
-        self.image_encoder_hidden_size = image_encoder.config.hidden_size
+        self.image_encoder_projection_dim = image_encoder.config.projection_dim
         self.unet_resolution = unet.config.sample_size
 
         self.text_intermediate_dim = self.text_encoder_hidden_size
@@ -635,11 +635,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         batch_size = batch_size * num_prompts_per_image
         if isinstance(generator, list):
             image_latents = [
-                self.image_encoder(**preprocessed_image[i : i + 1]).pooler_output for i in range(batch_size)
+                self.image_encoder(**preprocessed_image[i : i + 1]).image_embeds for i in range(batch_size)
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.image_encoder(**preprocessed_image).pooler_output
+            image_latents = self.image_encoder(**preprocessed_image).image_embeds
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
@@ -769,10 +769,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
         latent_width = width // self.vae_scale_factor
         img_vae_dim = self.num_channels_latents * latent_height * latent_width
 
-        img_vae, img_clip = x.split([img_vae_dim, self.image_encoder_hidden_size], dim=1)
+        img_vae, img_clip = x.split([img_vae_dim, self.image_encoder_projection_dim], dim=1)
 
         img_vae = torch.reshape(img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width))
-        img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_hidden_size))
+        img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_projection_dim))
         return img_vae, img_clip
 
     def _combine(self, img_vae, img_clip):
@@ -796,10 +796,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
         img_vae_dim = self.num_channels_latents * latent_height * latent_width
         text_dim = self.text_encoder_seq_len * self.text_encoder_hidden_size
 
-        img_vae, img_clip, text = x.split([img_vae_dim, self.image_encoder_hidden_size, text_dim], dim=1)
+        img_vae, img_clip, text = x.split([img_vae_dim, self.image_encoder_projection_dim, text_dim], dim=1)
 
         img_vae = torch.reshape(img_vae, (batch_size, self.num_channels_latents, latent_height, latent_width))
-        img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_hidden_size))
+        img_clip = torch.reshape(img_clip, (batch_size, 1, self.image_encoder_projection_dim))
         text = torch.reshape(text, (batch_size, self.text_encoder_seq_len, self.text_encoder_hidden_size))
         return img_vae, img_clip, text
 
@@ -1018,7 +1018,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # Check shape of full latents
             img_vae_dim = self.num_channels_latents * latent_height * latent_width
             text_dim = self.text_encoder_seq_len * self.text_encoder_hidden_size
-            latents_dim = img_vae_dim + self.image_encoder_hidden_size + text_dim
+            latents_dim = img_vae_dim + self.image_encoder_projection_dim + text_dim
             latents_expected_shape = (latents_dim,)
             self.check_latents_shape("latents", latents, latents_expected_shape)
 
@@ -1032,7 +1032,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             self.check_latents_shape("vae_latents", vae_latents, vae_latents_expected_shape)
 
         if clip_latents_available:
-            clip_latents_expected_shape = (1, self.image_encoder_hidden_size)
+            clip_latents_expected_shape = (1, self.image_encoder_projection_dim)
             self.check_latents_shape("clip_latents", clip_latents, clip_latents_expected_shape)
 
         if mode in ["text2img", "img"] and vae_latents_available and clip_latents_available:
@@ -1297,7 +1297,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             image_clip_latents = self.prepare_image_clip_latents(
                 batch_size=batch_size,
                 num_prompts_per_image=multiplier,
-                clip_img_dim=self.image_encoder_hidden_size,
+                clip_img_dim=self.image_encoder_projection_dim,
                 dtype=prompt_embeds.dtype,
                 device=device,
                 generator=generator,
@@ -1317,6 +1317,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
+        
+        print(f"Initial latents: {latents}")
 
         # 7. Check that shapes of latents and image match the UNet channels.
         # TODO
@@ -1330,6 +1332,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                print(f"Step {i} / timestep {t}")
                 # predict the noise residual
                 # Also applies classifier-free guidance as described in the UniDiffuser paper
                 noise_pred = self._get_noise_pred(
@@ -1348,10 +1351,14 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     width,
                 )
 
+                print(f"noise_pred: {noise_pred}")
+
                 # TODO: do we need to worry about sigma space stuff for the scheduler?
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                print(f"New latents: {latents}")
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

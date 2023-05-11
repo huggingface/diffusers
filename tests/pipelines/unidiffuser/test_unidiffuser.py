@@ -9,7 +9,7 @@ from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
     CLIPTokenizer,
-    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
     GPT2Tokenizer,
 )
 
@@ -59,7 +59,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             subfolder="clip_tokenizer",
         )
 
-        image_encoder = CLIPVisionModel.from_pretrained(
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             "dg845/unidiffuser-diffusers-test",
             subfolder="image_encoder",
         )
@@ -158,7 +158,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_unidiffuser_default_joint(self):
+    def test_unidiffuser_default_joint_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -180,13 +180,13 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.5760, 0.6270, 0.6571, 0.4966, 0.4638, 0.5663, 0.5253, 0.5068, 0.5716])
+        expected_img_slice = np.array([0.5760, 0.6270, 0.6571, 0.4965, 0.4638, 0.5663, 0.5254, 0.5068, 0.5716])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
 
-    def test_unidiffuser_default_joint_no_cfg(self):
+    def test_unidiffuser_default_joint_no_cfg_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -210,13 +210,13 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.5760, 0.6270, 0.6571, 0.4966, 0.4638, 0.5663, 0.5254, 0.5068, 0.5716])
+        expected_img_slice = np.array([0.5760, 0.6270, 0.6571, 0.4965, 0.4638, 0.5663, 0.5254, 0.5068, 0.5716])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
 
-    def test_unidiffuser_default_text2img(self):
+    def test_unidiffuser_default_text2img_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -234,10 +234,10 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5758, 0.6269, 0.6570, 0.4968, 0.4639, 0.5664, 0.5257, 0.5067, 0.5715])
+        expected_slice = np.array([0.5758, 0.6269, 0.6570, 0.4967, 0.4639, 0.5664, 0.5257, 0.5067, 0.5715])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_unidiffuser_default_image(self):
+    def test_unidiffuser_default_image_0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -256,10 +256,10 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5760, 0.6270, 0.6571, 0.4966, 0.4638, 0.5664, 0.5254, 0.5068, 0.5716])
+        expected_slice = np.array([0.5760, 0.6270, 0.6571, 0.4966, 0.4638, 0.5663, 0.5254, 0.5068, 0.5715])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_unidiffuser_default_text(self):
+    def test_unidiffuser_default_text_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -279,7 +279,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
 
-    def test_unidiffuser_default_img2text(self):
+    def test_unidiffuser_default_img2text_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         unidiffuser_pipe = UniDiffuserPipeline(**components)
@@ -320,8 +320,46 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.5759, 0.6270, 0.6571, 0.4966, 0.4639, 0.5663, 0.5254, 0.5068, 0.5715])
+        expected_img_slice = np.array([0.5760, 0.6270, 0.6571, 0.4965, 0.4638, 0.5663, 0.5254, 0.5068, 0.5716])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
+
+        expected_text_prefix = " no no no "
+        assert text[0][:10] == expected_text_prefix
+
+    def test_unidiffuser_default_text2img_v1(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unidiffuser_pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-test-v1")
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'text2img'
+        unidiffuser_pipe.set_text_to_image_mode()
+        assert unidiffuser_pipe.mode == "text2img"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete image for text-conditioned image generation
+        del inputs["image"]
+        image = unidiffuser_pipe(**inputs).images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.5758, 0.6269, 0.6570, 0.4967, 0.4639, 0.5664, 0.5257, 0.5067, 0.5715])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_unidiffuser_default_img2text_v1(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unidiffuser_pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-test-v1")
+        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe.set_progress_bar_config(disable=None)
+
+        # Set mode to 'img2text'
+        unidiffuser_pipe.set_image_to_text_mode()
+        assert unidiffuser_pipe.mode == "img2text"
+
+        inputs = self.get_dummy_inputs_with_latents(device)
+        # Delete text for image-conditioned text generation
+        del inputs["prompt"]
+        text = unidiffuser_pipe(**inputs).text
 
         expected_text_prefix = " no no no "
         assert text[0][:10] == expected_text_prefix
@@ -499,7 +537,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
-    def test_unidiffuser_default_joint(self):
+    def test_unidiffuser_default_joint_v1(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -522,7 +560,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_text_prefix = "Pink pink "
         assert text[0][:10] == expected_text_prefix
 
-    def test_unidiffuser_default_text2img(self):
+    def test_unidiffuser_default_text2img_v1(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -538,7 +576,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_unidiffuser_default_img2text(self):
+    def test_unidiffuser_default_img2text_v1(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -551,3 +589,78 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
         expected_text_prefix = "Astronaut "
         assert text[0][:10] == expected_text_prefix
+    
+    def test_unidiffuser_default_joint_v1_fp16(self):
+        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe.image_encoder = CLIPVisionModelWithProjection.from_pretrained("/home/tamamo/scratch/unidiffuser_big/image_encoder")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        # inputs = self.get_dummy_inputs(device)
+        inputs = self.get_inputs()
+        # Delete prompt and image for joint inference.
+        del inputs["prompt"]
+        del inputs["image"]
+        sample = pipe(**inputs)
+        image = sample.images
+        text = sample.text
+        assert image.shape == (1, 512, 512, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_img_slice = np.array([0.8887, 0.8926, 0.8672, 0.8984, 0.8867, 0.8564, 0.9043, 0.8887, 0.8657])
+        assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
+
+        expected_text_prefix = "Pink pink "
+        assert text[0][:10] == expected_text_prefix
+    
+    def test_unidiffuser_default_text2img_v1_fp16(self):
+        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe.image_encoder = CLIPVisionModelWithProjection.from_pretrained("/home/tamamo/scratch/unidiffuser_big/image_encoder")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        del inputs["image"]
+        sample = pipe(**inputs)
+        image = sample.images
+        assert image.shape == (1, 512, 512, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    
+    def test_unidiffuser_default_text2img_v1_fp16_no_cfg(self):
+        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe.image_encoder = CLIPVisionModelWithProjection.from_pretrained("/home/tamamo/scratch/unidiffuser_big/image_encoder")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        del inputs["image"]
+        inputs["guidance_scale"] = 0.0
+        sample = pipe(**inputs)
+        image = sample.images
+        assert image.shape == (1, 512, 512, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_unidiffuser_default_img2text_v1_fp16(self):
+        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe.image_encoder = CLIPVisionModelWithProjection.from_pretrained("/home/tamamo/scratch/unidiffuser_big/image_encoder")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        del inputs["prompt"]
+        sample = pipe(**inputs)
+        text = sample.images
+
+        expected_text_prefix = "Astronaut "
+        assert text[0][:10] == expected_text_prefix
+    

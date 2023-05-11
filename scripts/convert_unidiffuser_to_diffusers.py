@@ -10,7 +10,7 @@ from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
     CLIPVisionConfig,
-    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
     GPT2Tokenizer,
 )
 
@@ -736,7 +736,7 @@ if __name__ == "__main__":
             attention_dropout=0.1,
             initializer_range=0.02,
         )
-        image_encoder = CLIPVisionModel(clip_image_encoder_config)
+        image_encoder = CLIPVisionModelWithProjection(clip_image_encoder_config)
         image_processor = CLIPImageProcessor(crop_size=32, size=32)
 
         # Note that the text_decoder should already have its token embeddings resized.
@@ -748,7 +748,7 @@ if __name__ == "__main__":
         text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
         clip_tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
-        image_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32")
         image_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
         # Note that the text_decoder should already have its token embeddings resized.
