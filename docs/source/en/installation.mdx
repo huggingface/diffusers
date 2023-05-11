@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Install 🤗 Diffusers for whichever deep learning library you’re working with.
+Install 🤗 Diffusers for whichever deep learning library you're working with.
 
-🤗 Diffusers is tested on Python 3.7+, PyTorch 1.7.0+ and flax. Follow the installation instructions below for the deep learning library you are using:
+🤗 Diffusers is tested on Python 3.7+, PyTorch 1.7.0+ and Flax. Follow the installation instructions below for the deep learning library you are using:
 
 - [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
 - [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
@@ -37,27 +37,28 @@ Activate the virtual environment:
 source .env/bin/activate
 ```
 
-Now you're ready to install 🤗 Diffusers with the following command:
+🤗 Diffusers also relies on the 🤗 Transformers library, and you can install both with the following command:
 
-**For PyTorch**
-
+<frameworkcontent>
+<pt>
 ```bash
-pip install diffusers["torch"]
+pip install diffusers["torch"] transformers
 ```
-
-**For Flax**
-
+</pt>
+<jax>
 ```bash
-pip install diffusers["flax"]
+pip install diffusers["flax"] transformers
 ```
+</jax>
+</frameworkcontent>
 
 ## Install from source
 
-Before intsalling `diffusers` from source, make sure you have `torch` and `accelerate` installed.
+Before installing 🤗 Diffusers from source, make sure you have `torch` and 🤗 Accelerate installed.
 
-For `torch` installation refer to the `torch` [docs](https://pytorch.org/get-started/locally/#start-locally).
+For `torch` installation, refer to the `torch` [installation](https://pytorch.org/get-started/locally/#start-locally) guide.
 
-To install `accelerate`
+To install 🤗 Accelerate:
 
 ```bash
 pip install accelerate
@@ -74,7 +75,7 @@ The `main` version is useful for staying up-to-date with the latest developments
 For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
 However, this means the `main` version may not always be stable.
 We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/transformers/issues), so we can fix it even sooner!
+If you run into a problem, please open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose), so we can fix it even sooner!
 
 ## Editable install
 
@@ -90,21 +91,22 @@ git clone https://github.com/huggingface/diffusers.git
 cd diffusers
 ```
 
-**For PyTorch**
-
-```
+<frameworkcontent>
+<pt>
+```bash
 pip install -e ".[torch]"
 ```
-
-**For Flax**
-
-```
+</pt>
+<jax>
+```bash
 pip install -e ".[flax]"
 ```
+</jax>
+</frameworkcontent>
 
 These commands will link the folder you cloned the repository to and your Python library paths.
 Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.7/site-packages/`, Python will also search the folder you cloned to: `~/diffusers/`.
+For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.7/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
 
 <Tip warning={true}>
 
