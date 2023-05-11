@@ -97,18 +97,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
             images as part of its image representation, along with the VAE latent representation.
         image_processor ([`CLIPImageProcessor`]):
             CLIP image processor of class
-            [`CLIPImageProcessor`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPImageProcessor),
+            [CLIPImageProcessor](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPImageProcessor),
             used to preprocess the image before CLIP encoding it with `image_encoder`.
         clip_tokenizer ([`CLIPTokenizer`]):
             Tokenizer of class
-            [`CLIPTokenizer`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTokenizer) which
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTokenizer) which
             is used to tokenizer a prompt before encoding it with `text_encoder`.
         text_decoder ([`UniDiffuserTextDecoder`]):
             Frozen text decoder. This is a GPT-style model which is used to generate text from the UniDiffuser
             embedding.
         text_tokenizer ([`GPT2Tokenizer`]):
             Tokenizer of class
-            [`GPT2Tokenizer`](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) which
+            [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) which
             is used along with the `text_decoder` to decode text for text generation.
         unet ([`UniDiffuserModel`]):
             UniDiffuser uses a [U-ViT](https://github.com/baofff/U-ViT) model architecture, which is similar to a
@@ -173,7 +173,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        `torch.device('meta')` and loaded to GPU only when their specific submodule has its `forward` method called.
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
@@ -814,7 +814,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         text = einops.rearrange(text, "B L D -> B (L D)")
         return torch.concat([img_vae, img_clip, text], dim=-1)
 
-    def get_noise_pred(
+    def _get_noise_pred(
         self,
         mode,
         latents,
@@ -1096,18 +1096,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 8.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality. Note that the original [UniDiffuser
-                paper](https://arxiv.org/pdf/2303.06555.pdf) uses a different definition of guidance scale `w'`, which
+                paper](https://arxiv.org/pdf/2303.06555.pdf) uses a different definition of the guidance scale `w'`, which
                 satisfies `w = w' + 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`). Used in text-conditioned image generation (`text2img` mode).
+                less than `1`). Used in text-conditioned image generation (`text2img`) mode.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt. Used in `text2img` (text-conditioned image generation) and
                 `img` mode. If the mode is joint and both `num_images_per_prompt` and `num_prompts_per_image` are
@@ -1159,7 +1159,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-        Examples: Returns:
+        Returns:
             [`~pipelines.unidiffuser.ImageTextPipelineOutput`] or `tuple`:
             [`pipelines.unidiffuser.ImageTextPipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images, and the second element is a list
@@ -1332,7 +1332,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # predict the noise residual
                 # Also applies classifier-free guidance as described in the UniDiffuser paper
-                noise_pred = self.get_noise_pred(
+                noise_pred = self._get_noise_pred(
                     mode,
                     latents,
                     t,
