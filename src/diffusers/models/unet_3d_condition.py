@@ -117,7 +117,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conv_type: str = None,
         use_temporal_transformer: bool = True,
         use_temporal_conv: bool = True,
         sub_blocks_type: str = "2d",
