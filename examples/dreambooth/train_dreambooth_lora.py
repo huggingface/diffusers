@@ -1269,7 +1269,7 @@ def main(args):
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
         unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
-        
+
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
             text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
