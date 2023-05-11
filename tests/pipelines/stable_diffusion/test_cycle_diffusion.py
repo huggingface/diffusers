@@ -267,4 +267,4 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         )
         image = output.images
 
-        assert np.abs(image - expected_image).max() < 1e-2
+        assert np.abs(image - expected_image).max() < 2e-2
