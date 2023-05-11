@@ -19,6 +19,10 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, assert_mean_pixel_difference
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
+
+
 class StableUnCLIPPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPPipeline
     params = TEXT_TO_IMAGE_PARAMS
