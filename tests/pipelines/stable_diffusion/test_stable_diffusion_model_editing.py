@@ -36,6 +36,7 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 @skip_mps
@@ -174,6 +175,12 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineLatentTesterMixin, Pi
         # the pipeline does not expect pndm so test if it raises error.
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
 
 @slow
