@@ -22,6 +22,9 @@ from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils.testing_utils import skip_mps, torch_device
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
+
 
 class EMAModelTests(unittest.TestCase):
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
