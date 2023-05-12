@@ -75,7 +75,7 @@ def prepare_image(pil_image, w=512, h=512):
     return image
 
 
-class KandinskyPipeline(DiffusionPipeline):
+class KandinskyInpaintPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
 

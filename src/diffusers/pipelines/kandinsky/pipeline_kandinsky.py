@@ -45,7 +45,7 @@ def get_new_h_w(h, w):
     return new_h * 8, new_w * 8
 
 
-class KandinskyInpaintPipeline(DiffusionPipeline):
+class KandinskyPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
 
@@ -329,12 +329,13 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-        # expand the latents if we are doing classifier free guidance
-        latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            
             noise_pred = self.unet(
-                sample=latents,  # [2, 4, 96, 96]
+                sample=latent_model_input,  # [2, 4, 96, 96]
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 class_labels=additive_clip_time_embeddings,
@@ -368,6 +369,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 batch_size=batch_size,
             ).prev_sample
 
-        _, latents = latents.chunk(2)
+            _, latents = latents.chunk(2)
 
         return latents
