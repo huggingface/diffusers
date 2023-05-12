@@ -19,4 +19,4 @@ else:
 
 
 if is_transformers_available() and is_flax_available():
-    from .pipeline_flax_stable_diffusion_controlnet import FlaxStableDiffusionControlNetPipeline
+    from .pipeline_flax_controlnet import FlaxStableDiffusionControlNetPipeline

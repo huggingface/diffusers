@@ -138,11 +138,11 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
     from .stable_diffusion import (
-        FlaxStableDiffusionControlNetPipeline,
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
     )
+    from .controlnet import FlaxStableDiffusionControlNetPipeline
 try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
