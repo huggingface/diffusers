@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .attention import AdaGroupNorm, SpatialNorm
+from .attention import AdaGroupNorm
 
 
 class Upsample1D(nn.Module):
@@ -460,7 +460,7 @@ class ResnetBlock2D(nn.Module):
         eps=1e-6,
         non_linearity="swish",
         skip_time_act=False,
-        time_embedding_norm="default",  # default, scale_shift, ada_group, spatial
+        time_embedding_norm="default",  # default, scale_shift, ada_group
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
@@ -487,8 +487,6 @@ class ResnetBlock2D(nn.Module):
 
         if self.time_embedding_norm == "ada_group":
             self.norm1 = AdaGroupNorm(temb_channels, in_channels, groups, eps=eps)
-        elif self.time_embedding_norm == "spatial":
-            self.norm1 = SpatialNorm(in_channels, temb_channels)
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
@@ -499,7 +497,7 @@ class ResnetBlock2D(nn.Module):
                 self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
                 self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
-            elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
+            elif self.time_embedding_norm == "ada_group":
                 self.time_emb_proj = None
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
@@ -508,8 +506,6 @@ class ResnetBlock2D(nn.Module):
 
         if self.time_embedding_norm == "ada_group":
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
-        elif self.time_embedding_norm == "spatial":
-            self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
             self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
@@ -555,7 +551,7 @@ class ResnetBlock2D(nn.Module):
     def forward(self, input_tensor, temb):
         hidden_states = input_tensor
 
-        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
+        if self.time_embedding_norm == "ada_group":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
@@ -583,7 +579,7 @@ class ResnetBlock2D(nn.Module):
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
 
-        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
+        if self.time_embedding_norm == "ada_group":
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)

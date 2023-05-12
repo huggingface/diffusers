@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from ..utils import BaseOutput, randn_tensor
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
-from .attention import SpatialNorm
+
 
 @dataclass
 class DecoderOutput(BaseOutput):
@@ -149,7 +149,6 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
-        norm_type="default", # default, spatial
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -165,19 +164,16 @@ class Decoder(nn.Module):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
-        
-        temb_channels = in_channels if norm_type == "spatial" else None
-
         # mid
         self.mid_block = UNetMidBlock2D(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
             output_scale_factor=1,
-            resnet_time_scale_shift=norm_type,
+            resnet_time_scale_shift="default",
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
-            temb_channels=temb_channels,
+            temb_channels=None,
         )
 
         # up
@@ -200,23 +196,19 @@ class Decoder(nn.Module):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=None,
-                temb_channels=temb_channels,
-                resnet_time_scale_shift=norm_type,
+                temb_channels=None,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
         # out
-        if norm_type == "spatial":
-            self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
-        else:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
         self.gradient_checkpointing = False
 
-    def forward(self, z, zq=None):
+    def forward(self, z):
         sample = z
         sample = self.conv_in(sample)
 
@@ -238,18 +230,15 @@ class Decoder(nn.Module):
                 sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
         else:
             # middle
-            sample = self.mid_block(sample, zq)
+            sample = self.mid_block(sample)
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(sample, zq)
+                sample = up_block(sample)
 
         # post-process
-        if zq is None:
-            sample = self.conv_norm_out(sample)
-        else:
-            sample = self.conv_norm_out(sample, zq)
+        sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
