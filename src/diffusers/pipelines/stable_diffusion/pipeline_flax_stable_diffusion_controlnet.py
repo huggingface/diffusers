@@ -16,6 +16,7 @@
 # It only exists so that temporarely `from diffusers.pipelines import DiffusionPipeline` works
 
 from ...utils import deprecate
+from ..controlnet.pipeline_flax_controlnet import FlaxStableDiffusionControlNetPipeline  # noqa: F401
 
 
 deprecate(
