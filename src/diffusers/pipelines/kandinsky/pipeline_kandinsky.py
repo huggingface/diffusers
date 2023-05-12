@@ -100,6 +100,7 @@ class KandinskyPipeline(DiffusionPipeline):
             text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
+            decoder=decoder,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
