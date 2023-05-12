@@ -14,11 +14,13 @@
 # limitations under the License.
 
 import gc
+import random
 import tempfile
 import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -27,14 +29,15 @@ from diffusers import (
     ControlNetModel,
     DDIMScheduler,
     StableDiffusionControlNetPipeline,
+    StableDiffusionControlNetInpaintPipeline,
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
@@ -42,11 +45,11 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.use_deterministic_algorithms(True)
 
 
-class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionControlNetPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+class ControlNetInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableDiffusionControlNetInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -54,7 +57,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, Pipe
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
-            in_channels=4,
+            in_channels=9,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
@@ -120,11 +123,16 @@ class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, Pipe
             generator = torch.Generator(device=device).manual_seed(seed)
 
         controlnet_embedder_scale_factor = 2
-        image = randn_tensor(
+        control_image = randn_tensor(
             (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
             generator=generator,
             device=torch.device(device),
         )
+        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        init_image = init_image.cpu().permute(0, 2, 3, 1)[0]
+
+        image = Image.fromarray(np.uint8(init_image)).convert("RGB").resize((64, 64))
+        mask_image = Image.fromarray(np.uint8(init_image + 4)).convert("RGB").resize((64, 64))
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
@@ -133,6 +141,8 @@ class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, Pipe
             "guidance_scale": 6.0,
             "output_type": "numpy",
             "image": image,
+            "mask_image": mask_image,
+            "control_image": control_image,
         }
 
         return inputs
@@ -151,10 +161,10 @@ class StableDiffusionControlNetPipelineFastTests(PipelineLatentTesterMixin, Pipe
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
 
-class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionControlNetPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableDiffusionControlNetInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -162,7 +172,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
-            in_channels=4,
+            in_channels=9,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
@@ -240,7 +250,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
 
         controlnet_embedder_scale_factor = 2
 
-        images = [
+        control_image = [
             randn_tensor(
                 (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
                 generator=generator,
@@ -252,6 +262,11 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
                 device=torch.device(device),
             ),
         ]
+        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        init_image = init_image.cpu().permute(0, 2, 3, 1)[0]
+
+        image = Image.fromarray(np.uint8(init_image)).convert("RGB").resize((64, 64))
+        mask_image = Image.fromarray(np.uint8(init_image + 4)).convert("RGB").resize((64, 64))
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
@@ -259,7 +274,9 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
-            "image": images,
+            "image": image,
+            "mask_image": mask_image,
+            "control_image": control_image,
         }
 
         return inputs
