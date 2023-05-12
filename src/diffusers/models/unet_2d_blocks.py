@@ -427,22 +427,18 @@ class UNetMidBlock2D(nn.Module):
 
         for _ in range(num_layers):
             if self.add_attention:
-                if resnet_time_scale_shift == "spatial":
-                    attentions.append(
-                        MOVQAttention(
-                            in_channels,
-                            temb_channels,
-                            attn_num_head_channels
-                        ))
-                else:
-                    attentions.append(
-                        AttentionBlock(
-                            in_channels,
-                            num_head_channels=attn_num_head_channels,
-                            rescale_output_factor=output_scale_factor,
-                            eps=resnet_eps,
-                            norm_num_groups=resnet_groups,
-                        )
+                attentions.append(
+                    Attention(
+                        in_channels,
+                        heads=in_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                        dim_head=attn_num_head_channels if attn_num_head_channels is not None else in_channels,
+                        rescale_output_factor=output_scale_factor,
+                        eps=resnet_eps,
+                        norm_num_groups=resnet_groups,
+                        residual_connection=True,
+                        bias=True,
+                        upcast_softmax=True,
+                        _from_deprecated_attn_block=True,
                     )
             else:
                 attentions.append(None)
@@ -721,12 +717,17 @@ class AttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1070,12 +1071,17 @@ class AttnDownEncoderBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1144,11 +1150,17 @@ class AttnSkipDownBlock2D(nn.Module):
                 )
             )
             self.attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
+                    norm_num_groups=32,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -1713,12 +1725,17 @@ class AttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                Attention(
                     out_channels,
-                    num_head_channels=attn_num_head_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
             )
 
@@ -2072,23 +2089,18 @@ class AttnUpDecoderBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            if resnet_time_scale_shift == "spatial":
-                attentions.append(
-                    MOVQAttention(
-                        out_channels,
-                        temb_channels=temb_channels,
-                        attn_num_head_channels=attn_num_head_channels,
-                    )
-                )
-            else:
-                attentions.append(
-                    AttentionBlock(
-                        out_channels,
-                        num_head_channels=attn_num_head_channels,
-                        rescale_output_factor=output_scale_factor,
-                        eps=resnet_eps,
-                        norm_num_groups=resnet_groups,
-                    )
+            attentions.append(
+                Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    rescale_output_factor=output_scale_factor,
+                    eps=resnet_eps,
+                    norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
                 )
 
         self.attentions = nn.ModuleList(attentions)
@@ -2154,11 +2166,17 @@ class AttnSkipUpBlock2D(nn.Module):
             )
 
         self.attentions.append(
-            AttentionBlock(
+            Attention(
                 out_channels,
-                num_head_channels=attn_num_head_channels,
+                heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
+                norm_num_groups=32,
+                residual_connection=True,
+                bias=True,
+                upcast_softmax=True,
+                _from_deprecated_attn_block=True,
             )
         )
 
