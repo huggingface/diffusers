@@ -851,11 +851,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
-
-        # 5. set timesteps
+        # 4. set timesteps
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps=num_inference_steps, strength=strength)
+        # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
+        noise_timestep = timesteps[0:1]
+        noise_timestep = noise_timestep.repeat(batch_size * num_images_per_prompt)
+
+        # 5. Preprocess mask and image
+        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
