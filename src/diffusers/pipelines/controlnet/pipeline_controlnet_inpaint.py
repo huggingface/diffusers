@@ -57,6 +57,9 @@ EXAMPLE_DOC_STRING = """
         >>> import cv2
         >>> from PIL import Image
 
+        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
         >>> init_image = load_image(img_url).resize((512, 512))
         >>> mask_image = load_image(mask_url).resize((512, 512))
 
