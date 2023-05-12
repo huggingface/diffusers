@@ -710,6 +710,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
+            strength (`float`, *optional*, defaults to 1.):
+                Conceptually, indicates how much to transform the masked portion of the reference `image`.
+                Must be between 0 and 1. `image` will be used as a starting point, adding more noise to it the
+                larger the `strength`. The number of denoising steps depends on the amount of noise initially
+                added. When `strength` is 1, added noise will be maximum and the denoising process will run for
+                the full number of iterations specified in `num_inference_steps`. A value of 1, therefore,
+                essentially ignores the masked portion of the reference `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
