@@ -626,6 +626,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
             encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
+            attention_mask (`torch.Tensor`):
+                (batch, sequence_length) self-attention mask, applied to sample. True = keep, False = discard. Mask
+                will be converted into a bias, which adds large negative values to attention scores corresponding to
+                "discard" tokens.
             encoder_attention_mask (`torch.Tensor`):
                 (batch, sequence_length) cross-attention mask, applied to encoder_hidden_states. True = keep, False =
                 discard. Mask will be converted into a bias, which adds large negative values to attention scores
