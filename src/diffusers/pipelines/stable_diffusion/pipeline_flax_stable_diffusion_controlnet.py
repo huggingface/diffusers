@@ -15,7 +15,8 @@
 # NOTE: This file is deprecated and will be removed in a future version.
 # It only exists so that temporarely `from diffusers.pipelines import DiffusionPipeline` works
 
-from ..utils import deprecate
+from ...utils import deprecate
+from ..controlnet.pipeline_flax_controlnet import FlaxStableDiffusionControlNetPipeline
 
 
 deprecate(
