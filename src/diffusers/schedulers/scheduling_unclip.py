@@ -258,6 +258,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
+        # YiYi's TO-DO: batch_size argument for testing, remove this later
         batch_size: Optional[int] = None,
     ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
