@@ -319,7 +319,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
 
 @slow
 @require_torch_gpu
-class StableDiffusionControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
+class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -335,19 +335,30 @@ class StableDiffusionControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "bird"
-        image = load_image(
+        prompt = "evil space-punk bird"
+        control_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        )
+        ).resize((512, 512))
+        image = load_image(
+            "https://huggingface.co/lllyasviel/sd-controlnet-canny/resolve/main/images/bird.png"
+        ).resize((512, 512))
 
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+        output = pipe(
+            prompt,
+            image,
+            control_image=control_image,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=50,
+            strength=0.6,
+        )
 
         image = output.images[0]
 
-        assert image.shape == (768, 512, 3)
+        assert image.shape == (512, 512, 3)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/img2img.npy"
         )
 
         assert np.abs(expected_image - image).max() < 9e-2
