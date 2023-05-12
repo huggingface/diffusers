@@ -251,7 +251,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
-        self.orders = self.get_order_list(num_inference_steps)
+        self.order_list = self.get_order_list(num_inference_steps)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -597,6 +597,11 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs[-1] = model_output
 
         order = self.order_list[step_index]
+
+        #  For img2img denoising might start with order>1 which is not possible
+        #  In this case make sure that the first two steps are both order=1
+        order = order if self.model_outputs[-order] is not None else order - 1
+
         # For single-step solvers, we use the initial value at each time with order = 1.
         if order == 1:
             self.sample = sample
