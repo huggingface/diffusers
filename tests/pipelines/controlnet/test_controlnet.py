@@ -153,9 +153,9 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
 
 class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionControlNetPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)
