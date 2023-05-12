@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         >>> # generate image
         >>> generator = torch.manual_seed(0)
         >>> image = pipe(
-        ...     "a red monkey",
+        ...     "spiderman",
         ...     num_inference_steps=30,
         ...     generator=generator,
         ...     image=init_image,
