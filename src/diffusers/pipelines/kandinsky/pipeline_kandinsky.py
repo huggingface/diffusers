@@ -45,7 +45,7 @@ def get_new_h_w(h, w):
     return new_h * 8, new_w * 8
 
 
-class KandinskyPipeline(DiffusionPipeline):
+class KandinskyInpaintPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
 
@@ -274,8 +274,8 @@ class KandinskyPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int = 512,
+        width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -317,8 +317,6 @@ class KandinskyPipeline(DiffusionPipeline):
 
         num_channels_latents = self.unet.config.in_channels
 
-        height = height or self.unet.config.sample_size
-        width = width or self.unet.config.sample_size
         height, width = get_new_h_w(height, width)
 
         # create initial latent
