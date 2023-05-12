@@ -7,10 +7,13 @@ from ...utils import (
 
 
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    print("to-do")
-#    from ...utils.dummy_torch_and_transformers_objects import UnCLIPImageVariationPipeline, UnCLIPPipeline
+    from ...utils.dummy_torch_and_transformers_objects import KandinskyPipeline, KandinskyPriorPipeline
 else:
     from .pipeline_kandinsky import KandinskyPipeline
+    from .pipeline_kandinsky_prior import KandinskyPriorPipeline
+    from .pipeline_kandinsky_inpaint import KandinskyInpaintPipeline
+    from .text_encoder import MultilingualCLIP
+    from .text_proj import KandinskyTextProjModel

@@ -97,6 +97,15 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process)
             or `sample` (directly predicting the noisy sample`)
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+            stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
+        sample_max_value (`float`, default `1.0`):
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
     """
 
     @register_to_config
@@ -106,13 +115,23 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small_log",
         clip_sample: bool = True,
         clip_sample_range: Optional[float] = 1.0,
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        sample_min_value: Optional[float] = None,
+        sample_max_value: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
-        beta_schedule: str = "squaredcos_cap_v2",
+        beta_schedule: str = "squaredcos_cap_v2",  # "linear"
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
     ):
-        if beta_schedule != "squaredcos_cap_v2":
-            raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
-
-        self.betas = betas_for_alpha_bar(num_train_timesteps)
+        if beta_schedule == "squaredcos_cap_v2":
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
+        elif beta_schedule == "linear":
+            # Linear schedule from Ho et al, extended to work for any number of diffusion steps.
+            scale = 1000 / num_train_timesteps
+            self.betas = torch.linspace(beta_start * scale, beta_end * scale, num_train_timesteps, dtype=torch.float64)
+        else:
+            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -190,9 +209,46 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             max_log = beta.log()
 
             frac = (predicted_variance + 1) / 2
+            # this is log variance
             variance = frac * max_log + (1 - frac) * min_log
 
         return variance
+
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        """
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
+        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
+        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+
+        https://arxiv.org/abs/2205.11487
+        """
+        dtype = sample.dtype
+        batch_size, channels, height, width = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * height * width)
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s,
+            min=self.config.sample_min_value,
+            max=self.config.sample_max_value,
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, height, width)
+        sample = sample.to(dtype)
+
+        return sample
 
     def step(
         self,
@@ -202,6 +258,8 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
+        # YiYi's TO-DO: batch_size argument for testing, remove this later
+        batch_size: Optional[int] = None,
     ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -258,11 +316,14 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
                 " for the UnCLIPScheduler."
             )
 
-        # 3. Clip "predicted x_0"
+        # 3. Clip/threhold "predicted x_0"
         if self.config.clip_sample:
             pred_original_sample = torch.clamp(
                 pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
             )
+
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -276,9 +337,20 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            variance_noise = randn_tensor(
-                model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
-            )
+            if batch_size is not None:
+                assert batch_size * 2 == model_output.shape[0]
+                variance_noise = randn_tensor(
+                    (batch_size, *model_output.shape[1:]),
+                    dtype=model_output.dtype,
+                    generator=generator,
+                    device=model_output.device,
+                )
+
+                variance_noise = torch.cat([variance_noise, variance_noise], dim=0)
+            else:
+                variance_noise = randn_tensor(
+                    model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
+                )
 
             variance = self._get_variance(
                 t,

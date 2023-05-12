@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> original_image = original_image.resize((768, 512))
 
         >>> pipe = IFImg2ImgPipeline.from_pretrained(
-        ...     "DeepFloyd/IF-I-IF-v1.0",
+        ...     "DeepFloyd/IF-I-XL-v1.0",
         ...     variant="fp16",
         ...     torch_dtype=torch.float16,
         ... )
@@ -918,7 +918,8 @@ class IFImg2ImgPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -930,8 +931,8 @@ class IFImg2ImgPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs
-                ).prev_sample
+                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
