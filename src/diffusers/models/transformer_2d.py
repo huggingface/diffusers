@@ -235,10 +235,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
                 conditioning.
-            attention_mask ( `torch.Tensor` of shape (batch size, num latent pixels), *optional* ).
-                Bias to add to attention scores.
-            encoder_attention_mask ( `torch.Tensor` of shape (batch size, num encoder tokens), *optional* ).
-                Bias to add to cross-attention scores.
+            encoder_attention_mask ( `torch.Tensor`, *optional* ).
+                Cross-attention mask, applied to encoder_hidden_states. Two formats supported:
+                    Mask `(batch, sequence_length)` True = keep, False = discard. Bias `(batch, 1, sequence_length)` 0
+                    = keep, -10000 = discard.
+                If ndim == 2: will be interpreted as a mask, then converted into a bias consistent with the format
+                above. This bias will be added to the cross-attention scores.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -247,6 +249,29 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
+        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
+        #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
+        #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
+        # expects mask of shape:
+        #   [batch, key_tokens]
+        # adds singleton query_tokens dimension:
+        #   [batch,                    1, key_tokens]
+        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
+        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
+        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
+        if attention_mask is not None and attention_mask.ndim == 2:
+            # assume that mask is expressed as:
+            #   (1 = keep,      0 = discard)
+            # convert mask into a bias that can be added to attention scores:
+            #       (keep = +0,     discard = -10000.0)
+            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
+
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
