@@ -325,6 +325,27 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # verify that the returned image has the same height and width as the input height and width
         assert image.shape == (1, inputs["height"], inputs["width"], 3)
 
+def test_stable_diffusion_inpaint_strength_test(self):
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        # change input strength
+        inputs["strength"] = 0.1
+        inputs["height"] = 128
+        inputs["width"] = 128
+        image = pipe(**inputs).images
+        # verify that the returned image has the same height and width as the input height and width
+        assert image.shape == (1, inputs["height"], inputs["width"], 3)
+        
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+        expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
+        assert np.abs(expected_slice - image_slice).max() < 3e-3
 
 @nightly
 @require_torch_gpu
