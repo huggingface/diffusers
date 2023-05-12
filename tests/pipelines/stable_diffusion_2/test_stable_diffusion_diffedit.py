@@ -80,13 +80,6 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             clip_sample=False,
             set_alpha_to_zero=False,
         )
-        inverse_scheduler = DPMSolverMultistepInverseScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_zero=False,
-        )
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=[32, 64],
@@ -269,12 +262,11 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         device = "cpu"
 
         components = self.get_dummy_components()
-        components["scheduler"] = DPMSolverMultistepInverseScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-        )
+
+        scheduler_args = {"beta_start": 0.00085, "beta_end": 0.012, "beta_schedule": "scaled_linear"}
+        components["scheduler"] = DPMSolverMultistepScheduler(**scheduler_args)
+        components["inverse_scheduler"] = DPMSolverMultistepInverseScheduler(**scheduler_args)
+
         pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
