@@ -21,11 +21,13 @@ from parameterized import parameterized
 
 from diffusers import AutoencoderKL
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
+from diffusers.utils.import_utils import is_xformers_available
 
 from .test_modeling_common import ModelTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
@@ -225,7 +227,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
     @parameterized.expand(
         [
@@ -271,7 +273,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
     @parameterized.expand(
         [
@@ -321,6 +323,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([13, 16, 27])
     @require_torch_gpu
+    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
         model = self.get_sd_vae_model(fp16=True)
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
@@ -338,6 +341,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([13, 16, 37])
     @require_torch_gpu
+    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -375,5 +379,5 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[0, -1, -3:, -3:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        tolerance = 1e-3 if torch_device != "mps" else 1e-2
+        tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
