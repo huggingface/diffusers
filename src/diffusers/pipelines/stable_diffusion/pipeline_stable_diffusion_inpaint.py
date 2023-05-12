@@ -146,7 +146,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
     masked_image = image * (mask < 0.5)
 
-    return mask, masked_image
+    return image, mask, masked_image
 
 
 class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
@@ -605,7 +605,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(self, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -614,12 +614,28 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # initialise latents as image + noise
+            
+            image = image.to(device=device, dtype=dtype)
+            if isinstance(generator, list):
+                image_latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                    for i in range(batch_size)
+                ]
+            else:
+                image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+            image_latents = self.vae.config.scaling_factor * image_latents
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = self.scheduler.add_noise(image_latents, noise, timestep)
+            # latents = noise
         else:
             latents = latents.to(device)
 
+
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
+
         return latents
 
     def prepare_mask_latents(
@@ -857,17 +873,19 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         )
 
         # 4. set timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps=num_inference_steps, strength=strength)
         # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
-        noise_timestep = timesteps[0:1]
-        noise_timestep = noise_timestep.repeat(batch_size * num_images_per_prompt)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Preprocess mask and image
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        image, mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
+            image,
+            latent_timestep,
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
