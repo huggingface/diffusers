@@ -18,7 +18,8 @@ Starting from version `0.13.0`, Diffusers supports the latest optimization from 
 
 
 ## Installation
-To benefit from the accelerated attention implementation and `torch.compile`, you just need to install the latest versions of PyTorch 2.0 from `pip`, and make sure you are on diffusers 0.13.0 or later. As explained below, `diffusers` automatically uses the optimized attention processor ([`~diffusers.models.attention_processor.AttnProcessor2_0`]) (but not `torch.compile`) when PyTorch 2.0 is available.
+To benefit from the accelerated attention implementation and `torch.compile`, you just need to install the latest versions of PyTorch 2.0 from `pip`, and make sure you are on diffusers 0.13.0 or later. As explained below, `diffusers` automatically uses the optimized attention processor ([`AttnProcessor2_0`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L798)) (but not `torch.compile`)
+when PyTorch 2.0 is available.
 
 ```bash
 pip install --upgrade torch torchvision diffusers
@@ -60,7 +61,7 @@ pip install --upgrade torch torchvision diffusers
 
     This should be as fast and memory efficient as `xFormers`. More details [in our benchmark](#benchmark).
 
-    It is possible to revert to the vanilla attention processor ([`~AttnProcessor`]), which can be helpful to make the pipeline more deterministic, or if you need to convert a fine-tuned model to other formats such as [Core ML](https://huggingface.co/docs/diffusers/v0.16.0/en/optimization/coreml#how-to-run-stable-diffusion-with-core-ml). To use the normal attention processor you can use the [`~UNet2DModel.set_default_attn_processor`] function:
+    It is possible to revert to the vanilla attention processor ([`AttnProcessor`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L402)), which can be helpful to make the pipeline more deterministic, or if you need to convert a fine-tuned model to other formats such as [Core ML](https://huggingface.co/docs/diffusers/v0.16.0/en/optimization/coreml#how-to-run-stable-diffusion-with-core-ml). To use the normal attention processor you can use the [`~diffusers.UNet2DConditionModel.set_default_attn_processor`] function:
 
     ```Python
     import torch
@@ -265,6 +266,22 @@ for _ in range(3):
     image_2 = pipe_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
     image_3 = pipe_3(prompt=prompt, image=image, noise_level=100).images
 ```
+
+To give you a pictorial overview of the possible speed-ups that can be obtained with PyTorch 2.0 and `torch.compile()`,
+here is a plot that shows relative speed-ups for the [Stable Diffusion text-to-image pipeline](StableDiffusionPipeline) across five
+different GPU families (with a batch size of 4):
+
+![t2i_speedup](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/t2i_speedup.png)
+
+To give you an even better idea of how this speed-up holds for the other pipelines presented above, consider the following 
+plot that shows the benchmarking numbers from an A100 across three different batch sizes
+(with PyTorch 2.0 nightly and `torch.compile()`):
+
+![a100_numbers](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/a100_numbers.png)
+
+_(Our benchmarking metric for the plots above is **number of iterations/second**)_
+
+But we reveal all the benchmarking numbers in the interest of transparency! 
 
 In the following tables, we report our findings in terms of the number of **_iterations processed per second_**. 
 
