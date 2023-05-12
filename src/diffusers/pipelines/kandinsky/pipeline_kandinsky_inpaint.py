@@ -27,6 +27,7 @@ from transformers import (
 
 from ...models import UNet2DConditionModel
 from ...pipelines import DiffusionPipeline
+from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     is_accelerate_available,
@@ -382,11 +383,11 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         #num_channels_latents = self.image_encoder.config.z_channels
         
         # get h, w for latents
-        height, width = get_new_h_w(height, width)
+        sample_height, sample_width = get_new_h_w(height, width)
     
         # create initial latent
         latents = self.prepare_latents(
-            (batch_size, num_channels_latents, height, width),
+            (batch_size, num_channels_latents, sample_height, sample_width),
             text_encoder_hidden_states.dtype,
             device,
             generator,
@@ -448,4 +449,17 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
             _, latents = latents.chunk(2)
 
-        return latents
+        # post-processing
+        image = self.image_encoder.decode(latents)
+
+        image = image * 0.5 + 0.5
+        image = image.clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
+
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
