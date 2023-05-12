@@ -884,12 +884,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         is_strength_max = strength == 1.
 
         # 5. Preprocess mask and image
-        mask, masked_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
+        mask, masked_image, init_image = prepare_mask_and_masked_image(image, mask_image, height, width)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
-            image,
+            init_image,
             latent_timestep,
             batch_size * num_images_per_prompt,
             num_channels_latents,
