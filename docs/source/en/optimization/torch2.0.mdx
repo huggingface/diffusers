@@ -18,7 +18,7 @@ Starting from version `0.13.0`, Diffusers supports the latest optimization from 
 
 
 ## Installation
-To benefit from the accelerated attention implementation and `torch.compile`, you just need to install the latest versions of PyTorch 2.0 from `pip`, and make sure you are on diffusers 0.13.0 or later. As explained below, `diffusers` automatically uses the optimized attention processor ([`AttnProcessor2_0`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L798)) (but not `torch.compile`)
+To benefit from the accelerated attention implementation and `torch.compile()`, you just need to install the latest versions of PyTorch 2.0 from pip, and make sure you are on diffusers 0.13.0 or later. As explained below, diffusers automatically uses the optimized attention processor ([`AttnProcessor2_0`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L798)) (but not `torch.compile()`)
 when PyTorch 2.0 is available.
 
 ```bash
@@ -440,4 +440,4 @@ In the following tables, we report our findings in terms of the number of **_ite
 * Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
 * For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1. 
 
-*Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile` in Diffusers.*
+*Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile()` in Diffusers.*
