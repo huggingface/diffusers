@@ -14,7 +14,13 @@
 
 from typing import List, Optional, Union
 
+import PIL
+from PIL import Image
+
+import numpy as np
 import torch
+import torch.nn.functional as F
+
 from transformers import (
     XLMRobertaTokenizerFast,
 )
@@ -400,14 +406,13 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 " `pipeline.unet` or your `mask_image` or `image` input."
             )
 
-        # expand the latents if we are doing classifier free guidance
-        latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
-            latent_model_input = 
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = torch.cat([latent_model_input, masked_image, mask_image], dim=1)
+
             noise_pred = self.unet(
-                sample=latents,  # [2, 4, 96, 96]
+                sample=latent_model_input,  # [2, 9, 96, 96]
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 class_labels=additive_clip_time_embeddings,
@@ -441,6 +446,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 batch_size=batch_size,
             ).prev_sample
 
-        _, latents = latents.chunk(2)
+            _, latents = latents.chunk(2)
 
         return latents

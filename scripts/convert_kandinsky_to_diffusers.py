@@ -23,8 +23,9 @@ python scripts/convert_kandinsky_to_diffusers.py \
       --prior_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/prior_fp16.ckpt \
       --clip_stat_path  /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/ViT-L-14_stats.th \
       --text2img_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/decoder_fp16.ckpt \
-      --dump_path ./kandinsky_model \
-      --debug text2img
+      --inpaint_text2img_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/inpainting_fp16.ckpt \
+      --dump_path /home/yiyi_huggingface_co/model_repo/Kandinsky-inpaint \
+      --debug inpaint_text2img
 ```
 """
 
@@ -256,7 +257,6 @@ UNET_CONFIG = {
     "use_linear_projection": False,
 }
 
-
 def unet_model_from_original_config():
     model = UNet2DConditionModel(**UNET_CONFIG)
 
@@ -324,6 +324,116 @@ def unet_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
 
 
 # done unet
+
+# inpaint unet
+
+# We are hardcoding the model configuration for now. If we need to generalize to more model configurations, we can
+# update then.
+
+INPAINT_UNET_CONFIG = {
+    "act_fn": "silu",
+    "attention_head_dim": 64,
+    "block_out_channels": (384, 768, 1152, 1536),
+    "center_input_sample": False,
+    "class_embed_type": "identity",
+    "cross_attention_dim": 768,
+    "down_block_types": (
+        "ResnetDownsampleBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+        "SimpleCrossAttnDownBlock2D",
+    ),
+    "downsample_padding": 1,
+    "dual_cross_attention": False,
+    "flip_sin_to_cos": True,
+    "freq_shift": 0,
+    "in_channels": 9,
+    "layers_per_block": 3,
+    "mid_block_scale_factor": 1,
+    "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
+    "norm_eps": 1e-05,
+    "norm_num_groups": 32,
+    "only_cross_attention": False,
+    "out_channels": 8,
+    "resnet_time_scale_shift": "scale_shift",
+    "sample_size": 64,
+    "up_block_types": (
+        "SimpleCrossAttnUpBlock2D",
+        "SimpleCrossAttnUpBlock2D",
+        "SimpleCrossAttnUpBlock2D",
+        "ResnetUpsampleBlock2D",
+    ),
+    "upcast_attention": False,
+    "use_linear_projection": False,
+}
+
+def inpaint_unet_model_from_original_config():
+    model = UNet2DConditionModel(**INPAINT_UNET_CONFIG)
+
+    return model
+
+
+def inpaint_unet_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
+    diffusers_checkpoint = {}
+
+    num_head_channels = UNET_CONFIG["attention_head_dim"]
+
+    diffusers_checkpoint.update(unet_time_embeddings(checkpoint))
+    diffusers_checkpoint.update(unet_conv_in(checkpoint))
+
+    # <original>.input_blocks -> <diffusers>.down_blocks
+
+    original_down_block_idx = 1
+
+    for diffusers_down_block_idx in range(len(model.down_blocks)):
+        checkpoint_update, num_original_down_blocks = unet_downblock_to_diffusers_checkpoint(
+            model,
+            checkpoint,
+            diffusers_down_block_idx=diffusers_down_block_idx,
+            original_down_block_idx=original_down_block_idx,
+            num_head_channels=num_head_channels,
+        )
+
+        original_down_block_idx += num_original_down_blocks
+
+        diffusers_checkpoint.update(checkpoint_update)
+
+    # done <original>.input_blocks -> <diffusers>.down_blocks
+
+    diffusers_checkpoint.update(
+        unet_midblock_to_diffusers_checkpoint(
+            model,
+            checkpoint,
+            num_head_channels=num_head_channels,
+        )
+    )
+
+    # <original>.output_blocks -> <diffusers>.up_blocks
+
+    original_up_block_idx = 0
+
+    for diffusers_up_block_idx in range(len(model.up_blocks)):
+        checkpoint_update, num_original_up_blocks = unet_upblock_to_diffusers_checkpoint(
+            model,
+            checkpoint,
+            diffusers_up_block_idx=diffusers_up_block_idx,
+            original_up_block_idx=original_up_block_idx,
+            num_head_channels=num_head_channels,
+        )
+
+        original_up_block_idx += num_original_up_blocks
+
+        diffusers_checkpoint.update(checkpoint_update)
+
+    # done <original>.output_blocks -> <diffusers>.up_blocks
+
+    diffusers_checkpoint.update(unet_conv_norm_out(checkpoint))
+    diffusers_checkpoint.update(unet_conv_out(checkpoint))
+
+    return diffusers_checkpoint
+
+
+# done inpaint unet
 
 # text proj
 
@@ -762,6 +872,35 @@ def text2img(*, args, checkpoint_map_location):
 
     return unet_model, text_proj_model
 
+def inpaint_text2img(*, args, checkpoint_map_location):
+    print("loading inpaint text2img")
+
+    inpaint_text2img_checkpoint = torch.load(args.inpaint_text2img_checkpoint_path, map_location=checkpoint_map_location)
+
+    inpaint_unet_model = inpaint_unet_model_from_original_config()
+
+    inpaint_unet_diffusers_checkpoint = inpaint_unet_original_checkpoint_to_diffusers_checkpoint(inpaint_unet_model, inpaint_text2img_checkpoint)
+
+    # text proj interlude
+
+    # The original decoder implementation includes a set of parameters that are used
+    # for creating the `encoder_hidden_states` which are what the U-net is conditioned
+    # on. The diffusers conditional unet directly takes the encoder_hidden_states. We pull
+    # the parameters into the KandinskyTextProjModel class
+    text_proj_model = text_proj_from_original_config()
+
+    text_proj_checkpoint = text_proj_original_checkpoint_to_diffusers_checkpoint(inpaint_text2img_checkpoint)
+
+    load_checkpoint_to_model(text_proj_checkpoint, text_proj_model, strict=True)
+
+    del inpaint_text2img_checkpoint
+
+    load_checkpoint_to_model(inpaint_unet_diffusers_checkpoint, inpaint_unet_model, strict=True)
+
+    print("done loading inpaint text2img")
+
+    return inpaint_unet_model, text_proj_model
+
 
 def load_checkpoint_to_model(checkpoint, model, strict=False):
     with tempfile.NamedTemporaryFile() as file:
@@ -794,6 +933,13 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Path to the text2img checkpoint to convert.",
+    )
+    parser.add_argument(
+        "--inpaint_text2img_checkpoint_path",
+        default=None,
+        type=str,
+        required=True,
+        help="Path to the inpaint text2img checkpoint to convert.",
     )
     parser.add_argument(
         "--checkpoint_load_device",
@@ -829,5 +975,9 @@ if __name__ == "__main__":
         unet_model, text_proj_model = text2img(args=args, checkpoint_map_location=checkpoint_map_location)
         unet_model.save_pretrained(f"{args.dump_path}/unet")
         text_proj_model.save_pretrained(f"{args.dump_path}/text_proj")
+    elif args.debug == "inpaint_text2img":
+        inpaint_unet_model, inpaint_text_proj_model = inpaint_text2img(args=args, checkpoint_map_location=checkpoint_map_location)
+        inpaint_unet_model.save_pretrained(f"{args.dump_path}/inpaint_unet")
+        inpaint_text_proj_model.save_pretrained(f"{args.dump_path}/inpaint_text_proj")
     else:
         raise ValueError(f"unknown debug value : {args.debug}")

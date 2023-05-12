@@ -130,6 +130,7 @@ else:
         IFSuperResolutionPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
+        KandinskyInpaintPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
