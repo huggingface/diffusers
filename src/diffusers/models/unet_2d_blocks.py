@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .attention import AdaGroupNorm, AttentionBlock
+from .attention import AdaGroupNorm, AttentionBlock, SpatialNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
@@ -2856,23 +2856,3 @@ class KAttentionBlock(nn.Module):
 
         return hidden_states
 
-class SpatialNorm(nn.Module):
-    """
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
-    """
-    def __init__(
-        self,
-        f_channels,
-        zq_channels,
-    ):
-        super().__init__()
-        self.norm_layer = nn.GroupNorm(num_channels=f_channels,num_groups=32,eps=1e-6,affine=True)
-        self.conv_y = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-        self.conv_b = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, f, zq):
-        f_size = f.shape[-2:]
-        zq = F.interpolate(zq, size=f_size, mode="nearest")
-        norm_f = self.norm_layer(f)
-        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
-        return new_f
