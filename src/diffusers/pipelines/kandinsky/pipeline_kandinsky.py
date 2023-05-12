@@ -19,7 +19,7 @@ from transformers import (
     XLMRobertaTokenizerFast,
 )
 
-from ...models import UNet2DConditionModel
+from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
@@ -30,6 +30,7 @@ from ...utils import (
 )
 from .text_encoder import MultilingualCLIP
 from .text_proj import KandinskyTextProjModel
+from PIL import Image
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -43,6 +44,21 @@ def get_new_h_w(h, w):
     if w % 64 != 0:
         new_w += 1
     return new_h * 8, new_w * 8
+
+def process_images(batch):
+    scaled = (
+        ((batch + 1) * 127.5)
+        .round()
+        .clamp(0, 255)
+        .to(torch.uint8)
+        .to("cpu")
+        .permute(0, 2, 3, 1)
+        .numpy()
+    )
+    images = []
+    for i in range(scaled.shape[0]):
+        images.append(Image.fromarray(scaled[i]))
+    return images
 
 
 class KandinskyPipeline(DiffusionPipeline):
@@ -63,6 +79,8 @@ class KandinskyPipeline(DiffusionPipeline):
             Conditional U-Net architecture to denoise the image embedding.
         text_proj ([`KandinskyTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
+        decoder ([`VQModel`]):
+            Decoder to generate the image from the latents.
     """
 
     def __init__(
@@ -72,6 +90,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: UnCLIPScheduler,
+        decoder: VQModel
     ):
         super().__init__()
 
@@ -81,6 +100,7 @@ class KandinskyPipeline(DiffusionPipeline):
             text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
+            decoder=decoder,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -93,6 +113,13 @@ class KandinskyPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
+
+    def get_image(self, latents):
+        images = self.decoder.decode(latents, force_not_quantize=True)["sample"]  
+        images = process_images(images)
+        return images
+
+
 
     def _encode_prompt(
         self,
@@ -371,4 +398,5 @@ class KandinskyPipeline(DiffusionPipeline):
 
             _, latents = latents.chunk(2)
 
-        return latents
+        images = self.get_image(latents)
+        return images
