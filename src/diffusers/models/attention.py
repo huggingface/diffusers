@@ -369,24 +369,3 @@ class AdaGroupNorm(nn.Module):
         x = F.group_norm(x, self.num_groups, eps=self.eps)
         x = x * (1 + scale) + shift
         return x
-
-class SpatialNorm(nn.Module):
-    """
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
-    """
-    def __init__(
-        self,
-        f_channels,
-        zq_channels,
-    ):
-        super().__init__()
-        self.norm_layer = nn.GroupNorm(num_channels=f_channels,num_groups=32,eps=1e-6,affine=True)
-        self.conv_y = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-        self.conv_b = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, f, zq):
-        f_size = f.shape[-2:]
-        zq = F.interpolate(zq, size=f_size, mode="nearest")
-        norm_f = self.norm_layer(f)
-        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
-        return new_f

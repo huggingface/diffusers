@@ -1,6 +1,6 @@
 import argparse
-import tempfile
 import os
+import tempfile
 
 import torch
 from accelerate import load_checkpoint_and_dispatch
@@ -26,8 +26,9 @@ python scripts/convert_kandinsky_to_diffusers.py \
       --clip_stat_path  /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/ViT-L-14_stats.th \
       --text2img_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/decoder_fp16.ckpt \
       --inpaint_text2img_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/inpainting_fp16.ckpt \
-      --dump_path /home/yiyi_huggingface_co/model_repo/Kandinsky-inpaint \
-      --debug inpaint_text2img
+      --movq_checkpoint_path /home/yiyi_huggingface_co/Kandinsky-2/checkpoints_Kandinsky_2.1/movq_final.ckpt \
+      --dump_path /home/yiyi_huggingface_co/dump \
+      --debug decoder
 ```
 """
 
@@ -259,6 +260,7 @@ UNET_CONFIG = {
     "use_linear_projection": False,
 }
 
+
 def unet_model_from_original_config():
     model = UNet2DConditionModel(**UNET_CONFIG)
 
@@ -368,6 +370,7 @@ INPAINT_UNET_CONFIG = {
     "upcast_attention": False,
     "use_linear_projection": False,
 }
+
 
 def inpaint_unet_model_from_original_config():
     model = UNet2DConditionModel(**INPAINT_UNET_CONFIG)
@@ -874,14 +877,19 @@ def text2img(*, args, checkpoint_map_location):
 
     return unet_model, text_proj_model
 
+
 def inpaint_text2img(*, args, checkpoint_map_location):
     print("loading inpaint text2img")
 
-    inpaint_text2img_checkpoint = torch.load(args.inpaint_text2img_checkpoint_path, map_location=checkpoint_map_location)
+    inpaint_text2img_checkpoint = torch.load(
+        args.inpaint_text2img_checkpoint_path, map_location=checkpoint_map_location
+    )
 
     inpaint_unet_model = inpaint_unet_model_from_original_config()
 
-    inpaint_unet_diffusers_checkpoint = inpaint_unet_original_checkpoint_to_diffusers_checkpoint(inpaint_unet_model, inpaint_text2img_checkpoint)
+    inpaint_unet_diffusers_checkpoint = inpaint_unet_original_checkpoint_to_diffusers_checkpoint(
+        inpaint_unet_model, inpaint_text2img_checkpoint
+    )
 
     # text proj interlude
 
@@ -903,25 +911,27 @@ def inpaint_text2img(*, args, checkpoint_map_location):
 
     return inpaint_unet_model, text_proj_model
 
+
 # movq
 
-MOVQ_CONFIG ={
-                "in_channels":3, 
-                "out_channels":3, 
-                "latent_channels":4, 
-                "down_block_types":("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "AttnDownEncoderBlock2D"), 
-                "up_block_types":("AttnUpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"),
-                "num_vq_embeddings":16384,
-                "block_out_channels":(128, 256, 256, 512),
-                "vq_embed_dim":4,
-                "layers_per_block":2,
-                "norm_type":"spatial"
-            }
+MOVQ_CONFIG = {
+    "in_channels": 3,
+    "out_channels": 3,
+    "latent_channels": 4,
+    "down_block_types": ("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "AttnDownEncoderBlock2D"),
+    "up_block_types": ("AttnUpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"),
+    "num_vq_embeddings": 16384,
+    "block_out_channels": (128, 256, 256, 512),
+    "vq_embed_dim": 4,
+    "layers_per_block": 2,
+    "norm_type": "spatial",
+}
 
 
 def movq_model_from_original_config():
-    movq = VQModel(**MOVQ_CONFIG )
+    movq = VQModel(**MOVQ_CONFIG)
     return movq
+
 
 def movq_encoder_to_diffusers_checkpoint(model, checkpoint):
     diffusers_checkpoint = {}
@@ -1156,6 +1166,7 @@ def movq_resnet_to_diffusers_checkpoint(resnet, checkpoint, *, diffusers_resnet_
 
     return rv
 
+
 def movq_resnet_to_diffusers_checkpoint_spatial_norm(resnet, checkpoint, *, diffusers_resnet_prefix, resnet_prefix):
     rv = {
         # norm1
@@ -1191,61 +1202,57 @@ def movq_resnet_to_diffusers_checkpoint_spatial_norm(resnet, checkpoint, *, diff
     return rv
 
 
-
 def movq_attention_to_diffusers_checkpoint(checkpoint, *, diffusers_attention_prefix, attention_prefix):
     return {
         # norm
-        f"{diffusers_attention_prefix}.norm.weight": checkpoint[f"{attention_prefix}.norm.weight"],
-        f"{diffusers_attention_prefix}.norm.bias": checkpoint[f"{attention_prefix}.norm.bias"],
+        f"{diffusers_attention_prefix}.group_norm.weight": checkpoint[f"{attention_prefix}.norm.weight"],
+        f"{diffusers_attention_prefix}.group_norm.bias": checkpoint[f"{attention_prefix}.norm.bias"],
         # query
-        f"{diffusers_attention_prefix}.query.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.query.bias": checkpoint[f"{attention_prefix}.q.bias"],
+        f"{diffusers_attention_prefix}.to_q.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_q.bias": checkpoint[f"{attention_prefix}.q.bias"],
         # key
-        f"{diffusers_attention_prefix}.key.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.key.bias": checkpoint[f"{attention_prefix}.k.bias"],
+        f"{diffusers_attention_prefix}.to_k.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_k.bias": checkpoint[f"{attention_prefix}.k.bias"],
         # value
-        f"{diffusers_attention_prefix}.value.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.value.bias": checkpoint[f"{attention_prefix}.v.bias"],
+        f"{diffusers_attention_prefix}.to_v.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_v.bias": checkpoint[f"{attention_prefix}.v.bias"],
         # proj_attn
-        f"{diffusers_attention_prefix}.proj_attn.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
+        f"{diffusers_attention_prefix}.to_out.0.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
             :, :, 0, 0
         ],
-        f"{diffusers_attention_prefix}.proj_attn.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
+        f"{diffusers_attention_prefix}.to_out.0.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
     }
+
 
 def movq_attention_to_diffusers_checkpoint_spatial_norm(checkpoint, *, diffusers_attention_prefix, attention_prefix):
     return {
         # norm
-        f"{diffusers_attention_prefix}.norm.norm_layer.weight": checkpoint[f"{attention_prefix}.norm.norm_layer.weight"],
-        f"{diffusers_attention_prefix}.norm.norm_layer.bias": checkpoint[f"{attention_prefix}.norm.norm_layer.bias"],
-        f"{diffusers_attention_prefix}.norm.conv_y.weight": checkpoint[f"{attention_prefix}.norm.conv_y.weight"],
-        f"{diffusers_attention_prefix}.norm.conv_y.bias": checkpoint[f"{attention_prefix}.norm.conv_y.bias"],
-        f"{diffusers_attention_prefix}.norm.conv_b.weight": checkpoint[f"{attention_prefix}.norm.conv_b.weight"],
-        f"{diffusers_attention_prefix}.norm.conv_b.bias": checkpoint[f"{attention_prefix}.norm.conv_b.bias"],
+        f"{diffusers_attention_prefix}.spatial_norm.norm_layer.weight": checkpoint[f"{attention_prefix}.norm.norm_layer.weight"],
+        f"{diffusers_attention_prefix}.spatial_norm.norm_layer.bias": checkpoint[f"{attention_prefix}.norm.norm_layer.bias"],
+        f"{diffusers_attention_prefix}.spatial_norm.conv_y.weight": checkpoint[f"{attention_prefix}.norm.conv_y.weight"],
+        f"{diffusers_attention_prefix}.spatial_norm.conv_y.bias": checkpoint[f"{attention_prefix}.norm.conv_y.bias"],
+        f"{diffusers_attention_prefix}.spatial_norm.conv_b.weight": checkpoint[f"{attention_prefix}.norm.conv_b.weight"],
+        f"{diffusers_attention_prefix}.spatial_norm.conv_b.bias": checkpoint[f"{attention_prefix}.norm.conv_b.bias"],
         # query
-        f"{diffusers_attention_prefix}.attention.to_q.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.attention.to_q.bias": checkpoint[f"{attention_prefix}.q.bias"],
+        f"{diffusers_attention_prefix}.to_q.weight": checkpoint[f"{attention_prefix}.q.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_q.bias": checkpoint[f"{attention_prefix}.q.bias"],
         # key
-        f"{diffusers_attention_prefix}.attention.to_k.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.attention.to_k.bias": checkpoint[f"{attention_prefix}.k.bias"],
+        f"{diffusers_attention_prefix}.to_k.weight": checkpoint[f"{attention_prefix}.k.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_k.bias": checkpoint[f"{attention_prefix}.k.bias"],
         # value
-        f"{diffusers_attention_prefix}.attention.to_v.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
-        f"{diffusers_attention_prefix}.attention.to_v.bias": checkpoint[f"{attention_prefix}.v.bias"],
+        f"{diffusers_attention_prefix}.to_v.weight": checkpoint[f"{attention_prefix}.v.weight"][:, :, 0, 0],
+        f"{diffusers_attention_prefix}.to_v.bias": checkpoint[f"{attention_prefix}.v.bias"],
         # proj_attn
-        f"{diffusers_attention_prefix}.attention.to_out.0.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
+        f"{diffusers_attention_prefix}.to_out.0.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
             :, :, 0, 0
         ],
-        f"{diffusers_attention_prefix}.attention.to_out.0.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
+        f"{diffusers_attention_prefix}.to_out.0.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
     }
-
-
-
 
 
 def movq_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     diffusers_checkpoint = {}
     diffusers_checkpoint.update(movq_encoder_to_diffusers_checkpoint(model, checkpoint))
-
 
     # quant_conv
 
@@ -1270,15 +1277,7 @@ def movq_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     # decoder
     diffusers_checkpoint.update(movq_decoder_to_diffusers_checkpoint(model, checkpoint))
 
-
-
-    for keys in diffusers_checkpoint.keys():
-        print(keys)
-
     return diffusers_checkpoint
-
-
-
 
 
 def movq(*, args, checkpoint_map_location):
@@ -1288,9 +1287,7 @@ def movq(*, args, checkpoint_map_location):
 
     movq_model = movq_model_from_original_config()
 
-    movq_diffusers_checkpoint = movq_original_checkpoint_to_diffusers_checkpoint(
-        movq_model, movq_checkpoint
-    )
+    movq_diffusers_checkpoint = movq_original_checkpoint_to_diffusers_checkpoint(movq_model, movq_checkpoint)
 
     del movq_checkpoint
 
@@ -1325,7 +1322,11 @@ if __name__ == "__main__":
         help="Path to the prior checkpoint to convert.",
     )
     parser.add_argument(
-        "--clip_stat_path", default=None, type=str, required=False, help="Path to the clip stats checkpoint to convert."
+        "--clip_stat_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to the clip stats checkpoint to convert.",
     )
     parser.add_argument(
         "--text2img_checkpoint_path",
@@ -1383,10 +1384,12 @@ if __name__ == "__main__":
         unet_model.save_pretrained(f"{args.dump_path}/unet")
         text_proj_model.save_pretrained(f"{args.dump_path}/text_proj")
     elif args.debug == "inpaint_text2img":
-        inpaint_unet_model, inpaint_text_proj_model = inpaint_text2img(args=args, checkpoint_map_location=checkpoint_map_location)
+        inpaint_unet_model, inpaint_text_proj_model = inpaint_text2img(
+            args=args, checkpoint_map_location=checkpoint_map_location
+        )
         inpaint_unet_model.save_pretrained(f"{args.dump_path}/inpaint_unet")
         inpaint_text_proj_model.save_pretrained(f"{args.dump_path}/inpaint_text_proj")
-    elif args.debug == 'decoder':
+    elif args.debug == "decoder":
         decoder = movq(args=args, checkpoint_map_location=checkpoint_map_location)
         decoder.save_pretrained(f"{args.dump_path}/decoder")
     else:

@@ -329,11 +329,10 @@ class KandinskyPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            
+
             noise_pred = self.unet(
                 sample=latent_model_input,  # [2, 4, 96, 96]
                 timestep=t,

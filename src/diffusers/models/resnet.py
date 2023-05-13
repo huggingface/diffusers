@@ -20,7 +20,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .attention import AdaGroupNorm, SpatialNorm
+from .attention import AdaGroupNorm
+from .attention_processor import SpatialNorm
 
 
 class Upsample1D(nn.Module):
