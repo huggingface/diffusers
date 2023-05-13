@@ -453,7 +453,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             _, latents = latents.chunk(2)
 
         # post-processing
-        image = self.movq.decode(latents,force_not_quantize=True)["sample"]
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         image = image * 0.5 + 0.5
         image = image.clamp(0, 1)

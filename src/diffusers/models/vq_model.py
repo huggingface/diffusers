@@ -82,7 +82,7 @@ class VQModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
         scaling_factor: float = 0.18215,
-        norm_type: str = "default", # default, spatial 
+        norm_type: str = "default",  # default, spatial
     ):
         super().__init__()
 
