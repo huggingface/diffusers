@@ -722,9 +722,9 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to the unet's config):
+            height (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to the unet's config):
+            width (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The width in pixels of the generated image.
             image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
                 The image to be upscaled.
@@ -811,7 +811,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
         )
 
         # 2. Define call parameters
-        
+
         height = height or self.unet.config.sample_size
         width = width or self.unet.config.sample_size
 
