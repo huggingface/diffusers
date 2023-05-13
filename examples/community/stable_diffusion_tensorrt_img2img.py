@@ -676,7 +676,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
     r"""
     Pipeline for image-to-image generation using TensorRT accelerated Stable Diffusion.
 
-    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    This model inherits from [`StableDiffusionImg2ImgPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
@@ -964,6 +964,15 @@ class TensorRTStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
+                be masked out with `mask_image` and repainted according to `prompt`.
+            strength (`float`, *optional*, defaults to 0.8):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
