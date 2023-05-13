@@ -960,14 +960,14 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # # Get the text embedding for conditioning
-                logger.warning(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
+                logger.info(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
                 attention_mask = batch["attn_mask"]
-                logger.warning(f'attention Mask size: {attention_mask.shape}')
+                logger.info(f'attention Mask size: {attention_mask.shape}')
 
                 encoder_hidden_states = text_encoder(batch["input_ids"],
                                                      attention_mask=attention_mask)[0]
 
-                logger.warning(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
+                logger.info(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
                 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
