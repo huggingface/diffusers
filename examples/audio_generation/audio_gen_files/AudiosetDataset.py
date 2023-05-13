@@ -185,11 +185,16 @@ class AudiosetDataset(Dataset):
             self.logger.info(f'LABEL: {label}')
             
         input_ids = []
+        attn_mask = None
         if (self.tokenizer is not None):
-            input_ids = self.tokenizer(
+            tokens = self.tokenizer(
                 [label], max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
             )
-            input_ids = input_ids.input_ids[0]
+            input_ids = tokens["input_ids"][0]
+            attn_mask = tokens["attention_mask"][0]
+            
+            # print("TOKENS: ", input_ids.shape, " : ", attn_mask.shape)
+            # input_ids, attn_mask = input_ids
             
         
         latent = None
@@ -210,8 +215,8 @@ class AudiosetDataset(Dataset):
             if (latent is not None):
                 latent = latent.to(self.device, dtype=self.dtype)
         
-        
-        batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "latent": latent}
+        #TODO add attention mask as a key:
+        batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "latent": latent, "attn_mask": attn_mask}
         
         return batch
 

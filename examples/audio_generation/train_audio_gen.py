@@ -921,7 +921,7 @@ def main():
 
                 
                 latents = batch["latent"]
-
+        
                 final_type = latents.dtype
                 if (args.post_quant):
                     latents = [vae.quantizer.decode(l.transpose(0,1).to(dtype=torch.int32)) for l in latents]
@@ -976,7 +976,7 @@ def main():
 
                 # Predict the noise residual and compute loss)
                 
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = batch["attn_mask"]).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
