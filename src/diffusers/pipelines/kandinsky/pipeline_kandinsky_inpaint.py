@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from copy import deepcopy
 from typing import List, Optional, Union
 
-import PIL
-from PIL import Image
-
 import numpy as np
+import PIL
 import torch
 import torch.nn.functional as F
-
+from PIL import Image
 from transformers import (
     XLMRobertaTokenizerFast,
 )
 
-from ...models import UNet2DConditionModel
+from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
@@ -37,10 +36,10 @@ from ...utils import (
 )
 from .text_encoder import MultilingualCLIP
 from .text_proj import KandinskyTextProjModel
-from copy import deepcopy 
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def get_new_h_w(h, w):
     new_h = h // 64
@@ -50,6 +49,7 @@ def get_new_h_w(h, w):
     if w % 64 != 0:
         new_w += 1
     return new_h * 8, new_w * 8
+
 
 def prepare_mask(mask):
     mask = mask.float()[0]
@@ -100,12 +100,14 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             Conditional U-Net architecture to denoise the image embedding.
         text_proj ([`KandinskyTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
+        movq ([`VQModel`]):
+            MoVQ image encoder and decoder
     """
 
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
-        #image_encoder: MOVQ # TO_DO add this later 
+        movq: VQModel,
         tokenizer: XLMRobertaTokenizerFast,
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
@@ -115,6 +117,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         self.register_modules(
             text_encoder=text_encoder,
+            movq=movq,
             tokenizer=tokenizer,
             text_proj=text_proj,
             unet=unet,
@@ -344,20 +347,20 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-       
+
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
-        
+
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
             prompt_embeds=prompt_embeds,
             text_encoder_hidden_states=text_encoder_hidden_states,
         )
 
-        # preprocess image and mask 
+        # preprocess image and mask
         ## Encode the image
         image = prepare_image(image, width, height).to(device)
-        image = self.image_encoder.encode(image)
-        
+        image = self.movq.encode(image)["latents"]
+
         ## prepared mask
         mask_image = torch.from_numpy(mask_image).unsqueeze(0).unsqueeze(0)
         image_shape = tuple(image.shape[-2:])
@@ -367,7 +370,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             mode="nearest",
         )
         mask_image = prepare_mask(mask_image).to(device)
-        
+
         ## apply mask on image
         masked_image = image * mask_image
 
@@ -380,11 +383,11 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         # YiYi's TO-DO: hard-code to be 4, need to set it to be the z_channels in MoVQ encoder's config once it's added
         num_channels_latents = 4
-        #num_channels_latents = self.image_encoder.config.z_channels
-        
+        # num_channels_latents = self.movq.config.z_channels
+
         # get h, w for latents
         sample_height, sample_width = get_new_h_w(height, width)
-    
+
         # create initial latent
         latents = self.prepare_latents(
             (batch_size, num_channels_latents, sample_height, sample_width),
@@ -450,7 +453,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             _, latents = latents.chunk(2)
 
         # post-processing
-        image = self.image_encoder.decode(latents)
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         image = image * 0.5 + 0.5
         image = image.clamp(0, 1)

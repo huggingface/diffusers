@@ -19,8 +19,9 @@ import torch
 import torch.nn as nn
 
 from ..utils import BaseOutput, randn_tensor
+from .attention_processor import SpatialNorm
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
-from .attention import SpatialNorm
+
 
 @dataclass
 class DecoderOutput(BaseOutput):
@@ -149,7 +150,7 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
-        norm_type="default", # default, spatial
+        norm_type="default",  # default, spatial
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -165,7 +166,6 @@ class Decoder(nn.Module):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
-        
         temb_channels = in_channels if norm_type == "spatial" else None
 
         # mid
@@ -230,12 +230,12 @@ class Decoder(nn.Module):
                 return custom_forward
 
             # middle
-            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, zq)
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, zq)
         else:
             # middle
             sample = self.mid_block(sample, zq)
