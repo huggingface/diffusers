@@ -395,13 +395,13 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
+                uncond_attention_mask = uncond_input.attention_mask.to(device)
             else:
-                attention_mask = None
+                uncond_attention_mask = None
 
             negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                attention_mask=uncond_attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -418,8 +418,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        return prompt_embeds
+            
+        return prompt_embeds, attention_mask
+        
+        # return prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
@@ -635,7 +637,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds, attention_mask = self._encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -644,7 +646,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
-
+        print(f'Attention Mask :{attention_mask}')
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -680,6 +682,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
+                    attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
