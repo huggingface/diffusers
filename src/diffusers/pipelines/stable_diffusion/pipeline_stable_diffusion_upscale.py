@@ -19,11 +19,11 @@ from typing import Any, Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention_processor import AttnProcessor2_0, LoRAXFormersAttnProcessor, XFormersAttnProcessor
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -709,12 +709,14 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
-        # TODO(Patrick, William) - clean up when attention is refactored
-        use_torch_2_0_attn = hasattr(F, "scaled_dot_product_attention")
-        use_xformers = self.vae.decoder.mid_block.attentions[0]._use_memory_efficient_attention_xformers
+        use_torch_2_0_or_xformers = self.vae.decoder.mid_block.attentions[0].processor in [
+            AttnProcessor2_0,
+            XFormersAttnProcessor,
+            LoRAXFormersAttnProcessor,
+        ]
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
-        if not use_torch_2_0_attn and not use_xformers:
+        if not use_torch_2_0_or_xformers:
             self.vae.post_quant_conv.to(latents.dtype)
             self.vae.decoder.conv_in.to(latents.dtype)
             self.vae.decoder.mid_block.to(latents.dtype)
