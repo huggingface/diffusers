@@ -414,7 +414,7 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    logger.info(accelerator.state, main_process_only=False)
+    logger.warning(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_warning()
@@ -454,10 +454,10 @@ def main():
         
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    print(f'We are using scheduler: {noise_scheduler}')
+    logger.warning(f'We are using scheduler: {noise_scheduler}')
     
     if ("clap" in args.pretrained_model_name_or_path):
-        print("Using CLAP text encoder and tokenizer")
+        logger.warning("Using CLAP text encoder and tokenizer")
         # tokenizer = AutoTokenizer.from_pretrained( args.pretrained_model_name_or_path, subfolder="tokenizer")
         # text_encoder = ClapAudioModelWithProjection.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", )
         
@@ -465,7 +465,7 @@ def main():
         text_encoder = T5EncoderModel.from_pretrained("cvssp/audioldm-m-full", subfolder="text_encoder")
     
     elif ("journey" in args.pretrained_model_name_or_path):
-        print("Using T5 text encoder and tokenizer")
+        logger.warning("Using T5 text encoder and tokenizer")
         tokenizer = AutoTokenizer.from_pretrained("t5-large", model_max_length=512)
         text_encoder = T5EncoderModel.from_pretrained("t5-large")
     else:
@@ -511,18 +511,18 @@ def main():
         
     for layer in unet.up_blocks:
         is_frozen = all(param.requires_grad == False for param in layer.parameters())
-        print(f'UNET up blocks Frozen: {is_frozen}')
+        logger.warning(f'UNET up blocks Frozen: {is_frozen}')
     
     # unet.mid_block.requires_grad_(False)
     is_frozen = all(param.requires_grad == False for param in unet.mid_block.parameters())
-    print(f'UNET mid blocks Frozen: {is_frozen}')
+    logger.warning(f'UNET mid blocks Frozen: {is_frozen}')
     
     # for layer in unet.down_blocks:
     #     layer.requires_grad_(False)
         
     for layer in unet.down_blocks:
         is_frozen = all(param.requires_grad == False for param in layer.parameters())
-        print(f'UNET down blocks Frozen: {is_frozen}')
+        logger.warning(f'UNET down blocks Frozen: {is_frozen}')
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -803,13 +803,13 @@ def main():
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
-    logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataloader)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
-    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.warning("***** Running training *****")
+    logger.warning(f"  Num examples = {len(train_dataloader)}")
+    logger.warning(f"  Num Epochs = {args.num_train_epochs}")
+    logger.warning(f"  Instantaneous batch size per device = {args.train_batch_size}")
+    logger.warning(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.warning(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.warning(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
 
@@ -960,11 +960,14 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # # Get the text embedding for conditioning
-                logger.info(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
+                logger.warning(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
+                attention_mask = batch["attn_mask"]
+                logger.warning(f'attention Mask size: {attention_mask.shape}')
 
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                encoder_hidden_states = text_encoder(batch["input_ids"],
+                                                     attention_mask=attention_mask)[0]
 
-                logger.info(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
+                logger.warning(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
                 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -976,7 +979,7 @@ def main():
 
                 # Predict the noise residual and compute loss)
                 
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = batch["attn_mask"]).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -1012,7 +1015,7 @@ def main():
                         accelerator.save_state(save_path)
                         with open(os.path.join(save_path, "cmd_line_args.json"), 'w') as f:
                             json.dump(vars(args), f)
-                        logger.info(f"Saved state to {save_path}")
+                        logger.warning(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
