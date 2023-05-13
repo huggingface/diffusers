@@ -19,8 +19,9 @@ from transformers import (
     XLMRobertaTokenizerFast,
 )
 
-from ...models import UNet2DConditionModel
+from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
+from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     is_accelerate_available,
@@ -63,6 +64,8 @@ class KandinskyPipeline(DiffusionPipeline):
             Conditional U-Net architecture to denoise the image embedding.
         text_proj ([`KandinskyTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
+        movq ([`VQModel`]):
+            MoVQ Decoder to generate the image from the latents.
     """
 
     def __init__(
@@ -72,6 +75,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: UnCLIPScheduler,
+        movq: VQModel
     ):
         super().__init__()
 
@@ -81,6 +85,7 @@ class KandinskyPipeline(DiffusionPipeline):
             text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
+            movq=movq,
         )
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -370,4 +375,19 @@ class KandinskyPipeline(DiffusionPipeline):
 
             _, latents = latents.chunk(2)
 
-        return latents
+        
+        # post-processing
+        image = self.movq.decode(latents,force_not_quantize=True)["sample"]
+
+        image = image * 0.5 + 0.5
+        image = image.clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
+
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
+

@@ -24,7 +24,7 @@ from transformers import (
     XLMRobertaTokenizerFast,
 )
 
-from ...models import UNet2DConditionModel
+from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
@@ -100,12 +100,14 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             Conditional U-Net architecture to denoise the image embedding.
         text_proj ([`KandinskyTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
+        movq ([`VQModel`]):
+            MoVQ image encoder and decoder
     """
 
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
-        # image_encoder: MOVQ # TO_DO add this later
+        movq: VQModel,
         tokenizer: XLMRobertaTokenizerFast,
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
@@ -115,6 +117,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         self.register_modules(
             text_encoder=text_encoder,
+            movq=movq,
             tokenizer=tokenizer,
             text_proj=text_proj,
             unet=unet,
@@ -356,7 +359,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # preprocess image and mask
         ## Encode the image
         image = prepare_image(image, width, height).to(device)
-        image = self.image_encoder.encode(image)
+        image = self.movq.encode(image)["latents"]
 
         ## prepared mask
         mask_image = torch.from_numpy(mask_image).unsqueeze(0).unsqueeze(0)
@@ -380,7 +383,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         # YiYi's TO-DO: hard-code to be 4, need to set it to be the z_channels in MoVQ encoder's config once it's added
         num_channels_latents = 4
-        # num_channels_latents = self.image_encoder.config.z_channels
+        # num_channels_latents = self.movq.config.z_channels
 
         # get h, w for latents
         sample_height, sample_width = get_new_h_w(height, width)
@@ -450,7 +453,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             _, latents = latents.chunk(2)
 
         # post-processing
-        image = self.image_encoder.decode(latents)
+        image = self.movq.decode(latents,force_not_quantize=True)["sample"]
 
         image = image * 0.5 + 0.5
         image = image.clamp(0, 1)

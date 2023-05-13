@@ -299,7 +299,7 @@ class Attention(nn.Module):
         self.processor = processor
 
     def forward(
-        self, hidden_states, encoder_hidden_states=None, attention_mask=None, vq_emb=None, **cross_attention_kwargs
+        self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs
     ):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
@@ -309,7 +309,6 @@ class Attention(nn.Module):
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
-            vq_emb=vq_emb,
             **cross_attention_kwargs,
         )
 
