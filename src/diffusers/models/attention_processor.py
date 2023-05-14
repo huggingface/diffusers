@@ -879,9 +879,12 @@ class AttnProcessor2_0:
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, vq_emb=None,):
         residual = hidden_states
 
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, vq_emb)
+            
         input_ndim = hidden_states.ndim
 
         if input_ndim == 4:
