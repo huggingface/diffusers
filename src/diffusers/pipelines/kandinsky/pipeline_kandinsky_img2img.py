@@ -21,7 +21,8 @@ from transformers import (
 
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
-from ...schedulers import UnCLIPScheduler
+from ...pipelines.pipeline_utils import ImagePipelineOutput
+from ...schedulers import DDPMScheduler
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -31,6 +32,8 @@ from ...utils import (
 from .text_encoder import MultilingualCLIP
 from .text_proj import KandinskyTextProjModel
 import PIL
+from PIL import Image
+import numpy as np 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -44,6 +47,13 @@ def get_new_h_w(h, w):
         new_w += 1
     return new_h * 8, new_w * 8
 
+def prepare_image(pil_image, w=512, h=512):
+    pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
+    arr = np.array(pil_image.convert("RGB"))
+    arr = arr.astype(np.float32) / 127.5 - 1
+    arr = np.transpose(arr, [2, 0, 1])
+    image = torch.from_numpy(arr).unsqueeze(0)
+    return image
 
 class KandinskyImg2ImgPipeline(DiffusionPipeline):
     """
@@ -71,7 +81,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         tokenizer: XLMRobertaTokenizerFast,
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
-        scheduler: UnCLIPScheduler,
+        scheduler: DDPMScheduler,
+        movq: VQModel
     ):
         super().__init__()
 
@@ -81,6 +92,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
+            movq=movq
         )
 
     def get_timesteps(self, num_inference_steps, strength, device):
@@ -88,7 +100,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps, num_inference_steps - t_start
 
@@ -99,15 +111,14 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
+        
         latents = latents * scheduler.init_noise_sigma
         
         shape = latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, latent_timestep)
-        latents = init_latents
-
+        latents = self.scheduler.add_noise(latents, noise, latent_timestep)
         return latents
 
     def _encode_prompt(
@@ -329,6 +340,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             text_encoder_hidden_states=text_encoder_hidden_states,
         )
 
+        image = prepare_image(image, width, height).to(device)
+        latents = self.movq.encode(image)["latents"]
+
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps_tensor[:1].repeat(batch_size * num_images_per_prompt)
@@ -339,7 +353,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         # create initial latent
         latents = self.prepare_latents(
-            image,
+            latents,
             latent_timestep,
             (batch_size, num_channels_latents, height, width),
             text_encoder_hidden_states.dtype,
@@ -383,11 +397,23 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                     noise_pred,
                     t,
                     latents,
-                    prev_timestep=prev_timestep,
                     generator=generator,
-                    batch_size=batch_size,
                 ).prev_sample
 
                 _, latents = latents.chunk(2)
 
-        return latents
+        # post-processing
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
+
+        image = image * 0.5 + 0.5
+        image = image.clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
+
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
+
