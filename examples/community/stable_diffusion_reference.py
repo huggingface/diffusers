@@ -490,24 +490,3 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-
-import torch
-from diffusers import UniPCMultistepScheduler
-from diffusers.utils import load_image
-
-input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
-
-pipe = StableDiffusionReferencePipeline.from_pretrained(
-       "runwayml/stable-diffusion-v1-5",
-       safety_checker=None,
-       torch_dtype=torch.float16
-       ).to('cuda:0')
-
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-
-result_img = pipe(ref_image=input_image,
-      prompt="1girl",
-      num_inference_steps=20,
-      balanced_point=0.0).images[0]
-
-result_img.save('tmp.png')
