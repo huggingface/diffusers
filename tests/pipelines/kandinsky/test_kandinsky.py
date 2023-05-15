@@ -62,7 +62,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def text_embedder_hidden_size(self):
-        return 32
+        return 1024
 
     @property
     def time_input_dim(self):
@@ -86,13 +86,23 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
         return tokenizer
    
+    # @property
+    # def dummy_text_encoder(self):
+    #     torch.manual_seed(0)
+    #     config = PretrainedConfig(
+    #         modelBase="YiYiXu/tiny-random-mclip-base",
+    #         numDims=100,
+    #         transformerDimensions=32)
+
+    #     return MultilingualCLIP(config)
+    
     @property
     def dummy_text_encoder(self):
         torch.manual_seed(0)
         config = PretrainedConfig(
-            modelBase="YiYiXu/tiny-random-mclip-base",
-            numDims=100,
-            transformerDimensions=32)
+             modelBase="xlm-roberta-large",
+             numDims=self.cross_attention_dim,
+             transformerDimensions=1024)
 
         return MultilingualCLIP(config)
 
@@ -151,9 +161,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def dummy_movq(self):
-        # seeded differently to get different unet than `self.dummy_super_res_first`
-        torch.manual_seed(1)
-
+        torch.manual_seed(0)
         model = VQModel(**self.dummy_movq_kwargs)
         return model
 
@@ -190,7 +198,8 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image_embeds = floats_tensor((1, self.cross_attention_dim)).to(device)
+        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed)).to(device)
+        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed+1)).to(device)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -200,6 +209,8 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image_embeds": image_embeds,
             "negative_image_embeds":image_embeds,
             "generator": generator,
+            "height": 256,
+            "width":256,
             "num_inference_steps": 2,
             "output_type": "np",
         }
@@ -231,17 +242,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [
-                0.9997,
-                0.9988,
-                0.0028,
-                0.9997,
-                0.9984,
-                0.9965,
-                0.0029,
-                0.9986,
-                0.0025,
-            ]
+            [0.5208529, 0.4821977, 0.44796965, 0.5479469, 0.54242486, 0.45028442, 0.42460358, 0.46456948, 0.48675597]
         )
         print(image_slice.flatten())
         print(image_from_tuple_slice.flatten())
