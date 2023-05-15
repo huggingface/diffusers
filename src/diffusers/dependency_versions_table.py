@@ -20,6 +20,7 @@ deps = {
     "k-diffusion": "k-diffusion>=0.0.12",
     "librosa": "librosa",
     "numpy": "numpy",
+    "omegaconf": "omegaconf",
     "parameterized": "parameterized",
     "protobuf": "protobuf>=3.20.3,<4",
     "pytest": "pytest",
@@ -35,4 +36,5 @@ deps = {
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.25.1",
+    "urllib3": "urllib3<=2.0.0",
 }

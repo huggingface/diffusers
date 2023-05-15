@@ -268,7 +268,7 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype)
                 assert new_model.dtype == dtype
 
-    def test_determinism(self):
+    def test_determinism(self, expected_max_diff=1e-5):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -288,7 +288,7 @@ class ModelTesterMixin:
         out_1 = out_1[~np.isnan(out_1)]
         out_2 = out_2[~np.isnan(out_2)]
         max_diff = np.amax(np.abs(out_1 - out_2))
-        self.assertLessEqual(max_diff, 1e-5)
+        self.assertLessEqual(max_diff, expected_max_diff)
 
     def test_output(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
