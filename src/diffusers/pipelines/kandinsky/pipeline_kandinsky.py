@@ -299,12 +299,20 @@ class KandinskyPipeline(DiffusionPipeline):
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
-
         do_classifier_free_guidance = guidance_scale > 1.0
 
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
+        
+        if isinstance(image_embeds, list):
+            image_embeds = torch.cat(image_embeds, dim=0)
+        if isinstance(negative_image_embeds, list):
+            negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
+
+        if do_classifier_free_guidance:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=prompt_embeds.dtype, device=device)
 
@@ -364,7 +372,7 @@ class KandinskyPipeline(DiffusionPipeline):
             latents = self.scheduler.step(
                 noise_pred,
                 t,
-                latents,
+                latent_model_input,
                 prev_timestep=prev_timestep,
                 generator=generator,
                 batch_size=batch_size,

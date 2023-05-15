@@ -43,7 +43,12 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "image_embeds",
         "negative_image_embeds",
     ]
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    batch_params = [
+        "prompt",
+        "negative_prompt",
+        "image_embeds",
+        "negative_image_embeds"
+    ]
     required_optional_params = [
         "generator",
         "height",
