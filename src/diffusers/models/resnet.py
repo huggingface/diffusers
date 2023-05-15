@@ -607,12 +607,11 @@ class Mish(torch.nn.Module):
 
 
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, out_channels=None, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.use_conv_transpose = use_conv_transpose
         self.name = name
 
         conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
@@ -625,9 +624,6 @@ class Upsample3D(nn.Module):
 
     def forward(self, hidden_states, output_size=None):
         assert hidden_states.shape[1] == self.channels
-
-        if self.use_conv_transpose:
-            raise NotImplementedError
 
         # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16
         dtype = hidden_states.dtype
