@@ -406,10 +406,10 @@ class ModelMixin(torch.nn.Module):
             variant (`str`, *optional*):
                 If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
                 ignored when using `from_flax`.
-            use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will forcibly load the models from `safetensors` weights. If set to
-                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are available
-                *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the `safetensors` weights will be downloaded if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the model will be forcibly loaded from
+                `safetensors` weights. If set to `False`, loading will *not* use `safetensors`.
 
         <Tip>
 
@@ -583,6 +583,7 @@ class ModelMixin(torch.nn.Module):
                 if device_map is None:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
+                    model._convert_deprecated_attention_blocks(state_dict)
                     # move the params from meta device to cpu
                     missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
                     if len(missing_keys) > 0:
@@ -625,6 +626,7 @@ class ModelMixin(torch.nn.Module):
                 model = cls.from_config(config, **unused_kwargs)
 
                 state_dict = load_state_dict(model_file, variant=variant)
+                model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                     model,
@@ -803,3 +805,47 @@ class ModelMixin(torch.nn.Module):
             return sum(p.numel() for p in non_embedding_parameters if p.requires_grad or not only_trainable)
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
+
+    def _convert_deprecated_attention_blocks(self, state_dict):
+        deprecated_attention_block_paths = []
+
+        def recursive_find_attn_block(name, module):
+            if hasattr(module, "_from_deprecated_attn_block") and module._from_deprecated_attn_block:
+                deprecated_attention_block_paths.append(name)
+
+            for sub_name, sub_module in module.named_children():
+                sub_name = sub_name if name == "" else f"{name}.{sub_name}"
+                recursive_find_attn_block(sub_name, sub_module)
+
+        recursive_find_attn_block("", self)
+
+        # NOTE: we have to check if the deprecated parameters are in the state dict
+        # because it is possible we are loading from a state dict that was already
+        # converted
+
+        for path in deprecated_attention_block_paths:
+            # group_norm path stays the same
+
+            # query -> to_q
+            if f"{path}.query.weight" in state_dict:
+                state_dict[f"{path}.to_q.weight"] = state_dict.pop(f"{path}.query.weight")
+            if f"{path}.query.bias" in state_dict:
+                state_dict[f"{path}.to_q.bias"] = state_dict.pop(f"{path}.query.bias")
+
+            # key -> to_k
+            if f"{path}.key.weight" in state_dict:
+                state_dict[f"{path}.to_k.weight"] = state_dict.pop(f"{path}.key.weight")
+            if f"{path}.key.bias" in state_dict:
+                state_dict[f"{path}.to_k.bias"] = state_dict.pop(f"{path}.key.bias")
+
+            # value -> to_v
+            if f"{path}.value.weight" in state_dict:
+                state_dict[f"{path}.to_v.weight"] = state_dict.pop(f"{path}.value.weight")
+            if f"{path}.value.bias" in state_dict:
+                state_dict[f"{path}.to_v.bias"] = state_dict.pop(f"{path}.value.bias")
+
+            # proj_attn -> to_out.0
+            if f"{path}.proj_attn.weight" in state_dict:
+                state_dict[f"{path}.to_out.0.weight"] = state_dict.pop(f"{path}.proj_attn.weight")
+            if f"{path}.proj_attn.bias" in state_dict:
+                state_dict[f"{path}.to_out.0.bias"] = state_dict.pop(f"{path}.proj_attn.bias")

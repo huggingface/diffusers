@@ -1274,7 +1274,7 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 mask_image = PIL.ImageOps.invert(mask_image)
-pipe = DiffusionPipeline.from_pretrained(
+pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16, custom_pipeline="stable_diffusion_repaint",
 )
 pipe.scheduler = RePaintScheduler.from_config(pipe.scheduler.config)

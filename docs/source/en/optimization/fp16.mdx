@@ -60,8 +60,10 @@ image = pipe(prompt).images[0]
 ```
 
 <Tip warning={true}>
+
   It is strongly discouraged to make use of [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast) in any of the pipelines as it can lead to black images and is always slower than using pure 
   float16 precision.
+  
 </Tip>
 
 ## Sliced attention for additional memory savings
