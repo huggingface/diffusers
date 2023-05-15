@@ -234,7 +234,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         tokens = None
         scores = None
         seq_lengths = torch.ones(beam_size, device=device)
-        is_stopped = torch.zeros(beam_size, device=device, dtype=bool)
+        is_stopped = torch.zeros(beam_size, device=device, dtype=torch.bool)
 
         if embed is not None:
             generated = embed
