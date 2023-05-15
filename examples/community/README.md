@@ -1282,3 +1282,36 @@ pipe = pipe.to("cuda")
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
+
+### Stable Diffusion Reference
+
+This pipeline uses the Reference only Control. Refer to the [sd-webui-controlnet discussion](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236).
+
+
+```py
+import torch
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+pipe = StableDiffusionReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/83e5b992-5597-4761-b7e3-c8258fc95f24)
