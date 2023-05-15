@@ -543,6 +543,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        unet_mask = False,
+        debug = False,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -646,7 +648,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
-        print(f'Attention Mask :{attention_mask}')
+        if debug:
+            print(f'Attention Mask :{attention_mask}')
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -678,13 +681,23 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_mask=attention_mask,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                if unet_mask:
+                    print(f'unet getting attention mask:{attention_mask}')
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        attention_mask=attention_mask,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
+                else:
+                    print(f'unet Cross Attention UNMASKED!')
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -696,12 +709,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 for img in noise_pred_peek:
                     means = img.mean(axis=(1,2))
                     stds = img.std(axis=(1,2))
-                    
-                    print(f'Noise Mean: {means}')
-                    print(f'Noise std:  {stds}')
+                    if debug:
+                        print(f'Noise Mean: {means}')
+                        print(f'Noise std:  {stds}')
                     # print(f'MEAN: mean {means.mean()} -- std {means.std()}')
                     # print(f'STD: mean {stds.mean()} -- std {stds.std()}')
-                    print()
+                        print()
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 
@@ -710,12 +723,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 for img in latents:
                     means = img.mean(axis=(1,2))
                     stds = img.std(axis=(1,2))
-                    
-                    print(means)
-                    print(stds)
+                    if debug:
+                        print(means)
+                        print(stds)
                     # print(f'MEAN: mean {means.mean()} -- std {means.std()}')
                     # print(f'STD: mean {stds.mean()} -- std {stds.std()}')
-                    print()
+                        print()
                 latents = torch.Tensor.view(latents, [latents.shape[0], 1, 128, 504])
         
         
