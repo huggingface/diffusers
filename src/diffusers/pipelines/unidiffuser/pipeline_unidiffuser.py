@@ -1314,9 +1314,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
 
-        print(f"Initial latents: {latents}")
-        print(f"Initial latents shape: {latents.shape}")
-
         # 7. Check that shapes of latents and image match the UNet channels.
         # TODO
 
@@ -1329,7 +1326,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                print(f"Step {i} / timestep {t}")
                 # predict the noise residual
                 # Also applies classifier-free guidance as described in the UniDiffuser paper
                 noise_pred = self._get_noise_pred(
@@ -1348,14 +1344,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     width,
                 )
 
-                print(f"noise_pred: {noise_pred}")
-
                 # TODO: do we need to worry about sigma space stuff for the scheduler?
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
-                print(f"New latents: {latents}")
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

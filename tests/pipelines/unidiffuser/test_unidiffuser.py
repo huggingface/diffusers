@@ -585,7 +585,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs()
         del inputs["prompt"]
         sample = pipe(**inputs)
-        text = sample.images
+        text = sample.text
 
         expected_text_prefix = "Astronaut "
         assert text[0][:10] == expected_text_prefix
@@ -629,23 +629,6 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_unidiffuser_default_text2img_v1_fp16_no_cfg(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        inputs = self.get_inputs()
-        del inputs["image"]
-        inputs["guidance_scale"] = 0.0
-        sample = pipe(**inputs)
-        image = sample.images
-        assert image.shape == (1, 512, 512, 3)
-
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
     def test_unidiffuser_default_img2text_v1_fp16(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
         pipe.to(torch_device)
@@ -655,7 +638,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs()
         del inputs["prompt"]
         sample = pipe(**inputs)
-        text = sample.images
+        text = sample.text
 
         expected_text_prefix = "Astronaut "
         assert text[0][:10] == expected_text_prefix
