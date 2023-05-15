@@ -6,10 +6,9 @@ import PIL.Image
 import torch
 
 from diffusers import StableDiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import PIL_INTERPOLATION
-from diffusers.utils import logging
 from diffusers.models.attention import BasicTransformerBlock
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.utils import PIL_INTERPOLATION, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -271,7 +270,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
-        
+
         # 4. Preprocess reference image
         ref_image = self.prepare_image(
             image=ref_image,
@@ -313,7 +312,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        
+
         # 9. Modify self attention
         MODE = 'write'
 
@@ -434,7 +433,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                         time_weight = (time_weight > balanced_point).type_as(ref_xt)
                         time_weight = time_weight[:, None, None, None]
                         ref_uncond_xt = latent_model_input * time_weight + ref_xt * (1 - time_weight)
-                    
+
                     uc_mask = torch.Tensor([0] * batch_size * num_images_per_prompt + [1] * batch_size * num_images_per_prompt).type_as(ref_xt)
                     uc_mask = uc_mask[:, None, None, None]
                     ref_xt = ref_xt * uc_mask + ref_uncond_xt * (1 - uc_mask)
