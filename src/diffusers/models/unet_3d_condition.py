@@ -27,7 +27,6 @@ from ..utils import BaseOutput, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .resnet import InflatedConv3d
 from .transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
@@ -96,15 +95,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         in_channels: int = 4,
         out_channels: int = 4,
         center_input_sample: bool = False,
-        flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
         down_block_types: Tuple[str] = (
             "CrossAttnDownBlock3D",
             "CrossAttnDownBlock3D",
             "CrossAttnDownBlock3D",
             "DownBlock3D",
         ),
-        mid_block_type: str = "UNetMidBlock3DCrossAttn",
         up_block_types: Tuple[str] = ("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
@@ -116,13 +112,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
-        dual_cross_attention: bool = False,
         use_linear_projection: bool = True,
-        class_embed_type: Optional[str] = None,
-        num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conv_type: str = None,
         use_temporal_transformer: bool = True,
         use_temporal_conv: bool = True,
         sub_blocks_type: str = "2d",
@@ -152,20 +144,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
 
-        if conv_type == "inflated_conv_3d":
-            self.conv_in = InflatedConv3d(
-                in_channels,
-                block_out_channels[0],
-                kernel_size=conv_in_kernel,
-                padding=(conv_in_padding, conv_in_padding),
-            )
-        else:
-            self.conv_in = nn.Conv2d(
-                in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
-            )
+        self.conv_in = nn.Conv2d(
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+        )
         # time
         time_embed_dim = block_out_channels[0] * 4
-        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+        self.time_proj = Timesteps(block_out_channels[0], True, 0)
         timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
@@ -183,17 +167,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
         else:
             self.transformer_in = None
-
-        # class embeds.
-        # TODO: Verify if needed
-        if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
-        elif class_embed_type == "timestep":
-            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
-        elif class_embed_type == "identity":
-            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
-        else:
-            self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -225,7 +198,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
-                dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
@@ -237,26 +209,22 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.down_blocks.append(down_block)
 
         # mid
-        if mid_block_type == "UNetMidBlock3DCrossAttn":
-            self.mid_block = UNetMidBlock3DCrossAttn(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim[-1],
-                resnet_groups=norm_num_groups,
-                dual_cross_attention=dual_cross_attention,
-                use_linear_projection=use_linear_projection,
-                upcast_attention=upcast_attention,
-                use_temporal_transformer=use_temporal_transformer,
-                use_temporal_conv=use_temporal_conv,
-                sub_blocks_type=sub_blocks_type,
-            )
-        else:
-            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
+        self.mid_block = UNetMidBlock3DCrossAttn(
+            in_channels=block_out_channels[-1],
+            temb_channels=time_embed_dim,
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attention_head_dim[-1],
+            resnet_groups=norm_num_groups,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+            use_temporal_transformer=use_temporal_transformer,
+            use_temporal_conv=use_temporal_conv,
+            sub_blocks_type=sub_blocks_type,
+        )
 
         # count how many layers upsample the videos
         self.num_upsamplers = 0
@@ -293,7 +261,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=reversed_attention_head_dim[i],
-                dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
@@ -317,14 +284,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         conv_out_padding = (conv_out_kernel - 1) // 2
 
-        if conv_type == "inflated_conv_3d":
-            self.conv_out = InflatedConv3d(
-                block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
-            )
-        else:
-            self.conv_out = nn.Conv2d(
-                block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
-            )
+        self.conv_out = nn.Conv2d(
+            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+        )
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -541,28 +503,27 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         emb = self.time_embedding(t_emb, timestep_cond)
 
-        if self.class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
-
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.time_proj(class_labels)
-
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
-
         # 2. pre-process
-        # If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
-        if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
+        # If not using temporal transfomer, use num_frames in unet
+        if self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
             sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
             sample = self.conv_in(sample)
 
-            sample = self.transformer_in(sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs).sample
+            sample = self.transformer_in(
+                sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+            ).sample
         else:
+            video_length = sample.shape[2]
+            # b c f h w -> (b f) c h w
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            sample = sample.flatten(0, 1)
             sample = self.conv_in(sample)
+            # (b f) c h w -> b c f h w (f=video_length)
+            sample = sample.reshape([-1, video_length, *sample.shape[1:]])
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -644,11 +605,19 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
 
-        sample = self.conv_out(sample)
-
         # reshape to (batch, channel, framerate, width, height)
-        if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
+        if self.transformer_in:
+            sample = self.conv_out(sample)
             sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
+        else:
+            video_length = sample.shape[2]
+            # b c f h w -> (b f) c h w
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            sample = sample.flatten(0, 1)
+            sample = self.conv_out(sample)
+            # (b f) c h w -> b c f h w (f=video_length)
+            sample = sample.reshape([-1, video_length, *sample.shape[1:]])
+            sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         if not return_dict:
             return (sample,)

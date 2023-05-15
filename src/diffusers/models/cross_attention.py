@@ -24,7 +24,6 @@ from .attention_processor import (  # noqa: F401
     LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
     SlicedAttnProcessor,
-    TuneAVideoAttnProcessor,
     XFormersAttnProcessor,
 )
 from .attention_processor import AttnProcessor as AttnProcessorRename  # noqa: F401
@@ -90,13 +89,6 @@ class SlicedCrossAttnProcessor(SlicedAttnProcessor):
         super().__init__(*args, **kwargs)
 
 
-class TuneAVideoCrossAttnProcessor(TuneAVideoAttnProcessor):
-    def __init__(self, *args, **kwargs):
-        deprecation_message = f"{self.__class__.__name__} is deprecated and will be removed in `0.18.0`. Please use `from diffusers.models.attention_processor import {''.join(self.__class__.__name__.split('Cross'))} instead."
-        deprecate("cross_attention", "0.18.0", deprecation_message, standard_warn=False)
-        super().__init__(*args, **kwargs)
-
-
 class SlicedCrossAttnAddedKVProcessor(SlicedAttnAddedKVProcessor):
     def __init__(self, *args, **kwargs):
         deprecation_message = f"{self.__class__.__name__} is deprecated and will be removed in `0.18.0`. Please use `from diffusers.models.attention_processor import {''.join(self.__class__.__name__.split('Cross'))} instead."
@@ -106,7 +98,6 @@ class SlicedCrossAttnAddedKVProcessor(SlicedAttnAddedKVProcessor):
 
 AttnProcessor = Union[
     CrossAttnProcessor,
-    TuneAVideoCrossAttnProcessor,
     XFormersCrossAttnProcessor,
     SlicedAttnProcessor,
     CrossAttnAddedKVProcessor,

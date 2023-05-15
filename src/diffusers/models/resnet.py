@@ -20,7 +20,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from einops import rearrange
 from .attention import AdaGroupNorm
 
 
@@ -607,35 +606,17 @@ class Mish(torch.nn.Module):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
 
-class InflatedConv3d(nn.Conv2d):
-    def forward(self, x):
-        video_length = x.shape[2]
-        # x = rearrange(x, "b c f h w -> (b f) c h w")
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-        x = x.flatten(0, 1)
-        x = super().forward(x)
-        # x = rearrange(x, "(b f) c h w -> b c f h w", f=video_length)
-        x = x.reshape([-1, video_length, *x.shape[1:]])
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-
-        return x
-
-
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, out_channels=None, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.use_conv_transpose = use_conv_transpose
         self.name = name
 
-        conv = None
-        if use_conv_transpose:
-            raise NotImplementedError
-        elif use_conv:
-            conv = InflatedConv3d(self.channels, self.out_channels, 3, padding=1)
+        conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
             self.conv = conv
         else:
@@ -643,9 +624,6 @@ class Upsample3D(nn.Module):
 
     def forward(self, hidden_states, output_size=None):
         assert hidden_states.shape[1] == self.channels
-
-        if self.use_conv_transpose:
-            raise NotImplementedError
 
         # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16
         dtype = hidden_states.dtype
@@ -668,10 +646,20 @@ class Upsample3D(nn.Module):
             hidden_states = hidden_states.to(dtype)
 
         if self.use_conv:
+            # Inflate
+            video_length = hidden_states.shape[2]
+            # b c f h w -> (b f) c h w
+            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            hidden_states = hidden_states.flatten(0, 1)
+
             if self.name == "conv":
                 hidden_states = self.conv(hidden_states)
             else:
                 hidden_states = self.Conv2d_0(hidden_states)
+            # Deflate
+            # (b f) c h w -> b c f h w (f=video_length)
+            hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         return hidden_states
 
@@ -686,11 +674,9 @@ class Downsample3D(nn.Module):
         stride = 2
         self.name = name
 
-        if use_conv:
-            conv = InflatedConv3d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            raise NotImplementedError
+        conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
             self.Conv2d_0 = conv
             self.conv = conv
@@ -705,7 +691,16 @@ class Downsample3D(nn.Module):
             raise NotImplementedError
 
         assert hidden_states.shape[1] == self.channels
+
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
+        # Conv
         hidden_states = self.conv(hidden_states)
+        # (b f) c h w -> b c f h w (f=video_length)
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         return hidden_states
 
@@ -743,7 +738,7 @@ class ResnetBlock3D(nn.Module):
 
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = InflatedConv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
@@ -759,7 +754,7 @@ class ResnetBlock3D(nn.Module):
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = InflatedConv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -772,7 +767,7 @@ class ResnetBlock3D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = InflatedConv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+            self.conv_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, input_tensor, temb):
         hidden_states = input_tensor
@@ -780,7 +775,14 @@ class ResnetBlock3D(nn.Module):
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
 
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
         hidden_states = self.conv1(hidden_states)
+        # (b f) c h w -> b c f h w (f=video_length
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         if temb is not None:
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None, None]
@@ -797,10 +799,25 @@ class ResnetBlock3D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
+
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
         hidden_states = self.conv2(hidden_states)
+        # (b f) c h w -> b c f h w (f=video_length)
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         if self.conv_shortcut is not None:
+            video_length = input_tensor.shape[2]
+            # x = rearrange(x, "b c f h w -> (b f) c h w")
+            input_tensor = input_tensor.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+            input_tensor = input_tensor.flatten(0, 1)
             input_tensor = self.conv_shortcut(input_tensor)
+            # x = rearrange(x, "(b f) c h w -> b c f h w", f=video_length)
+            input_tensor = input_tensor.reshape([-1, video_length, *input_tensor.shape[1:]])
+            input_tensor = input_tensor.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
