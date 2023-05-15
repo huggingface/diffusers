@@ -166,6 +166,10 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            ref_image (`torch.FloatTensor`, `PIL.Image.Image`):
+                The Reference Control input condition. Reference Control uses this input condition to generate guidance to Unet. If
+                the type is specified as `Torch.FloatTensor`, it is passed to Reference Control as is. `PIL.Image.Image` can
+                also be accepted as an image.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
