@@ -210,21 +210,21 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # mid
         self.mid_block = UNetMidBlock3DCrossAttn(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim[-1],
-                resnet_groups=norm_num_groups,
-                use_linear_projection=use_linear_projection,
-                upcast_attention=upcast_attention,
-                use_temporal_transformer=use_temporal_transformer,
-                use_temporal_conv=use_temporal_conv,
-                sub_blocks_type=sub_blocks_type,
-            )
+            in_channels=block_out_channels[-1],
+            temb_channels=time_embed_dim,
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attention_head_dim[-1],
+            resnet_groups=norm_num_groups,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+            use_temporal_transformer=use_temporal_transformer,
+            use_temporal_conv=use_temporal_conv,
+            sub_blocks_type=sub_blocks_type,
+        )
 
         # count how many layers upsample the videos
         self.num_upsamplers = 0
@@ -512,7 +512,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
             sample = self.conv_in(sample)
 
-            sample = self.transformer_in(sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs).sample
+            sample = self.transformer_in(
+                sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+            ).sample
         else:
             video_length = sample.shape[2]
             # b c f h w -> (b f) c h w
@@ -522,7 +524,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # (b f) c h w -> b c f h w (f=video_length)
             sample = sample.reshape([-1, video_length, *sample.shape[1:]])
             sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -617,7 +618,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # (b f) c h w -> b c f h w (f=video_length)
             sample = sample.reshape([-1, video_length, *sample.shape[1:]])
             sample = sample.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-            
+
         if not return_dict:
             return (sample,)
 

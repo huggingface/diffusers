@@ -16,14 +16,12 @@ from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
-
 from torch import nn
 
 from ..utils import maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
-from .attention_processor import Attention
+from .attention_processor import Attention, TuneAVideoAttnProcessor
 from .cross_attention import CrossAttention
-from .attention_processor import TuneAVideoAttnProcessor
 from .embeddings import CombinedTimestepLabelEmbeddings
 
 
