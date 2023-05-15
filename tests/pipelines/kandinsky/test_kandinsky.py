@@ -249,8 +249,6 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array(
             [0.5208529, 0.4821977, 0.44796965, 0.5479469, 0.54242486, 0.45028442, 0.42460358, 0.46456948, 0.48675597]
         )
-        print(image_slice.flatten())
-        print(image_from_tuple_slice.flatten())
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
