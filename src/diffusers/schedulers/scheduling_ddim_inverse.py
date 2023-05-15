@@ -23,7 +23,7 @@ import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import BaseOutput, deprecate
+from diffusers.utils import BaseOutput
 
 
 @dataclass
@@ -113,7 +113,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
         revert_all_steps ('bool', default 'False'):
             When 'True', all denoising steps of the analogous forward process are reversed. Otherwise, the
-            last denoising is not reversed.
+            last denoising step is not reversed.
     """
 
     order = 1
@@ -204,9 +204,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.timesteps += self.config.steps_offset
 
-        if not self.revert_all_steps:
-            self.timesteps = self.timesteps[:-1]
-
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -219,16 +216,15 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         # 1. get previous step value (=t+1)
         if self.revert_all_steps:
-            timestep, prev_timestep = min(
-                timestep - self.config.num_train_timesteps // self.num_inference_steps, 999), timestep
+            timestep, prev_timestep = (
+                min(timestep - self.config.num_train_timesteps // self.num_inference_steps, 999),
+                timestep,
+            )
         else:
             prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
-        alpha_prod_t = (
-            self.alphas_cumprod[timestep]
-            if timestep >= 0
-            else self.final_alpha_cumprod)
+        alpha_prod_t = self.alphas_cumprod[timestep] if timestep >= 0 else self.final_alpha_cumprod
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep]
 
         beta_prod_t = 1 - alpha_prod_t
