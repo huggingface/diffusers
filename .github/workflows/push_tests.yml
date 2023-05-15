@@ -1,7 +1,7 @@
 name: Slow tests on main
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -72,6 +72,7 @@ jobs:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8 
+        PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:32
 
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
