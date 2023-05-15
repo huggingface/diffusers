@@ -279,6 +279,8 @@ class KandinskyPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        image_embeds: torch.FloatTensor,
+        negative_image_embeds: torch.FloatTensor,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
@@ -287,8 +289,6 @@ class KandinskyPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        image_embeds: Optional[torch.FloatTensor] = None,
-        negative_image_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
