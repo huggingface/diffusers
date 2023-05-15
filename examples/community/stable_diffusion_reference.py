@@ -40,10 +40,10 @@ EXAMPLE_DOC_STRING = """
 
 
 def torch_dfs(model: torch.nn.Module):
-            result = [model]
-            for child in model.children():
-                result += torch_dfs(child)
-            return result
+    result = [model]
+    for child in model.children():
+        result += torch_dfs(child)
+    return result
 
 
 class StableDiffusionReferencePipeline(StableDiffusionPipeline):
@@ -100,9 +100,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
         return image
 
-    def prepare_ref_latents(
-        self, refimage, batch_size, dtype, device, generator, do_classifier_free_guidance
-    ):
+    def prepare_ref_latents(self, refimage, batch_size, dtype, device, generator, do_classifier_free_guidance):
         refimage = refimage.to(device=device, dtype=dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
@@ -126,9 +124,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 )
             ref_image_latents = ref_image_latents.repeat(batch_size // ref_image_latents.shape[0], 1, 1, 1)
 
-        ref_image_latents = (
-            torch.cat([ref_image_latents] * 2) if do_classifier_free_guidance else ref_image_latents
-        )
+        ref_image_latents = torch.cat([ref_image_latents] * 2) if do_classifier_free_guidance else ref_image_latents
 
         # aligning device to prevent device errors when concating it with the latent model input
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
@@ -138,7 +134,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        ref_image:  Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        ref_image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -314,16 +310,17 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 9. Modify self attention
-        MODE = 'write'
+        MODE = "write"
 
-        def hacked_basic_transformer_inner_forward(self,
-                hidden_states,
-                encoder_hidden_states=None,
-                timestep=None,
-                attention_mask=None,
-                cross_attention_kwargs=None,
-                class_labels=None,
-            ):
+        def hacked_basic_transformer_inner_forward(
+            self,
+            hidden_states,
+            encoder_hidden_states=None,
+            timestep=None,
+            attention_mask=None,
+            cross_attention_kwargs=None,
+            class_labels=None,
+        ):
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
             elif self.use_ada_layer_norm_zero:
@@ -343,7 +340,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                     **cross_attention_kwargs,
                 )
             else:
-                if MODE == 'write':
+                if MODE == "write":
                     self.bank.append(norm_hidden_states.detach().clone())
                     attn_output = self.attn1(
                         norm_hidden_states,
@@ -351,12 +348,12 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                         attention_mask=attention_mask,
                         **cross_attention_kwargs,
                     )
-                if MODE == 'read':
+                if MODE == "read":
                     if attention_auto_machine_weight > self.attn_weight:
                         attn_output = self.attn1(
                             norm_hidden_states,
                             encoder_hidden_states=torch.cat([norm_hidden_states] + self.bank, dim=1),
-                            #attention_mask=attention_mask,
+                            # attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
                         self.bank.clear()
@@ -401,7 +398,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             return hidden_states
 
         attn_modules = [module for module in torch_dfs(self.unet) if isinstance(module, BasicTransformerBlock)]
-        attn_modules = sorted(attn_modules, key=lambda x: - x.norm1.normalized_shape[0])
+        attn_modules = sorted(attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
 
         for i, module in enumerate(attn_modules):
             module._original_inner_forward = module.forward
@@ -429,16 +426,23 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                         # Prompt More Important
                         ref_uncond_xt = ref_xt.clone()
                     else:
-                        time_weight = t.float().reshape(1,) / total_timesteps
+                        time_weight = (
+                            t.float().reshape(
+                                1,
+                            )
+                            / total_timesteps
+                        )
                         time_weight = (time_weight > balanced_point).type_as(ref_xt)
                         time_weight = time_weight[:, None, None, None]
                         ref_uncond_xt = latent_model_input * time_weight + ref_xt * (1 - time_weight)
 
-                    uc_mask = torch.Tensor([0] * batch_size * num_images_per_prompt + [1] * batch_size * num_images_per_prompt).type_as(ref_xt)
+                    uc_mask = torch.Tensor(
+                        [0] * batch_size * num_images_per_prompt + [1] * batch_size * num_images_per_prompt
+                    ).type_as(ref_xt)
                     uc_mask = uc_mask[:, None, None, None]
                     ref_xt = ref_xt * uc_mask + ref_uncond_xt * (1 - uc_mask)
 
-                MODE = 'write'
+                MODE = "write"
                 self.unet(
                     ref_xt,
                     t,
@@ -448,7 +452,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 )
 
                 # predict the noise residual
-                MODE = 'read'
+                MODE = "read"
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
