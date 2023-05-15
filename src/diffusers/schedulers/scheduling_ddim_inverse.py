@@ -99,18 +99,21 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             option to clip predicted sample for numerical stability.
         clip_sample_range (`float`, default `1.0`):
             the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
-        set_alpha_to_zero (`bool`, default `True`):
-            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
-            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `0`,
-            otherwise it uses the value of alpha at step `num_train_timesteps - 1`.
+        set_alpha_to_one (`bool`, default `True`):
+            each diffusion step uses the value of alphas product at that step and at the previous one. For the first
+            step there is no alpha becuase we are at t<0.  When this option is `True` the alpha product is fixed to `1`,
+            otherwise it uses the value of alpha at the first timestep >= 0.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1` for the previous alpha
+            `set_alpha_to_one=False`, to make the last step use step `num_train_timesteps - 1` for the previous alpha
             product.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        revert_all_steps ('bool', default 'False'):
+            When 'True', all denoising steps of the analogous forward process are reversed. Otherwise, the
+            last denoising is not reversed.
     """
 
     order = 1
@@ -124,18 +127,13 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         clip_sample: bool = True,
-        set_alpha_to_zero: bool = True,
+        set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
         clip_sample_range: float = 1.0,
+        revert_all_steps: bool = False,
         **kwargs,
     ):
-        if kwargs.get("set_alpha_to_one", None) is not None:
-            deprecation_message = (
-                "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
-            )
-            deprecate("set_alpha_to_one", "1.0.0", deprecation_message, standard_warn=False)
-            set_alpha_to_zero = kwargs["set_alpha_to_one"]
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -154,12 +152,11 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        # At every step in inverted ddim, we are looking into the next alphas_cumprod
-        # For the final step, there is no next alphas_cumprod, and the index is out of bounds
-        # `set_alpha_to_zero` decides whether we set this parameter simply to zero
-        # in this case, self.step() just output the predicted noise
-        # or whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(0.0) if set_alpha_to_zero else self.alphas_cumprod[-1]
+        # At every step in inverted ddim, we are looking into alphas_cumprod
+        # For the first step, there is no alphas_cumprod because we are at t<0 and the index is out of bounds.
+        # `set_alpha_to_one` decides whether we set this parameter simply to one or
+        # whether we use the alpha of the first timestep >= 0.
+        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -207,6 +204,9 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.timesteps += self.config.steps_offset
 
+        if not self.revert_all_steps:
+            self.timesteps = self.timesteps[:-1]
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -218,16 +218,18 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         # 1. get previous step value (=t+1)
-        prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
+        if self.revert_all_steps:
+            timestep, prev_timestep = min(
+                timestep - self.config.num_train_timesteps // self.num_inference_steps, 999), timestep
+        else:
+            prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
-        # change original implementation to exactly match noise levels for analogous forward process
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = (
-            self.alphas_cumprod[prev_timestep]
-            if prev_timestep < self.config.num_train_timesteps
-            else self.final_alpha_cumprod
-        )
+        alpha_prod_t = (
+            self.alphas_cumprod[timestep]
+            if timestep >= 0
+            else self.final_alpha_cumprod)
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep]
 
         beta_prod_t = 1 - alpha_prod_t
 
