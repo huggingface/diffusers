@@ -834,7 +834,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    accelerator.register_for_checkpointing(unet_lora_layers)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -853,8 +852,67 @@ def main(args):
         )
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
         text_encoder = temp_pipeline.text_encoder
-        accelerator.register_for_checkpointing(text_encoder_lora_layers)
         del temp_pipeline
+
+    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    def save_model_hook(models, weights, output_dir):
+        # there are only two options here. Either are just the unet attn processor layers
+        # or there are the unet and text encoder atten layers
+        unet_lora_layers_to_save = None
+        text_encoder_lora_layers_to_save = None
+
+        if args.train_text_encoder:
+            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
+        unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
+
+        for model in models:
+            state_dict = model.state_dict()
+
+            if (
+                text_encoder_lora_layers is not None
+                and text_encoder_keys is not None
+                and state_dict.keys() == text_encoder_keys
+            ):
+                # text encoder
+                text_encoder_lora_layers_to_save = state_dict
+            elif state_dict.keys() == unet_keys:
+                # unet
+                unet_lora_layers_to_save = state_dict
+
+            # make sure to pop weight so that corresponding model is not saved again
+            weights.pop()
+
+        LoraLoaderMixin.save_lora_weights(
+            output_dir,
+            unet_lora_layers=unet_lora_layers_to_save,
+            text_encoder_lora_layers=text_encoder_lora_layers_to_save,
+        )
+
+    def load_model_hook(models, input_dir):
+        # Note we DON'T pass the unet and text encoder here an purpose
+        # so that the we don't accidentally override the LoRA layers of
+        # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
+        # with new torch.nn.Modules / weights. We simply use the pipeline class as
+        # an easy way to load the lora checkpoints
+        temp_pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            revision=args.revision,
+            torch_dtype=weight_dtype,
+        )
+        temp_pipeline.load_lora_weights(input_dir)
+
+        # load lora weights into models
+        models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
+        if len(models) > 1:
+            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
+
+        # delete temporary pipeline and pop models
+        del temp_pipeline
+        for _ in range(len(models)):
+            models.pop()
+
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -1130,17 +1188,10 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        # We combine the text encoder and UNet LoRA parameters with a simple
-                        # custom logic. `accelerator.save_state()` won't know that. So,
-                        # use `LoraLoaderMixin.save_lora_weights()`.
-                        LoraLoaderMixin.save_lora_weights(
-                            save_directory=save_path,
-                            unet_lora_layers=unet_lora_layers,
-                            text_encoder_lora_layers=text_encoder_lora_layers,
-                        )
+                        accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1217,8 +1268,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
+        unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
+            text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
+
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
@@ -1250,6 +1305,7 @@ def main(args):
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
+        images = []
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
