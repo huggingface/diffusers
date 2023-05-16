@@ -262,7 +262,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         self,
         prompt,
         num_images_per_prompt: int = 1,
-        prior_num_inference_steps: int = 5,
+        num_inference_steps: int = 5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prior_latents: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -291,7 +291,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             )
 
             # prior
-            self.scheduler.set_timesteps(prior_num_inference_steps, device=device)
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
             prior_timesteps_tensor = self.scheduler.timesteps
 
             embedding_dim = self.prior.config.embedding_dim
