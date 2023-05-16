@@ -1,4 +1,4 @@
-name: Slow tests on main
+name: Fast tests on main
 
 on:
   push:
