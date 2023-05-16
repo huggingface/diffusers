@@ -52,7 +52,7 @@ def get_new_h_w(h, w, scale_factor=8):
 
 
 def prepare_mask(mask):
-    mask = mask.float()[0]
+    mask = mask[0]
     old_mask = deepcopy(mask)
     for i in range(mask.shape[1]):
         for j in range(mask.shape[2]):
@@ -470,10 +470,10 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
         
-        image = image.to(device)
+        image = image.to(dtype=prompt_embeds.dtype, device=device)
         image = self.movq.encode(image)["latents"]
 
-        mask_image = mask_image.to(device)
+        mask_image = mask_image.to(dtype=prompt_embeds.dtype, device=device)
 
         image_shape = tuple(image.shape[-2:])
         mask_image = F.interpolate(
@@ -481,7 +481,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             image_shape,
             mode="nearest",
         )
-        mask_image = prepare_mask(mask_image).to(device)
+        mask_image = prepare_mask(mask_image)
         # apply mask on image
         masked_image = image * mask_image 
 
