@@ -124,7 +124,7 @@ from diffusers import UniDiffuserPipeline
 
 device = "cuda"
 model_id_or_path = "dg845/unidiffuser-diffusers"
-pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path)
+pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
 # Image-to-text generation
@@ -155,7 +155,7 @@ from diffusers import UniDiffuserPipeline
 
 device = "cuda"
 model_id_or_path = "dg845/unidiffuser-diffusers"
-pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path)
+pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
 # Image variation can be performed with a image-to-text generation followed by a text-to-image generation:
