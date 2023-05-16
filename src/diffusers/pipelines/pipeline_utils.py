@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from requests.exceptions import HTTPError
 import fnmatch
 import importlib
 import inspect
@@ -1205,6 +1206,17 @@ class DiffusionPipeline(ConfigMixin):
         ignore_patterns = None
 
         if not local_files_only:
+            try:
+                info = model_info(
+                    pretrained_model_name,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+            except HTTPError as e:
+                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                local_files_only = True
+
+        if not local_files_only:
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1214,11 +1226,6 @@ class DiffusionPipeline(ConfigMixin):
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
-            )
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
             )
 
             config_dict = cls._dict_from_json_file(config_file)
