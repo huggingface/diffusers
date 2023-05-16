@@ -36,14 +36,14 @@ from .text_proj import KandinskyTextProjModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def get_new_h_w(h, w):
-    new_h = h // 64
-    if h % 64 != 0:
+def get_new_h_w(h, w, scale_factor=8):
+    new_h = h // scale_factor**2
+    if h % scale_factor**2 != 0:
         new_h += 1
-    new_w = w // 64
-    if w % 64 != 0:
+    new_w = w // scale_factor**2
+    if w % scale_factor**2 != 0:
         new_w += 1
-    return new_h * 8, new_w * 8
+    return new_h * scale_factor, new_w * scale_factor
 
 
 class KandinskyPipeline(DiffusionPipeline):
@@ -87,6 +87,7 @@ class KandinskyPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -119,9 +120,7 @@ class KandinskyPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
 
-        text_input_ids = text_inputs.input_ids.to(device)
-        text_mask = text_inputs.attention_mask.to(device)
-
+        text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
@@ -130,7 +129,9 @@ class KandinskyPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+
+        text_input_ids = text_input_ids.to(device)
+        text_mask = text_inputs.attention_mask.to(device)
 
         prompt_embeds, text_encoder_hidden_states = self.text_encoder(
             input_ids=text_input_ids, attention_mask=text_mask
@@ -201,31 +202,28 @@ class KandinskyPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
+        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
+        when their specific submodule has its `forward` method called.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError("Please install accelerate via `pip install accelerate`")
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+        models = [
+            self.unet,
+            self.text_proj,
+            self.text_encoder,
+            self.movq,
+        ]
+        for cpu_offloaded_model in models:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -279,6 +277,8 @@ class KandinskyPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        image_embeds: torch.FloatTensor,
+        negative_image_embeds: torch.FloatTensor,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
@@ -287,8 +287,6 @@ class KandinskyPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        image_embeds: Optional[torch.FloatTensor] = None,
-        negative_image_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
@@ -302,14 +300,24 @@ class KandinskyPipeline(DiffusionPipeline):
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
-
         do_classifier_free_guidance = guidance_scale > 1.0
 
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
+        if isinstance(image_embeds, list):
+            image_embeds = torch.cat(image_embeds, dim=0)
+        if isinstance(negative_image_embeds, list):
+            negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
+
+        if do_classifier_free_guidance:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+            dtype=prompt_embeds.dtype, device=device
+        )
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
@@ -322,7 +330,7 @@ class KandinskyPipeline(DiffusionPipeline):
 
         num_channels_latents = self.unet.config.in_channels
 
-        height, width = get_new_h_w(height, width)
+        height, width = get_new_h_w(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
@@ -367,7 +375,7 @@ class KandinskyPipeline(DiffusionPipeline):
             latents = self.scheduler.step(
                 noise_pred,
                 t,
-                latents,
+                latent_model_input,
                 prev_timestep=prev_timestep,
                 generator=generator,
                 batch_size=batch_size,

@@ -41,45 +41,150 @@ from .text_proj import KandinskyTextProjModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def get_new_h_w(h, w):
-    new_h = h // 64
-    if h % 64 != 0:
+def get_new_h_w(h, w, scale_factor=8):
+    new_h = h // scale_factor**2
+    if h % scale_factor**2 != 0:
         new_h += 1
-    new_w = w // 64
-    if w % 64 != 0:
+    new_w = w // scale_factor**2
+    if w % scale_factor**2 != 0:
         new_w += 1
-    return new_h * 8, new_w * 8
+    return new_h * scale_factor, new_w * scale_factor
 
 
-def prepare_mask(mask):
-    mask = mask.float()[0]
-    old_mask = deepcopy(mask)
-    for i in range(mask.shape[1]):
-        for j in range(mask.shape[2]):
-            if old_mask[0][i][j] == 1:
-                continue
-            if i != 0:
-                mask[:, i - 1, j] = 0
-            if j != 0:
-                mask[:, i, j - 1] = 0
-            if i != 0 and j != 0:
-                mask[:, i - 1, j - 1] = 0
-            if i != mask.shape[1] - 1:
-                mask[:, i + 1, j] = 0
-            if j != mask.shape[2] - 1:
-                mask[:, i, j + 1] = 0
-            if i != mask.shape[1] - 1 and j != mask.shape[2] - 1:
-                mask[:, i + 1, j + 1] = 0
-    return mask.unsqueeze(0)
+def prepare_mask(masks):
+    prepared_masks = []
+    for mask in masks:
+        old_mask = deepcopy(mask)
+        for i in range(mask.shape[1]):
+            for j in range(mask.shape[2]):
+                if old_mask[0][i][j] == 1:
+                    continue
+                if i != 0:
+                    mask[:, i - 1, j] = 0
+                if j != 0:
+                    mask[:, i, j - 1] = 0
+                if i != 0 and j != 0:
+                    mask[:, i - 1, j - 1] = 0
+                if i != mask.shape[1] - 1:
+                    mask[:, i + 1, j] = 0
+                if j != mask.shape[2] - 1:
+                    mask[:, i, j + 1] = 0
+                if i != mask.shape[1] - 1 and j != mask.shape[2] - 1:
+                    mask[:, i + 1, j + 1] = 0
+        prepared_masks.append(mask)
+    return torch.stack(prepared_masks, dim=0)
 
 
-def prepare_image(pil_image, w=512, h=512):
-    pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
-    arr = np.array(pil_image.convert("RGB"))
-    arr = arr.astype(np.float32) / 127.5 - 1
-    arr = np.transpose(arr, [2, 0, 1])
-    image = torch.from_numpy(arr).unsqueeze(0)
-    return image
+def prepare_mask_and_masked_image(image, mask, height, width):
+    r"""
+    Prepares a pair (image, mask) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will
+    be converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for
+    the ``image`` and ``1`` for the ``mask``.
+
+    The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
+    binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
+
+    Args:
+        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
+            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
+            ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
+        mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
+            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or a ``1 x height x width``
+            ``torch.Tensor`` or a ``batch x 1 x height x width`` ``torch.Tensor``.
+
+
+    Raises:
+        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
+        should be in the ``[0, 1]`` range. ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
+        TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
+            (ot the other way around).
+
+    Returns:
+        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
+            dimensions: ``batch x channels x height x width``.
+    """
+
+    if image is None:
+        raise ValueError("`image` input cannot be undefined.")
+
+    if mask is None:
+        raise ValueError("`mask_image` input cannot be undefined.")
+
+    if isinstance(image, torch.Tensor):
+        if not isinstance(mask, torch.Tensor):
+            raise TypeError(f"`image` is a torch.Tensor but `mask` (type: {type(mask)} is not")
+
+        # Batch single image
+        if image.ndim == 3:
+            assert image.shape[0] == 3, "Image outside a batch should be of shape (3, H, W)"
+            image = image.unsqueeze(0)
+
+        # Batch and add channel dim for single mask
+        if mask.ndim == 2:
+            mask = mask.unsqueeze(0).unsqueeze(0)
+
+        # Batch single mask or add channel dim
+        if mask.ndim == 3:
+            # Single batched mask, no channel dim or single mask not batched but channel dim
+            if mask.shape[0] == 1:
+                mask = mask.unsqueeze(0)
+
+            # Batched masks no channel dim
+            else:
+                mask = mask.unsqueeze(1)
+
+        assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
+        assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
+        assert image.shape[0] == mask.shape[0], "Image and Mask must have the same batch size"
+
+        # Check image is in [-1, 1]
+        if image.min() < -1 or image.max() > 1:
+            raise ValueError("Image should be in [-1, 1] range")
+
+        # Check mask is in [0, 1]
+        if mask.min() < 0 or mask.max() > 1:
+            raise ValueError("Mask should be in [0, 1] range")
+
+        # Binarize mask
+        mask[mask < 0.5] = 0
+        mask[mask >= 0.5] = 1
+
+        # Image as float32
+        image = image.to(dtype=torch.float32)
+    elif isinstance(mask, torch.Tensor):
+        raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
+    else:
+        # preprocess image
+        if isinstance(image, (PIL.Image.Image, np.ndarray)):
+            image = [image]
+
+        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
+            # resize all images w.r.t passed height an width
+            image = [i.resize((width, height), resample=Image.BICUBIC, reducing_gap=1) for i in image]
+            image = [np.array(i.convert("RGB"))[None, :] for i in image]
+            image = np.concatenate(image, axis=0)
+        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
+            image = np.concatenate([i[None, :] for i in image], axis=0)
+
+        image = image.transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
+        # preprocess mask
+        if isinstance(mask, (PIL.Image.Image, np.ndarray)):
+            mask = [mask]
+
+        if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
+            mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask]
+            mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
+            mask = mask.astype(np.float32) / 255.0
+        elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
+            mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
+
+        mask[mask < 0.5] = 0
+        mask[mask >= 0.5] = 1
+        mask = torch.from_numpy(mask)
+
+    return mask, image
 
 
 class KandinskyInpaintPipeline(DiffusionPipeline):
@@ -123,6 +228,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -155,9 +261,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
 
-        text_input_ids = text_inputs.input_ids.to(device)
-        text_mask = text_inputs.attention_mask.to(device)
-
+        text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
@@ -166,7 +270,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+
+        text_input_ids = text_input_ids.to(device)
+        text_mask = text_inputs.attention_mask.to(device)
 
         prompt_embeds, text_encoder_hidden_states = self.text_encoder(
             input_ids=text_input_ids, attention_mask=text_mask
@@ -237,31 +343,28 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
+        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
+        when their specific submodule has its `forward` method called.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError("Please install accelerate via `pip install accelerate`")
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+        models = [
+            self.unet,
+            self.text_proj,
+            self.text_encoder,
+            self.movq,
+        ]
+        for cpu_offloaded_model in models:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -315,8 +418,10 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image],
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image_embeds: torch.FloatTensor,
+        negative_image_embeds: torch.FloatTensor,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
@@ -325,8 +430,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        image_embeds: Optional[torch.FloatTensor] = None,
-        negative_image_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
@@ -341,14 +444,24 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
-
         do_classifier_free_guidance = guidance_scale > 1.0
 
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
+        if isinstance(image_embeds, list):
+            image_embeds = torch.cat(image_embeds, dim=0)
+        if isinstance(negative_image_embeds, list):
+            negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
+
+        if do_classifier_free_guidance:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+            dtype=prompt_embeds.dtype, device=device
+        )
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
@@ -358,22 +471,26 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         # preprocess image and mask
         ## Encode the image
-        image = prepare_image(image, width, height).to(device)
+
+        mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
+
+        image = image.to(dtype=prompt_embeds.dtype, device=device)
         image = self.movq.encode(image)["latents"]
 
-        ## prepared mask
-        mask_image = torch.from_numpy(mask_image).unsqueeze(0).unsqueeze(0)
+        mask_image = mask_image.to(dtype=prompt_embeds.dtype, device=device)
+
         image_shape = tuple(image.shape[-2:])
         mask_image = F.interpolate(
             mask_image,
             image_shape,
             mode="nearest",
         )
-        mask_image = prepare_mask(mask_image).to(device)
-
-        ## apply mask on image
+        mask_image = prepare_mask(mask_image)
+        # apply mask on image
         masked_image = image * mask_image
 
+        mask_image = mask_image.repeat_interleave(num_images_per_prompt, dim=0)
+        masked_image = masked_image.repeat_interleave(num_images_per_prompt, dim=0)
         if do_classifier_free_guidance:
             mask_image = mask_image.repeat(2, 1, 1, 1)
             masked_image = masked_image.repeat(2, 1, 1, 1)
@@ -386,7 +503,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # num_channels_latents = self.movq.config.z_channels
 
         # get h, w for latents
-        sample_height, sample_width = get_new_h_w(height, width)
+        sample_height, sample_width = get_new_h_w(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
@@ -444,7 +561,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             latents = self.scheduler.step(
                 noise_pred,
                 t,
-                latents,
+                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 prev_timestep=prev_timestep,
                 generator=generator,
                 batch_size=batch_size,
