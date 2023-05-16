@@ -547,9 +547,9 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
         # Hardcode the shapes for now.
-        prompt_latents = randn_tensor((1, 77, 32), generator=generator, device=device, dtype=torch.float32)
-        vae_latents = randn_tensor((1, 4, 16, 16), generator=generator, device=device, dtype=torch.float32)
-        clip_latents = randn_tensor((1, 1, 32), generator=generator, device=device, dtype=torch.float32)
+        prompt_latents = randn_tensor((1, 77, 768), generator=generator, device=device, dtype=torch.float32)
+        vae_latents = randn_tensor((1, 4, 64, 64), generator=generator, device=device, dtype=torch.float32)
+        clip_latents = randn_tensor((1, 1, 512), generator=generator, device=device, dtype=torch.float32)
 
         # Move latents onto desired device.
         prompt_latents = prompt_latents.to(device)
@@ -570,7 +570,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         # inputs = self.get_dummy_inputs(device)
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         # Delete prompt and image for joint inference.
         del inputs["prompt"]
         del inputs["image"]
@@ -580,11 +580,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.8887, 0.8926, 0.8672, 0.8984, 0.8867, 0.8564, 0.9043, 0.8887, 0.8657])
+        expected_img_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
-        expected_text_prefix = "Pink pink "
-        assert text[0][:10] == expected_text_prefix
+        expected_text_prefix = "A living room"
+        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
@@ -592,14 +592,14 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         del inputs["image"]
         sample = pipe(**inputs)
         image = sample.images
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
+        expected_slice = np.array([0.0242, 0.0103, 0.0022, 0.0129, 0.0000, 0.0090, 0.0376, 0.0508, 0.0005])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_unidiffuser_default_img2text_v1(self):
@@ -608,13 +608,13 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         del inputs["prompt"]
         sample = pipe(**inputs)
         text = sample.text
 
-        expected_text_prefix = "Astronaut "
-        assert text[0][:10] == expected_text_prefix
+        expected_text_prefix = "T CL CL CL "
+        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_joint_v1_fp16(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
@@ -623,7 +623,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         # inputs = self.get_dummy_inputs(device)
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         # Delete prompt and image for joint inference.
         del inputs["prompt"]
         del inputs["image"]
@@ -633,11 +633,13 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.8887, 0.8926, 0.8672, 0.8984, 0.8867, 0.8564, 0.9043, 0.8887, 0.8657])
+        print(f"Image slice: {image_slice.flatten()}")
+        print(f"Text: {text}")
+        expected_img_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
-        expected_text_prefix = "Pink pink "
-        assert text[0][:10] == expected_text_prefix
+        expected_text_prefix = "A living room"
+        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1_fp16(self):
         pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
@@ -645,14 +647,15 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         del inputs["image"]
         sample = pipe(**inputs)
         image = sample.images
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4702, 0.4666, 0.4446, 0.4829, 0.4468, 0.4565, 0.4663, 0.4956, 0.4277])
+        print(f"Image slice: {image_slice.flatten()}")
+        expected_slice = np.array([0.0242, 0.0103, 0.0022, 0.0129, 0.0000, 0.0090, 0.0376, 0.0508, 0.0005])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_unidiffuser_default_img2text_v1_fp16(self):
@@ -661,10 +664,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(device=torch_device, generate_latents=True)
         del inputs["prompt"]
         sample = pipe(**inputs)
         text = sample.text
+        print(f"Text: {text}")
 
-        expected_text_prefix = "Astronaut "
-        assert text[0][:10] == expected_text_prefix
+        expected_text_prefix = "T CL CL CL "
+        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
