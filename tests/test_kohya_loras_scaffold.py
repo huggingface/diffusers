@@ -168,7 +168,7 @@ class LoRAHookInjector(object):
         assert len(self.hooks) == 0
         # text_encoder_targets = self._get_target_modules(pipe.text_encoder, "lora_te", ["CLIPAttention", "CLIPMLP"])
         # unet_targets = self._get_target_modules(pipe.unet, "lora_unet", ["Transformer2DModel", "Attention"])
-        text_encoder_targets = []
+        text_encoder_targets = self._get_target_modules(pipe.text_encoder, "lora_te", ["CLIPAttention"])
         unet_targets = self._get_target_modules(pipe.unet, "lora_unet", ["Transformer2DModel"])
 
         for name, target_module in text_encoder_targets + unet_targets:
@@ -231,67 +231,6 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-TEXT_ENCODER_NAME = "text_encoder"
-UNET_NAME = "unet"
-
-
-def convert_kohya_lora_to_diffusers(state_dict):
-    unet_state_dict = {}
-    te_state_dict = {}
-
-    for key, value in state_dict.items():
-        if "lora_down" in key:
-            lora_name = key.split(".")[0]
-            value.size()[0]
-            lora_name_up = lora_name + ".lora_up.weight"
-            lora_name_alpha = lora_name + ".alpha"
-            if lora_name_alpha in state_dict:
-                state_dict[lora_name_alpha].item()
-                # print(lora_name_alpha, alpha, lora_dim, alpha / lora_dim)
-
-            if lora_name.startswith("lora_unet_"):
-                diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
-                diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-                diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-                diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-                diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
-                diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
-                diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
-                diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
-                diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
-                if "transformer_blocks" in diffusers_name:
-                    if "attn1" in diffusers_name or "attn2" in diffusers_name:
-                        diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
-                        diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-                        unet_state_dict[diffusers_name] = value
-                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-            # elif lora_name.startswith("lora_te_"):
-            #     diffusers_name = key.replace("lora_te_", "").replace("_", ".")
-            #     diffusers_name = diffusers_name.replace("text.model", "text_model")
-            #     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-            #     diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-            #     diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-            #     diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-            #     diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-            #     if "self_attn" in diffusers_name:
-            #         prefix = ".".join(
-            #             diffusers_name.split(".")[:-3]
-            #         )  # e.g.: text_model.encoder.layers.0.self_attn
-            #         suffix = ".".join(diffusers_name.split(".")[-3:])  # e.g.: to_k_lora.down.weight
-            #         for module_name in TEXT_ENCODER_TARGET_MODULES:
-            #             diffusers_name = f"{prefix}.{module_name}.{suffix}"
-            #             te_state_dict[diffusers_name] = value
-            #             te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-
-    unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
-    te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
-    new_state_dict = {**unet_state_dict, **te_state_dict}
-    print("converted", len(new_state_dict), "keys")
-    for k in sorted(new_state_dict.keys()):
-        print(k)
-    return new_state_dict
-
-
 if __name__ == "__main__":
     pipe = StableDiffusionPipeline.from_pretrained(
         "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
@@ -306,6 +245,7 @@ if __name__ == "__main__":
     )
     lora_fn = "../stable-diffusion-study/models/lora/light_and_shadow.safetensors"
 
+    # Without Lora
     images = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
@@ -317,6 +257,7 @@ if __name__ == "__main__":
     ).images
     image_grid(images, 1, 4).save("test_orig.png")
 
+    # Hook version (some restricted apply)
     install_lora_hook(pipe)
     pipe.apply_lora(lora_fn)
     images = pipe(
@@ -331,9 +272,8 @@ if __name__ == "__main__":
     image_grid(images, 1, 4).save("test_lora_hook.png")
     uninstall_lora_hook(pipe)
 
-    state_dict = safetensors.torch.load_file(lora_fn)
-    pipe.load_lora_weights(convert_kohya_lora_to_diffusers(state_dict))
-    # pipe.load_lora_weights(lora_fn)
+    # Diffusers dev version
+    pipe.load_lora_weights(lora_fn)
     images = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
