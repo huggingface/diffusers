@@ -24,6 +24,7 @@ from typing import List, Optional, Union
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import PIL
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
@@ -44,7 +45,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
-    StableDiffusionPipeline,
+    StableDiffusionImg2ImgPipeline,
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
@@ -87,6 +88,19 @@ torch_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_torch_dtype
 
 def device_view(t):
     return cuda.DeviceView(ptr=t.data_ptr(), shape=t.shape, dtype=torch_to_numpy_dtype_dict[t.dtype])
+
+
+def preprocess_image(image):
+    """
+    image: torch.Tensor
+    """
+    w, h = image.size
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
+    image = image.resize((w, h))
+    image = np.array(image).astype(np.float32) / 255.0
+    image = image[None].transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image).contiguous()
+    return 2.0 * image - 1.0
 
 
 class Engine:
@@ -587,11 +601,82 @@ def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
     return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
 
 
-class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
-    r"""
-    Pipeline for text-to-image generation using TensorRT accelerated Stable Diffusion.
+class TorchVAEEncoder(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.vae_encoder = model
 
-    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    def forward(self, x):
+        return self.vae_encoder.encode(x).latent_dist.sample()
+
+
+class VAEEncoder(BaseModel):
+    def __init__(self, model, device, max_batch_size, embedding_dim):
+        super(VAEEncoder, self).__init__(
+            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
+        )
+        self.name = "VAE encoder"
+
+    def get_model(self):
+        vae_encoder = TorchVAEEncoder(self.model)
+        return vae_encoder
+
+    def get_input_names(self):
+        return ["images"]
+
+    def get_output_names(self):
+        return ["latent"]
+
+    def get_dynamic_axes(self):
+        return {"images": {0: "B", 2: "8H", 3: "8W"}, "latent": {0: "B", 2: "H", 3: "W"}}
+
+    def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
+        assert batch_size >= self.min_batch and batch_size <= self.max_batch
+        min_batch = batch_size if static_batch else self.min_batch
+        max_batch = batch_size if static_batch else self.max_batch
+        self.check_dims(batch_size, image_height, image_width)
+        (
+            min_batch,
+            max_batch,
+            min_image_height,
+            max_image_height,
+            min_image_width,
+            max_image_width,
+            _,
+            _,
+            _,
+            _,
+        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_shape)
+
+        return {
+            "images": [
+                (min_batch, 3, min_image_height, min_image_width),
+                (batch_size, 3, image_height, image_width),
+                (max_batch, 3, max_image_height, max_image_width),
+            ]
+        }
+
+    def get_shape_dict(self, batch_size, image_height, image_width):
+        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
+        return {
+            "images": (batch_size, 3, image_height, image_width),
+            "latent": (batch_size, 4, latent_height, latent_width),
+        }
+
+    def get_sample_input(self, batch_size, image_height, image_width):
+        self.check_dims(batch_size, image_height, image_width)
+        return torch.randn(batch_size, 3, image_height, image_width, dtype=torch.float32, device=self.device)
+
+
+def make_VAEEncoder(model, device, max_batch_size, embedding_dim, inpaint=False):
+    return VAEEncoder(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
+
+
+class TensorRTStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
+    r"""
+    Pipeline for image-to-image generation using TensorRT accelerated Stable Diffusion.
+
+    This model inherits from [`StableDiffusionImg2ImgPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
@@ -625,9 +710,9 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
-        stages=["clip", "unet", "vae"],
-        image_height: int = 768,
-        image_width: int = 768,
+        stages=["clip", "unet", "vae", "vae_encoder"],
+        image_height: int = 512,
+        image_width: int = 512,
         max_batch_size: int = 16,
         # ONNX export parameters
         onnx_opset: int = 17,
@@ -680,6 +765,8 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             self.models["unet"] = make_UNet(self.unet, **models_args)
         if "vae" in self.stages:
             self.models["vae"] = make_VAE(self.vae, **models_args)
+        if "vae_encoder" in self.stages:
+            self.models["vae_encoder"] = make_VAEEncoder(self.vae, **models_args)
 
     @classmethod
     def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -734,6 +821,30 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         )
 
         return self
+
+    def __initialize_timesteps(self, timesteps, strength):
+        self.scheduler.set_timesteps(timesteps)
+        offset = self.scheduler.steps_offset if hasattr(self.scheduler, "steps_offset") else 0
+        init_timestep = int(timesteps * strength) + offset
+        init_timestep = min(init_timestep, timesteps)
+        t_start = max(timesteps - init_timestep + offset, 0)
+        timesteps = self.scheduler.timesteps[t_start:].to(self.torch_device)
+        return timesteps, t_start
+
+    def __preprocess_images(self, batch_size, images=()):
+        init_images = []
+        for image in images:
+            image = image.to(self.torch_device).float()
+            image = image.repeat(batch_size, 1, 1, 1)
+            init_images.append(image)
+        return tuple(init_images)
+
+    def __encode_image(self, init_image):
+        init_latents = runEngine(self.engine["vae_encoder"], {"images": device_view(init_image)}, self.stream)[
+            "latent"
+        ]
+        init_latents = 0.18215 * init_latents
+        return init_latents
 
     def __encode_prompt(self, prompt, negative_prompt):
         r"""
@@ -839,6 +950,8 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -851,6 +964,15 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
+                be masked out with `mask_image` and repainted according to `prompt`.
+            strength (`float`, *optional*, defaults to 0.8):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -902,27 +1024,32 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         self.__loadResources(self.image_height, self.image_width, batch_size)
 
         with torch.inference_mode(), torch.autocast("cuda"), trt.Runtime(TRT_LOGGER):
+            # Initialize timesteps
+            timesteps, t_start = self.__initialize_timesteps(self.denoising_steps, strength)
+            latent_timestep = timesteps[:1].repeat(batch_size)
+
+            # Pre-process input image
+            if isinstance(image, PIL.Image.Image):
+                image = preprocess_image(image)
+            init_image = self.__preprocess_images(batch_size, (image,))[0]
+
+            # VAE encode init image
+            init_latents = self.__encode_image(init_image)
+
+            # Add noise to latents using timesteps
+            noise = torch.randn(
+                init_latents.shape, generator=self.generator, device=self.torch_device, dtype=torch.float32
+            )
+            latents = self.scheduler.add_noise(init_latents, noise, latent_timestep)
+
             # CLIP text encoder
             text_embeddings = self.__encode_prompt(prompt, negative_prompt)
 
-            # Pre-initialize latents
-            num_channels_latents = self.unet.in_channels
-            latents = self.prepare_latents(
-                batch_size,
-                num_channels_latents,
-                self.image_height,
-                self.image_width,
-                torch.float32,
-                self.torch_device,
-                generator,
-            )
-
             # UNet denoiser
-            latents = self.__denoise_latent(latents, text_embeddings)
+            latents = self.__denoise_latent(latents, text_embeddings, timesteps=timesteps, step_offset=t_start)
 
             # VAE decode latent
             images = self.__decode_latent(latents)
 
-        images, has_nsfw_concept = self.run_safety_checker(images, self.torch_device, text_embeddings.dtype)
         images = self.numpy_to_pil(images)
-        return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=None)
