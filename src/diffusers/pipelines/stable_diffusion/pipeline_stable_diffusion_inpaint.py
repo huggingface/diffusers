@@ -608,12 +608,18 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, generator, is_strength_max, latents=None):
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, image=None, timestep=None, is_strength_max=True, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        
+        if (image is None or timestep is None) and not is_strength_max:
+            raise ValueError(
+                f"Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                f"However, either the image or the noise timestep has not been provided."
             )
 
         if latents is None:
