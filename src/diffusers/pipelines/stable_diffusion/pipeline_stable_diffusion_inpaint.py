@@ -36,7 +36,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def prepare_mask_and_masked_image(image, mask, height, width):
+def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
     """
     Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
     converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
@@ -146,7 +146,11 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
     masked_image = image * (mask < 0.5)
 
-    return mask, masked_image, image
+    # n.b. ensure backwards compatibility as old function does not return image
+    if return_image:
+        return mask, masked_image, image
+    
+    return mask, masked_image
 
 
 class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
@@ -883,7 +887,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         is_strength_max = strength == 1.
 
         # 5. Preprocess mask and image
-        mask, masked_image, init_image = prepare_mask_and_masked_image(image, mask_image, height, width)
+        mask, masked_image, init_image = prepare_mask_and_masked_image(image, mask_image, height, width, return_image=True)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
