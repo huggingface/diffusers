@@ -101,7 +101,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the first
-            step there is no alpha becuase we are at t<0.  When this option is `True` the alpha product is fixed to `1`,
+            step there is no alpha becuase we are at t<0. When this option is `True` the alpha product is fixed to `1`,
             otherwise it uses the value of alpha at the first timestep >= 0.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
@@ -112,8 +112,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
         revert_all_steps ('bool', default 'False'):
-            When 'True', all denoising steps of the analogous forward process are reversed. Otherwise, the
-            last denoising step is not reversed.
+            When 'True', all denoising steps of the analogous forward process are reversed. Otherwise, the last
+            denoising step is not reversed.
     """
 
     order = 1
