@@ -42,11 +42,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def get_new_h_w(h, w, scale_factor=8):
-    new_h = h // scale_factor ** 2
-    if h % scale_factor ** 2 != 0:
+    new_h = h // scale_factor**2
+    if h % scale_factor**2 != 0:
         new_h += 1
-    new_w = w // scale_factor ** 2
-    if w % scale_factor ** 2 != 0:
+    new_w = w // scale_factor**2
+    if w % scale_factor**2 != 0:
         new_w += 1
     return new_h * scale_factor, new_w * scale_factor
 
@@ -73,15 +73,13 @@ def prepare_mask(masks):
                     mask[:, i + 1, j + 1] = 0
         prepared_masks.append(mask)
     return torch.stack(prepared_masks, dim=0)
-        
-    
 
 
 def prepare_mask_and_masked_image(image, mask, height, width):
     r"""
-    Prepares a pair (image, mask) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will be
-    converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
-    ``image`` and ``1`` for the ``mask``.
+    Prepares a pair (image, mask) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will
+    be converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for
+    the ``image`` and ``1`` for the ``mask``.
 
     The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
     binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
@@ -162,7 +160,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
         if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
             # resize all images w.r.t passed height an width
-            image = [i.resize((width, height), resample=Image.BICUBIC, reducing_gap=1)for i in image]
+            image = [i.resize((width, height), resample=Image.BICUBIC, reducing_gap=1) for i in image]
             image = [np.array(i.convert("RGB"))[None, :] for i in image]
             image = np.concatenate(image, axis=0)
         elif isinstance(image, list) and isinstance(image[0], np.ndarray):
@@ -230,7 +228,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
-        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels)-1)
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -461,7 +459,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=prompt_embeds.dtype, device=device)
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+            dtype=prompt_embeds.dtype, device=device
+        )
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
@@ -473,7 +473,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         ## Encode the image
 
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
-        
+
         image = image.to(dtype=prompt_embeds.dtype, device=device)
         image = self.movq.encode(image)["latents"]
 
@@ -487,7 +487,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         )
         mask_image = prepare_mask(mask_image)
         # apply mask on image
-        masked_image = image * mask_image 
+        masked_image = image * mask_image
 
         mask_image = mask_image.repeat_interleave(num_images_per_prompt, dim=0)
         masked_image = masked_image.repeat_interleave(num_images_per_prompt, dim=0)

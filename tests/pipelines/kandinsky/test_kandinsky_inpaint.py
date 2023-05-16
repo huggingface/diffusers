@@ -13,24 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
 import unittest
 
 import numpy as np
 import torch
 from PIL import Image
-
-from transformers import XLMRobertaTokenizerFast, PretrainedConfig
+from transformers import PretrainedConfig, XLMRobertaTokenizerFast
 
 from diffusers import KandinskyInpaintPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
-from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
 from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
-from diffusers.utils import floats_tensor, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
+from diffusers.utils import floats_tensor
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -39,13 +35,7 @@ torch.use_deterministic_algorithms(True)
 
 class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyInpaintPipeline
-    params = [
-        "prompt",
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-        "mask_image"
-    ]
+    params = ["prompt", "image_embeds", "negative_image_embeds", "image", "mask_image"]
     batch_params = [
         "prompt",
         "negative_prompt",
@@ -66,7 +56,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "guidance_scale",
         "num_images_per_prompt",
         "output_type",
-        "return_dict"
+        "return_dict",
     ]
     test_xformers_attention = False
 
@@ -89,13 +79,13 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def cross_attention_dim(self):
         return 100
-    
+
     # YiYi's TO-DO: add a tiny tokenizer?
     @property
     def dummy_tokenizer(self):
         tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
         return tokenizer
-   
+
     # @property
     # def dummy_text_encoder(self):
     #     torch.manual_seed(0)
@@ -105,14 +95,13 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     #         transformerDimensions=32)
 
     #     return MultilingualCLIP(config)
-    
+
     @property
     def dummy_text_encoder(self):
         torch.manual_seed(0)
         config = PretrainedConfig(
-             modelBase="xlm-roberta-large",
-             numDims=self.cross_attention_dim,
-             transformerDimensions=1024)
+            modelBase="xlm-roberta-large", numDims=self.cross_attention_dim, transformerDimensions=1024
+        )
 
         return MultilingualCLIP(config)
 
@@ -123,9 +112,9 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_kwargs = {
             "clip_embeddings_dim": self.cross_attention_dim,
             "time_embed_dim": self.time_embed_dim,
-            "clip_extra_context_tokens":2,
+            "clip_extra_context_tokens": 2,
             "cross_attention_dim": self.cross_attention_dim,
-            "clip_text_encoder_hidden_states_dim":  self.text_embedder_hidden_size,
+            "clip_text_encoder_hidden_states_dim": self.text_embedder_hidden_size,
         }
 
         model = KandinskyTextProjModel(**model_kwargs)
@@ -156,8 +145,8 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def dummy_movq_kwargs(self):
         return {
-            "block_out_channels": [32,64],
-            "down_block_types": ["DownEncoderBlock2D","AttnDownEncoderBlock2D"],
+            "block_out_channels": [32, 64],
+            "down_block_types": ["DownEncoderBlock2D", "AttnDownEncoderBlock2D"],
             "in_channels": 3,
             "latent_channels": 4,
             "layers_per_block": 1,
@@ -165,9 +154,12 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "norm_type": "spatial",
             "num_vq_embeddings": 12,
             "out_channels": 3,
-            "up_block_types": ["AttnUpDecoderBlock2D","UpDecoderBlock2D",],
-            "vq_embed_dim": 4
-            }
+            "up_block_types": [
+                "AttnUpDecoderBlock2D",
+                "UpDecoderBlock2D",
+            ],
+            "vq_embed_dim": 4,
+        }
 
     @property
     def dummy_movq(self):
@@ -183,17 +175,17 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         movq = self.dummy_movq
 
         scheduler = UnCLIPScheduler(
-            clip_sample = True,
-            clip_sample_range = 2.0,
+            clip_sample=True,
+            clip_sample_range=2.0,
             sample_min_value=1.0,
-            sample_max_value= None,
-            num_train_timesteps= 1000,
+            sample_max_value=None,
+            num_train_timesteps=1000,
             prediction_type="epsilon",
-            variance_type= "learned_range",
-            thresholding= True,
-            beta_schedule= "linear",
-            beta_start= 0.00085,
-            beta_end=0.012
+            variance_type="learned_range",
+            thresholding=True,
+            beta_schedule="linear",
+            beta_start=0.00085,
+            beta_end=0.012,
         )
 
         components = {
@@ -202,21 +194,21 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "unet": unet,
             "scheduler": scheduler,
-            "movq": movq
+            "movq": movq,
         }
 
         return components
 
     def get_dummy_inputs(self, device, seed=0):
         image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed)).to(device)
-        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed+1)).to(device)
+        floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
         # create init_image
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
         # create mask
         mask = np.ones((64, 64), dtype=np.float32)
-        mask[:32,:32] =  0
+        mask[:32, :32] = 0
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -227,10 +219,10 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image": init_image,
             "mask_image": mask,
             "image_embeds": image_embeds,
-            "negative_image_embeds":image_embeds,
+            "negative_image_embeds": image_embeds,
             "generator": generator,
             "height": 64,
-            "width":64,
+            "width": 64,
             "num_inference_steps": 2,
             "output_type": "np",
         }
@@ -256,13 +248,14 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        
+
         print(f"image.shape {image.shape}")
 
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.52034867, 0.4924194, 0.44671825, 0.5747229, 0.574834, 0.45885202, 0.41398984, 0.4793774, 0.50443137])
+            [0.52034867, 0.4924194, 0.44671825, 0.5747229, 0.574834, 0.45885202, 0.41398984, 0.4793774, 0.50443137]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2

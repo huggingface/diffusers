@@ -37,11 +37,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def get_new_h_w(h, w, scale_factor=8):
-    new_h = h // scale_factor ** 2
-    if h % scale_factor ** 2 != 0:
+    new_h = h // scale_factor**2
+    if h % scale_factor**2 != 0:
         new_h += 1
-    new_w = w // scale_factor ** 2
-    if w % scale_factor ** 2 != 0:
+    new_w = w // scale_factor**2
+    if w % scale_factor**2 != 0:
         new_w += 1
     return new_h * scale_factor, new_w * scale_factor
 
@@ -87,7 +87,7 @@ class KandinskyPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels)-1)
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -305,7 +305,7 @@ class KandinskyPipeline(DiffusionPipeline):
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        
+
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
         if isinstance(negative_image_embeds, list):
@@ -315,7 +315,9 @@ class KandinskyPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=prompt_embeds.dtype, device=device)
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+            dtype=prompt_embeds.dtype, device=device
+        )
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
