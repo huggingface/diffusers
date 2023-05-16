@@ -133,6 +133,8 @@ else:
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetImg2ImgPipeline,
+        StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
