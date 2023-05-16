@@ -39,7 +39,7 @@ jobs:
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
-        ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+        ${CONDA_RUN} python -m pip install torch torchvision torchaudio
         ${CONDA_RUN} python -m pip install accelerate --upgrade
         ${CONDA_RUN} python -m pip install transformers --upgrade
 
