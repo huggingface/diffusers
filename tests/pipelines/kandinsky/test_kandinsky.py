@@ -214,8 +214,8 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image_embeds": image_embeds,
             "negative_image_embeds":image_embeds,
             "generator": generator,
-            "height": 256,
-            "width":256,
+            "height": 64,
+            "width":64,
             "num_inference_steps": 2,
             "output_type": "np",
         }

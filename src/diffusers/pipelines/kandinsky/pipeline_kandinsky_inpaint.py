@@ -41,14 +41,14 @@ from .text_proj import KandinskyTextProjModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def get_new_h_w(h, w):
-    new_h = h // 64
-    if h % 64 != 0:
+def get_new_h_w(h, w, scale_factor=8):
+    new_h = h // scale_factor ** 2
+    if h % scale_factor ** 2 != 0:
         new_h += 1
-    new_w = w // 64
-    if w % 64 != 0:
+    new_w = w // scale_factor ** 2
+    if w % scale_factor ** 2 != 0:
         new_w += 1
-    return new_h * 8, new_w * 8
+    return new_h * scale_factor, new_w * scale_factor
 
 
 def prepare_mask(mask):
@@ -226,6 +226,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels)-1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -471,7 +472,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         
         image = image.to(device)
         image = self.movq.encode(image)["latents"]
-        
+
         mask_image = mask_image.to(device)
 
         image_shape = tuple(image.shape[-2:])
@@ -496,7 +497,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # num_channels_latents = self.movq.config.z_channels
 
         # get h, w for latents
-        sample_height, sample_width = get_new_h_w(height, width)
+        sample_height, sample_width = get_new_h_w(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
