@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -20,12 +21,13 @@ import numpy as np
 import torch
 from transformers import PretrainedConfig, XLMRobertaTokenizerFast
 
-from diffusers import KandinskyPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
+from diffusers import KandinskyPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
-from diffusers.utils import floats_tensor
+from diffusers.utils import floats_tensor, slow, nightly, load_numpy, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -245,3 +247,46 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+
+@slow
+@require_torch_gpu
+class KandinskyPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_kandinsky_text2img(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/kandinsky/kandinsky_text2img_cat_fp16.npy"
+        )
+        pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+        pipe_prior.to(torch_device)
+
+        pipeline = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+        pipeline = pipeline.to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        prompt= "red cat, 4k photo"
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_emb = pipe_prior(prompt, generator=generator,).images
+        zero_image_emb = pipe_prior("").images
+
+        output = pipeline(
+            prompt,
+            image_embeds=image_emb,
+            negative_image_embeds=zero_image_emb,
+            generator=generator,
+            num_inference_steps=100,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        assert_mean_pixel_difference(image, expected_image)

@@ -83,7 +83,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         return latents
 
     def create_zero_img_emb(self, batch_size, device):
-        zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(device=device)
+        zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(device=device, dtype=self.image_encoder.dtype)
         zero_image_emb = self.image_encoder(zero_img)["image_embeds"]
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
