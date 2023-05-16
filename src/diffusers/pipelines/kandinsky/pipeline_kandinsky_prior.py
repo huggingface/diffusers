@@ -19,6 +19,7 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionM
 
 from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
+from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     is_accelerate_available,
@@ -267,7 +268,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",
+        output_type: Optional[str] = "pt", # pt only 
         return_dict: bool = True,
     ):
         if isinstance(prompt, str):
@@ -342,4 +343,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
             image_embeddings = latents
 
-        return image_embeddings
+            if not return_dict:
+                return (image_embeddings, )
+
+        return ImagePipelineOutput(images=image_embeddings)
