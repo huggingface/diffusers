@@ -264,9 +264,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        prior_latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prior_guidance_scale: float = 4.0,
+        guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
     ):
@@ -285,7 +285,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             image_embeddings = self.create_zero_img_emb(batch_size=batch_size, device=device)
 
         else:
-            do_classifier_free_guidance = prior_guidance_scale > 1.0
+            do_classifier_free_guidance = guidance_scale > 1.0
             prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
                 prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
@@ -296,18 +296,18 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
             embedding_dim = self.prior.config.embedding_dim
 
-            prior_latents = self.prepare_latents(
+            latents = self.prepare_latents(
                 (batch_size, embedding_dim),
                 prompt_embeds.dtype,
                 device,
                 generator,
-                prior_latents,
+                latents,
                 self.scheduler,
             )
 
             for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
                 predicted_image_embedding = self.prior(
                     latent_model_input,
@@ -321,7 +321,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                     predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(
                         2
                     )
-                    predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
+                    predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
                         predicted_image_embedding_text - predicted_image_embedding_uncond
                     )
 
@@ -330,16 +330,16 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 else:
                     prev_timestep = prior_timesteps_tensor[i + 1]
 
-                prior_latents = self.scheduler.step(
+                latents = self.scheduler.step(
                     predicted_image_embedding,
                     timestep=t,
-                    sample=prior_latents,
+                    sample=latents,
                     generator=generator,
                     prev_timestep=prev_timestep,
                 ).prev_sample
 
-            prior_latents = self.prior.post_process_latents(prior_latents)
+            latents = self.prior.post_process_latents(latents)
 
-            image_embeddings = prior_latents
+            image_embeddings = latents
 
         return image_embeddings
