@@ -1078,9 +1078,13 @@ class DownBlockFlat(nn.Module):
                     return custom_forward
 
                 if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
                 else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -1202,7 +1206,9 @@ class CrossAttnDownBlockFlat(nn.Module):
                     return custom_forward
 
                 if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
                         hidden_states,
@@ -1211,7 +1217,9 @@ class CrossAttnDownBlockFlat(nn.Module):
                         use_reentrant=False,
                     )[0]
                 else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
                         hidden_states,
@@ -1303,9 +1311,13 @@ class UpBlockFlat(nn.Module):
                     return custom_forward
 
                 if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
                 else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -1429,7 +1441,9 @@ class CrossAttnUpBlockFlat(nn.Module):
                     return custom_forward
 
                 if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
                         hidden_states,
@@ -1438,7 +1452,9 @@ class CrossAttnUpBlockFlat(nn.Module):
                         use_reentrant=False,
                     )[0]
                 else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
                         hidden_states,

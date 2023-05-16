@@ -119,9 +119,13 @@ class Encoder(nn.Module):
             # down
             if is_torch_version(">=", "1.11.0"):
                 for down_block in self.down_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample, use_reentrant=False)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(down_block), sample, use_reentrant=False
+                    )
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, use_reentrant=False)
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, use_reentrant=False
+                )
             else:
                 for down_block in self.down_blocks:
                     sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
@@ -228,12 +232,16 @@ class Decoder(nn.Module):
 
             if is_torch_version(">=", "1.11.0"):
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, use_reentrant=False)
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, use_reentrant=False
+                )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, use_reentrant=False)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, use_reentrant=False
+                    )
             else:
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
