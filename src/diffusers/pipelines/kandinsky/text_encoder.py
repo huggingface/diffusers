@@ -17,7 +17,7 @@ class MultilingualCLIP(PreTrainedModel):
 
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
-        self.transformer = AutoModel.from_pretrained(config.modelBase, cache_dir=kwargs.get("cache_dir"))
+        self.transformer = XLMRobertaModel(config)
         self.LinearTransformation = torch.nn.Linear(
             in_features=config.transformerDimensions, out_features=config.numDims
         )
