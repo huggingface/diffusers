@@ -32,6 +32,7 @@ from ...utils import (
     PIL_INTERPOLATION,
     is_accelerate_available,
     is_accelerate_version,
+    is_compiled_module,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -1043,13 +1044,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(self.controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(self.controlnet.nets)
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
         global_pool_conditions = (
-            self.controlnet.config.global_pool_conditions
-            if isinstance(self.controlnet, ControlNetModel)
-            else self.controlnet.nets[0].config.global_pool_conditions
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetModel)
+            else controlnet.nets[0].config.global_pool_conditions
         )
         guess_mode = guess_mode or global_pool_conditions
 
@@ -1065,14 +1068,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         )
 
         # 4. Prepare image
-        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
-            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
-        )
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
+        if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
                 image=control_image,
                 width=width,
@@ -1080,15 +1076,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=self.controlnet.dtype,
+                dtype=controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-        elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        ):
+        elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
 
             for control_image_ in control_image:
@@ -1099,7 +1091,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
-                    dtype=self.controlnet.dtype,
+                    dtype=controlnet.dtype,
                     do_classifier_free_guidance=do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
