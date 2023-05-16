@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import is_torch_version
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
@@ -866,7 +867,7 @@ class CrossAttnDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
@@ -967,7 +968,7 @@ class DownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -1374,7 +1375,7 @@ class ResnetDownsampleBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -1574,7 +1575,7 @@ class KDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -1672,7 +1673,7 @@ class KCrossAttnDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
@@ -1904,7 +1905,7 @@ class CrossAttnUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
@@ -2000,7 +2001,7 @@ class UpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -2431,7 +2432,7 @@ class ResnetUpsampleBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -2639,7 +2640,7 @@ class KUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -2763,7 +2764,7 @@ class KCrossAttnUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),

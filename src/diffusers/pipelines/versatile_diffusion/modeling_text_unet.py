@@ -18,7 +18,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import logging
+from ...utils import logging, is_torch_version
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1077,7 +1077,7 @@ class DownBlockFlat(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -1201,7 +1201,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),
@@ -1302,7 +1302,7 @@ class UpBlockFlat(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
@@ -1428,7 +1428,7 @@ class CrossAttnUpBlockFlat(nn.Module):
 
                     return custom_forward
 
-                if torch.__version__>="1.11.0":
+                if is_torch_version(">=", "1.11.0"):
                     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb, use_reentrant=False)
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(attn, return_dict=False),

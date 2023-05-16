@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, randn_tensor
+from ..utils import BaseOutput, randn_tensor, is_torch_version
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
@@ -117,15 +117,16 @@ class Encoder(nn.Module):
                 return custom_forward
 
             # down
-            for down_block in self.down_blocks:
-                if torch.__version__ >= "1.11.0":
+            if is_torch_version(">=", "1.11.0"):
+                for down_block in self.down_blocks:
                     sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample, use_reentrant=False)
-                    # middle
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, use_reentrant=False)
-                else:
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, use_reentrant=False)
+            else:
+                for down_block in self.down_blocks:
                     sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
-                    # middle
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
 
         else:
             # down
@@ -225,7 +226,7 @@ class Decoder(nn.Module):
 
                 return custom_forward
 
-            if torch.__version__>="1.11.0":
+            if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, use_reentrant=False)
                 sample = sample.to(upscale_dtype)
