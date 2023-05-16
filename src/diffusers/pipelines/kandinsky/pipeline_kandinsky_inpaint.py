@@ -51,26 +51,30 @@ def get_new_h_w(h, w, scale_factor=8):
     return new_h * scale_factor, new_w * scale_factor
 
 
-def prepare_mask(mask):
-    mask = mask[0]
-    old_mask = deepcopy(mask)
-    for i in range(mask.shape[1]):
-        for j in range(mask.shape[2]):
-            if old_mask[0][i][j] == 1:
-                continue
-            if i != 0:
-                mask[:, i - 1, j] = 0
-            if j != 0:
-                mask[:, i, j - 1] = 0
-            if i != 0 and j != 0:
-                mask[:, i - 1, j - 1] = 0
-            if i != mask.shape[1] - 1:
-                mask[:, i + 1, j] = 0
-            if j != mask.shape[2] - 1:
-                mask[:, i, j + 1] = 0
-            if i != mask.shape[1] - 1 and j != mask.shape[2] - 1:
-                mask[:, i + 1, j + 1] = 0
-    return mask.unsqueeze(0)
+def prepare_mask(masks):
+    prepared_masks = []
+    for mask in masks:
+        old_mask = deepcopy(mask)
+        for i in range(mask.shape[1]):
+            for j in range(mask.shape[2]):
+                if old_mask[0][i][j] == 1:
+                    continue
+                if i != 0:
+                    mask[:, i - 1, j] = 0
+                if j != 0:
+                    mask[:, i, j - 1] = 0
+                if i != 0 and j != 0:
+                    mask[:, i - 1, j - 1] = 0
+                if i != mask.shape[1] - 1:
+                    mask[:, i + 1, j] = 0
+                if j != mask.shape[2] - 1:
+                    mask[:, i, j + 1] = 0
+                if i != mask.shape[1] - 1 and j != mask.shape[2] - 1:
+                    mask[:, i + 1, j + 1] = 0
+        prepared_masks.append(mask)
+    return torch.stack(prepared_masks, dim=0)
+        
+    
 
 
 def prepare_mask_and_masked_image(image, mask, height, width):
@@ -485,6 +489,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # apply mask on image
         masked_image = image * mask_image 
 
+        mask_image = mask_image.repeat_interleave(num_images_per_prompt, dim=0)
+        masked_image = masked_image.repeat_interleave(num_images_per_prompt, dim=0)
         if do_classifier_free_guidance:
             mask_image = mask_image.repeat(2, 1, 1, 1)
             masked_image = masked_image.repeat(2, 1, 1, 1)
