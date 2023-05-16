@@ -18,7 +18,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import logging, is_torch_version
+from ...utils import is_torch_version, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

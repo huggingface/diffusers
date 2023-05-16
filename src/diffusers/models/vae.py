@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, randn_tensor, is_torch_version
+from ..utils import BaseOutput, is_torch_version, randn_tensor
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
