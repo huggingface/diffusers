@@ -468,7 +468,7 @@ class AttnProcessor:
 
 
 class LoRALinearLayer(nn.Module):
-    def __init__(self, in_features, out_features, rank=4):
+    def __init__(self, in_features, out_features, rank=4, network_alpha=None):
         super().__init__()
 
         if rank > min(in_features, out_features):
@@ -476,6 +476,8 @@ class LoRALinearLayer(nn.Module):
 
         self.down = nn.Linear(in_features, rank, bias=False)
         self.up = nn.Linear(rank, out_features, bias=False)
+        self.network_alpha = network_alpha
+        self.rank = rank
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
@@ -487,21 +489,24 @@ class LoRALinearLayer(nn.Module):
         down_hidden_states = self.down(hidden_states.to(dtype))
         up_hidden_states = self.up(down_hidden_states)
 
+        if self.network_alpha is not None:
+            up_hidden_states *= self.network_alpha / self.rank
+
         return up_hidden_states.to(orig_dtype)
 
 
 class LoRAAttnProcessor(nn.Module):
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.rank = rank
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
@@ -740,19 +745,19 @@ class AttnAddedKVProcessor2_0:
 
 
 class LoRAAttnAddedKVProcessor(nn.Module):
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.rank = rank
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.add_k_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.add_v_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_k_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.add_k_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.add_v_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
@@ -933,7 +938,9 @@ class AttnProcessor2_0:
 
 
 class LoRAXFormersAttnProcessor(nn.Module):
-    def __init__(self, hidden_size, cross_attention_dim, rank=4, attention_op: Optional[Callable] = None):
+    def __init__(
+        self, hidden_size, cross_attention_dim, rank=4, attention_op: Optional[Callable] = None, network_alpha=None
+    ):
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -941,10 +948,10 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.rank = rank
         self.attention_op = attention_op
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states

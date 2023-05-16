@@ -282,6 +282,6 @@ if __name__ == "__main__":
         num_inference_steps=15,
         num_images_per_prompt=4,
         generator=torch.manual_seed(0),
-        cross_attention_kwargs={"scale": 0.5},  # lora scale
+        # cross_attention_kwargs={"scale": 0.5},  # lora scale
     ).images
     image_grid(images, 1, 4).save("test_lora_dev.png")

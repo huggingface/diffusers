@@ -180,6 +180,7 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        network_alpha = kwargs.pop("network_alpha", None)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -282,7 +283,10 @@ class UNet2DConditionLoadersMixin:
                     attn_processor_class = LoRAAttnProcessor
 
                 attn_processors[key] = attn_processor_class(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    rank=rank,
+                    network_alpha=network_alpha,
                 )
                 attn_processors[key].load_state_dict(value_dict)
         elif is_custom_diffusion:
@@ -887,8 +891,10 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
+        # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
+        network_alpha = None
         if any("alpha" in k for k in state_dict.keys()):
-            state_dict = self._convert_kohya_lora_to_diffusers(state_dict)
+            state_dict, network_alpha = self._convert_kohya_lora_to_diffusers(state_dict)
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
@@ -901,7 +907,7 @@ class LoraLoaderMixin:
             unet_lora_state_dict = {
                 k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
             }
-            self.unet.load_attn_procs(unet_lora_state_dict)
+            self.unet.load_attn_procs(unet_lora_state_dict, network_alpha=network_alpha)
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
@@ -910,7 +916,9 @@ class LoraLoaderMixin:
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
+                attn_procs_text_encoder = self._load_text_encoder_attn_procs(
+                    text_encoder_lora_state_dict, network_alpha=network_alpha
+                )
                 self._modify_text_encoder(attn_procs_text_encoder)
 
                 # save lora attn procs of text encoder so that it can be easily retrieved
@@ -1042,6 +1050,7 @@ class LoraLoaderMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        network_alpha = kwargs.pop("network_alpha", None)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1119,7 +1128,10 @@ class LoraLoaderMixin:
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
                 attn_processors[key] = LoRAAttnProcessor(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    rank=rank,
+                    network_alpha=network_alpha,
                 )
                 attn_processors[key].load_state_dict(value_dict)
 
@@ -1216,16 +1228,19 @@ class LoraLoaderMixin:
     def _convert_kohya_lora_to_diffusers(self, state_dict):
         unet_state_dict = {}
         te_state_dict = {}
+        network_alpha = None
 
         for key, value in state_dict.items():
             if "lora_down" in key:
                 lora_name = key.split(".")[0]
-                value.size()[0]
                 lora_name_up = lora_name + ".lora_up.weight"
                 lora_name_alpha = lora_name + ".alpha"
                 if lora_name_alpha in state_dict:
-                    state_dict[lora_name_alpha].item()
-                    # print(lora_name_alpha, alpha, lora_dim, alpha / lora_dim)
+                    alpha = state_dict[lora_name_alpha].item()
+                    if network_alpha is None:
+                        network_alpha = alpha
+                    elif network_alpha != alpha:
+                        raise ValueError("Network alpha is not consistent")
 
                 if lora_name.startswith("lora_unet_"):
                     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
@@ -1265,7 +1280,7 @@ class LoraLoaderMixin:
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
         print("converted", len(new_state_dict), "keys")
-        return new_state_dict
+        return new_state_dict, network_alpha
 
 
 class FromCkptMixin:
