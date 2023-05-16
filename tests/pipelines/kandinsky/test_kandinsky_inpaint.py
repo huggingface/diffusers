@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -21,12 +22,13 @@ import torch
 from PIL import Image
 from transformers import PretrainedConfig, XLMRobertaTokenizerFast
 
-from diffusers import KandinskyInpaintPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
+from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
-from diffusers.utils import floats_tensor
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -259,3 +261,57 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+@slow
+@require_torch_gpu
+class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_kandinsky_inpaint(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/kandinsky/kandinsky_inpaint_cat_with_hat_fp16.npy"
+        )
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/kandinsky/cat.png"
+        )
+        mask = np.ones((768, 768), dtype=np.float32)
+        mask[:250,250:-250] =  0
+        
+        prompt="a hat"
+
+        pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+        pipe_prior.to(torch_device)
+
+        pipeline = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)
+        pipeline = pipeline.to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_emb = pipe_prior(prompt, generator=generator,).images
+        zero_image_emb = pipe_prior("").images
+        
+        output = pipeline(
+            prompt,
+            image=init_image,
+            mask_image=mask,
+            image_embeds=image_emb,
+            negative_image_embeds=zero_image_emb,
+            generator=generator,
+            num_inference_steps=100,
+            height=768,
+            width=768,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (768, 768, 3)
+
+        assert_mean_pixel_difference(image, expected_image)
