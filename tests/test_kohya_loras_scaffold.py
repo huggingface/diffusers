@@ -7,6 +7,7 @@
 
 import math
 
+import numpy as np
 import safetensors
 import torch
 from PIL import Image
@@ -285,3 +286,9 @@ if __name__ == "__main__":
         # cross_attention_kwargs={"scale": 0.5},  # lora scale
     ).images
     image_grid(images, 1, 4).save("test_lora_dev.png")
+
+    # abs-difference image
+    image_hook = np.array(Image.open("test_lora_hook.png"), dtype=np.int16)
+    image_dev = np.array(Image.open("test_lora_dev.png"), dtype=np.int16)
+    image_diff = Image.fromarray(np.abs(image_hook - image_dev).astype(np.uint8))
+    image_diff.save("test_lora_hook_dev_diff.png")
