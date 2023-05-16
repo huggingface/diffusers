@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This model implementation is heavily based on:
+
 import gc
 import random
 import tempfile
