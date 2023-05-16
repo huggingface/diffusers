@@ -172,6 +172,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
             mask = [mask]
 
         if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
+            mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask]
             mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
             mask = mask.astype(np.float32) / 255.0
         elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
@@ -181,13 +182,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
-        image_shape = tuple(image.shape[-2:])
-        mask = F.interpolate(mask,image_shape,mode="nearest",)
-        mask = prepare_mask(mask)
-
-    masked_image = image * (mask < 0.5)
-
-    return mask, masked_image
+    return mask, image
 
 
 class KandinskyInpaintPipeline(DiffusionPipeline):
@@ -472,10 +467,22 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # preprocess image and mask
         ## Encode the image
 
-        mask_image, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
+        mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
         
         image = image.to(device)
         image = self.movq.encode(image)["latents"]
+        
+        mask_image = mask_image.to(device)
+
+        image_shape = tuple(image.shape[-2:])
+        mask_image = F.interpolate(
+            mask_image,
+            image_shape,
+            mode="nearest",
+        )
+        mask_image = prepare_mask(mask_image).to(device)
+        # apply mask on image
+        masked_image = image * mask_image 
 
         if do_classifier_free_guidance:
             mask_image = mask_image.repeat(2, 1, 1, 1)
