@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from transformers import (
-    XLMRobertaTokenizerFast,
+    XLMRobertaTokenizer,
 )
 
 from ...models import UNet2DConditionModel, VQModel
@@ -197,7 +197,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
     Args:
         text_encoder ([`MultilingualCLIP`]):
             Frozen text-encoder.
-        tokenizer ([`XLMRobertaTokenizerFast`]):
+        tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
         scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
@@ -213,7 +213,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         self,
         text_encoder: MultilingualCLIP,
         movq: VQModel,
-        tokenizer: XLMRobertaTokenizerFast,
+        tokenizer: XLMRobertaTokenizer,
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: UnCLIPScheduler,
@@ -254,7 +254,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
-            max_length=self.tokenizer.model_max_length,
+            max_length=77,
             truncation=True,
             return_attention_mask=True,
             add_special_tokens=True,
@@ -305,7 +305,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
-                max_length=self.tokenizer.model_max_length,
+                max_length=77,
                 truncation=True,
                 return_attention_mask=True,
                 add_special_tokens=True,
@@ -498,9 +498,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
-        # YiYi's TO-DO: hard-code to be 4, need to set it to be the z_channels in MoVQ encoder's config once it's added
-        num_channels_latents = 4
-        # num_channels_latents = self.movq.config.z_channels
+        num_channels_latents = self.movq.config.latent_channels
 
         # get h, w for latents
         sample_height, sample_width = get_new_h_w(height, width, self.movq_scale_factor)

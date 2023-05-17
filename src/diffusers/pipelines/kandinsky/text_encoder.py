@@ -1,14 +1,13 @@
 import torch
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from transformers import PreTrainedModel, XLMRobertaConfig, XLMRobertaModel
 
 
-class MCLIPConfig(PretrainedConfig):
+class MCLIPConfig(XLMRobertaConfig):
     model_type = "M-CLIP"
 
-    def __init__(self, modelBase="xlm-roberta-large", transformerDimSize=1024, imageDimSize=768, **kwargs):
+    def __init__(self, transformerDimSize=1024, imageDimSize=768, **kwargs):
         self.transformerDimensions = transformerDimSize
         self.numDims = imageDimSize
-        self.modelBase = modelBase
         super().__init__(**kwargs)
 
 
@@ -17,7 +16,7 @@ class MultilingualCLIP(PreTrainedModel):
 
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
-        self.transformer = AutoModel.from_pretrained(config.modelBase, cache_dir=kwargs.get("cache_dir"))
+        self.transformer = XLMRobertaModel(config)
         self.LinearTransformation = torch.nn.Linear(
             in_features=config.transformerDimensions, out_features=config.numDims
         )

@@ -16,7 +16,7 @@ from typing import List, Optional, Union
 
 import torch
 from transformers import (
-    XLMRobertaTokenizerFast,
+    XLMRobertaTokenizer,
 )
 
 from ...models import UNet2DConditionModel, VQModel
@@ -56,7 +56,7 @@ class KandinskyPipeline(DiffusionPipeline):
     Args:
         text_encoder ([`MultilingualCLIP`]):
             Frozen text-encoder.
-        tokenizer ([`XLMRobertaTokenizerFast`]):
+        tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
@@ -71,7 +71,7 @@ class KandinskyPipeline(DiffusionPipeline):
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
-        tokenizer: XLMRobertaTokenizerFast,
+        tokenizer: XLMRobertaTokenizer,
         text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
@@ -113,8 +113,8 @@ class KandinskyPipeline(DiffusionPipeline):
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
-            max_length=self.tokenizer.model_max_length,
             truncation=True,
+            max_length=77,
             return_attention_mask=True,
             add_special_tokens=True,
             return_tensors="pt",
@@ -164,7 +164,7 @@ class KandinskyPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
-                max_length=self.tokenizer.model_max_length,
+                max_length=77,
                 truncation=True,
                 return_attention_mask=True,
                 add_special_tokens=True,
