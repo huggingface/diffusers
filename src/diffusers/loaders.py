@@ -1400,7 +1400,7 @@ class FromCkptMixin:
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
-        if from_safetensors and use_safetensors is True:
+        if from_safetensors and use_safetensors is False:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
         # TODO: For now we only support stable diffusion
