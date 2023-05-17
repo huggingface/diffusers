@@ -1,11 +1,11 @@
 import torch
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from transformers import XLMRobertaModel, XLMRobertaConfig, PreTrainedModel
 
 
 class MCLIPConfig(XLMRobertaConfig):
     model_type = "M-CLIP"
 
-    def __init__(self, modelBase="xlm-roberta-large", transformerDimSize=1024, imageDimSize=768, **kwargs):
+    def __init__(self,transformerDimSize=1024, imageDimSize=768, **kwargs):
         self.transformerDimensions = transformerDimSize
         self.numDims = imageDimSize
         super().__init__(**kwargs)
