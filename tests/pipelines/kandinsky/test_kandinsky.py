@@ -88,7 +88,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def dummy_text_encoder(self):
         torch.manual_seed(0)
         config = MCLIPConfig(
-            numDims=self.cross_attention_dim, 
+            numDims=self.cross_attention_dim,
             transformerDimensions=self.text_embedder_hidden_size,
             hidden_size=self.text_embedder_hidden_size,
             intermediate_size=37,
@@ -96,11 +96,11 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=5,
             vocab_size=250002,
         )
-        
+
         text_encoder = MultilingualCLIP(config)
         text_encoder = text_encoder.eval()
 
-        return text_encoder 
+        return text_encoder
 
     @property
     def dummy_text_proj(self):
@@ -238,7 +238,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.50759643, 0.50876284, 0.4554392, 0.5594512, 0.53785735, 0.44757918,  0.4388101,  0.46746832, 0.4886209]
+            [0.50759643, 0.50876284, 0.4554392, 0.5594512, 0.53785735, 0.44757918, 0.4388101, 0.46746832, 0.4886209]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
