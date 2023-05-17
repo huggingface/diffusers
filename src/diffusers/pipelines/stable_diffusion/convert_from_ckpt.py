@@ -207,7 +207,7 @@ def assign_to_checkpoint(
         is_attn_weight = "proj_attn.weight" in new_path or ("attentions" in new_path and "to_" in new_path)
         shape = old_checkpoint[path["old"]].shape
         if is_attn_weight and len(shape) == 3:
-            checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0] 
+            checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0]
         elif is_attn_weight and len(shape) == 4:
             checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0, 0]
         else:
