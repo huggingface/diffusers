@@ -26,15 +26,16 @@ from PIL import Image
 from diffusers import StableDiffusionPipeline
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+
 def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows*cols
+    assert len(imgs) == rows * cols
 
     w, h = imgs[0].size
-    grid = Image.new('RGB', size=(cols*w, rows*h))
+    grid = Image.new("RGB", size=(cols * w, rows * h))
     grid_w, grid_h = grid.size
-    
+
     for i, img in enumerate(imgs):
-        grid.paste(img, box=(i%cols*w, i//cols*h))
+        grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
 ```
 
@@ -48,10 +49,7 @@ repo_id_embeds = "sd-concepts-library/cat-toy"
 Now you can load a pipeline, and pass the pre-learned concept to it:
 
 ```py
-pipeline = StableDiffusionPipeline.from_pretrained(
-    pretrained_model_name_or_path,
-    torch_dtype=torch.float16
-    ).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.float16).to("cuda")
 
 pipeline.load_textual_inversion(repo_id_embeds)
 ```
@@ -68,7 +66,7 @@ num_rows = 2
 Then run the pipeline (feel free to adjust the parameters like `num_inference_steps` and `guidance_scale` to see how they affect image quality), save the generated images and visualize them with the helper function you created at the beginning:
 
 ```py
-all_images = [] 
+all_images = []
 for _ in range(num_rows):
     images = pipe(prompt, num_images_per_prompt=num_samples, num_inference_steps=50, guidance_scale=7.5).images
     all_images.extend(images)
@@ -78,5 +76,5 @@ grid
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/textual_inversion_inference.png"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/textual_inversion_inference.png">
 </div>
