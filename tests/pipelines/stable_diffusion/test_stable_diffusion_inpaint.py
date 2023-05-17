@@ -35,6 +35,7 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint impo
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -154,6 +155,40 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
         assert out_pil.shape == (1, 64, 64, 3)
         assert np.abs(out_pil.flatten() - out_tensor.flatten()).max() < 5e-2
+
+    def test_stable_diffusion_inpaint_lora(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward 1
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        # set lora layers
+        lora_attn_procs = create_lora_layers(sd_pipe.unet)
+        sd_pipe.unet.set_attn_processor(lora_attn_procs)
+        sd_pipe = sd_pipe.to(torch_device)
+
+        # forward 2
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
+        image = output.images
+        image_slice_1 = image[0, -3:, -3:, -1]
+
+        # forward 3
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
+        image = output.images
+        image_slice_2 = image[0, -3:, -3:, -1]
+
+        assert np.abs(image_slice - image_slice_1).max() < 1e-2
+        assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
