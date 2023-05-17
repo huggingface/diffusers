@@ -1270,7 +1270,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 
