@@ -43,6 +43,8 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+Note that enabling `torch.compile` through the accelerate config can cause dramatic speed ups.
+
 ### Dog toy example
 
 Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
