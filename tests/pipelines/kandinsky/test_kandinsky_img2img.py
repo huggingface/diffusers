@@ -266,7 +266,7 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
     def test_kandinsky_img2img(self):
         expected_image = load_numpy(
-"https://user-images.githubusercontent.com/43698245/238191310-a99fe3cf-c2ee-417e-94f1-c1829a0ae0a3.png
+            "https://user-images.githubusercontent.com/43698245/238954026-6c3e3da6-ef18-4d78-b521-6386e6922444.png"
         )
 
         init_image = load_image(
@@ -297,6 +297,7 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=100,
             height=768,
             width=768,
+            strength=0.2,
             output_type="np",
         )
 
