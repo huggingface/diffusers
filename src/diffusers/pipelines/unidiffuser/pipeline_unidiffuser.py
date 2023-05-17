@@ -560,9 +560,16 @@ class UniDiffuserPipeline(DiffusionPipeline):
         return prompt_embeds
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.prepare_image_latents
-    # Add num_prompts_per_image argument
+    # Add num_prompts_per_image argument, sample from autoencoder moment distribution
     def encode_image_vae_latents(
-        self, image, batch_size, num_prompts_per_image, dtype, device, do_classifier_free_guidance, generator=None
+        self,
+        image,
+        batch_size,
+        num_prompts_per_image,
+        dtype,
+        device,
+        do_classifier_free_guidance,
+        generator=None,
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -579,10 +586,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
             )
 
         if isinstance(generator, list):
-            image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
+            image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i]) for i in range(batch_size)]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.mode()
+            image_latents = self.vae.encode(image).latent_dist.sample(generator)
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
@@ -1275,7 +1282,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             image_clip_latents = image_clip_latents.unsqueeze(1)
         else:
             # 4.2. Prepare image latent variables, if input not available
-            # Prepare image VAE latents
+            # Prepare image VAE latents in latent space
             image_vae_latents = self.prepare_image_vae_latents(
                 batch_size=batch_size,
                 num_prompts_per_image=multiplier,
@@ -1287,7 +1294,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator=generator,
                 latents=vae_latents,
             )
-            # print(f"Image vae latent shape: {image_vae_latents.shape}")
 
             # Prepare image CLIP latents
             image_clip_latents = self.prepare_image_clip_latents(

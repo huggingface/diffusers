@@ -613,7 +613,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         sample = pipe(**inputs)
         text = sample.text
 
-        expected_text_prefix = "T CL CL CL "
+        expected_text_prefix = "An astronaut"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_joint_v1_fp16(self):
@@ -670,5 +670,5 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         text = sample.text
         print(f"Text: {text}")
 
-        expected_text_prefix = "T CL CL CL "
+        expected_text_prefix = "An astronaut"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
