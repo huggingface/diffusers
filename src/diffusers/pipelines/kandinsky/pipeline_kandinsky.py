@@ -113,8 +113,8 @@ class KandinskyPipeline(DiffusionPipeline):
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
-            max_length=self.tokenizer.model_max_length,
             truncation=True,
+            max_length=77,
             return_attention_mask=True,
             add_special_tokens=True,
             return_tensors="pt",
@@ -164,7 +164,7 @@ class KandinskyPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
-                max_length=self.tokenizer.model_max_length,
+                max_length=77,
                 truncation=True,
                 return_attention_mask=True,
                 add_special_tokens=True,

@@ -19,10 +19,10 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import PretrainedConfig, XLMRobertaTokenizerFast
+from transformers import XLMRobertaTokenizer
 
 from diffusers import KandinskyPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
-from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
+from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
@@ -60,7 +60,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def text_embedder_hidden_size(self):
-        return 1024
+        return 32
 
     @property
     def time_input_dim(self):
@@ -81,27 +81,26 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     # YiYi's TO-DO: add a tiny tokenizer?
     @property
     def dummy_tokenizer(self):
-        tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
+        tokenizer = XLMRobertaTokenizer.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
         return tokenizer
-
-    # @property
-    # def dummy_text_encoder(self):
-    #     torch.manual_seed(0)
-    #     config = PretrainedConfig(
-    #         modelBase="YiYiXu/tiny-random-mclip-base",
-    #         numDims=100,
-    #         transformerDimensions=32)
-
-    #     return MultilingualCLIP(config)
 
     @property
     def dummy_text_encoder(self):
         torch.manual_seed(0)
-        config = PretrainedConfig(
-            modelBase="xlm-roberta-large", numDims=self.cross_attention_dim, transformerDimensions=1024
+        config = MCLIPConfig(
+            numDims=self.cross_attention_dim, 
+            transformerDimensions=self.text_embedder_hidden_size,
+            hidden_size=self.text_embedder_hidden_size,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            vocab_size=250002,
         )
+        
+        text_encoder = MultilingualCLIP(config)
+        text_encoder = text_encoder.eval()
 
-        return MultilingualCLIP(config)
+        return text_encoder 
 
     @property
     def dummy_text_proj(self):
@@ -194,12 +193,11 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "movq": movq,
         }
-
         return components
 
     def get_dummy_inputs(self, device, seed=0):
         image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed)).to(device)
-        floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
+        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -207,7 +205,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "prompt": "horse",
             "image_embeds": image_embeds,
-            "negative_image_embeds": image_embeds,
+            "negative_image_embeds": negative_image_embeds,
             "generator": generator,
             "height": 64,
             "width": 64,
@@ -237,12 +235,10 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        print(f"image.shape {image.shape}")
-
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.5208529, 0.4821977, 0.44796965, 0.5479469, 0.54242486, 0.45028442, 0.42460358, 0.46456948, 0.48675597]
+            [0.50759643, 0.50876284, 0.4554392, 0.5594512, 0.53785735, 0.44757918,  0.4388101,  0.46746832, 0.4886209]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
