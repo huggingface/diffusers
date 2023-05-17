@@ -616,10 +616,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         dtype,
         device,
         generator,
+        latents=None,
         image=None,
         timestep=None,
         is_strength_max=True,
-        latents=None,
     ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -920,10 +920,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             prompt_embeds.dtype,
             device,
             generator,
+            latents,
             image=init_image,
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
-            latents=latents,
         )
 
         # 7. Prepare mask latent variables
