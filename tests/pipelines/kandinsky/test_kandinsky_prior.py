@@ -13,20 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import numpy as np
 import torch
 from torch import nn
-from transformers import CLIPTextConfig, CLIPVisionConfig, CLIPTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPTextConfig,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
-from diffusers import PriorTransformer, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel
-from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
+from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import skip_mps
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -36,10 +40,7 @@ torch.use_deterministic_algorithms(True)
 class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyPriorPipeline
     params = ["prompt"]
-    batch_params = [
-        "prompt",
-        "negative_prompt"
-    ]
+    batch_params = ["prompt", "negative_prompt"]
     required_optional_params = [
         "num_images_per_prompt",
         "generator",
@@ -48,7 +49,7 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "negative_prompt",
         "guidance_scale",
         "output_type",
-        "return_dict"
+        "return_dict",
     ]
     test_xformers_attention = False
 
@@ -188,18 +189,7 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32)
 
         expected_slice = np.array(
-            [
-                -0.0532,  
-                1.7120,  
-                0.3656, 
-                -1.0852, 
-                -0.8946, 
-                -1.1756,  
-                0.4348,  
-                0.2482,
-                0.5146, 
-                -0.1156
-                ]
+            [-0.0532, 1.7120, 0.3656, -1.0852, -0.8946, -1.1756, 0.4348, 0.2482, 0.5146, -0.1156]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

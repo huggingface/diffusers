@@ -25,8 +25,8 @@ from transformers import PretrainedConfig, XLMRobertaTokenizerFast
 from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -262,6 +262,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+
 @slow
 @require_torch_gpu
 class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
@@ -278,13 +279,12 @@ class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
         )
 
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/kandinsky/cat.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
         )
         mask = np.ones((768, 768), dtype=np.float32)
-        mask[:250,250:-250] =  0
-        
-        prompt="a hat"
+        mask[:250, 250:-250] = 0
+
+        prompt = "a hat"
 
         pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         pipe_prior.to(torch_device)
@@ -294,9 +294,12 @@ class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_emb = pipe_prior(prompt, generator=generator,).images
+        image_emb = pipe_prior(
+            prompt,
+            generator=generator,
+        ).images
         zero_image_emb = pipe_prior("").images
-        
+
         output = pipeline(
             prompt,
             image=init_image,

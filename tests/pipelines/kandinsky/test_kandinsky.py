@@ -24,8 +24,8 @@ from transformers import PretrainedConfig, XLMRobertaTokenizerFast
 from diffusers import KandinskyPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
-from diffusers.utils import floats_tensor, slow, nightly, load_numpy, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -270,10 +270,13 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        prompt= "red cat, 4k photo"
+        prompt = "red cat, 4k photo"
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_emb = pipe_prior(prompt, generator=generator,).images
+        image_emb = pipe_prior(
+            prompt,
+            generator=generator,
+        ).images
         zero_image_emb = pipe_prior("").images
 
         output = pipeline(

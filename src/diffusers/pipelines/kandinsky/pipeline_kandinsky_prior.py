@@ -23,7 +23,6 @@ from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
 )
@@ -83,7 +82,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         return latents
 
     def create_zero_img_emb(self, batch_size, device):
-        zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(device=device, dtype=self.image_encoder.dtype)
+        zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(
+            device=device, dtype=self.image_encoder.dtype
+        )
         zero_image_emb = self.image_encoder(zero_img)["image_embeds"]
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
@@ -234,7 +235,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt", # pt only 
+        output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
     ):
         if isinstance(prompt, str):
@@ -309,13 +310,13 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
             image_embeddings = latents
 
-            # YiYi's notes: 
+            # YiYi's notes:
             ## Prior Pipeline should always return a tensor that can be used in text2img/img2img/inpainting pipelines
             ## However need np type for testing purpose
-            if output_type == 'np':
+            if output_type == "np":
                 image_embeddings = image_embeddings.cpu().numpy()
 
             if not return_dict:
-                return (image_embeddings, )
+                return (image_embeddings,)
 
         return ImagePipelineOutput(images=image_embeddings)
