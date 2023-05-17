@@ -129,7 +129,6 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
         KandinskyInpaintPipeline,
-        KandinskyImg2ImgPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
         LDMTextToImagePipeline,
