@@ -38,14 +38,14 @@ import numpy as np
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def get_new_h_w(h, w):
-    new_h = h // 64
-    if h % 64 != 0:
+def get_new_h_w(h, w, scale_factor=8):
+    new_h = h // scale_factor**2
+    if h % scale_factor**2 != 0:
         new_h += 1
-    new_w = w // 64
-    if w % 64 != 0:
+    new_w = w // scale_factor**2
+    if w % scale_factor**2 != 0:
         new_w += 1
-    return new_h * 8, new_w * 8
+    return new_h * scale_factor, new_w * scale_factor
 
 def prepare_image(pil_image, w=512, h=512):
     pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
@@ -67,7 +67,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizerFast`]):
             Tokenizer of class
-        scheduler ([`UnCLIPScheduler`]):
+        scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -94,6 +94,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq
         )
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
@@ -347,9 +348,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps_tensor[:1].repeat(batch_size * num_images_per_prompt)
 
-        num_channels_latents = self.unet.config.in_channels
+        num_channels_latents = self.movq.config.latent_channels
 
-        height, width = get_new_h_w(height, width)
+        height, width = get_new_h_w(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
