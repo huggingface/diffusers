@@ -695,6 +695,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        height: int = None,
+        width: int = None,
         image: Union[PIL.Image.Image, np.ndarray, torch.FloatTensor] = None,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -720,6 +722,10 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            height (`int`, *optional*, defaults to self.unet.config.sample_size):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size):
+                The width in pixels of the generated image.
             image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
                 The image to be upscaled.
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -806,8 +812,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
 
         # 2. Define call parameters
 
-        height = self.unet.config.sample_size
-        width = self.unet.config.sample_size
+        height = height or self.unet.config.sample_size
+        width = width or self.unet.config.sample_size
 
         device = self._execution_device
 
