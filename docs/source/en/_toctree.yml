@@ -222,6 +222,8 @@
       title: Text-to-Video Zero
     - local: api/pipelines/unclip
       title: UnCLIP
+    - local: api/pipelines/kandinsky
+      title: Kandinsky
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
     - local: api/pipelines/versatile_diffusion
