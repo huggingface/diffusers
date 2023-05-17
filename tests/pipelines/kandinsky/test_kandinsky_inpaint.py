@@ -20,10 +20,10 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import PretrainedConfig, XLMRobertaTokenizerFast
+from transformers import XLMRobertaTokenizer
 
 from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
-from diffusers.pipelines.kandinsky.text_encoder import MultilingualCLIP
+from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
@@ -64,7 +64,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def text_embedder_hidden_size(self):
-        return 1024
+        return 32
 
     @property
     def time_input_dim(self):
@@ -82,30 +82,28 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def cross_attention_dim(self):
         return 100
 
-    # YiYi's TO-DO: add a tiny tokenizer?
     @property
     def dummy_tokenizer(self):
-        tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
+        tokenizer = XLMRobertaTokenizer.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
         return tokenizer
-
-    # @property
-    # def dummy_text_encoder(self):
-    #     torch.manual_seed(0)
-    #     config = PretrainedConfig(
-    #         modelBase="YiYiXu/tiny-random-mclip-base",
-    #         numDims=100,
-    #         transformerDimensions=32)
-
-    #     return MultilingualCLIP(config)
 
     @property
     def dummy_text_encoder(self):
         torch.manual_seed(0)
-        config = PretrainedConfig(
-            modelBase="xlm-roberta-large", numDims=self.cross_attention_dim, transformerDimensions=1024
+        config = MCLIPConfig(
+            numDims=self.cross_attention_dim, 
+            transformerDimensions=self.text_embedder_hidden_size,
+            hidden_size=self.text_embedder_hidden_size,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            vocab_size=250002,
         )
+        
+        text_encoder = MultilingualCLIP(config)
+        text_encoder = text_encoder.eval()
 
-        return MultilingualCLIP(config)
+        return text_encoder 
 
     @property
     def dummy_text_proj(self):
@@ -203,7 +201,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_inputs(self, device, seed=0):
         image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed)).to(device)
-        floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
+        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
         # create init_image
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
@@ -221,7 +219,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image": init_image,
             "mask_image": mask,
             "image_embeds": image_embeds,
-            "negative_image_embeds": image_embeds,
+            "negative_image_embeds": negative_image_embeds,
             "generator": generator,
             "height": 64,
             "width": 64,
@@ -256,7 +254,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.52034867, 0.4924194, 0.44671825, 0.5747229, 0.574834, 0.45885202, 0.41398984, 0.4793774, 0.50443137]
+            [0.5069735,  0.5303574,  0.47324282, 0.57705986, 0.57984686, 0.44895405, 0.42856842, 0.4831331,  0.5052104 ]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
