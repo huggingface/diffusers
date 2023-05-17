@@ -40,6 +40,7 @@ from .test_modeling_common import ModelTesterMixin
 logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.use_deterministic_algorithms(True)
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = os.environ.get("CUBLAS_WORKSPACE_CONFIG", ":16:8")
 
 
 def create_lora_layers(model, mock_weights: bool = True):
