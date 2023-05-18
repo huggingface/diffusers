@@ -121,7 +121,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        # YiYi notes: we use a hard coded add_noise method here because it use a different beta schedule for adding noise >=<
+        # YiYi notes: I created a add_noise method on the pipeline to overwrite the one in schedule because 
+        ##            it use a different beta schedule for adding noise vs sampling 
         # latents = self.scheduler.add_noise(latents, noise, latent_timestep)
         latents = self.add_noise(latents, noise, latent_timestep)
         return latents
@@ -383,13 +384,10 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         self.scheduler.timesteps = self.scheduler.timesteps + 1
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
-        # YiYi's notes the timestep for add_noise is calculated different in original repo:
-        #latent_timestep = timesteps_tensor[:1].repeat(batch_size * num_images_per_prompt)
- 
+        # YiYi's notes 
+        #       the timestep for add_noise is calculated different in original repo (this formular is taken from the original repo)
         latent_timestep = int(self.scheduler.config.num_train_timesteps * strength) - 2
-        # YiYi's notes: above formular is taken from the original repo 
-        ## note that diffusers's strength arg is same as 1-stregth in the original and because we use init() here
-        ## we use -2 instead of -1
+
         latent_timestep = torch.tensor(
             [latent_timestep] * (batch_size * num_images_per_prompt), 
             dtype=timesteps_tensor.dtype,
@@ -409,8 +407,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             generator,            
             self.scheduler,
         )
-        # yiyi testing only - create a generator here to overwrite
-        #generator = torch.Generator(device='cuda').manual_seed(0)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps_tensor):
                 # expand the latents if we are doing classifier free guidance
