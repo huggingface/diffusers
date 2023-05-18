@@ -428,8 +428,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                     noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    noise_pred = torch.cat([noise_pred] * 2)
-
 
                 if i + 1 == timesteps_tensor.shape[0]:
                     prev_timestep = None
@@ -443,8 +441,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                     latents,
                     generator=generator,
                 ).prev_sample
-
-                _, latents = latents.chunk(2)
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
