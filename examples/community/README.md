@@ -1159,7 +1159,7 @@ import time
 
 prompt = "sailing ship in storm by Rembrandt"
 model_id = "runwayml/stable-diffusion-v1-5"
-#Help function for time evaluation
+# Helper function for time evaluation
 def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
     # warmup
     for _ in range(2):
