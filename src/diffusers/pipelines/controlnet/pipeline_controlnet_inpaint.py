@@ -99,7 +99,7 @@ EXAMPLE_DOC_STRING = """
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.prepare_mask_and_masked_image
-def prepare_mask_and_masked_image(image, mask, height, width):
+def prepare_mask_and_masked_image(image, mask, height, width, return_image=False):
     """
     Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
     converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
@@ -208,6 +208,10 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask = torch.from_numpy(mask)
 
     masked_image = image * (mask < 0.5)
+
+    # n.b. ensure backwards compatibility as old function does not return image
+    if return_image:
+        return mask, masked_image, image
 
     return mask, masked_image
 
@@ -795,7 +799,20 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+    ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -803,13 +820,37 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        if (image is None or timestep is None) and not is_strength_max:
+            raise ValueError(
+                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                "However, either the image or the noise timestep has not been provided."
+            )
+
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            if is_strength_max:
+                # if strength is 100% then simply initialise the latents to noise
+                latents = noise
+            else:
+                # otherwise initialise latents as init image + noise
+                image = image.to(device=device, dtype=dtype)
+                if isinstance(generator, list):
+                    image_latents = [
+                        self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                        for i in range(batch_size)
+                    ]
+                else:
+                    image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+                image_latents = self.vae.config.scaling_factor * image_latents
+
+                latents = self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
+
         return latents
 
     def _default_height_width(self, height, width, image):
