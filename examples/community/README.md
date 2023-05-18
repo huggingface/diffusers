@@ -1141,7 +1141,7 @@ To use this pipeline, You need to:
 ```python
 python -m pip install intel_extension_for_pytorch
 ```
-2. After pipeline initialization, prepare_for_ipex() should be called to enable IPEX accelaration.
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration.
 ```python
 pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
 pipe.prepare_for_ipex(prompt,infer_type='bf16')
