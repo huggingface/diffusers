@@ -5,10 +5,8 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...models.unet_3d_condition import UNet3DConditionModel
@@ -20,7 +18,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import TuneAVideoPipelineOutput
 
