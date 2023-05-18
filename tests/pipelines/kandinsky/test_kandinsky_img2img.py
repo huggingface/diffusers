@@ -265,10 +265,10 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_kandinsky_img2img(self):
-         expected_image = load_numpy(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "kandinsky_img2img_frog.npy"
-         )
+            "/kandinsky/kandinsky_img2img_frog.npy"
+        )
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
