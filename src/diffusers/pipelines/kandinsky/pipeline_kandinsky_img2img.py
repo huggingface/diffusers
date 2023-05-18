@@ -14,7 +14,10 @@
 
 from typing import List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
+from PIL import Image
 from transformers import (
     XLMRobertaTokenizer,
 )
@@ -31,9 +34,7 @@ from ...utils import (
 )
 from .text_encoder import MultilingualCLIP
 from .text_proj import KandinskyTextProjModel
-import PIL
-from PIL import Image
-import numpy as np 
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -47,6 +48,7 @@ def get_new_h_w(h, w, scale_factor=8):
         new_w += 1
     return new_h * scale_factor, new_w * scale_factor
 
+
 def prepare_image(pil_image, w=512, h=512):
     pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
     arr = np.array(pil_image.convert("RGB"))
@@ -54,6 +56,7 @@ def prepare_image(pil_image, w=512, h=512):
     arr = np.transpose(arr, [2, 0, 1])
     image = torch.from_numpy(arr).unsqueeze(0)
     return image
+
 
 class KandinskyImg2ImgPipeline(DiffusionPipeline):
     """
@@ -94,13 +97,13 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
-            movq=movq
+            movq=movq,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
-    
+
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps) 
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
@@ -114,15 +117,15 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
-        
+
         latents = latents * scheduler.init_noise_sigma
 
         shape = latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        # YiYi notes: I created a add_noise method on the pipeline to overwrite the one in schedule because 
-        ##            it use a different beta schedule for adding noise vs sampling 
+        # YiYi notes: I created a add_noise method on the pipeline to overwrite the one in schedule because
+        ##            it use a different beta schedule for adding noise vs sampling
         # latents = self.scheduler.add_noise(latents, noise, latent_timestep)
         latents = self.add_noise(latents, noise, latent_timestep)
         return latents
@@ -252,7 +255,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -300,7 +302,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
-    
+
     # YiYi's notes: Hard code this method here for now because the kandinsky repo use a different beta schedule for add noise
     def add_noise(
         self,
@@ -347,7 +349,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ):  
+    ):
         # 2. Define call parameters
         if isinstance(prompt, str):
             batch_size = 1
@@ -361,12 +363,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
-        
+
         # 3. get text and image encoding
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        
+
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
         if isinstance(negative_image_embeds, list):
@@ -385,8 +387,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             text_encoder_hidden_states=text_encoder_hidden_states,
         )
-        
-        # 4. pre-processing initial image 
+
+        # 4. pre-processing initial image
         if not isinstance(image, list):
             image = [image]
         if not all(isinstance(i, (PIL.Image.Image, torch.Tensor)) for i in image):
@@ -402,20 +404,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        
-        # YiYi's Notes: This step is taken from the origianl Kandinsky repo 
+
+        # YiYi's Notes: This step is taken from the origianl Kandinsky repo
         # add one to get the final alpha values right (the ones from first scale to data during sampling))
         self.scheduler.timesteps = self.scheduler.timesteps + 1
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
-        # YiYi's notes 
+        # YiYi's notes
         #       the timestep for add_noise is calculated different in original repo (this formular is taken from the original repo)
         latent_timestep = int(self.scheduler.config.num_train_timesteps * strength) - 2
 
-        latent_timestep = torch.tensor(
-            [latent_timestep] * batch_size, 
-            dtype=timesteps_tensor.dtype,
-            device=device )
+        latent_timestep = torch.tensor([latent_timestep] * batch_size, dtype=timesteps_tensor.dtype, device=device)
 
         num_channels_latents = self.unet.config.in_channels
 
@@ -428,15 +427,15 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             (batch_size, num_channels_latents, height, width),
             text_encoder_hidden_states.dtype,
             device,
-            generator,            
+            generator,
             self.scheduler,
         )
-        
+
         # 7. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            
+
             noise_pred = self.unet(
                 sample=latent_model_input,
                 timestep=t,
@@ -450,9 +449,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             if i + 1 == timesteps_tensor.shape[0]:
-                prev_timestep = None
+                pass
             else:
-                prev_timestep = timesteps_tensor[i + 1]
+                timesteps_tensor[i + 1]
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(

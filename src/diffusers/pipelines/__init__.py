@@ -52,7 +52,12 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
     )
-    from .kandinsky import KandinskyInpaintPipeline, KandinskyPipeline, KandinskyPriorPipeline, KandinskyImg2ImgPipeline
+    from .kandinsky import (
+        KandinskyImg2ImgPipeline,
+        KandinskyInpaintPipeline,
+        KandinskyPipeline,
+        KandinskyPriorPipeline,
+    )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline

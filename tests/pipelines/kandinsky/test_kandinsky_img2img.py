@@ -22,7 +22,7 @@ import torch
 from PIL import Image
 from transformers import XLMRobertaTokenizer
 
-from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline, DDIMScheduler, UNet2DConditionModel, VQModel
+from diffusers import DDIMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
@@ -175,14 +175,14 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         ddim_config = {
             "num_train_timesteps": 1000,
-            "beta_schedule":  "linear",
+            "beta_schedule": "linear",
             "beta_start": 0.00085,
-            "beta_end":0.012,
-            "clip_sample" : False,
-            "set_alpha_to_one" : False, # not sure what this does, so set to default value for now
-            "steps_offset" : 0,
-            "prediction_type" : "epsilon",
-            "thresholding" : False,
+            "beta_end": 0.012,
+            "clip_sample": False,
+            "set_alpha_to_one": False,  # not sure what this does, so set to default value for now
+            "steps_offset": 0,
+            "prediction_type": "epsilon",
+            "thresholding": False,
         }
 
         scheduler = DDIMScheduler(**ddim_config)
@@ -249,7 +249,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.43521464, 0.668655,  0.41744298, 0.6815478,  0.44146872, 0.4427491,  0.50876176, 0.37860417, 0.5109416 ]
+            [0.43521464, 0.668655, 0.41744298, 0.6815478, 0.44146872, 0.4427491, 0.50876176, 0.37860417, 0.5109416]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -282,14 +282,14 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         ddim_config = {
             "num_train_timesteps": 1000,
-            "beta_schedule":  "linear",
+            "beta_schedule": "linear",
             "beta_start": 0.00085,
-            "beta_end":0.012,
-            "clip_sample" : False,
-            "set_alpha_to_one" : False, # not sure what this does, so set to default value for now
-            "steps_offset" : 0,
-            "prediction_type" : "epsilon",
-            "thresholding" : False,
+            "beta_end": 0.012,
+            "clip_sample": False,
+            "set_alpha_to_one": False,  # not sure what this does, so set to default value for now
+            "steps_offset": 0,
+            "prediction_type": "epsilon",
+            "thresholding": False,
         }
 
         ddim_scheduler = DDIMScheduler(**ddim_config)
