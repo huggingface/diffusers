@@ -673,7 +673,6 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -682,7 +681,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask if encoder_hidden_states is None else encoder_attention_mask,
+                attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
 
@@ -1525,7 +1524,6 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
@@ -1547,6 +1545,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
+                    attention_mask,
                     cross_attention_kwargs,
                 )[0]
             else:
@@ -2624,7 +2623,6 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -2650,6 +2648,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
+                    attention_mask,
                     cross_attention_kwargs,
                 )[0]
             else:
