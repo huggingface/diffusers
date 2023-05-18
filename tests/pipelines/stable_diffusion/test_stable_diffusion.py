@@ -550,8 +550,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineSlowTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+    def setUp(self):
         gc.collect()
         torch.cuda.empty_cache()
 
