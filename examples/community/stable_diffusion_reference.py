@@ -317,7 +317,6 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
         )
 
         # 5. Prepare timesteps
-        len(self.scheduler.timesteps)
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
