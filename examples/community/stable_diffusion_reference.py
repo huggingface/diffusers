@@ -50,6 +50,31 @@ def torch_dfs(model: torch.nn.Module):
 
 
 class StableDiffusionReferencePipeline(StableDiffusionPipeline):
+    def _default_height_width(self, height, width, image):
+        # NOTE: It is possible that a list of images have different
+        # dimensions for each image, so just checking the first image
+        # is not _exactly_ correct, but it is simple.
+        while isinstance(image, list):
+            image = image[0]
+
+        if height is None:
+            if isinstance(image, PIL.Image.Image):
+                height = image.height
+            elif isinstance(image, torch.Tensor):
+                height = image.shape[2]
+
+            height = (height // 8) * 8  # round down to nearest multiple of 8
+
+        if width is None:
+            if isinstance(image, PIL.Image.Image):
+                width = image.width
+            elif isinstance(image, torch.Tensor):
+                width = image.shape[3]
+
+            width = (width // 8) * 8  # round down to nearest multiple of 8
+
+        return height, width
+
     def prepare_image(
         self,
         image,
@@ -248,8 +273,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
         assert reference_attn or reference_adain, "`reference_attn` or `reference_adain` must be True."
 
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height, width = self._default_height_width(height, width, ref_image)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
