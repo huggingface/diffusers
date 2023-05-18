@@ -51,6 +51,43 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
     
+    def get_sigma_min_max_from_scheduler(self):
+        # Get sigma_min, sigma_max in original sigma space, not Karras sigma space
+        # (e.g. not exponentiated by 1 / rho)
+        if hasattr(self.scheduler, "sigma_min"):
+            sigma_min = self.scheduler.sigma_min
+            sigma_max = self.scheduler.sigma_max
+        elif hasattr(self.scheduler, "sigmas"):
+            # Karras-style scheduler e.g. (EulerDiscreteScheduler, HeunDiscreteScheduler)
+            # Get sigma_min, sigma_max before they're converted into Karras sigma space by set_timesteps
+            # TODO: Karras schedulers are inconsistent about how they initialize sigmas in __init__
+            # For example, EulerDiscreteScheduler gets sigmas in original sigma space, but HeunDiscreteScheduler
+            # initializes it through set_timesteps, which potentially leaves the sigmas in Karras sigma space.
+            # TODO: For example, in EulerDiscreteScheduler, a value of 0.0 is appended to the sigmas whern initialized
+            # in __init__. But wouldn't we usually want sigma_min to be a small positive number, following the
+            # consistency models paper?
+            # See e.g. https://github.com/openai/consistency_models/blob/main/scripts/launch.sh#L13
+            sigma_min = self.scheduler.sigmas[-1].item()
+            sigma_max = self.scheduler.sigmas[0].item()
+        else:
+            raise ValueError(
+                f"Scheduler {self.scheduler.__class__} does not have sigma_min or sigma_max."
+            )
+        return sigma_min, sigma_max
+    
+    def get_sigmas_from_scheduler(self):
+        if hasattr(self.scheduler, "sigmas"):
+            # e.g. HeunDiscreteScheduler
+            sigmas = self.scheduler.sigmas
+        elif hasattr(self.scheduler, "schedule"):
+            # e.g. KarrasVeScheduler
+            sigmas = self.scheduler.schedule
+        else:
+            raise ValueError(
+                f"Scheduler {self.scheduler.__class__} does not have sigmas."
+            )
+        return sigmas
+    
     def get_scalings(self, sigma, sigma_data: float = 0.5):
         c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
         c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
@@ -58,6 +95,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         return c_skip, c_out, c_in
     
     def get_scalings_for_boundary_condition(sigma, sigma_min, sigma_data: float = 0.5):
+        # sigma_min should be in original sigma space, not in karras sigma space
+        # (e.g. not exponentiated by 1 / rho)
         c_skip = sigma_data**2 / (
             (sigma - sigma_min) ** 2 + sigma_data**2
         )
@@ -73,6 +112,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         """
         Run the consistency model forward...?
         """
+        # sigma_min should be in original sigma space, not in karras sigma space
+        # (e.g. not exponentiated by 1 / rho)
         c_skip, c_out, c_in = [
             append_dims(x, x_t.ndim)
             for x in self.get_scalings_for_boundary_condition(sigma, sigma_min, sigma_data=sigma_data)
@@ -87,26 +128,6 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def to_d(x, sigma, denoised):
         """Converts a denoiser output to a Karras ODE derivative."""
         return (x - denoised) / append_dims(sigma, x.ndim)
-    
-    def add_noise_to_input(
-        self,
-        sample: torch.FloatTensor,
-        sigma_hat: float,
-        sigma_min: float,
-        sigma_max: float,
-        s_noise: float = 1.0,
-        generator: Optional[torch.Generator] = None,
-    ):
-        # Clamp sigma_hat
-        sigma_hat = sigma_hat.clamp(min=sigma_min, max=sigma_max)
-
-        # sample z ~ N(0, s_noise^2 * I)
-        z = s_noise * randn_tensor(sample.shape, generator=generator, device=sample.device)
-
-        # tau = sigma_hat; eps = sigma_min
-        sample_hat = sample + ((sigma_hat**2 - sigma_min**2) ** 0.5 * z)
-
-        return sample_hat
     
     @torch.no_grad()
     def __call__(
@@ -144,46 +165,49 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         img_size = img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
         device = self.device
-        scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
-        scheduler_has_sigma_min = hasattr(self.scheduler, "sigma_min")
-        assert scheduler_has_sigma_min or scheduler_is_in_sigma_space, "Scheduler needs to have sigmas"
 
         # 1. Sample image latents x_0 ~ N(0, sigma_0^2 * I)
         sample = randn_tensor(shape, generator=generator, device=device) * self.scheduler.init_noise_sigma
 
         # 2. Set timesteps and get sigmas
+        # Get sigma_min, sigma_max in original sigma space (not Karras sigma space)
+        sigma_min, sigma_max = self.get_sigma_min_max_from_scheduler()
         self.scheduler.set_timesteps(num_inference_steps)
         timesteps = self.scheduler.timesteps
+
+        # Now get Karras sigma schedule (which I think the original implementation always uses)
+        # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L376
+        sigmas = self.get_sigmas_from_scheduler()
         
         # 3. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 4. Denoising loop
-        if scheduler_has_sigma_min:
-            # 4.1 Scheduler which can add noise to input (e.g. KarrasVeScheduler)
-            sigma_min = self.scheduler.sigma_min
-            sigma_max = self.scheduler.sigma_max
-            s_noise = self.scheduler.s_noise
-            sigmas = self.scheduler.schedule
-
+        # TODO: hack, is there a better way to identify schedulers that implement the stochastic iterative sampling
+        # similar to stochastic_iterative_sampler in the original code?
+        if hasattr(self.scheduler, "add_noise_to_input"):
+            # 4.1 Consistency Model Stochastic Iterative Scheduler (multi-step sampling)
             # First evaluate the consistency model. This will be the output sample if num_inference_steps == 1
-            sigma = sigmas[timesteps[0]]
+            # TODO: not all schedulers have an index_for_timestep method (e.g. KarrasVeScheduler)
+            step_idx = self.scheduler.index_for_timestep(timesteps[0])
+            sigma = sigmas[step_idx]
             _, sample = self.denoise(sample, sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised)
 
             # If num_inference_steps > 1, perform multi-step sampling (stochastic_iterative_sampler)
-            # Alternate adding noise and evaluating the consistency model 
+            # Alternate adding noise and evaluating the consistency model on the noised input
             for i, t in self.progress_bar(enumerate(self.scheduler.timesteps[1:])):
-                sigma = sigmas[t]
-                sigma_prev = sigmas[t - 1]
-                if hasattr(self.scheduler, "add_noise_to_input"):
-                    sample_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator)[0]
-                else:
-                    sample_hat = self.add_noise_to_input(sample, sigma, sigma_prev, sigma_min, sigma_max, s_noise=s_noise, generator=generator)
+                step_idx = self.scheduler.index_for_timestep(t)
+                sigma = sigmas[step_idx]
+                sigma_prev = sigmas[step_idx - 1]
+                sample_hat, sigma_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator)[0]
 
-                _, sample = self.denoise(sample_hat, sigma, sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised)
-        else:
+                model_output, denoised = self.denoise(
+                    sample_hat, sigma, sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
+                )
+
+                sample = self.scheduler.step(denoised, sigma_hat, sigma_prev, sample_hat).prev_sample
+        elif hasattr(self.scheduler, "sigmas"):
             # 4.2 Karras-style scheduler in sigma space (e.g. HeunDiscreteScheduler)
-            sigma_min = self.scheduler.sigmas[-1]
             # TODO: warmup steps logic correct?
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -191,6 +215,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                     step_idx = self.scheduler.index_for_timestep(t)
                     sigma = self.scheduler.sigmas[step_idx]
                     # TODO: handle class labels?
+                    # TODO: check shapes, might need equivalent of s_in in original code
+                    # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L510
                     model_output, denoised = self.denoise(
                         sample, sigma, sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
                     )
@@ -198,15 +224,17 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                     # Karras-style schedulers already convert to a ODE derivative inside step()
                     sample = self.scheduler.step(denoised, t, sample, **extra_step_kwargs).prev_sample
 
-                    # TODO: need to handle karras sigma stuff here?
-
-                    # TODO: differs from callback support in original code
+                    # Note: differs from callback support in original code
                     # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L459
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             callback(i, t, sample)
+        else:
+            raise ValueError(
+                f"Scheduler {self.scheduler.__class__} is not compatible with consistency models."
+            )
         
         # 5. Post-process image sample
         sample = (sample / 2 + 0.5).clamp(0, 1)
