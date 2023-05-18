@@ -1672,7 +1672,6 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -1681,7 +1680,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask if encoder_hidden_states is None else encoder_attention_mask,
+                attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
 
