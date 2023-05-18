@@ -19,12 +19,9 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.training_utils import EMAModel
 from diffusers.utils.testing_utils import skip_mps, torch_device
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

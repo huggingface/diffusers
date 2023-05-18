@@ -18,9 +18,6 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
-
-
-
 def to_np(tensor):
     if isinstance(tensor, torch.Tensor):
         tensor = tensor.detach().cpu().numpy()

@@ -19,13 +19,11 @@ import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

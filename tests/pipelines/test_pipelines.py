@@ -54,6 +54,7 @@ from diffusers import (
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
@@ -71,10 +72,6 @@ from diffusers.utils.testing_utils import (
     require_flax,
     require_torch_gpu,
 )
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

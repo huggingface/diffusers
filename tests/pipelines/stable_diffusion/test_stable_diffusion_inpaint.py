@@ -32,16 +32,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

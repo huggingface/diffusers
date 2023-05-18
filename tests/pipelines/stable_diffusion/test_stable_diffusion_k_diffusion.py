@@ -20,11 +20,9 @@ import numpy as np
 import torch
 
 from diffusers import StableDiffusionKDiffusionPipeline
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

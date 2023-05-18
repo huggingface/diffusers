@@ -16,6 +16,7 @@ from transformers import (
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
@@ -33,10 +34,6 @@ from ..test_pipelines_common import (
     PipelineTesterMixin,
     assert_mean_pixel_difference,
 )
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

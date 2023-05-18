@@ -39,6 +39,7 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import (
     floats_tensor,
     is_accelerate_available,
@@ -53,10 +54,6 @@ from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

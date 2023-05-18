@@ -32,12 +32,9 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesConfig,
     RobertaSeriesModelWithTransformation,
 )
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()

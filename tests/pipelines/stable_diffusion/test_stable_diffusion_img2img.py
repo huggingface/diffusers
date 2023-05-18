@@ -33,6 +33,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
@@ -42,10 +43,6 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
-
-
-from diffusers.testing_utils import enable_full_determinism
 
 
 enable_full_determinism()
