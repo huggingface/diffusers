@@ -23,6 +23,7 @@ from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -38,9 +39,6 @@ from .test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)
-
-from diffusers.testing_utils import enable_full_determinism
-
 
 enable_full_determinism()
 

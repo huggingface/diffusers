@@ -22,6 +22,7 @@ import torch
 
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
+from diffusers.testing_utils import enable_full_determinism
 from diffusers.utils import (
     floats_tensor,
     logging,
@@ -33,12 +34,9 @@ from diffusers.utils.import_utils import is_xformers_available
 from .test_modeling_common import ModelTesterMixin
 
 
-logger = logging.get_logger(__name__)
-
-from diffusers.testing_utils import enable_full_determinism
-
-
 enable_full_determinism()
+
+logger = logging.get_logger(__name__)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
