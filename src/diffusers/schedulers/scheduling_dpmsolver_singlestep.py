@@ -113,6 +113,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps. For singlestep schedulers, we recommend to enable
             this to use up all the function evaluations.
+        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
+             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
+             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
+             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
         lambda_min_clipped (`float`, default `-inf`):
             the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
             cosine (squaredcos_cap_v2) noise schedule.
