@@ -32,7 +32,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 

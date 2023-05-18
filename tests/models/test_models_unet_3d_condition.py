@@ -22,7 +22,7 @@ import torch
 
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import (
     floats_tensor,
     logging,

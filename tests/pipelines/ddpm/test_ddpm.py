@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 

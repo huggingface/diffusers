@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import KarrasVePipeline, KarrasVeScheduler, UNet2DModel
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
 

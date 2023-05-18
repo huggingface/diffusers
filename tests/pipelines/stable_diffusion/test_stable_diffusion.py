@@ -38,7 +38,7 @@ from diffusers import (
     logging,
 )
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 

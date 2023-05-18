@@ -26,7 +26,7 @@ from diffusers import (
     TextToVideoSDPipeline,
     UNet3DConditionModel,
 )
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import load_numpy, skip_mps, slow
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS

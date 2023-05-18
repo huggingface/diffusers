@@ -33,7 +33,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_torch_gpu
 

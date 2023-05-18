@@ -36,7 +36,7 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, skip_mps
 

@@ -29,7 +29,7 @@ from diffusers import (
     StableDiffusionImageVariationPipeline,
     UNet2DConditionModel,
 )
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 

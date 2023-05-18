@@ -20,7 +20,7 @@ import unittest
 import torch
 
 from diffusers import UNet2DModel
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
 
 from .test_modeling_common import ModelTesterMixin

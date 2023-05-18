@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch
 
