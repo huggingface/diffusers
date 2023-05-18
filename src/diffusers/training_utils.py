@@ -1,7 +1,9 @@
 import contextlib
 import copy
+from random import random
 from typing import Any, Dict, Iterable, Optional, Union
 
+import numpy as np
 import torch
 
 from .utils import deprecate, is_transformers_available
@@ -9,6 +11,19 @@ from .utils import deprecate, is_transformers_available
 
 if is_transformers_available():
     import transformers
+
+
+def set_seed(seed: int):
+    """
+    Args:
+    Helper function for reproducible behavior to set the seed in `random`, `numpy`, `torch`.
+        seed (`int`): The seed to set.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # ^^ safe to call this function even if cuda is not available
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
