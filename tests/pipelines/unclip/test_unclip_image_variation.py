@@ -44,7 +44,10 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+from diffusers.testing_utils import enable_full_determinism
+
+
+enable_full_determinism()
 
 
 class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

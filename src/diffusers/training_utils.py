@@ -14,13 +14,14 @@ if is_transformers_available():
     import transformers
 
 
-def enable_full_determinism(seed: int):
+def enable_full_determinism(seed: Optional[int] = None):
     """
     Helper function for reproducible behavior during distributed training. See
     - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
     """
     # set seed first
-    set_seed(seed)
+    if seed is not None:
+        set_seed(seed)
 
     #  Enable PyTorch deterministic mode. This potentially requires either the environment
     #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,

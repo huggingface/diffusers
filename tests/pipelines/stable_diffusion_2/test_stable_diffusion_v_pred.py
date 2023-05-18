@@ -34,7 +34,10 @@ from diffusers.utils.testing_utils import require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+from diffusers.testing_utils import enable_full_determinism
+
+
+enable_full_determinism()
 
 
 class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):

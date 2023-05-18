@@ -45,7 +45,10 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+from diffusers.testing_utils import enable_full_determinism
+
+
+enable_full_determinism()
 
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
