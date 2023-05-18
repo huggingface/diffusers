@@ -34,7 +34,6 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(False)
 
 
 @skip_mps
@@ -46,6 +45,19 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+
+    # Attend and excite requires being able to run a backward pass at
+    # inference time. There's no deterministic backward operator for pad
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.use_deterministic_algorithms(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        torch.use_deterministic_algorithms(True)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -171,6 +183,19 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
 @require_torch_gpu
 @slow
 class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
+    # Attend and excite requires being able to run a backward pass at
+    # inference time. There's no deterministic backward operator for pad
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.use_deterministic_algorithms(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        torch.use_deterministic_algorithms(True)
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
