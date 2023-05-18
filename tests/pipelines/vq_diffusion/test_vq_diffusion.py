@@ -26,7 +26,7 @@ from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
-
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class VQDiffusionPipelineFastTests(unittest.TestCase):

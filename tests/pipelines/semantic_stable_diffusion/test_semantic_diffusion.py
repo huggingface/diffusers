@@ -28,7 +28,10 @@ from diffusers.utils import floats_tensor, nightly, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class SafeDiffusionPipelineFastTests(unittest.TestCase):

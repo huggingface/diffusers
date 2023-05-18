@@ -22,7 +22,10 @@ from diffusers import KarrasVePipeline, KarrasVeScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class KarrasVePipelineFastTests(unittest.TestCase):

@@ -23,7 +23,10 @@ from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class LDMPipelineFastTests(unittest.TestCase):

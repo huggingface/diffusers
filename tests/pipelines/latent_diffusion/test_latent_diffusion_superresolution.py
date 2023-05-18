@@ -24,7 +24,10 @@ from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, 
 from diffusers.utils.testing_utils import require_torch
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class LDMSuperResolutionPipelineFastTests(unittest.TestCase):

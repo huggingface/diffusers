@@ -35,7 +35,10 @@ from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUI
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):

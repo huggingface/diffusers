@@ -22,7 +22,7 @@ from diffusers.training_utils import set_seed
 from diffusers.utils.testing_utils import slow
 
 
-
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class TrainingTests(unittest.TestCase):

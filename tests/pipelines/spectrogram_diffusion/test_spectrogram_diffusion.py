@@ -28,7 +28,10 @@ from ..pipeline_params import TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS, TOKENS_TO
 from ..test_pipelines_common import PipelineTesterMixin
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 MIDI_FILE = "./tests/fixtures/elise_format0.mid"

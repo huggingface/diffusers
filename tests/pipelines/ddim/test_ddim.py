@@ -25,7 +25,10 @@ from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCON
 from ..test_pipelines_common import PipelineTesterMixin
 
 
+from diffusers.testing_utils import enable_full_determinism
 
+
+enable_full_determinism()
 
 
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

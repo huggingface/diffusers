@@ -37,7 +37,7 @@ from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import CaptureLogger
 
 
-
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class SchedulerObject(SchedulerMixin, ConfigMixin):
