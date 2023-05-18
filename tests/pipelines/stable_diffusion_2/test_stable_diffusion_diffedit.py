@@ -32,9 +32,8 @@ from diffusers import (
     StableDiffusionDiffEditPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import load_image, slow
-from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin

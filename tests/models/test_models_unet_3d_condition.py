@@ -22,7 +22,6 @@ import torch
 
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import (
     floats_tensor,
     logging,
@@ -30,6 +29,7 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 

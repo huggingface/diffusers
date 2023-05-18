@@ -18,8 +18,8 @@ import unittest
 import torch
 
 from diffusers import VQModel
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 

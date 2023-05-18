@@ -1,10 +1,7 @@
 import contextlib
 import copy
-import os
-import random
 from typing import Any, Dict, Iterable, Optional, Union
 
-import numpy as np
 import torch
 
 from .utils import deprecate, is_transformers_available

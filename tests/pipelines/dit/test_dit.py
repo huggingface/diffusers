@@ -20,9 +20,8 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,

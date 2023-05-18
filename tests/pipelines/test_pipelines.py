@@ -54,7 +54,6 @@ from diffusers import (
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
@@ -66,6 +65,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    enable_full_determinism,
     get_tests_dir,
     load_numpy,
     require_compel,

@@ -20,9 +20,9 @@ import torch
 from parameterized import parameterized
 
 from diffusers import AutoencoderKL
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 
