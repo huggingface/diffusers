@@ -1305,13 +1305,23 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,
       prompt="1girl",
-      num_inference_steps=20).images[0]
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
 ```
 
 Reference Image
 
 ![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
 
-Output Image
+Output Image of `reference_attn=True` and `reference_adain=False`
 
 ![output_image](https://github.com/huggingface/diffusers/assets/24734142/83e5b992-5597-4761-b7e3-c8258fc95f24)
+
+Output Image of `reference_attn=False` and `reference_adain=True`
+
+![output_image](https://github.com/Mikubill/sd-webui-controlnet/assets/24734142/d459b4d1-b93e-497c-8b8d-4b31d69bdc60)
+
+Output Image of `reference_attn=True` and `reference_adain=True`
+
+![output_image](https://github.com/Mikubill/sd-webui-controlnet/assets/24734142/1ef22d9e-70e7-4ee2-985b-02da028af9f2)

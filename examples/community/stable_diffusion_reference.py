@@ -7,6 +7,7 @@ import torch
 
 from diffusers import StableDiffusionPipeline
 from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION, logging
 
@@ -32,7 +33,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> result_img = pipe(ref_image=input_image,
                         prompt="1girl",
-                        num_inference_steps=20).images[0]
+                        num_inference_steps=20,
+                        reference_attn=True,
+                        reference_adain=True).images[0]
 
         >>> result_img.show()
         ```
@@ -151,8 +154,11 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_auto_machine_weight: int = 1.0,
+        attention_auto_machine_weight: float = 1.0,
+        gn_auto_machine_weight: float = 1.0,
         balanced_point: float = 0.0,
+        reference_attn: bool = True,
+        reference_adain: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -217,12 +223,18 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            attention_auto_machine_weight (`int`):
+            attention_auto_machine_weight (`float`):
                 Weight of using reference query for self attention's context.
                 If attention_auto_machine_weight=1.0, use reference query for all self attention's context.
+            gn_auto_machine_weight (`float`):
+                Weight of using reference adain. If gn_auto_machine_weight=2.0, use all reference adain plugins.
             balanced_point (`float`):
                 balanced point of ref_uncond_xt. If balanced_point=0.0, control more important(ref_uncond_xt=latent_model_input),
                 elif balanced_point=1.0, prompt more important(ref_uncond_xt=ref_xt), else balanced.
+            reference_attn (`bool`):
+                Whether to use reference query for self attention's context.
+            reference_adain (`bool`):
+                Whether to use reference adain.
 
         Examples:
 
@@ -233,6 +245,8 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        assert reference_attn or reference_adain, "`reference_attn` or `reference_adain` must be True."
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -309,7 +323,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 9. Modify self attention
+        # 9. Modify self attention and group norm
         MODE = "write"
 
         def hacked_basic_transformer_inner_forward(
@@ -397,14 +411,234 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
             return hidden_states
 
-        attn_modules = [module for module in torch_dfs(self.unet) if isinstance(module, BasicTransformerBlock)]
-        attn_modules = sorted(attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
+        def hacked_mid_forward(self, *args, **kwargs):
+            eps = 1e-6
+            x = self.original_forward(*args, **kwargs)
+            if MODE == "write":
+                if gn_auto_machine_weight >= self.gn_weight:
+                    var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
+                    self.mean_bank.append(mean)
+                    self.var_bank.append(var)
+            if MODE == "read":
+                if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
+                    var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
+                    std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+                    mean_acc = sum(self.mean_bank) / float(len(self.mean_bank))
+                    var_acc = sum(self.var_bank) / float(len(self.var_bank))
+                    std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                    x = (((x - mean) / std) * std_acc) + mean_acc
+                self.mean_bank = []
+                self.var_bank = []
+            return x
 
-        for i, module in enumerate(attn_modules):
-            module._original_inner_forward = module.forward
-            module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
-            module.bank = []
-            module.attn_weight = float(i) / float(len(attn_modules))
+        def hack_CrossAttnDownBlock2D_forward(
+            self,
+            hidden_states,
+            temb=None,
+            encoder_hidden_states=None,
+            attention_mask=None,
+            cross_attention_kwargs=None,
+        ):
+            eps = 1e-6
+
+            # TODO(Patrick, William) - attention mask is not used
+            output_states = ()
+
+            for i, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
+                if MODE == "write":
+                    if gn_auto_machine_weight >= self.gn_weight:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        self.mean_bank.append(mean)
+                        self.var_bank.append(var)
+                if MODE == "read":
+                    if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
+                        var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+
+                output_states = output_states + (hidden_states,)
+
+            if MODE == "read":
+                self.mean_bank = []
+                self.var_bank = []
+
+            if self.downsamplers is not None:
+                for downsampler in self.downsamplers:
+                    hidden_states = downsampler(hidden_states)
+
+                output_states = output_states + (hidden_states,)
+
+            return hidden_states, output_states
+
+        def hacked_DownBlock2D_forward(self, hidden_states, temb=None):
+            eps = 1e-6
+
+            output_states = ()
+
+            for i, resnet in enumerate(self.resnets):
+                hidden_states = resnet(hidden_states, temb)
+
+                if MODE == "write":
+                    if gn_auto_machine_weight >= self.gn_weight:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        self.mean_bank.append(mean)
+                        self.var_bank.append(var)
+                if MODE == "read":
+                    if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
+                        var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+
+                output_states = output_states + (hidden_states,)
+
+            if MODE == "read":
+                self.mean_bank = []
+                self.var_bank = []
+
+            if self.downsamplers is not None:
+                for downsampler in self.downsamplers:
+                    hidden_states = downsampler(hidden_states)
+
+                output_states = output_states + (hidden_states,)
+
+            return hidden_states, output_states
+
+        def hacked_CrossAttnUpBlock2D_forward(
+            self,
+            hidden_states,
+            res_hidden_states_tuple,
+            temb=None,
+            encoder_hidden_states=None,
+            cross_attention_kwargs=None,
+            upsample_size=None,
+            attention_mask=None,
+        ):
+            eps = 1e-6
+            # TODO(Patrick, William) - attention mask is not used
+            for i, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
+                # pop res hidden states
+                res_hidden_states = res_hidden_states_tuple[-1]
+                res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+                hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
+
+                if MODE == "write":
+                    if gn_auto_machine_weight >= self.gn_weight:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        self.mean_bank.append(mean)
+                        self.var_bank.append(var)
+                if MODE == "read":
+                    if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
+                        var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+
+            if MODE == "read":
+                self.mean_bank = []
+                self.var_bank = []
+
+            if self.upsamplers is not None:
+                for upsampler in self.upsamplers:
+                    hidden_states = upsampler(hidden_states, upsample_size)
+
+            return hidden_states
+
+        def hacked_UpBlock2D_forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+            eps = 1e-6
+            for i, resnet in enumerate(self.resnets):
+                # pop res hidden states
+                res_hidden_states = res_hidden_states_tuple[-1]
+                res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+                hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+                hidden_states = resnet(hidden_states, temb)
+
+                if MODE == "write":
+                    if gn_auto_machine_weight >= self.gn_weight:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        self.mean_bank.append(mean)
+                        self.var_bank.append(var)
+                if MODE == "read":
+                    if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
+                        std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
+                        var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+
+            if MODE == "read":
+                self.mean_bank = []
+                self.var_bank = []
+
+            if self.upsamplers is not None:
+                for upsampler in self.upsamplers:
+                    hidden_states = upsampler(hidden_states, upsample_size)
+
+            return hidden_states
+
+        if reference_attn:
+            attn_modules = [module for module in torch_dfs(self.unet) if isinstance(module, BasicTransformerBlock)]
+            attn_modules = sorted(attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
+
+            for i, module in enumerate(attn_modules):
+                module._original_inner_forward = module.forward
+                module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
+                module.bank = []
+                module.attn_weight = float(i) / float(len(attn_modules))
+
+        if reference_adain:
+            gn_modules = [self.unet.mid_block]
+            self.unet.mid_block.gn_weight = 0
+
+            down_blocks = self.unet.down_blocks
+            for w, module in enumerate(down_blocks):
+                module.gn_weight = 1.0 - float(w) / float(len(down_blocks))
+                gn_modules.append(module)
+
+            up_blocks = self.unet.up_blocks
+            for w, module in enumerate(up_blocks):
+                module.gn_weight = float(w) / float(len(up_blocks))
+                gn_modules.append(module)
+
+            for i, module in enumerate(gn_modules):
+                if getattr(module, "original_forward", None) is None:
+                    module.original_forward = module.forward
+                if i == 0:
+                    # mid_block
+                    module.forward = hacked_mid_forward.__get__(module, torch.nn.Module)
+                elif isinstance(module, CrossAttnDownBlock2D):
+                    module.forward = hack_CrossAttnDownBlock2D_forward.__get__(module, CrossAttnDownBlock2D)
+                elif isinstance(module, DownBlock2D):
+                    module.forward = hacked_DownBlock2D_forward.__get__(module, DownBlock2D)
+                elif isinstance(module, CrossAttnUpBlock2D):
+                    module.forward = hacked_CrossAttnUpBlock2D_forward.__get__(module, CrossAttnUpBlock2D)
+                elif isinstance(module, UpBlock2D):
+                    module.forward = hacked_UpBlock2D_forward.__get__(module, UpBlock2D)
+                module.mean_bank = []
+                module.var_bank = []
+                module.gn_weight *= 2
 
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
