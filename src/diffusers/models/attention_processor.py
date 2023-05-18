@@ -387,8 +387,11 @@ class Attention(nn.Module):
                 padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
                 attention_mask = torch.cat([attention_mask, padding], dim=2)
             else:
-                remaining_length: int = target_length - current_length
-                attention_mask = F.pad(attention_mask, (0, remaining_length), value=0.0)
+                # TODO: for pipelines such as stable-diffusion, padding cross-attn mask:
+                #       we want to instead pad by (0, remaining_length), where remaining_length is:
+                #       remaining_length: int = target_length - current_length
+                # TODO: re-enable tests/models/test_models_unet_2d_condition.py#test_model_xattn_padding
+                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
 
         if out_dim == 3:
             if attention_mask.shape[0] < batch_size * head_size:
