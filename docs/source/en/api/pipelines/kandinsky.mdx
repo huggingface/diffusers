@@ -23,6 +23,7 @@ The Kandinsky model in diffusers comes from ai-forever and the original codebase
 |---|---|:---:|
 | [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* | - |
 | [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* | - |
+| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* | - |
 
 
 ## KandinskyPipeline
@@ -32,6 +33,10 @@ The Kandinsky model in diffusers comes from ai-forever and the original codebase
 	- __call__
 
 [[autodoc]] KandinskyInpaintPipeline
+	- all
+	- __call__
+
+[[autodoc]] KandinskyImg2ImgPipeline
 	- all
 	- __call__
 
