@@ -43,7 +43,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-Note that enabling `torch.compile` through the accelerate config can cause dramatic speed ups.
+When running `accelerate config`, if we specify torch compile mode to True there can dramatic speedups. 
 
 ### Dog toy example
 
