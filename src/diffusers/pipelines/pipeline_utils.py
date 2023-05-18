@@ -296,8 +296,7 @@ def maybe_raise_or_warn(
 
         if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
-                f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
-                f" {expected_class_obj}"
+                f"{passed_class_obj[name]} is of type: {model_cls}, but should be" f" {expected_class_obj}"
             )
     else:
         logger.warning(
@@ -1250,7 +1249,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 

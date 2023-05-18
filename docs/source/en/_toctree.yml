@@ -148,6 +148,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/controlnet
+      title: ControlNet
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -205,8 +207,6 @@
         title: Self-Attention Guidance
       - local: api/pipelines/stable_diffusion/panorama
         title: MultiDiffusion Panorama
-      - local: api/pipelines/stable_diffusion/controlnet
-        title: Text-to-Image Generation with ControlNet Conditioning
       - local: api/pipelines/stable_diffusion/model_editing
         title: Text-to-Image Model Editing
       - local: api/pipelines/stable_diffusion/diffedit
@@ -254,6 +254,8 @@
       title: Euler scheduler
     - local: api/schedulers/heun
       title: Heun Scheduler
+    - local: api/schedulers/multistep_dpm_solver_inverse
+      title: Inverse Multistep DPM-Solver
     - local: api/schedulers/ipndm
       title: IPNDM
     - local: api/schedulers/lms_discrete
