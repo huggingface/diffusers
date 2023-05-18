@@ -45,6 +45,11 @@ except OptionalDependencyNotAvailable:
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .audioldm import AudioLDMPipeline
+    from .controlnet import (
+        StableDiffusionControlNetImg2ImgPipeline,
+        StableDiffusionControlNetInpaintPipeline,
+        StableDiffusionControlNetPipeline,
+    )
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,
@@ -59,7 +64,6 @@ else:
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
-        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
         StableDiffusionImageVariationPipeline,
@@ -135,8 +139,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
+    from .controlnet import FlaxStableDiffusionControlNetPipeline
     from .stable_diffusion import (
-        FlaxStableDiffusionControlNetPipeline,
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,

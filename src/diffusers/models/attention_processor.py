@@ -344,11 +344,14 @@ class Attention(nn.Module):
             beta=beta,
             alpha=self.scale,
         )
+        del baddbmm_input
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
 
         attention_probs = attention_scores.softmax(dim=-1)
+        del attention_scores
+
         attention_probs = attention_probs.to(dtype)
 
         return attention_probs
