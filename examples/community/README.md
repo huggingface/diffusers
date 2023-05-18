@@ -1196,7 +1196,7 @@ pipe3.prepare_for_ipex(prompt,infer_type='fp32')
 #2.Original Pipeline initialization
 pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
 
-#3.Compare performance between Original Pipeline and IPEX Pipeline
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
 with torch.no_grad():
     latency = elapsed_time(pipe3)
     print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
