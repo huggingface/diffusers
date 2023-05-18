@@ -147,9 +147,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
 
-        text_input_ids = text_inputs.input_ids.to(device)
-        text_mask = text_inputs.attention_mask.to(device)
-
+        text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
@@ -158,7 +156,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+
+        text_input_ids = text_input_ids.to(device)
+        text_mask = text_inputs.attention_mask.to(device)
 
         prompt_embeds, text_encoder_hidden_states = self.text_encoder(
             input_ids=text_input_ids, attention_mask=text_mask
@@ -229,31 +229,29 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
+        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
+        when their specific submodule has its `forward` method called.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError("Please install accelerate via `pip install accelerate`")
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        models = [
+            self.unet,
+            self.text_proj,
+            self.text_encoder,
+            self.movq,
+        ]
+        for cpu_offloaded_model in models:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -367,7 +365,18 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(device)
+        if isinstance(image_embeds, list):
+            image_embeds = torch.cat(image_embeds, dim=0)
+        if isinstance(negative_image_embeds, list):
+            negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
+
+        if do_classifier_free_guidance:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+            dtype=prompt_embeds.dtype, device=device
+        )
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeds,
@@ -379,8 +388,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         latents = self.movq.encode(image)["latents"]
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        # YiYi's notes: add 1 to match original ddim steps
-        # (Notes from kandinsky repo:  add one to get the final alpha values right (the ones from first scale to data during sampling))
+        
+        # YiYi's Notes: This step is taken from the origianl Kandinsky repo 
+        # add one to get the final alpha values right (the ones from first scale to data during sampling))
         self.scheduler.timesteps = self.scheduler.timesteps + 1
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
@@ -408,39 +418,34 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps_tensor):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                
-                noise_pred = self.unet(
-                    sample=latent_model_input,  # [2, 4, 96, 96]
-                    timestep=t,
-                    encoder_hidden_states=text_encoder_hidden_states,
-                    class_labels=additive_clip_time_embeddings,
-                ).sample
+        for i, t in enumerate(self.progress_bar(timesteps_tensor)):
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            
+            noise_pred = self.unet(
+                sample=latent_model_input,
+                timestep=t,
+                encoder_hidden_states=text_encoder_hidden_states,
+                class_labels=additive_clip_time_embeddings,
+            ).sample
 
-                # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
-                # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond)
-                # this means the our latent shape is batch_size *2 instad batch_size
+            if do_classifier_free_guidance:
+                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if do_classifier_free_guidance:
-                    noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            if i + 1 == timesteps_tensor.shape[0]:
+                prev_timestep = None
+            else:
+                prev_timestep = timesteps_tensor[i + 1]
 
-                if i + 1 == timesteps_tensor.shape[0]:
-                    prev_timestep = None
-                else:
-                    prev_timestep = timesteps_tensor[i + 1]
-
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred,
-                    t,
-                    latents,
-                    generator=generator,
-                ).prev_sample
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(
+                noise_pred,
+                t,
+                latents,
+                generator=generator,
+            ).prev_sample
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
@@ -456,4 +461,3 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
-
