@@ -1173,14 +1173,14 @@ def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
 
 ##############     bf16 inference performance    ###############
 
-#1.IPEX Pipeline initialization
+# 1. IPEX Pipeline initialization
 pipe = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
 pipe.prepare_for_ipex(prompt,infer_type='bf16')
 
-#2.Original Pipeline initialization
+# 2. Original Pipeline initialization
 pipe2 = StableDiffusionPipeline.from_pretrained(model_id)
 
-#3.Compare performance between Original Pipeline and IPEX Pipeline
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
 with torch.no_grad(), torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
     latency = elapsed_time(pipe)
     print("Latency of StableDiffusionIPEXPipeline--bf16", latency)
@@ -1189,11 +1189,11 @@ with torch.no_grad(), torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16)
 
 ##############     fp32 inference performance    ###############
 
-#1.IPEX Pipeline initialization
+# 1. IPEX Pipeline initialization
 pipe3 = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
 pipe3.prepare_for_ipex(prompt,infer_type='fp32')
 
-#2.Original Pipeline initialization
+# 2. Original Pipeline initialization
 pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
 
 # 3. Compare performance between Original Pipeline and IPEX Pipeline
