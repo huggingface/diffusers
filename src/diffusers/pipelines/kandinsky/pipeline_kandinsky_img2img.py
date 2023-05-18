@@ -347,7 +347,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ):
+    ):  
+        # 2. Define call parameters
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -360,11 +361,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
-
+        
+        # 3. get text and image encoding
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-
+        
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
         if isinstance(negative_image_embeds, list):
@@ -383,10 +385,21 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             text_encoder_hidden_states=text_encoder_hidden_states,
         )
+        
+        # 4. pre-processing initial image 
+        if not isinstance(image, list):
+            image = [image]
+        if not all(isinstance(i, (PIL.Image.Image, torch.Tensor)) for i in image):
+            raise ValueError(
+                f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support  PIL image and pytorch tensor"
+            )
 
-        image = prepare_image(image, width, height).to(dtype=prompt_embeds.dtype, device=device)
+        image = torch.cat([prepare_image(i, width, height) for i in image], dim=0)
+        image = image.to(dtype=prompt_embeds.dtype, device=device)
+
         latents = self.movq.encode(image)["latents"]
 
+        # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         
         # YiYi's Notes: This step is taken from the origianl Kandinsky repo 
@@ -407,7 +420,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         height, width = get_new_h_w(height, width, self.movq_scale_factor)
 
-        # create initial latent
+        # 6. Create initial latent
         latents = self.prepare_latents(
             latents,
             latent_timestep,
@@ -417,7 +430,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             generator,            
             self.scheduler,
         )
-
+        
+        # 7. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -447,7 +461,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-        # post-processing
+        # 8. post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         image = image * 0.5 + 0.5
