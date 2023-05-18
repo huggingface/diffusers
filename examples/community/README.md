@@ -1354,12 +1354,12 @@ Reference Image
 
 Output Image of `reference_attn=True` and `reference_adain=False`
 
-![output_image](https://github.com/huggingface/diffusers/assets/24734142/83e5b992-5597-4761-b7e3-c8258fc95f24)
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/813b5c6a-6d89-46ba-b7a4-2624e240eea5)
 
 Output Image of `reference_attn=False` and `reference_adain=True`
 
-![output_image](https://github.com/Mikubill/sd-webui-controlnet/assets/24734142/d459b4d1-b93e-497c-8b8d-4b31d69bdc60)
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/ffc90339-9ef0-4c4d-a544-135c3e5644da)
 
 Output Image of `reference_attn=True` and `reference_adain=True`
 
-![output_image](https://github.com/Mikubill/sd-webui-controlnet/assets/24734142/1ef22d9e-70e7-4ee2-985b-02da028af9f2)
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)
