@@ -1149,7 +1149,7 @@ pipe.prepare_for_ipex(prompt,infer_type='bf16')
 
 Other usage of this ipex pipeline is same as the default stable diffusion pipeline.
 
-Following code compares the performance of original stable diffusion pipeline with ipex pipeline.
+The following code compares the performance of the original stable diffusion pipeline with the ipex-optimized pipeline.
 
 ```python
 import torch
