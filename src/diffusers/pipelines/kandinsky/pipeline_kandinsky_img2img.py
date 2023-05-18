@@ -118,12 +118,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
 
         shape = latents.shape
-        # YiYi notes: put this back after done testing
-        #noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        # YiYi notes: testing only (create noise to match original)
-        torch.manual_seed(0)
-        noise = torch.randn_like(latents)
-        print(f" noise added :{noise.shape},{noise.sum()},{noise[0,0,0,:5]} ")
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
         # YiYi notes: we use a hard coded add_noise method here because it use a different beta schedule for adding noise >=<
@@ -382,8 +377,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         image = prepare_image(image, width, height).to(dtype=prompt_embeds.dtype, device=device)
         latents = self.movq.encode(image)["latents"]
 
-        print(f"encoded image latents: {latents.shape},{latents.sum()}")
-
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         # YiYi's notes: add 1 to match original ddim steps
         # (Notes from kandinsky repo:  add one to get the final alpha values right (the ones from first scale to data during sampling))
@@ -401,7 +394,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             [latent_timestep] * (batch_size * num_images_per_prompt), 
             dtype=timesteps_tensor.dtype,
             device=device )
-        print(f" latent_timestep for add_noise :{latent_timestep}")
 
         num_channels_latents = self.unet.config.in_channels
 
@@ -418,7 +410,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             self.scheduler,
         )
         # yiyi testing only - create a generator here to overwrite
-        generator = torch.Generator(device='cuda').manual_seed(0)
+        #generator = torch.Generator(device='cuda').manual_seed(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps_tensor):
                 # expand the latents if we are doing classifier free guidance
