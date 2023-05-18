@@ -398,6 +398,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         image = image.to(dtype=prompt_embeds.dtype, device=device)
 
         latents = self.movq.encode(image)["latents"]
+        latents = latents.repeat_interleave(num_images_per_prompt, dim=0)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -412,7 +413,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         latent_timestep = int(self.scheduler.config.num_train_timesteps * strength) - 2
 
         latent_timestep = torch.tensor(
-            [latent_timestep] * (batch_size * num_images_per_prompt), 
+            [latent_timestep] * batch_size, 
             dtype=timesteps_tensor.dtype,
             device=device )
 
