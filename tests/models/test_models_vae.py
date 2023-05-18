@@ -26,7 +26,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from .test_modeling_common import ModelTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

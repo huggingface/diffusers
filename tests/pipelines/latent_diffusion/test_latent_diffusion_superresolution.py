@@ -24,7 +24,7 @@ from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, 
 from diffusers.utils.testing_utils import require_torch
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class LDMSuperResolutionPipelineFastTests(unittest.TestCase):

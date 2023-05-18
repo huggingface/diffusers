@@ -22,7 +22,7 @@ from diffusers import KarrasVePipeline, KarrasVeScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class KarrasVePipelineFastTests(unittest.TestCase):

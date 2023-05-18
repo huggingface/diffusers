@@ -37,7 +37,7 @@ from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_devi
 from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

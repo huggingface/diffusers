@@ -18,7 +18,7 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 def to_np(tensor):

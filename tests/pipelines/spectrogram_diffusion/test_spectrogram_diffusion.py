@@ -28,7 +28,7 @@ from ..pipeline_params import TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS, TOKENS_TO
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 MIDI_FILE = "./tests/fixtures/elise_format0.mid"

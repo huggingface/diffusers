@@ -23,7 +23,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils.testing_utils import skip_mps, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

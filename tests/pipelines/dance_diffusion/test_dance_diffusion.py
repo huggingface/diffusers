@@ -27,7 +27,7 @@ from ..pipeline_params import UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS, UNCON
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

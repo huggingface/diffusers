@@ -73,7 +73,7 @@ from diffusers.utils.testing_utils import (
 )
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

@@ -22,7 +22,7 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class DDPMPipelineFastTests(unittest.TestCase):

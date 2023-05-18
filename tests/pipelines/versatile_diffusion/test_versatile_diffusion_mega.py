@@ -24,7 +24,7 @@ from diffusers import VersatileDiffusionPipeline
 from diffusers.utils.testing_utils import load_image, nightly, require_torch_gpu, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class VersatileDiffusionMegaPipelineFastTests(unittest.TestCase):

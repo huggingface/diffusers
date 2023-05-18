@@ -27,7 +27,7 @@ from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers.utils import torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class EmbeddingsTests(unittest.TestCase):

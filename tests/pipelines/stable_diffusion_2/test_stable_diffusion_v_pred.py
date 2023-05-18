@@ -33,7 +33,7 @@ from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

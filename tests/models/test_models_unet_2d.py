@@ -26,7 +26,7 @@ from .test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

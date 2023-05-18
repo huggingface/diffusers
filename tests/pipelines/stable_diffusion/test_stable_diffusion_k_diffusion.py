@@ -24,7 +24,7 @@ from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 @slow

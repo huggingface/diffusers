@@ -23,7 +23,7 @@ from diffusers.utils import floats_tensor, torch_device
 from .test_modeling_common import ModelTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 from diffusers.testing_utils import enable_full_determinism
 
 

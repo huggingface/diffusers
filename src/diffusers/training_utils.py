@@ -33,6 +33,7 @@ def enable_full_determinism(seed: Optional[int] = None):
     # Enable CUDNN deterministic mode
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
 
 
 def set_seed(seed: int):

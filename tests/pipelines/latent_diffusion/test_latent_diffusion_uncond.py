@@ -23,7 +23,7 @@ from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class LDMPipelineFastTests(unittest.TestCase):

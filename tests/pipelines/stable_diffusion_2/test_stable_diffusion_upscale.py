@@ -27,7 +27,7 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_d
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+
 
 
 class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
