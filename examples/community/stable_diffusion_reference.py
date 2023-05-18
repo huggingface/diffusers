@@ -650,7 +650,13 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
                 # ref only part
                 noise = torch.randn_like(ref_image_latents)
-                ref_xt = self.scheduler.add_noise(ref_image_latents, noise, t)
+                ref_xt = self.scheduler.add_noise(
+                    ref_image_latents,
+                    noise,
+                    t.reshape(
+                        1,
+                    ),
+                )
                 ref_xt = self.scheduler.scale_model_input(ref_xt, t)
                 if do_classifier_free_guidance:
                     if balanced_point == 0.0:
