@@ -1270,7 +1270,7 @@ def main(args):
         for k in trained_state_dict:
             trained_param = trained_state_dict[k]
             initial_param = initial_state_dict[k]
-            logger.info(torch.allclose(trained_param, initial_param))
+            logger.info(torch.allclose(trained_param.cpu(), initial_param))
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
