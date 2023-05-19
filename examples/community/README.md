@@ -1134,10 +1134,11 @@ Output Image
 
 ### Stable Diffusion on IPEX
 
-This diffusion pipeline can accelarate the inference of Stable-Diffusion on Intel CPUs with BF16/FP32 precision by [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision by [IPEX](https://github.com/intel/intel-extension-for-pytorch).
 
 To use this pipeline, You need to:
 1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
 **Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here are the mapping relationship.It is recommanded to install Pytorch/IPEX2.0 to get the best performance.
 
 |PyTorch Version|IPEX Version|
@@ -1145,15 +1146,17 @@ To use this pipeline, You need to:
 |[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
 |[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
 
+You can use normal pip command to install IPEX with the latest version.
 ```python
 python -m pip install intel_extension_for_pytorch
 ```
 **Note:** To install a specific version, run with the following command:
 ```
-python -m pip install <package_name>==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
 2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
 **Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
 ```python
 pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
@@ -1163,13 +1166,13 @@ pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value
 pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
 ```
 
-Then you can use the ipex pipeline in similar way as the default stable diffusion pipeline.
+Then you can use the ipex pipeline in a similar way to the default stable diffusion pipeline.
 ```python
 # For Float32
-image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
 # For BFloat16 
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-    image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+    image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
 ```
 
 The following code compares the performance of the original stable diffusion pipeline with the ipex-optimized pipeline.
