@@ -946,6 +946,7 @@ class LoraLoaderMixin:
                 lora_layer = getattr(attn_processors[name], self._get_lora_layer_attribute(name))
                 old_forward = module.forward
 
+                # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
                 def make_new_forward(old_forward, lora_layer):
                     def new_forward(x):
                         return old_forward(x) + lora_layer(x)
