@@ -46,6 +46,8 @@
       title: Text-guided depth-to-image
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
+    - local: training/distributed_inference
+      title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
