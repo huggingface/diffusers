@@ -76,7 +76,7 @@ jobs:
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/pipelines/stable_diffusion tests/pipelines/stable_diffusion_2
+          tests/pipelines/stable_diffusion/test_stable_diffusion.py tests/pipelines/stable_diffusion_2/test_stable_diffusion.py
 
     - name: Run slow Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
