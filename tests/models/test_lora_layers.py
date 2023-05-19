@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
 import os
 import tempfile
 import unittest
@@ -22,7 +23,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
-from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.models.attention_processor import LoRAAttnProcessor, LoRALinearLayer
 from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, floats_tensor, torch_device
 
 
@@ -232,25 +233,27 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
         assert outputs_without_lora.shape == (1, 77, 768)
 
+        # create lora_attn_procs with zeroed out up.weights
         text_lora_attn_procs = {}
         for name, module in pipe.text_encoder.named_modules():
             if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_features, cross_attention_dim=None
-                ).to("cuda")
+                attn_proc = LoRAAttnProcessor(hidden_size=module.out_features, cross_attention_dim=None).to("cuda")
+
+                # make sure that the up.weights are zeroed out
+                for layer_name, layer_module in attn_proc.named_modules():
+                    if layer_name.endswith("_lora"):
+                        assert torch.allclose(
+                            layer_module.up.weight, torch.zeros_like(layer_module.up.weight)
+                        ), "lora_up_weight should be zeroed out"
+
+                text_lora_attn_procs[name] = attn_proc
 
         # monkey patch
         pipe._modify_text_encoder(text_lora_attn_procs)
 
-        # make sure that the lora_up.weights are zeroed out
-        for name, attn_proc in text_lora_attn_procs.items():
-            for n in ["q", "k", "v", "out"]:
-                n = f"to_{n}_lora"
-                lora_linear_layer = getattr(attn_proc, n)
-                lora_up_weight = lora_linear_layer.up.weight
-                assert torch.allclose(
-                    lora_up_weight, torch.zeros_like(lora_up_weight)
-                ), "lora_up_weight should be zeroed out"
+        # verify that it's okay to release the text_lora_attn_procs which holds the LoRAAttnProcessor.
+        del text_lora_attn_procs
+        gc.collect()
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -260,12 +263,13 @@ class LoraLoaderMixinTests(unittest.TestCase):
             outputs_without_lora, outputs_with_lora
         ), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs"
 
-        # make lora_up.weights as random
-        for name, attn_proc in text_lora_attn_procs.items():
-            for n in ["q", "k", "v", "out"]:
-                n = f"to_{n}_lora"
-                lora_linear_layer = getattr(attn_proc, n)
-                lora_linear_layer.up.weight = torch.nn.Parameter(torch.randn_like(lora_linear_layer.up.weight))
+        # set randn to lora_up.weights
+        for name, _ in pipe.text_encoder.named_modules():
+            if any(name.endswith(x) for x in TEXT_ENCODER_TARGET_MODULES):
+                module = pipe.text_encoder.get_submodule(name)
+                assert hasattr(module, "lora_layer"), "lora_layer should be added"
+                assert isinstance(module.lora_layer, LoRALinearLayer), "lora_layer should be LoRALinearLayer"
+                module.lora_layer.up.weight = torch.nn.Parameter(torch.randn_like(module.lora_layer.up.weight))
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
