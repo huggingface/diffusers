@@ -85,7 +85,7 @@ class PipelineTesterMixin:
         raise NotImplementedError(
             "You need to set the attribute `params` in the child test class. "
             "`params` are checked for if all values are present in `__call__`'s signature."
-            " You can set `params` using one of the common set of parameters defined in`pipeline_params.py`"
+            " You can set `params` using one of the common set of parameters defined in `pipeline_params.py`"
             " e.g., `TEXT_TO_IMAGE_PARAMS` defines the common parameters used in text to  "
             "image pipelines, including prompts and prompt embedding overrides."
             "If your pipeline's set of arguments has minor changes from one of the common sets of arguments, "

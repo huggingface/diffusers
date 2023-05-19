@@ -44,11 +44,19 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
+        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
+
+        >>> # For Float32
+        >>> pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+        >>> # For BFloat16 
+        >>> pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> # For Float32
+        >>> image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+        >>> # For BFloat16 
+        >>> with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+        >>>     image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
         ```
 """
 
@@ -231,7 +239,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
 
         return unet_input_example, vae_decoder_input_example
 
-    def prepare_for_ipex(self, promt, infer_type="bf16", height=None, width=None, guidance_scale=7.5):
+    def prepare_for_ipex(self, promt, dtype=torch.float32, height=None, width=None, guidance_scale=7.5):
         self.unet = self.unet.to(memory_format=torch.channels_last)
         self.vae.decoder = self.vae.decoder.to(memory_format=torch.channels_last)
         self.text_encoder = self.text_encoder.to(memory_format=torch.channels_last)
@@ -241,7 +249,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
         unet_input_example, vae_decoder_input_example = self.get_input_example(promt, height, width, guidance_scale)
 
         # optimize with ipex
-        if infer_type == "bf16":
+        if dtype == torch.bfloat16:
             self.unet = ipex.optimize(
                 self.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=unet_input_example
             )
@@ -249,7 +257,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
                 self.safety_checker = ipex.optimize(self.safety_checker.eval(), dtype=torch.bfloat16, inplace=True)
-        elif infer_type == "fp32":
+        elif dtype == torch.float32:
             self.unet = ipex.optimize(
                 self.unet.eval(),
                 dtype=torch.float32,
@@ -285,16 +293,16 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                     auto_kernel_selection=False,
                 )
         else:
-            raise ValueError(" The value of infer_type should be 'bf16' or 'fp32' !")
+            raise ValueError(" The value of 'dtype' should be 'torch.bfloat16' or 'torch.float32' !")
 
         # trace unet model to get better performance on IPEX
-        with torch.cpu.amp.autocast(enabled=infer_type == "bf16"), torch.no_grad():
+        with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
             unet_trace_model = torch.jit.trace(self.unet, unet_input_example, check_trace=False, strict=False)
             unet_trace_model = torch.jit.freeze(unet_trace_model)
         self.unet.forward = unet_trace_model.forward
 
         # trace vae.decoder model to get better performance on IPEX
-        with torch.cpu.amp.autocast(enabled=infer_type == "bf16"), torch.no_grad():
+        with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
             ave_decoder_trace_model = torch.jit.trace(
                 self.vae.decoder, vae_decoder_input_example, check_trace=False, strict=False
             )
