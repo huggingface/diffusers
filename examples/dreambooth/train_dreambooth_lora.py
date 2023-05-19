@@ -827,7 +827,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    initial_unet_lora_layers = copy.deepcopy(unet_lora_layers)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -1264,23 +1263,24 @@ def main(args):
         unet = unet.to(torch.float32)
         unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
 
-        initial_state_dict = initial_unet_lora_layers.state_dict()
-        trained_state_dict = unet_lora_layers.state_dict()
-        logger.info("Checking between initial state dict and trained state dict.")
-        for k in trained_state_dict:
-            trained_param = trained_state_dict[k]
-            initial_param = initial_state_dict[k]
-            logger.info((trained_param.cpu() - initial_param).max())
+        # initial_state_dict = initial_unet_lora_layers.state_dict()
+        # trained_state_dict = unet_lora_layers.state_dict()
+        # logger.info("Checking between initial state dict and trained state dict.")
+        # for k in trained_state_dict:
+        #     trained_param = trained_state_dict[k]
+        #     initial_param = initial_state_dict[k]
+        #     logger.info((trained_param.cpu() - initial_param).max())
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
             text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
 
-        LoraLoaderMixin.save_lora_weights(
-            save_directory=args.output_dir,
-            unet_lora_layers=unet_lora_layers,
-            text_encoder_lora_layers=text_encoder_lora_layers,
-        )
+        # LoraLoaderMixin.save_lora_weights(
+        #     save_directory=args.output_dir,
+        #     unet_lora_layers=unet_lora_layers,
+        #     text_encoder_lora_layers=text_encoder_lora_layers,
+        # )
+        unet.save_attn_procs(save_directory=args.output_dir,)
 
         # Final inference
         # Load previous pipeline
