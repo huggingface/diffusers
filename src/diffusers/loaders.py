@@ -281,6 +281,7 @@ class UNet2DConditionLoadersMixin:
                     cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                     attn_processor_class = LoRAAttnProcessor
 
+                print(f"attn_processor_class: {attn_processor_class}")
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
                 )
@@ -891,6 +892,7 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
+        print("Inside the lora loader.")
         if all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
             unet_keys = [k for k in keys if k.startswith(self.unet_name)]
@@ -899,6 +901,7 @@ class LoraLoaderMixin:
                 k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
             }
             self.unet.load_attn_procs(unet_lora_state_dict)
+            print("UNet lora loaded.")
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
