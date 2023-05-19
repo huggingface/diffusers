@@ -957,11 +957,15 @@ class LoraLoaderMixin:
                 lora_layer = getattr(attn_processors[name], self._get_lora_layer_attribute(name))
                 old_forward = module.forward
 
-                def new_forward(x):
-                    return old_forward(x) + lora_layer(x)
+                # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
+                def make_new_forward(old_forward, lora_layer):
+                    def new_forward(x):
+                        return old_forward(x) + lora_layer(x)
+
+                    return new_forward
 
                 # Monkey-patch.
-                module.forward = new_forward
+                module.forward = make_new_forward(old_forward, lora_layer)
 
     def _get_lora_layer_attribute(self, name: str) -> str:
         if "q_proj" in name:
