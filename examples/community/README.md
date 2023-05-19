@@ -1139,6 +1139,7 @@ This diffusion pipeline can accelarate the inference of Stable-Diffusion on Inte
 To use this pipeline, You need to:
 1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
 **Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here are the mapping relationship.It is recommanded to install Pytorch/IPEX2.0 to get the best performance.
+
 |PyTorch Version|IPEX Version|
 |--|--|
 |[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
