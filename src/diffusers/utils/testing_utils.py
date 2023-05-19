@@ -521,8 +521,6 @@ def enable_full_determinism():
     Helper function for reproducible behavior during distributed training. See
     - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
     """
-
-    return
     #  Enable PyTorch deterministic mode. This potentially requires either the environment
     #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
     # depending on the CUDA version, so we set them both here
