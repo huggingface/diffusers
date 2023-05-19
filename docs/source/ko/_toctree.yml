@@ -29,7 +29,7 @@
       title: InstructPix2Pix 학습
     title: 학습
 - sections:
-  - local: optimization/opt_overview
+  - local: in_translation
     title: 개요
   - local: optimization/fp16
     title: 메모리와 속도
