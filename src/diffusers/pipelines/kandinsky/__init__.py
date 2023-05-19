@@ -17,4 +17,3 @@ else:
     from .pipeline_kandinsky_inpaint import KandinskyInpaintPipeline
     from .pipeline_kandinsky_prior import KandinskyPriorPipeline
     from .text_encoder import MultilingualCLIP
-    from .text_proj import KandinskyTextProjModel

@@ -361,7 +361,13 @@ class LabelEmbedding(nn.Module):
 
 
 class TextImageProjection(nn.Module):
-    def __init__(self, text_embed_dim: int = 1024, image_embed_dim: int = 768, cross_attention_dim: int = 768,  num_image_text_embeds: int = 10):
+    def __init__(
+        self,
+        text_embed_dim: int = 1024,
+        image_embed_dim: int = 768,
+        cross_attention_dim: int = 768,
+        num_image_text_embeds: int = 10,
+    ):
         super().__init__()
 
         self.num_image_text_embeds = num_image_text_embeds

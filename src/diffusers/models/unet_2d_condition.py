@@ -23,7 +23,14 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
-from .embeddings import GaussianFourierProjection, TextTimeEmbedding, TimestepEmbedding, Timesteps, TextImageTimeEmbedding, TextImageProjection
+from .embeddings import (
+    GaussianFourierProjection,
+    TextImageProjection,
+    TextImageTimeEmbedding,
+    TextTimeEmbedding,
+    TimestepEmbedding,
+    Timesteps,
+)
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -90,9 +97,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
         encoder_hid_dim (`int`, *optional*, defaults to None):
-            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim` dimension to `cross_attention_dim`.
+            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
+            dimension to `cross_attention_dim`.
         encoder_hid_dim_type (`str`, *optional*, defaults to None):
-            If given, the `encoder_hidden_states` and potentially other embeddings will be down-projected to text embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
+            If given, the `encoder_hidden_states` and potentially other embeddings will be down-projected to text
+            embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
@@ -255,7 +264,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             logger.info("encoder_hid_dim_type defaults to 'text_proj' as `encoder_hid_dim` is defined.")
 
         if encoder_hid_dim is None and encoder_hid_dim_type is not None:
-            raise ValueError(f"`encoder_hid_dim` has to be defined when `encoder_hid_dim_type` is set to {encoder_hid_dim_type}.")
+            raise ValueError(
+                f"`encoder_hid_dim` has to be defined when `encoder_hid_dim_type` is set to {encoder_hid_dim_type}."
+            )
 
         if encoder_hid_dim_type == "text_proj":
             self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
@@ -263,10 +274,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # image_embed_dim DOESN'T have to be `cross_attention_dim`. To not clutter the __init__ too much
             # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
             # case when `addition_embed_type == "text_image_proj"` (Kadinsky 2.1)`
-            self.encoder_hid_proj = TextImageProjection(text_embed_dim=encoder_hid_dim, image_embed_dim=cross_attention_dim, cross_attention_dim=cross_attention_dim)
+            self.encoder_hid_proj = TextImageProjection(
+                text_embed_dim=encoder_hid_dim,
+                image_embed_dim=cross_attention_dim,
+                cross_attention_dim=cross_attention_dim,
+            )
 
         elif encoder_hid_dim_type is not None:
-            raise ValueError(f"encoder_hid_dim_type: {encoder_hid_dim_type} must be None, 'text_proj' or 'text_image_proj'.")
+            raise ValueError(
+                f"encoder_hid_dim_type: {encoder_hid_dim_type} must be None, 'text_proj' or 'text_image_proj'."
+            )
         else:
             self.encoder_hid_proj = None
 
@@ -312,7 +329,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
             # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
             # case when `addition_embed_type == "text_image"` (Kadinsky 2.1)`
-            self.add_embedding = TextImageTimeEmbedding(text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim)
+            self.add_embedding = TextImageTimeEmbedding(
+                text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim
+            )
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
@@ -656,8 +675,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             added_cond_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified includes additonal conditions that can be used for additonal time embeddings or 
-                encoder hidden states projections. See the configurations `encoder_hid_dim_type` and `addition_embed_type` for more information.
+                A kwargs dictionary that if specified includes additonal conditions that can be used for additonal time
+                embeddings or encoder hidden states projections. See the configurations `encoder_hid_dim_type` and
+                `addition_embed_type` for more information.
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -737,7 +757,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         elif self.config.addition_embed_type == "text_image":
             # Kadinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
-                raise ValueError(f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`")
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                )
 
             image_embs = added_cond_kwargs.get("image_embeds")
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
@@ -753,7 +775,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "text_image_proj":
             # Kadinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
-                raise ValueError(f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`")
+                raise ValueError(
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                )
 
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states, image_embeds)
