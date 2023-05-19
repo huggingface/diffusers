@@ -281,11 +281,11 @@ class UNet2DConditionLoadersMixin:
                     cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                     attn_processor_class = LoRAAttnProcessor
 
-                # print(f"attn_processor_class: {attn_processor_class}")
+                print(f"attn_processor_class: {attn_processor_class}")
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
                 )
-                print(f"{attn_processors[key]} is being loaded with: {value_dict.keys()}")
+                # print(f"{attn_processors[key]} is being loaded with: {value_dict.keys()}")
                 attn_processors[key].load_state_dict(value_dict)
         elif is_custom_diffusion:
             custom_diffusion_grouped_dict = defaultdict(dict)
