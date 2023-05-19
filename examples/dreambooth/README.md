@@ -43,6 +43,8 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+
 ### Dog toy example
 
 Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
