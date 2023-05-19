@@ -33,7 +33,6 @@ from ...utils import (
     randn_tensor,
 )
 from .text_encoder import MultilingualCLIP
-from .text_proj import KandinskyTextProjModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -74,8 +73,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
-        text_proj ([`KandinskyTextProjModel`]):
-            Utility class to prepare and combine the embeddings before they are passed to the decoder.
         movq ([`VQModel`]):
             MoVQ image encoder and decoder
     """
@@ -85,7 +82,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         movq: VQModel,
         tokenizer: XLMRobertaTokenizer,
-        text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: DDIMScheduler,
     ):
@@ -94,7 +90,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         self.register_modules(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
             movq=movq,
@@ -247,7 +242,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.text_proj,
             self.text_encoder,
             self.movq,
         ]
@@ -382,12 +376,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             dtype=prompt_embeds.dtype, device=device
         )
 
-        text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
-            image_embeddings=image_embeds,
-            prompt_embeds=prompt_embeds,
-            text_encoder_hidden_states=text_encoder_hidden_states,
-        )
-
         # 4. pre-processing initial image
         if not isinstance(image, list):
             image = [image]
@@ -436,11 +424,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
+            added_cond_kwargs = {"text_embeds": prompt_embeds, "image_embeds": image_embeds}
             noise_pred = self.unet(
                 sample=latent_model_input,
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
-                class_labels=additive_clip_time_embeddings,
+                added_cond_kwargs=added_cond_kwargs,
             ).sample
 
             if do_classifier_free_guidance:

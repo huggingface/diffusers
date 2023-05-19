@@ -30,7 +30,6 @@ from ...utils import (
     randn_tensor,
 )
 from .text_encoder import MultilingualCLIP
-from .text_proj import KandinskyTextProjModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -62,8 +61,6 @@ class KandinskyPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
-        text_proj ([`KandinskyTextProjModel`]):
-            Utility class to prepare and combine the embeddings before they are passed to the decoder.
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
@@ -72,7 +69,6 @@ class KandinskyPipeline(DiffusionPipeline):
         self,
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
-        text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: UnCLIPScheduler,
         movq: VQModel,
@@ -82,7 +78,6 @@ class KandinskyPipeline(DiffusionPipeline):
         self.register_modules(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
             movq=movq,
@@ -217,7 +212,6 @@ class KandinskyPipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.text_proj,
             self.text_encoder,
             self.movq,
         ]
@@ -318,12 +312,6 @@ class KandinskyPipeline(DiffusionPipeline):
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
             dtype=prompt_embeds.dtype, device=device
         )
-
-        # text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
-        #     image_embeddings=image_embeds,
-        #     prompt_embeds=prompt_embeds,
-        #     text_encoder_hidden_states=text_encoder_hidden_states,
-        # )
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps

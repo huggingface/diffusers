@@ -35,7 +35,6 @@ from ...utils import (
     randn_tensor,
 )
 from .text_encoder import MultilingualCLIP
-from .text_proj import KandinskyTextProjModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -203,8 +202,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
-        text_proj ([`KandinskyTextProjModel`]):
-            Utility class to prepare and combine the embeddings before they are passed to the decoder.
         movq ([`VQModel`]):
             MoVQ image encoder and decoder
     """
@@ -214,7 +211,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         movq: VQModel,
         tokenizer: XLMRobertaTokenizer,
-        text_proj: KandinskyTextProjModel,
         unet: UNet2DConditionModel,
         scheduler: UnCLIPScheduler,
     ):
@@ -224,7 +220,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             movq=movq,
             tokenizer=tokenizer,
-            text_proj=text_proj,
             unet=unet,
             scheduler=scheduler,
         )
@@ -358,7 +353,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.text_proj,
             self.text_encoder,
             self.movq,
         ]
@@ -463,12 +457,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             dtype=prompt_embeds.dtype, device=device
         )
 
-        text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
-            image_embeddings=image_embeds,
-            prompt_embeds=prompt_embeds,
-            text_encoder_hidden_states=text_encoder_hidden_states,
-        )
-
         # preprocess image and mask
         ## Encode the image
 
@@ -530,11 +518,12 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = torch.cat([latent_model_input, masked_image, mask_image], dim=1)
 
+            added_cond_kwargs = {"text_embeds": prompt_embeds, "image_embeds": image_embeds}
             noise_pred = self.unet(
                 sample=latent_model_input,  # [2, 9, 96, 96]
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
-                class_labels=additive_clip_time_embeddings,
+                added_cond_kwargs=added_cond_kwargs,
             ).sample
 
             # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
