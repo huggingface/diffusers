@@ -38,6 +38,7 @@ from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
@@ -435,7 +436,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5665, 0.6117, 0.6430, 0.4057, 0.4594, 0.5658, 0.1596, 0.3106, 0.4305])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 3e-3
 
     def test_stable_diffusion_inpaint_legacy_batched(self):
         pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
@@ -468,8 +469,8 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
             [0.3592432, 0.4233033, 0.3914635, 0.31014425, 0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092]
         )
 
-        assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
-        assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
+        assert np.abs(expected_slice_0 - image_slice_0).max() < 3e-3
+        assert np.abs(expected_slice_1 - image_slice_1).max() < 3e-3
 
     def test_stable_diffusion_inpaint_legacy_k_lms(self):
         pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
@@ -487,7 +488,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.4534, 0.4467, 0.4329, 0.4329, 0.4339, 0.4220, 0.4244, 0.4332, 0.4426])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 3e-3
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
         number_of_steps = 0

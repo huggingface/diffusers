@@ -296,8 +296,7 @@ def maybe_raise_or_warn(
 
         if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
-                f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
-                f" {expected_class_obj}"
+                f"{passed_class_obj[name]} is of type: {model_cls}, but should be" f" {expected_class_obj}"
             )
     else:
         logger.warning(
@@ -531,7 +530,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        method. The pipeline can easily be re-loaded using the [`~DiffusionPipeline.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -814,10 +813,10 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-            use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
-                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
-                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
+                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -1087,7 +1086,7 @@ class DiffusionPipeline(ConfigMixin):
         Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
 
         Parameters:
-             pretrained_model_name (`str` or `os.PathLike`, *optional*):
+            pretrained_model_name (`str` or `os.PathLike`, *optional*):
                 Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
                 https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                 `CompVis/ldm-text2im-large-256`.
@@ -1250,7 +1249,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 

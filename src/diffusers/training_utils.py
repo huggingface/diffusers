@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import os
 import random
@@ -6,7 +7,11 @@ from typing import Any, Dict, Iterable, Optional, Union
 import numpy as np
 import torch
 
-from .utils import deprecate
+from .utils import deprecate, is_transformers_available
+
+
+if is_transformers_available():
+    import transformers
 
 
 def enable_full_determinism(seed: int):
@@ -197,11 +202,19 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
+        context_manager = contextlib.nullcontext
+        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+            import deepspeed
+
         for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param))
-            else:
-                s_param.copy_(param)
+            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+                context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+
+            with context_manager():
+                if param.requires_grad:
+                    s_param.sub_(one_minus_decay * (s_param - param))
+                else:
+                    s_param.copy_(param)
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
