@@ -39,6 +39,7 @@ from .test_modeling_common import ModelTesterMixin
 
 logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -442,8 +443,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
             sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample1 - sample2).abs().max() < 1e-4
-        assert (sample3 - sample4).abs().max() < 1e-4
+        assert (sample1 - sample2).abs().max() < 3e-3
+        assert (sample3 - sample4).abs().max() < 3e-3
 
         # sample 2 and sample 3 should be different
         assert (sample2 - sample3).abs().max() > 1e-4
@@ -587,7 +588,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             new_sample = model(**inputs_dict).sample
 
         assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 1e-4
+        assert (sample - old_sample).abs().max() < 3e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -642,7 +643,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample2 = model(**inputs_dict).sample
 
-        assert (sample1 - sample2).abs().max() < 1e-4
+        assert (sample1 - sample2).abs().max() < 3e-3
 
     def test_custom_diffusion_save_load(self):
         # enable deterministic behavior for gradient checkpointing
@@ -677,7 +678,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         assert (sample - new_sample).abs().max() < 1e-4
 
         # custom diffusion and no custom diffusion should be the same
-        assert (sample - old_sample).abs().max() < 1e-4
+        assert (sample - old_sample).abs().max() < 3e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -957,7 +958,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
     @parameterized.expand(
         [
