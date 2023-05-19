@@ -319,11 +319,11 @@ class KandinskyPipeline(DiffusionPipeline):
             dtype=prompt_embeds.dtype, device=device
         )
 
-        text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
-            image_embeddings=image_embeds,
-            prompt_embeds=prompt_embeds,
-            text_encoder_hidden_states=text_encoder_hidden_states,
-        )
+        # text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
+        #     image_embeddings=image_embeds,
+        #     prompt_embeds=prompt_embeds,
+        #     text_encoder_hidden_states=text_encoder_hidden_states,
+        # )
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
@@ -346,11 +346,12 @@ class KandinskyPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
+            added_cond_kwargs = {"text_embeds": prompt_embeds, "image_embeds": image_embeds}
             noise_pred = self.unet(
                 sample=latent_model_input,  # [2, 4, 96, 96]
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
-                class_labels=additive_clip_time_embeddings,
+                added_cond_kwargs=added_cond_kwargs,
             ).sample
 
             # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
