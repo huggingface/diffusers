@@ -212,3 +212,65 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
+
+    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+    def get_dummy_tokens(self):
+        max_seq_length = 77
+
+        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0)).to("cuda")
+
+        prepared_inputs = {}
+        prepared_inputs["input_ids"] = inputs
+        return prepared_inputs
+
+    def test_text_encoder_lora_monkey_patch(self):
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to("cuda")
+
+        dummy_tokens = self.get_dummy_tokens()
+
+        # inference without lora
+        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora.shape == (1, 77, 768)
+
+        text_lora_attn_procs = {}
+        for name, module in pipe.text_encoder.named_modules():
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+                text_lora_attn_procs[name] = LoRAAttnProcessor(
+                    hidden_size=module.out_features, cross_attention_dim=None
+                ).to("cuda")
+
+        # monkey patch
+        pipe._modify_text_encoder(text_lora_attn_procs)
+
+        # make sure that the lora_up.weights are zeroed out
+        for name, attn_proc in text_lora_attn_procs.items():
+            for n in ["q", "k", "v", "out"]:
+                n = f"to_{n}_lora"
+                lora_linear_layer = getattr(attn_proc, n)
+                lora_up_weight = lora_linear_layer.up.weight
+                assert torch.allclose(
+                    lora_up_weight, torch.zeros_like(lora_up_weight)
+                ), "lora_up_weight should be zeroed out"
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 768)
+
+        assert torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs"
+
+        # make lora_up.weights as random
+        for name, attn_proc in text_lora_attn_procs.items():
+            for n in ["q", "k", "v", "out"]:
+                n = f"to_{n}_lora"
+                lora_linear_layer = getattr(attn_proc, n)
+                lora_linear_layer.up.weight = torch.nn.Parameter(torch.randn_like(lora_linear_layer.up.weight))
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 768)
+
+        assert not torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
