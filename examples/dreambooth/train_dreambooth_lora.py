@@ -59,6 +59,7 @@ from diffusers.models.attention_processor import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+import copy
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -826,6 +827,7 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
+    initial_unet_lora_layers = copy.deepcopy(unet_lora_layers)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -1261,6 +1263,14 @@ def main(args):
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
         unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+
+        initial_state_dict = initial_unet_lora_layers.state_dict()
+        trained_state_dict = unet_lora_layers.state_dict()
+        logger.info("Checking between initial state dict and trained state dict.")
+        for k in trained_state_dict:
+            trained_param = trained_state_dict[k]
+            initial_param = initial_state_dict[k]
+            logger.info(torch.all_close(trained_param, initial_param))
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
