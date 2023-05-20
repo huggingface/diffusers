@@ -37,6 +37,41 @@ from .text_encoder import MultilingualCLIP
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
+        >>> import torch
+
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior.to("cuda")
+        
+        >>> prompt= "A red cartoon frog, 4k"
+        >>> image_emb, zero_image_emb = pipe_prior(prompt, generator=generator, return_dict=False)
+
+        >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky-img2img")
+        >>> pipe.to("cuda)
+
+        >>> init_image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+        ...     "/kandinsky/frog.png"
+        ... )
+
+        >>> image = pipe(
+        ...    prompt,
+        ...    image=init_image,
+        ...    image_embeds=image_emb,
+        ...    negative_image_embeds =zero_image_emb,
+        ...    height=768,
+        ...    width=768,
+        ...    num_inference_steps=100,
+        ...    strength=0.2,
+        ... ).images
+
+        >>> image[0].save("cat_with_hat.png")
+        ```
+"""
+
 
 def get_new_h_w(h, w, scale_factor=8):
     new_h = h // scale_factor**2
@@ -327,16 +362,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         return noisy_samples
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
         image_embeds: torch.FloatTensor,
         negative_image_embeds: torch.FloatTensor,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
-        strength: float = 0.75,
+        strength: float = 0.3,
         guidance_scale: float = 7.0,
         num_images_per_prompt: int = 1,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -344,7 +380,58 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
-        # 2. Define call parameters
+        """
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation. 
+            image (`torch.FloatTensor`, `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the
+                process.
+            image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+                The clip image embeddings for text prompt, that will be used to condition the image generation.
+            negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+                The clip image embeddings for negative text prompt, will be used to condition the image generation.
+            height (`int`, *optional*, defaults to 512):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 512):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 100):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            strength (`float`, *optional*, defaults to 0.3):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between: 
+                `"pil"` (`PIL.Image.Image`), `"np"` (`np.array`)  or  `"pt"` (`torch.Tensor`).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`
+        """
+        # 1. Define call parameters
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -358,7 +445,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. get text and image encoding
+        # 2. get text and image embeddings
         prompt_embeds, text_encoder_hidden_states, _ = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
@@ -376,7 +463,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             dtype=prompt_embeds.dtype, device=device
         )
 
-        # 4. pre-processing initial image
+        # 3. pre-processing initial image
         if not isinstance(image, list):
             image = [image]
         if not all(isinstance(i, (PIL.Image.Image, torch.Tensor)) for i in image):
@@ -390,7 +477,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         latents = self.movq.encode(image)["latents"]
         latents = latents.repeat_interleave(num_images_per_prompt, dim=0)
 
-        # 5. set timesteps
+        # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         # YiYi's Notes: This step is taken from the origianl Kandinsky repo
@@ -408,7 +495,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         height, width = get_new_h_w(height, width, self.movq_scale_factor)
 
-        # 6. Create initial latent
+        # 5. Create initial latent
         latents = self.prepare_latents(
             latents,
             latent_timestep,
@@ -419,7 +506,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-        # 7. Denoising loop
+        # 6. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -450,16 +537,23 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-        # 8. post-processing
+        # 7. post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-        image = image * 0.5 + 0.5
-        image = image.clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(
+                f"the output_type {output_type} is not supported. Currently we only support: "
+                "`pil`, `np`, `pt`"
+            )
+
+        if output_type in ['np', 'pil']:
+            image = image * 0.5 + 0.5
+            image = image.clamp(0, 1)
+            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-
+        
         if not return_dict:
             return (image,)
 

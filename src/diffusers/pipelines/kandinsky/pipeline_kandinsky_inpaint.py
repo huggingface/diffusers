@@ -46,18 +46,16 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
         >>> from diffusers.utils import load_image
         >>> import torch
-
+     
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
         >>> pipe_prior.to("cuda")
 
-        >>> out = pipe_prior(prompt)
-        >>> image_emb = out.images
-        >>> zero_image_emb = out.zero_embeds
+        >>> prompt= "red cat, 4k photo"
+        >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
         >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint")
         >>> pipe.to("cuda)
 
-        >>> prompt= "red cat, 4k photo"
         >>> init_image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
         ...     "/kandinsky/cat.png")
@@ -665,13 +663,20 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-        image = image * 0.5 + 0.5
-        image = image.clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(
+                f"the output_type {output_type} is not supported. Currently we only support: "
+                "`pil`, `np`, `pt`"
+            )
+
+        if output_type in ['np', 'pil']:
+            image = image * 0.5 + 0.5
+            image = image.clamp(0, 1)
+            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-
+        
         if not return_dict:
             return (image,)
 
