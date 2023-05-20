@@ -130,7 +130,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         image_embeddings = []
         for cond, weight in zip(images_and_prompts, weights):
             if isinstance(cond, str):
-
                 image_emb = self.__call__(
                     cond,
                     num_inference_steps=num_inference_steps,
