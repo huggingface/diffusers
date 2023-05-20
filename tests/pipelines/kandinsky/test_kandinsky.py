@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import XLMRobertaTokenizer
+from transformers import XLMRobertaTokenizerFast
 
 from diffusers import KandinskyPipeline, KandinskyPriorPipeline, UnCLIPScheduler, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP

@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
 from dataclasses import dataclass
+from typing import List, Optional, Union
 
-import PIL
-
-import torch
 import numpy as np
+import PIL
+import torch
+from torchvision import transforms
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
@@ -32,7 +31,6 @@ from ...utils import (
     randn_tensor,
 )
 
-from torchvision import transforms
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -40,15 +38,16 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
+
 image_transforms = transforms.Compose(
-        [
-            transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(224),
-            _convert_image_to_rgb,
-            transforms.ToTensor(),
-            transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-        ]
-    )
+    [
+        transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(224),
+        _convert_image_to_rgb,
+        transforms.ToTensor(),
+        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    ]
+)
 
 
 @dataclass
@@ -65,6 +64,7 @@ class KandinskyPriorPipelineOutput(BaseOutput):
 
     images: Union[torch.FloatTensor, np.ndarray]
     zero_embeds: Union[torch.FloatTensor, np.ndarray]
+
 
 class KandinskyPriorPipeline(DiffusionPipeline):
     """
@@ -106,9 +106,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         )
 
     def interpolate(
-        self, 
-        images_and_prompts: List[Union[str, PIL.Image.Image, torch.FloatTensor]], 
-        weights: List[float], 
+        self,
+        images_and_prompts: List[Union[str, PIL.Image.Image, torch.FloatTensor]],
+        weights: List[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -118,39 +118,42 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
-        device = None,
+        device=None,
     ):
         device = device or self.device
 
         if len(images_and_prompts) != len(weights):
-            raise ValueError(f"`images_and_prompts` contains {len(images_and_prompts)} items and `weights` contains {len(weights)} items - they should be lists of same length")
-        
+            raise ValueError(
+                f"`images_and_prompts` contains {len(images_and_prompts)} items and `weights` contains {len(weights)} items - they should be lists of same length"
+            )
+
         image_embeddings = []
         for cond, weight in zip(images_and_prompts, weights):
             if isinstance(cond, str):
-                            # this is for testing only, normally we should pass it as argument
-                generator = torch.Generator(device='cuda').manual_seed(0)
+                # this is for testing only, normally we should pass it as argument
+                generator = torch.Generator(device="cuda").manual_seed(0)
 
                 image_emb = self.__call__(
-                    cond, 
+                    cond,
                     num_inference_steps=num_inference_steps,
                     num_images_per_prompt=num_images_per_prompt,
                     generator=generator,
                     latents=latents,
                     negative_prompt=negative_prior_prompt,
                     guidance_scale=guidance_scale,
-                    ).images
-                
+                ).images
+
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
-                
                 if isinstance(cond, PIL.Image.Image):
-                    cond = image_transforms(cond).unsqueeze(0).to(dtype = self.image_encoder.dtype, device=device)
-                
+                    cond = image_transforms(cond).unsqueeze(0).to(dtype=self.image_encoder.dtype, device=device)
+
                 image_emb = self.image_encoder(cond)["image_embeds"]
-            
+
             else:
-                raise ValueError(f"`images_and_prompts` can only contains elements to be of type `str`, `PIL.Image.Image` or `torch.Tensor`  but is {type(cond)}")
-            
+                raise ValueError(
+                    f"`images_and_prompts` can only contains elements to be of type `str`, `PIL.Image.Image` or `torch.Tensor`  but is {type(cond)}"
+                )
+
             image_embeddings.append(image_emb * weight)
 
         image_emb = torch.cat(image_embeddings).sum(dim=0, keepdim=True)
@@ -163,7 +166,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             latents=latents,
             negative_prompt=negative_prior_prompt,
             guidance_scale=guidance_scale,
-            )
+        )
         zero_image_emb = out_zero.zero_embeds if negative_prompt == "" else out_zero.images
 
         return image_emb, zero_image_emb
@@ -381,9 +384,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             ).predicted_image_embedding
 
             if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(
-                    2
-                )
+                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
                 predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
