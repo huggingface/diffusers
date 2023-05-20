@@ -344,6 +344,22 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--attention_masking",
+        action="store_true",
+        default=False,
+        required=False,
+        help="decide whether to pass in the attention mask to the text encoder",
+    )
+    
+    parser.add_argument(
+        "--unet_att_masking",
+        action="store_true",
+        default=False,
+        required=False,
+        help="decide whether to pass in the attention mask to the unet cross attention",
+    )
+    
+    parser.add_argument(
         "--log_level",
         type=str,
         default="WARNING",
@@ -893,9 +909,7 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 # latents = vae.encode(batch["waveform"])[0][0].to(weight_dtype)[None, :, :, :]
-                
-#                 print('I AM HERE!!!!!!!!!!!!!!!', step)
-                
+                                
 #                 if (step >= args.unfreeze_step and not flipped):
 #                     for layer in unet.module.up_blocks:
 #                         layer.requires_grad_(True)
@@ -929,21 +943,11 @@ def main():
 
                     latents = torch.Tensor.view(latents, [latents.shape[0], 128, 24, 21])
         
-#                     mean = -0.50601
-#                     std = 5.22701
                 
                     transform = transforms.Compose([
                         transforms.Normalize(channel_means, channel_stds)
                     ])
                     latents = transform(latents)
-            
-            
-                    # for img in latents:
-                    #     means = img.mean(axis=(1,2))
-                    #     stds = img.std(axis=(1,2))
-                    #     print(f'MEAN: mean {means.mean()} -- std {means.std()}')
-                    #     print(f'STD: mean {stds.mean()} -- std {stds.std()}')
-                    #     print()
 
                     
                     latents = torch.Tensor.view(latents, [latents.shape[0], 1, 128, 504])
@@ -963,9 +967,11 @@ def main():
                 logger.info(f'TEXT TOKENS SIZE: {batch["input_ids"].shape}')
                 attention_mask = batch["attn_mask"]
                 logger.info(f'attention Mask size: {attention_mask.shape}')
-
-                encoder_hidden_states = text_encoder(batch["input_ids"],
+                if args.attention_masking:
+                    encoder_hidden_states = text_encoder(batch["input_ids"],
                                                      attention_mask=attention_mask)[0]
+                else:
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 logger.info(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
                 
@@ -978,8 +984,10 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss)
-                
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
+                if args.unet_att_masking:
+                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
+                else:
+                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
