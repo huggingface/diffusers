@@ -413,6 +413,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             raise ValueError(f"output_type={output_type} is not supported. Only 'pt' or 'np' is supported.")
 
         if not return_dict:
-            return (image_embeddings,)
+            return (image_embeddings, zero_embeds)
 
         return KandinskyPriorPipelineOutput(images=image_embeddings, zero_embeds=zero_embeds)
