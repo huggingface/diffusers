@@ -13,8 +13,10 @@
 # limitations under the License.
 
 from typing import List, Optional, Union
+from dataclasses import dataclass
 
 import torch
+import numpy as np
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
@@ -22,6 +24,7 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
+    BaseOutput,
     is_accelerate_available,
     logging,
     randn_tensor,
@@ -30,6 +33,20 @@ from ...utils import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+@dataclass
+class KandinskyPriorPipelineOutput(BaseOutput):
+    """
+    Output class for KandinskyPriorPipeline.
+
+    Args:
+        images (`torch.FloatTensor`)
+            clip image embeddings for text prompt
+        zero_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
+            clip image embeddings for unconditional tokens
+    """
+
+    images: Union[torch.FloatTensor, np.ndarray]
+    zero_embeds: Union[torch.FloatTensor, np.ndarray]
 
 class KandinskyPriorPipeline(DiffusionPipeline):
     """
@@ -250,74 +267,73 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         batch_size = batch_size * num_images_per_prompt
 
-            do_classifier_free_guidance = guidance_scale > 1.0
-            prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
-                prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
+        do_classifier_free_guidance = guidance_scale > 1.0
+        prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
-            # prior
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            prior_timesteps_tensor = self.scheduler.timesteps
+        # prior
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        prior_timesteps_tensor = self.scheduler.timesteps
 
-            embedding_dim = self.prior.config.embedding_dim
+        embedding_dim = self.prior.config.embedding_dim
 
-            latents = self.prepare_latents(
-                (batch_size, embedding_dim),
-                prompt_embeds.dtype,
-                device,
-                generator,
-                latents,
-                self.scheduler,
-            )
+        latents = self.prepare_latents(
+            (batch_size, embedding_dim),
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+            self.scheduler,
+        )
 
-            for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-                predicted_image_embedding = self.prior(
-                    latent_model_input,
-                    timestep=t,
-                    proj_embedding=prompt_embeds,
-                    encoder_hidden_states=text_encoder_hidden_states,
-                    attention_mask=text_mask,
-                ).predicted_image_embedding
+            predicted_image_embedding = self.prior(
+                latent_model_input,
+                timestep=t,
+                proj_embedding=prompt_embeds,
+                encoder_hidden_states=text_encoder_hidden_states,
+                attention_mask=text_mask,
+            ).predicted_image_embedding
 
-                if do_classifier_free_guidance:
-                    predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(
-                        2
-                    )
-                    predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-                        predicted_image_embedding_text - predicted_image_embedding_uncond
-                    )
+            if do_classifier_free_guidance:
+                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(
+                    2
+                )
+                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                )
 
-                if i + 1 == prior_timesteps_tensor.shape[0]:
-                    prev_timestep = None
-                else:
-                    prev_timestep = prior_timesteps_tensor[i + 1]
+            if i + 1 == prior_timesteps_tensor.shape[0]:
+                prev_timestep = None
+            else:
+                prev_timestep = prior_timesteps_tensor[i + 1]
 
-                latents = self.scheduler.step(
-                    predicted_image_embedding,
-                    timestep=t,
-                    sample=latents,
-                    generator=generator,
-                    prev_timestep=prev_timestep,
-                ).prev_sample
+            latents = self.scheduler.step(
+                predicted_image_embedding,
+                timestep=t,
+                sample=latents,
+                generator=generator,
+                prev_timestep=prev_timestep,
+            ).prev_sample
 
-            latents = self.prior.post_process_latents(latents)
+        latents = self.prior.post_process_latents(latents)
 
-            image_embeddings = latents
-            zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
+        image_embeddings = latents
+        zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
 
-            # YiYi's notes:
-            ## Prior Pipeline should always return a tensor that can be used in text2img/img2img/inpainting pipelines
-            ## However need np type for testing purpose
-            if output_type == "np":
-                image_embeddings = image_embeddings.cpu().numpy()
-                zero_embeds = zero_embeds.cpu().numpy()
-            elif output_type != "pt":
-                raise ValueError(f"output_type={output_type} is not supported. Only 'pt' or 'np' is supported.")
+        ## Prior Pipeline should always return a tensor that can be used in text2img/img2img/inpainting pipelines
+        ## However need np type for testing purpose
+        if output_type == "np":
+            image_embeddings = image_embeddings.cpu().numpy()
+            zero_embeds = zero_embeds.cpu().numpy()
+        elif output_type != "pt":
+            raise ValueError(f"output_type={output_type} is not supported. Only 'pt' or 'np' is supported.")
 
-            if not return_dict:
-                return (image_embeddings,)
+        if not return_dict:
+            return (image_embeddings,)
 
-        return ImagePipelineOutput(images=image_embeddings, zero_embeds=zeros_embeds)
+        return KandinskyPriorPipelineOutput(images=image_embeddings, zero_embeds=zero_embeds)

@@ -241,37 +241,37 @@ class Decoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, zq, use_reentrant=False
+                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
                 )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block), sample, zq, use_reentrant=False
+                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
                     )
             else:
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, zq)
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, latent_embeds)
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, zq)
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
         else:
             # middle
-            sample = self.mid_block(sample, zq)
+            sample = self.mid_block(sample, latent_embeds)
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(sample, zq)
+                sample = up_block(sample, latent_embeds)
 
         # post-process
-        if zq is None:
+        if latent_embeds is None:
             sample = self.conv_norm_out(sample)
         else:
-            sample = self.conv_norm_out(sample, zq)
+            sample = self.conv_norm_out(sample, latent_embeds)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
