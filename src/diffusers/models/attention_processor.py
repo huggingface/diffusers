@@ -425,12 +425,12 @@ class AttnProcessor:
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        vq_emb=None,
+        temb=None,
     ):
         residual = hidden_states
 
         if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, vq_emb)
+            hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
 
@@ -888,12 +888,12 @@ class AttnProcessor2_0:
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        vq_emb=None,
+        temb=None,
     ):
         residual = hidden_states
 
         if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, vq_emb)
+            hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
 

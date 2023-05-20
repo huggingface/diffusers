@@ -96,7 +96,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             intermediate_size=37,
             num_attention_heads=4,
             num_hidden_layers=5,
-            vocab_size=250002,
+            vocab_size=1005,
         )
 
         text_encoder = MultilingualCLIP(config)

@@ -469,7 +469,7 @@ class UNetMidBlock2D(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
-                hidden_states = attn(hidden_states, vq_emb=temb)
+                hidden_states = attn(hidden_states, temb=temb)
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -2183,7 +2183,7 @@ class AttnUpDecoderBlock2D(nn.Module):
     def forward(self, hidden_states, temb=None):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb)
-            hidden_states = attn(hidden_states, vq_emb=temb)
+            hidden_states = attn(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

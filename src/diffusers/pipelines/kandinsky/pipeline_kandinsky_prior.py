@@ -81,7 +81,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def create_zero_img_emb(self, batch_size, device):
+    def get_zero_embed(self, batch_size=1, device=None):
+        device = device or self.device
         zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(
             device=device, dtype=self.image_encoder.dtype
         )
@@ -228,7 +229,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt,
+        prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -249,10 +250,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         batch_size = batch_size * num_images_per_prompt
 
-        if prompt == "" or prompt[0] == "":
-            image_embeddings = self.create_zero_img_emb(batch_size=batch_size, device=device)
-
-        else:
             do_classifier_free_guidance = guidance_scale > 1.0
             prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
                 prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
@@ -309,14 +306,18 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             latents = self.prior.post_process_latents(latents)
 
             image_embeddings = latents
+            zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
 
             # YiYi's notes:
             ## Prior Pipeline should always return a tensor that can be used in text2img/img2img/inpainting pipelines
             ## However need np type for testing purpose
             if output_type == "np":
                 image_embeddings = image_embeddings.cpu().numpy()
+                zero_embeds = zero_embeds.cpu().numpy()
+            elif output_type != "pt":
+                raise ValueError(f"output_type={output_type} is not supported. Only 'pt' or 'np' is supported.")
 
             if not return_dict:
                 return (image_embeddings,)
 
-        return ImagePipelineOutput(images=image_embeddings)
+        return ImagePipelineOutput(images=image_embeddings, zero_embeds=zeros_embeds)

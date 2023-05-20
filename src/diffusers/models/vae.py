@@ -183,7 +183,7 @@ class Decoder(nn.Module):
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
             output_scale_factor=1,
-            resnet_time_scale_shift=norm_type,
+            resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
             temb_channels=temb_channels,
@@ -225,7 +225,7 @@ class Decoder(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, z, zq=None):
+    def forward(self, z, latent_embeds=None):
         sample = z
         sample = self.conv_in(sample)
 

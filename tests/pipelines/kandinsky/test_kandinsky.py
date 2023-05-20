@@ -81,7 +81,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     # YiYi's TO-DO: add a tiny tokenizer?
     @property
     def dummy_tokenizer(self):
-        tokenizer = XLMRobertaTokenizer.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
+        tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/tiny-random-mclip-base")
         return tokenizer
 
     @property
@@ -94,7 +94,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             intermediate_size=37,
             num_attention_heads=4,
             num_hidden_layers=5,
-            vocab_size=250002,
+            vocab_size=1005,
         )
 
         text_encoder = MultilingualCLIP(config)
