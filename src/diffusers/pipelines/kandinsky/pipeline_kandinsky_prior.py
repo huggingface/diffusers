@@ -130,8 +130,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         image_embeddings = []
         for cond, weight in zip(images_and_prompts, weights):
             if isinstance(cond, str):
-                # this is for testing only, normally we should pass it as argument
-                generator = torch.Generator(device="cuda").manual_seed(0)
 
                 image_emb = self.__call__(
                     cond,
