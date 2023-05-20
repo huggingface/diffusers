@@ -1750,7 +1750,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # emb
+                    temb,
                     attention_mask,
                     cross_attention_kwargs,
                     encoder_attention_mask,
@@ -1761,6 +1761,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
+                    emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
@@ -2876,7 +2877,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # temb
+                    temb,
                     attention_mask,
                     cross_attention_kwargs,
                     encoder_attention_mask,
@@ -2887,6 +2888,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
+                    emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
@@ -2970,6 +2972,8 @@ class KAttentionBlock(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        # TODO: mark emb as non-optional (self.norm2 requires it).
+        #       requires assessing impact of change to positional param interface.
         emb: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
