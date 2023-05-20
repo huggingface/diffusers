@@ -355,6 +355,7 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
+    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
     offload_folder: Optional[Union[str, os.PathLike]],
     offload_state_dict: bool,
     model_variants: Dict[str, str],
@@ -419,6 +420,7 @@ def load_sub_model(
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
         loading_kwargs["device_map"] = device_map
+        loading_kwargs["max_memory"] = max_memory
         loading_kwargs["offload_folder"] = offload_folder
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
@@ -813,6 +815,9 @@ class DiffusionPipeline(ConfigMixin):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier to maximum memory. Will default to the maximum memory available for each
+                GPU and the available CPU RAM if unset.
             offload_folder (`str` or `os.PathLike`, *optional*):
                 If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
             offload_state_dict (`bool`, *optional*):
@@ -884,6 +889,7 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
@@ -1059,6 +1065,7 @@ class DiffusionPipeline(ConfigMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=device_map,
+                    max_memory=max_memory,
                     offload_folder=offload_folder,
                     offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
