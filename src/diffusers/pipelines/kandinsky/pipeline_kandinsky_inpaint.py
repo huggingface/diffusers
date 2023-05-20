@@ -33,11 +33,53 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from .text_encoder import MultilingualCLIP
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
+        >>> from diffusers.utils import load_image
+        >>> import torch
+
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior.to("cuda")
+
+        >>> out = pipe_prior(prompt)
+        >>> image_emb = out.images
+        >>> zero_image_emb = out.zero_embeds
+
+        >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint")
+        >>> pipe.to("cuda)
+
+        >>> prompt= "red cat, 4k photo"
+        >>> init_image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+        ...     "/kandinsky/cat.png")
+
+        >>> mask = np.ones((768, 768), dtype=np.float32)
+        >>> mask[:250,250:-250] =  0
+
+        >>> out = pipe(
+        ...     prompt,
+        ...     image=init_image,
+        ...     mask_image=mask,
+        ...     image_embeds=image_emb,
+        ...     negative_image_embeds =zero_image_emb,
+        ...     height=768,
+        ...     width=768,
+        ...     num_inference_steps=150,
+        ... )
+
+        >>> image = out.images[0]
+        >>> image.save("cat_with_hat.png")
+        ```
+"""
 
 
 def get_new_h_w(h, w, scale_factor=8):
@@ -76,7 +118,7 @@ def prepare_mask(masks):
 
 def prepare_mask_and_masked_image(image, mask, height, width):
     r"""
-    Prepares a pair (image, mask) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will
+    Prepares a pair (mask, image) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will
     be converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for
     the ``image`` and ``1`` for the ``mask``.
 
@@ -90,7 +132,11 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
             It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or a ``1 x height x width``
             ``torch.Tensor`` or a ``batch x 1 x height x width`` ``torch.Tensor``.
-
+        height (`int`, *optional*, defaults to 512):
+            The height in pixels of the generated image.
+        width (`int`, *optional*, defaults to 512):
+            The width in pixels of the generated image.
+            
 
     Raises:
         ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
@@ -99,7 +145,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
             (ot the other way around).
 
     Returns:
-        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
+        tuple[torch.Tensor]: The pair (mask, image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
 
@@ -188,7 +234,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
 class KandinskyInpaintPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using Kandinsky
+    Pipeline for text-guided image inpainting using Kandinsky2.1
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -409,11 +455,12 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         return self.device
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
         image_embeds: torch.FloatTensor,
         negative_image_embeds: torch.FloatTensor,
         height: int = 512,
@@ -427,6 +474,65 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
+
+        """
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation. 
+            image (`torch.FloatTensor`, `PIL.Image.Image` or `np.ndarray`):
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the
+                process.
+            mask_image (`PIL.Image.Image`,`torch.FloatTensor` or `np.ndarray`):
+                `Image`, or a tensor representing an image batch, to mask `image`. White pixels in the mask will be
+                repainted, while black pixels will be preserved. You can pass a pytorch tensor as mask only if
+                the image you passed is a pytorch tensor, and it should contain one color channel (L) instead of 3, 
+                so the expected shape would be either `(B, 1, H, W,)`, `(B, H, W)`, `(1, H, W)` or `(H, W)`
+                If image is an PIL image or numpy array, mask should also be a either PIL image or numpy array. 
+                If it is a PIL image, it will be converted to a single channel (luminance) before use. If it is a nummpy array, 
+                the expected shape is `(H, W)`. 
+            image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+                The clip image embeddings for text prompt, that will be used to condition the image generation.
+            negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+                The clip image embeddings for negative text prompt, will be used to condition the image generation.
+            height (`int`, *optional*, defaults to 512):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 512):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 100):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between: 
+                `"pil"` (`PIL.Image.Image`), `"np"` (`np.array`)  or  `"pt"` (`torch.Tensor`).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`
+        """
+
         # Define call parameters
         if isinstance(prompt, str):
             batch_size = 1
