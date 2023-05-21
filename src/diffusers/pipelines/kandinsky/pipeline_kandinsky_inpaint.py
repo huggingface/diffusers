@@ -652,7 +652,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 prev_timestep=prev_timestep,
                 generator=generator,
-                #batch_size=batch_size,
+                batch_size=batch_size,
             ).prev_sample
 
             _, latents = latents.chunk(2)
