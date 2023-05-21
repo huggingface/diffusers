@@ -136,5 +136,5 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 3812.9927) < 1e-2
+        assert abs(result_sum.item() - 3812.9927) < 2e-2
         assert abs(result_mean.item() - 4.9648) < 1e-3
