@@ -159,7 +159,7 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
-        norm_type="default",  # default, spatial
+        norm_type="group",  # group, spatial
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
