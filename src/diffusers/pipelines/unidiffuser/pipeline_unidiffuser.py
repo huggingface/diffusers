@@ -1181,7 +1181,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         width = width or self.unet_resolution * self.vae_scale_factor
 
         # 1. Check inputs
-        # Recalculate mode for each call to the pipeline.
         mode = self._infer_mode(prompt, prompt_embeds, image, latents, prompt_latents, vae_latents, clip_latents)
         self.check_inputs(
             mode,
@@ -1200,6 +1199,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         # 2. Define call parameters
+
+        # Recalculate mode for each call to the pipeline.
         batch_size, multiplier = self._infer_batch_size(
             mode,
             prompt,
@@ -1325,12 +1326,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Check that shapes of latents and image match the UNet channels.
+        # TODO
+
+        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         logger.debug(f"Scheduler extra step kwargs: {extra_step_kwargs}")
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1352,6 +1356,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     width,
                 )
 
+                # TODO: do we need to worry about sigma space stuff for the scheduler?
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
@@ -1361,7 +1367,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 9. Post-processing
+        # 10. Post-processing
         gen_image = None
         gen_text = None
         if mode == "joint":
@@ -1379,7 +1385,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
             text_latents = latents
             gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
 
-        # 10. Convert to PIL
+        # 11. Run safety checker
+        # TODO
+
+        # 12. Convert to PIL
         if output_type == "pil" and gen_image is not None:
             gen_image = self.numpy_to_pil(gen_image)
 

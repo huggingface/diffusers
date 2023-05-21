@@ -192,6 +192,7 @@ class UTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
+        # self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
         self.pre_layer_norm = pre_layer_norm
@@ -229,6 +230,8 @@ class UTransformerBlock(nn.Module):
 
         if self.use_ada_layer_norm:
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # elif self.use_ada_layer_norm_zero:
+        #     self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
@@ -387,6 +390,7 @@ class UniDiffuserBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
+        # self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
         self.pre_layer_norm = pre_layer_norm
@@ -424,6 +428,8 @@ class UniDiffuserBlock(nn.Module):
 
         if self.use_ada_layer_norm:
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # elif self.use_ada_layer_norm_zero:
+        #     self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
@@ -807,6 +813,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             )
 
         # 3. Output
+        # TODO: cleanup!
         # Don't support AdaLayerNorm for now, so no conditioning/scale/shift logic
         hidden_states = self.norm_out(hidden_states)
         # hidden_states = self.proj_out(hidden_states)
@@ -1186,8 +1193,10 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
                 (1, 1, num_text_tokens, 1, num_img_tokens), dim=1
             )
 
-        img_vae_out = self.vae_img_out(img_vae_out)
+        # print(F"img vae transformer output shape: {img_vae_out.shape}")
 
+        img_vae_out = self.vae_img_out(img_vae_out)
+        # print(f"img_vae_out shape: {img_vae_out.shape}")
         # unpatchify
         height = width = int(img_vae_out.shape[1] ** 0.5)
         img_vae_out = img_vae_out.reshape(
