@@ -104,9 +104,6 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return text_encoder
 
-        model = KandinskyTextProjModel(**model_kwargs)
-        return model
-
     @property
     def dummy_unet(self):
         torch.manual_seed(0)
@@ -126,9 +123,8 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "cross_attention_dim": self.cross_attention_dim,
             "attention_head_dim": 4,
             "resnet_time_scale_shift": "scale_shift",
-            "class_embed_type": None
+            "class_embed_type": None,
         }
-
 
         model = UNet2DConditionModel(**model_kwargs)
         return model
@@ -244,11 +240,15 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.6187187, 0.53577256, 0.48749307, 0.5421068,  0.5214845,  0.40533125, 0.40913218, 0.48657694, 0.48048347]
+            [0.6187187, 0.53577256, 0.48749307, 0.5421068, 0.5214845, 0.40533125, 0.40913218, 0.48657694, 0.48048347]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert (
+            np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
 
 @slow

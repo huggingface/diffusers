@@ -25,8 +25,8 @@ from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
-    deprecate,
     BaseOutput,
+    deprecate,
     is_accelerate_available,
     logging,
     randn_tensor,
@@ -557,8 +557,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         image_embeddings = latents
         zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
- 
-        if output_type not in [ "pt", "np"]:
+
+        if output_type not in ["pt", "np"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
                 "`np`, `pt``"

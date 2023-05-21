@@ -122,7 +122,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "cross_attention_dim": self.cross_attention_dim,
             "attention_head_dim": 4,
             "resnet_time_scale_shift": "scale_shift",
-            "class_embed_type": None
+            "class_embed_type": None,
         }
 
         model = UNet2DConditionModel(**model_kwargs)
@@ -204,7 +204,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "height": 64,
             "width": 64,
             "num_inference_steps": 10,
-            "guidance_scale": 7.,
+            "guidance_scale": 7.0,
             "strength": 0.2,
             "output_type": "np",
         }
@@ -238,8 +238,12 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array(
             [0.61474943, 0.6073539, 0.43308544, 0.5928269, 0.47493595, 0.46755973, 0.4613838, 0.45368797, 0.50119233]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert (
+            np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
 
 @slow
