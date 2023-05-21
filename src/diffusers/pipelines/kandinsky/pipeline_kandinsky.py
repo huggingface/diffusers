@@ -250,7 +250,6 @@ class KandinskyPipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -270,7 +269,7 @@ class KandinskyPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -446,7 +445,7 @@ class KandinskyPipeline(DiffusionPipeline):
                 latent_model_input,
                 prev_timestep=prev_timestep,
                 generator=generator,
-                batch_size=batch_size,
+                #batch_size=batch_size,
             ).prev_sample
 
             _, latents = latents.chunk(2)
