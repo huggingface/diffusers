@@ -43,15 +43,14 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
         >>> pipe_prior.to("cuda")
-
-        >>> out = pipe_prior(prompt, generator=generator,)
+        
+        >>> prompt= "red cat, 4k photo"
+        >>> out = pipe_prior(prompt)
         >>> image_emb = out.images
         >>> zero_image_emb = out.zero_embeds
 
         >>> pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky")
-        >>> pipe.to("cuda)
-
-        >>> prompt= "red cat, 4k photo"
+        >>> pipe.to("cuda")
 
         >>> image = pipe(
         ...    prompt,
@@ -422,7 +421,7 @@ class KandinskyPipeline(DiffusionPipeline):
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
 
-            # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
+            # CFG is currently implemented exactly as original repo as a baseline,
             # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond)
             # this means the our latent shape is batch_size *2 instad batch_size
 

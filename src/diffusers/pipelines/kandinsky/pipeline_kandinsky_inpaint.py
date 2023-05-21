@@ -46,15 +46,16 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
         >>> from diffusers.utils import load_image
         >>> import torch
+        >>> import numpy as np
      
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
 
-        >>> prompt= "red cat, 4k photo"
+        >>> prompt= "a hat"
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
-        >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint")
-        >>> pipe.to("cuda)
+        >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)
+        >>> pipe.to("cuda")
 
         >>> init_image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
@@ -562,8 +563,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         )
 
         # preprocess image and mask
-        ## Encode the image
-
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
 
         image = image.to(dtype=prompt_embeds.dtype, device=device)
@@ -578,7 +577,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             mode="nearest",
         )
         mask_image = prepare_mask(mask_image)
-        # apply mask on image
         masked_image = image * mask_image
 
         mask_image = mask_image.repeat_interleave(num_images_per_prompt, dim=0)
@@ -624,13 +622,13 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
             added_cond_kwargs = {"text_embeds": prompt_embeds, "image_embeds": image_embeds}
             noise_pred = self.unet(
-                sample=latent_model_input,  # [2, 9, 96, 96]
+                sample=latent_model_input,
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
 
-            # YiYi Notes: CFG is currently implemented exactly as original repo as a baseline,
+            # CFG is currently implemented exactly as original repo as a baseline,
             # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond)
             # this means the our latent shape is batch_size *2 instad batch_size
 

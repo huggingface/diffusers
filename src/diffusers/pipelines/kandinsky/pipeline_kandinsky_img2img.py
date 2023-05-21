@@ -27,6 +27,7 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
+    replace_example_docstring,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -41,16 +42,17 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
+        >>> from diffusers.utils import load_image
         >>> import torch
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
         
         >>> prompt= "A red cartoon frog, 4k"
-        >>> image_emb, zero_image_emb = pipe_prior(prompt, generator=generator, return_dict=False)
+        >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
-        >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky-img2img")
-        >>> pipe.to("cuda)
+        >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky-img2img", torch_dtype=torch.float16)
+        >>> pipe.to("cuda")
 
         >>> init_image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
@@ -68,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         ...    strength=0.2,
         ... ).images
 
-        >>> image[0].save("cat_with_hat.png")
+        >>> image[0].save("red_frog.png")
         ```
 """
 
@@ -153,10 +155,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         shape = latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # get latents
-        # YiYi notes: I created a add_noise method on the pipeline to overwrite the one in schedule because
-        ##            it use a different beta schedule for adding noise vs sampling
-        # latents = self.scheduler.add_noise(latents, noise, latent_timestep)
         latents = self.add_noise(latents, noise, latent_timestep)
         return latents
 
@@ -332,15 +330,14 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # YiYi's notes: Hard code this method here for now because the kandinsky repo use a different beta schedule for add noise
+    #  add_noise method to overwrite the one in schedule because it use a different beta schedule for adding noise vs sampling
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-
+    
         betas = torch.linspace(0.0001, 0.02, 1000, dtype=torch.float32)
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
