@@ -587,7 +587,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i]) * self.vae.config.scaling_factor for i in range(batch_size)
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                * self.vae.config.scaling_factor
+                for i in range(batch_size)
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
