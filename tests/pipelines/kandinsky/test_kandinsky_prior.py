@@ -159,7 +159,9 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "horse",
+            "num_inference_steps": 5,
             "generator": generator,
+            "guidance_scale": 4.0,
             "num_inference_steps": 2,
             "output_type": "np",
         }
