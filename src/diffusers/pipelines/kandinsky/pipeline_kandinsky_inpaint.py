@@ -47,29 +47,30 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
         >>> import torch
         >>> import numpy as np
-     
+
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
 
-        >>> prompt= "a hat"
+        >>> prompt = "a hat"
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
         >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> init_image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
-        ...     "/kandinsky/cat.png")
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/cat.png"
+        ... )
 
         >>> mask = np.ones((768, 768), dtype=np.float32)
-        >>> mask[:250,250:-250] =  0
+        >>> mask[:250, 250:-250] = 0
 
         >>> out = pipe(
         ...     prompt,
         ...     image=init_image,
         ...     mask_image=mask,
         ...     image_embeds=image_emb,
-        ...     negative_image_embeds =zero_image_emb,
+        ...     negative_image_embeds=zero_image_emb,
         ...     height=768,
         ...     width=768,
         ...     num_inference_steps=150,
@@ -135,7 +136,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
             The height in pixels of the generated image.
         width (`int`, *optional*, defaults to 512):
             The width in pixels of the generated image.
-            
+
 
     Raises:
         ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
@@ -473,24 +474,23 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
-
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation. 
+                The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image` or `np.ndarray`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             mask_image (`PIL.Image.Image`,`torch.FloatTensor` or `np.ndarray`):
                 `Image`, or a tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. You can pass a pytorch tensor as mask only if
-                the image you passed is a pytorch tensor, and it should contain one color channel (L) instead of 3, 
-                so the expected shape would be either `(B, 1, H, W,)`, `(B, H, W)`, `(1, H, W)` or `(H, W)`
-                If image is an PIL image or numpy array, mask should also be a either PIL image or numpy array. 
-                If it is a PIL image, it will be converted to a single channel (luminance) before use. If it is a nummpy array, 
-                the expected shape is `(H, W)`. 
+                repainted, while black pixels will be preserved. You can pass a pytorch tensor as mask only if the
+                image you passed is a pytorch tensor, and it should contain one color channel (L) instead of 3, so the
+                expected shape would be either `(B, 1, H, W,)`, `(B, H, W)`, `(1, H, W)` or `(H, W)` If image is an PIL
+                image or numpy array, mask should also be a either PIL image or numpy array. If it is a PIL image, it
+                will be converted to a single channel (luminance) before use. If it is a nummpy array, the expected
+                shape is `(H, W)`.
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
@@ -511,8 +511,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -521,8 +521,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between: 
-                `"pil"` (`PIL.Image.Image`), `"np"` (`np.array`)  or  `"pt"` (`torch.Tensor`).
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -663,18 +663,17 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(
-                f"the output_type {output_type} is not supported. Currently we only support: "
-                "`pil`, `np`, `pt`"
+                f"the output_type {output_type} is not supported. Currently we only support: " "`pil`, `np`, `pt`"
             )
 
-        if output_type in ['np', 'pil']:
+        if output_type in ["np", "pil"]:
             image = image * 0.5 + 0.5
             image = image.clamp(0, 1)
             image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-        
+
         if not return_dict:
             return (image,)
 

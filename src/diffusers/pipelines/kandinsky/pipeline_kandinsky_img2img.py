@@ -27,11 +27,11 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    replace_example_docstring,
     is_accelerate_available,
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from .text_encoder import MultilingualCLIP
 
@@ -47,27 +47,27 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
-        
-        >>> prompt= "A red cartoon frog, 4k"
+
+        >>> prompt = "A red cartoon frog, 4k"
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
         >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky-img2img", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> init_image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
         ...     "/kandinsky/frog.png"
         ... )
 
         >>> image = pipe(
-        ...    prompt,
-        ...    image=init_image,
-        ...    image_embeds=image_emb,
-        ...    negative_image_embeds =zero_image_emb,
-        ...    height=768,
-        ...    width=768,
-        ...    num_inference_steps=100,
-        ...    strength=0.2,
+        ...     prompt,
+        ...     image=init_image,
+        ...     image_embeds=image_emb,
+        ...     negative_image_embeds=zero_image_emb,
+        ...     height=768,
+        ...     width=768,
+        ...     num_inference_steps=100,
+        ...     strength=0.2,
         ... ).images
 
         >>> image[0].save("red_frog.png")
@@ -337,7 +337,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-    
         betas = torch.linspace(0.0001, 0.02, 1000, dtype=torch.float32)
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
@@ -382,7 +381,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation. 
+                The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
@@ -412,14 +411,14 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between: 
-                `"pil"` (`PIL.Image.Image`), `"np"` (`np.array`)  or  `"pt"` (`torch.Tensor`).
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -539,18 +538,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(
-                f"the output_type {output_type} is not supported. Currently we only support: "
-                "`pil`, `np`, `pt`"
+                f"the output_type {output_type} is not supported. Currently we only support: " "`pil`, `np`, `pt`"
             )
 
-        if output_type in ['np', 'pil']:
+        if output_type in ["np", "pil"]:
             image = image * 0.5 + 0.5
             image = image.clamp(0, 1)
             image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-        
+
         if not return_dict:
             return (image,)
 
