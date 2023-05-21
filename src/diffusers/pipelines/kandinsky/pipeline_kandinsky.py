@@ -415,7 +415,7 @@ class KandinskyPipeline(DiffusionPipeline):
 
             added_cond_kwargs = {"text_embeds": prompt_embeds, "image_embeds": image_embeds}
             noise_pred = self.unet(
-                sample=latent_model_input,  # [2, 4, 96, 96]
+                sample=latent_model_input, 
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 added_cond_kwargs=added_cond_kwargs,

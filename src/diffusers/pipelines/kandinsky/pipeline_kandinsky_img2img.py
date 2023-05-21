@@ -27,6 +27,7 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -475,13 +476,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
 
-        # YiYi's Notes: This step is taken from the origianl Kandinsky repo
-        # add one to get the final alpha values right (the ones from first scale to data during sampling))
+        # This step is taken from the origianl Kandinsky repo
+        #  - add one to get the final alpha values right (the ones from first scale to data during sampling))
         self.scheduler.timesteps = self.scheduler.timesteps + 1
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
-        # YiYi's notes
-        #       the timestep for add_noise is calculated different in original repo (this formular is taken from the original repo)
+        # the formular to calculate timestep for add_noise is taken from the original kandinsky repo
         latent_timestep = int(self.scheduler.config.num_train_timesteps * strength) - 2
 
         latent_timestep = torch.tensor([latent_timestep] * batch_size, dtype=timesteps_tensor.dtype, device=device)
@@ -519,11 +519,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-            if i + 1 == timesteps_tensor.shape[0]:
-                pass
-            else:
-                timesteps_tensor[i + 1]
-
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
                 noise_pred,
@@ -536,9 +531,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(
-                f"the output_type {output_type} is not supported. Currently we only support: " "`pil`, `np`, `pt`"
+            deprecation_message = (
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
+                "`np`, `pt`, `pil` "
             )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
 
         if output_type in ["np", "pil"]:
             image = image * 0.5 + 0.5

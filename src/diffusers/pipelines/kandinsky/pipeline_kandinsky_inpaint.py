@@ -29,6 +29,7 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -661,9 +662,12 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(
-                f"the output_type {output_type} is not supported. Currently we only support: " "`pil`, `np`, `pt`"
+            deprecation_message = (
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
+                "`np`, `pt`, `pil` "
             )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
 
         if output_type in ["np", "pil"]:
             image = image * 0.5 + 0.5

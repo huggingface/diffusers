@@ -20,11 +20,10 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import XLMRobertaTokenizer
+from transformers import XLMRobertaTokenizerFast
 
 from diffusers import DDIMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.pipelines.kandinsky.text_proj import KandinskyTextProjModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
@@ -83,7 +82,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def dummy_tokenizer(self):
-        tokenizer = XLMRobertaTokenizer.from_pretrained("YiYiXu/Kandinsky", subfolder="tokenizer")
+        tokenizer = XLMRobertaTokenizerFast.from_pretrained("YiYiXu/tiny-random-mclip-base")
         return tokenizer
 
     @property
@@ -105,21 +104,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return text_encoder
 
     @property
-    def dummy_text_proj(self):
-        torch.manual_seed(0)
-
-        model_kwargs = {
-            "clip_embeddings_dim": self.cross_attention_dim,
-            "time_embed_dim": self.time_embed_dim,
-            "clip_extra_context_tokens": 2,
-            "cross_attention_dim": self.cross_attention_dim,
-            "clip_text_encoder_hidden_states_dim": self.text_embedder_hidden_size,
-        }
-
-        model = KandinskyTextProjModel(**model_kwargs)
-        return model
-
-    @property
     def dummy_unet(self):
         torch.manual_seed(0)
 
@@ -127,15 +111,18 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "in_channels": 4,
             # Out channels is double in channels because predicts mean and variance
             "out_channels": 8,
+            "addition_embed_type": "text_image",
             "down_block_types": ("ResnetDownsampleBlock2D", "SimpleCrossAttnDownBlock2D"),
             "up_block_types": ("SimpleCrossAttnUpBlock2D", "ResnetUpsampleBlock2D"),
             "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
             "block_out_channels": (self.block_out_channels_0, self.block_out_channels_0 * 2),
             "layers_per_block": 1,
+            "encoder_hid_dim": self.text_embedder_hidden_size,
+            "encoder_hid_dim_type": "text_image_proj",
             "cross_attention_dim": self.cross_attention_dim,
             "attention_head_dim": 4,
             "resnet_time_scale_shift": "scale_shift",
-            "class_embed_type": "identity",
+            "class_embed_type": None
         }
 
         model = UNet2DConditionModel(**model_kwargs)
@@ -170,7 +157,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = self.dummy_text_encoder
         tokenizer = self.dummy_tokenizer
         unet = self.dummy_unet
-        text_proj = self.dummy_text_proj
         movq = self.dummy_movq
 
         ddim_config = {
@@ -188,7 +174,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         scheduler = DDIMScheduler(**ddim_config)
 
         components = {
-            "text_proj": text_proj,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "unet": unet,
@@ -218,7 +203,9 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "height": 64,
             "width": 64,
-            "num_inference_steps": 2,
+            "num_inference_steps": 10,
+            "guidance_scale": 7.,
+            "strength": 0.2,
             "output_type": "np",
         }
         return inputs
@@ -249,10 +236,10 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.43521464, 0.668655, 0.41744298, 0.6815478, 0.44146872, 0.4427491, 0.50876176, 0.37860417, 0.5109416]
+            [0.61474943, 0.6073539, 0.43308544, 0.5928269, 0.47493595, 0.46755973, 0.4613838, 0.45368797, 0.50119233]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
 
 @slow
