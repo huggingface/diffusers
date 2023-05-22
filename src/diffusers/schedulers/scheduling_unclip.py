@@ -261,8 +261,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
-        # YiYi's TO-DO: batch_size argument for testing, remove this later
-        batch_size: Optional[int] = None,
     ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -340,20 +338,9 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            if batch_size is not None:
-                assert batch_size * 2 == model_output.shape[0]
-                variance_noise = randn_tensor(
-                    (batch_size, *model_output.shape[1:]),
-                    dtype=model_output.dtype,
-                    generator=generator,
-                    device=model_output.device,
-                )
-
-                variance_noise = torch.cat([variance_noise, variance_noise], dim=0)
-            else:
-                variance_noise = randn_tensor(
-                    model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
-                )
+            variance_noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
+            )
 
             variance = self._get_variance(
                 t,
