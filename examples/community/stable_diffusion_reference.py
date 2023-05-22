@@ -9,7 +9,7 @@ from diffusers import StableDiffusionPipeline
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import PIL_INTERPOLATION, logging
+from diffusers.utils import PIL_INTERPOLATION, logging, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -705,7 +705,9 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # ref only part
-                noise = torch.randn_like(ref_image_latents)
+                noise = randn_tensor(
+                    ref_image_latents.shape, generator=generator, device=device, dtype=ref_image_latents.dtype
+                )
                 ref_xt = self.scheduler.add_noise(
                     ref_image_latents,
                     noise,
