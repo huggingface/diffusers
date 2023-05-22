@@ -43,6 +43,8 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+
 ### Dog toy example
 
 Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
@@ -531,3 +533,67 @@ More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_
 
 ### Experimental results
 You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 
+
+## IF
+
+You can use the lora and full dreambooth scripts to also train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0). A few alternative cli flags are needed due to the model size, the expected input resolution, and the text encoder conventions.
+
+### LoRA Dreambooth
+This training configuration requires ~28 GB VRAM.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_lora"
+
+accelerate launch train_dreambooth_lora.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --scale_lr \
+  --max_train_steps=1200 \
+  --validation_prompt="a sks dog" \
+  --validation_epochs=25 \
+  --checkpointing_steps=100 \
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --tokenizer_max_length=77 \ # IF expects an override of the max token length
+  --text_encoder_use_attention_mask # IF expects attention mask for text embeddings
+```
+
+### Full Dreambooth
+Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+Using 8bit adam and the rest of the following config, the model can be trained in ~48 GB VRAM.
+
+For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_if"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-7 \
+  --max_train_steps=150 \
+  --validation_prompt "a photo of sks dog" \
+  --validation_steps 25 \
+  --text_encoder_use_attention_mask \ # IF expects attention mask for text embeddings
+  --tokenizer_max_length 77 \ # IF expects an override of the max token length
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --use_8bit_adam \ # 
+  --set_grads_to_none \
+  --skip_save_text_encoder # do not save the full T5 text encoder with the model
+```
