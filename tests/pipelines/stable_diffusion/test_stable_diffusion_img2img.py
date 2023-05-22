@@ -15,11 +15,11 @@
 
 import gc
 import random
+import traceback
 import unittest
 
 import numpy as np
 import torch
-import traceback
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -34,7 +34,13 @@ from diffusers import (
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu, skip_mps, run_test_in_subprocess
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+    skip_mps,
+)
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,

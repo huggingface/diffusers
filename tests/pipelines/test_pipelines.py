@@ -20,6 +20,7 @@ import random
 import shutil
 import sys
 import tempfile
+import traceback
 import unittest
 import unittest.mock as mock
 
@@ -28,7 +29,6 @@ import PIL
 import requests_mock
 import safetensors.torch
 import torch
-import traceback
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError

@@ -15,17 +15,13 @@
 
 
 import gc
-import os
-import signal
-import subprocess
-import sys
 import tempfile
 import time
+import traceback
 import unittest
 
 import numpy as np
 import torch
-import traceback
 from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -43,7 +39,13 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_2, require_torch_gpu, run_test_in_subprocess
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -956,6 +958,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         inputs["torch_device"] = torch_device
         inputs["seed"] = seed
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=inputs)
+
 
 @slow
 @require_torch_gpu

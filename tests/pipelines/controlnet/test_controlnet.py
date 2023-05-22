@@ -20,7 +20,6 @@ import unittest
 
 import numpy as np
 import torch
-from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -33,7 +32,12 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu, run_test_in_subprocess
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
 
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,

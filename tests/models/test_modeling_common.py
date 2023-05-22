@@ -15,6 +15,7 @@
 
 import inspect
 import tempfile
+import traceback
 import unittest
 import unittest.mock as mock
 from typing import Dict, List, Tuple
@@ -22,7 +23,6 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
-import traceback
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
@@ -259,7 +259,7 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
-    
+
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
