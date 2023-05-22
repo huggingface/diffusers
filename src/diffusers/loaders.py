@@ -33,7 +33,6 @@ from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     TEXT_ENCODER_TARGET_MODULES,
-    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
