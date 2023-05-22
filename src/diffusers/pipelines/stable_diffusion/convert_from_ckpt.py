@@ -992,7 +992,7 @@ def download_from_original_stable_diffusion_ckpt(
     controlnet: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
-    local_files_only=False
+    local_files_only=False,
 ) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
