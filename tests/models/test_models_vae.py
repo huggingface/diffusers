@@ -22,12 +22,12 @@ from parameterized import parameterized
 from diffusers import AutoencoderKL
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
@@ -321,7 +321,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
-    @parameterized.expand([13, 16, 27])
+    @parameterized.expand([(13,), (16,), (27,)])
     @require_torch_gpu
     @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
@@ -339,7 +339,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(sample, sample_2, atol=1e-1)
 
-    @parameterized.expand([13, 16, 37])
+    @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu
     @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):

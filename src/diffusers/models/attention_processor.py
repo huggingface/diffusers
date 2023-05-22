@@ -191,7 +191,10 @@ class Attention(nn.Module):
             elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
                 warnings.warn(
                     "You have specified using flash attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "We will default to PyTorch's native efficient flash attention implementation provided by PyTorch 2.0."
+                    "We will default to PyTorch's native efficient flash attention implementation (`F.scaled_dot_product_attention`) "
+                    "introduced in PyTorch 2.0. In case you are using LoRA or Custom Diffusion, we will fall "
+                    "back to their respective attention processors i.e., we will NOT use the PyTorch 2.0 "
+                    "native efficient flash attention."
                 )
             else:
                 try:
@@ -213,6 +216,9 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
+                print(
+                    f"is_lora is set to {is_lora}, type: LoRAXFormersAttnProcessor: {isinstance(processor, LoRAXFormersAttnProcessor)}"
+                )
             elif is_custom_diffusion:
                 processor = CustomDiffusionXFormersAttnProcessor(
                     train_kv=self.processor.train_kv,
@@ -250,6 +256,7 @@ class Attention(nn.Module):
                 # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
                 # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
                 # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
+                print("Still defaulting to: AttnProcessor2_0 :O")
                 processor = (
                     AttnProcessor2_0()
                     if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
@@ -344,11 +351,14 @@ class Attention(nn.Module):
             beta=beta,
             alpha=self.scale,
         )
+        del baddbmm_input
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
 
         attention_probs = attention_scores.softmax(dim=-1)
+        del attention_scores
+
         attention_probs = attention_probs.to(dtype)
 
         return attention_probs

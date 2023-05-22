@@ -21,13 +21,14 @@ import torch
 
 from diffusers import UNet2DModel
 from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+
+enable_full_determinism()
 
 
 class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):

@@ -37,13 +37,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

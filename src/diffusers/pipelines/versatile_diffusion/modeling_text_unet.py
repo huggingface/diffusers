@@ -18,7 +18,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import logging
+from ...utils import is_torch_version, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1077,7 +1077,14 @@ class DownBlockFlat(nn.Module):
 
                     return custom_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -1198,13 +1205,27 @@ class CrossAttnDownBlockFlat(nn.Module):
 
                     return custom_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states,
-                    cross_attention_kwargs,
-                )[0]
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(attn, return_dict=False),
+                        hidden_states,
+                        encoder_hidden_states,
+                        cross_attention_kwargs,
+                        use_reentrant=False,
+                    )[0]
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(attn, return_dict=False),
+                        hidden_states,
+                        encoder_hidden_states,
+                        cross_attention_kwargs,
+                    )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
@@ -1289,7 +1310,14 @@ class UpBlockFlat(nn.Module):
 
                     return custom_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -1412,13 +1440,27 @@ class CrossAttnUpBlockFlat(nn.Module):
 
                     return custom_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states,
-                    cross_attention_kwargs,
-                )[0]
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(attn, return_dict=False),
+                        hidden_states,
+                        encoder_hidden_states,
+                        cross_attention_kwargs,
+                        use_reentrant=False,
+                    )[0]
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(attn, return_dict=False),
+                        hidden_states,
+                        encoder_hidden_states,
+                        cross_attention_kwargs,
+                    )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(

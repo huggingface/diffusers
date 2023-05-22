@@ -27,18 +27,19 @@ from diffusers import (
     AutoencoderKL,
     DDIMInverseScheduler,
     DDIMScheduler,
+    DPMSolverMultistepInverseScheduler,
+    DPMSolverMultistepScheduler,
     StableDiffusionDiffEditPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils import load_image, slow
-from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -256,6 +257,30 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
 
+    def test_inversion_dpm(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        scheduler_args = {"beta_start": 0.00085, "beta_end": 0.012, "beta_schedule": "scaled_linear"}
+        components["scheduler"] = DPMSolverMultistepScheduler(**scheduler_args)
+        components["inverse_scheduler"] = DPMSolverMultistepInverseScheduler(**scheduler_args)
+
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inversion_inputs(device)
+        image = pipe.invert(**inputs).images
+        image_slice = image[0, -1, -3:, -3:]
+
+        self.assertEqual(image.shape, (2, 32, 32, 3))
+        expected_slice = np.array(
+            [0.5150, 0.5134, 0.5043, 0.5376, 0.4694, 0.51050, 0.5015, 0.4407, 0.4799],
+        )
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
+
 
 @require_torch_gpu
 @slow
@@ -307,6 +332,57 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             negative_prompt=source_prompt,
             inpaint_strength=0.7,
+            output_type="numpy",
+        ).images[0]
+
+        expected_image = (
+            np.array(
+                load_image(
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/diffedit/pears.png"
+                ).resize((768, 768))
+            )
+            / 255
+        )
+        assert np.abs((expected_image - image).max()) < 5e-1
+
+    def test_stable_diffusion_diffedit_dpm(self):
+        generator = torch.manual_seed(0)
+
+        pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.inverse_scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        source_prompt = "a bowl of fruit"
+        target_prompt = "a bowl of pears"
+
+        mask_image = pipe.generate_mask(
+            image=self.raw_image,
+            source_prompt=source_prompt,
+            target_prompt=target_prompt,
+            generator=generator,
+        )
+
+        inv_latents = pipe.invert(
+            prompt=source_prompt,
+            image=self.raw_image,
+            inpaint_strength=0.7,
+            generator=generator,
+            num_inference_steps=25,
+        ).latents
+
+        image = pipe(
+            prompt=target_prompt,
+            mask_image=mask_image,
+            image_latents=inv_latents,
+            generator=generator,
+            negative_prompt=source_prompt,
+            inpaint_strength=0.7,
+            num_inference_steps=25,
             output_type="numpy",
         ).images[0]
 
