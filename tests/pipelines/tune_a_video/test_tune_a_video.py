@@ -22,7 +22,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
     TuneAVideoPipeline,
     UNet3DConditionModel,
 )
@@ -173,14 +172,18 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-full-mo-di.npy"
         )
 
-        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16)
+        pipe = TuneAVideoPipeline.from_pretrained(
+            "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+        )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
 
         prompt = "A princess playing a guitar, modern disney style"
         generator = torch.Generator(device="cuda").manual_seed(42)
 
-        video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="pt").frames
+        video_frames = pipe(
+            prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="pt"
+        ).frames
         video = video_frames.cpu().numpy()
 
         assert np.abs(expected_video - video).mean() < 5e-2
@@ -189,16 +192,19 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-2step-mo-di.npy"
         )
-        
-        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16)
+
+        pipe = TuneAVideoPipeline.from_pretrained(
+            "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+        )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
 
         prompt = "A princess playing a guitar, modern disney style"
         generator = torch.Generator(device="cuda").manual_seed(42)
 
-        video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=2, output_type="pt").frames
+        video_frames = pipe(
+            prompt, video_length=3, generator=generator, num_inference_steps=2, output_type="pt"
+        ).frames
         video = video_frames.cpu().numpy()
-
 
         assert np.abs(expected_video - video).mean() < 5e-2
