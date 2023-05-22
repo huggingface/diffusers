@@ -611,7 +611,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         #  For img2img denoising might start with order>1 which is not possible
         #  In this case make sure that the first two steps are both order=1
-        order = order if self.model_outputs[-order] is not None else order - 1
+        while self.model_outputs[-order] is None:
+            order -= 1
 
         # For single-step solvers, we use the initial value at each time with order = 1.
         if order == 1:
