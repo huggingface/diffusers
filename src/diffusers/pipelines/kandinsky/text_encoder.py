@@ -25,8 +25,3 @@ class MultilingualCLIP(PreTrainedModel):
         embs = self.transformer(input_ids=input_ids, attention_mask=attention_mask)[0]
         embs2 = (embs * attention_mask.unsqueeze(2)).sum(dim=1) / attention_mask.sum(dim=1)[:, None]
         return self.LinearTransformation(embs2), embs
-
-    @classmethod
-    def _load_state_dict_into_model(cls, model, state_dict, pretrained_model_name_or_path, _fast_init=True):
-        model.load_state_dict(state_dict)
-        return model, [], [], []
