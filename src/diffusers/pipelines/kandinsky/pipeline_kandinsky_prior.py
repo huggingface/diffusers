@@ -559,12 +559,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
 
         if output_type not in ["pt", "np"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
-                "`np`, `pt``"
-            )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
+            raise ValueError(f"Only the output types "pt" and "np" are supported not `output_type={output_type}`")
 
         if output_type == "np":
             image_embeddings = image_embeddings.cpu().numpy()
