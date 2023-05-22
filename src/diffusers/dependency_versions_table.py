@@ -26,6 +26,7 @@ deps = {
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
+    "psutil": "psutil",
     "ruff": "ruff>=0.0.241",
     "safetensors": "safetensors",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",

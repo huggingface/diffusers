@@ -73,7 +73,7 @@ jobs:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 1 --max-worker-restart=0 --dist=no --maxprocesses=1 \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines/stable_diffusion/test_stable_diffusion.py tests/pipelines/stable_diffusion_2/test_stable_diffusion.py
