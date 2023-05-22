@@ -643,6 +643,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "DownBlock3D",
         ]
         config["up_block_types"] = ["UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"]
+        config["upcast_attention"] = False
+        config["use_linear_projection"] = False
+        config["use_temporal_transformer"] = False
+        config["use_temporal_conv"] = False
+        config["sub_blocks_type"] = "3d"
 
         from diffusers.utils import WEIGHTS_NAME
 
