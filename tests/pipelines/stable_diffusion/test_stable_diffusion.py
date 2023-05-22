@@ -15,16 +15,16 @@
 
 
 import gc
+import os
+import signal
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
-import pytest
-import subprocess
-import os
-import sys
-import signal
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
