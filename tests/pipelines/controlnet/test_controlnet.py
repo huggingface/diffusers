@@ -15,11 +15,11 @@
 
 import gc
 import tempfile
+import traceback
 import unittest
 
 import numpy as np
 import torch
-import traceback
 from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -640,13 +640,11 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.2724, 0.2846, 0.2724, 0.3843, 0.3682, 0.2736, 0.4675, 0.3862, 0.2887])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-
     def test_stable_diffusion_compile(self):
         if version.parse(torch.__version__) < version.parse("2.0"):
             print(f"Test `test_stable_diffusion_compile` is skipped because {torch.__version__} is < 2.0")
             return
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
-
 
     def test_v11_shuffle_global_pool_conditions(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11e_sd15_shuffle")
