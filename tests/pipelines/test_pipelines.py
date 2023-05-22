@@ -35,6 +35,7 @@ from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPText
 
 from diffusers import (
     AutoencoderKL,
+    ConfigMixin,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
@@ -44,6 +45,7 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
+    ModelMixin,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -75,6 +77,17 @@ from diffusers.utils.testing_utils import (
 
 
 enable_full_determinism()
+
+
+class CustomEncoder(ModelMixin, ConfigMixin):
+    def __init__(self):
+        super().__init__()
+
+
+class CustomPipeline(DiffusionPipeline):
+    def __init__(self, encoder: CustomEncoder, scheduler: DDIMScheduler):
+        super().__init__()
+        self.register_modules(encoder=encoder, scheduler=scheduler)
 
 
 class DownloadTests(unittest.TestCase):
@@ -694,6 +707,20 @@ class CustomPipelineTests(unittest.TestCase):
         assert images[0].shape == (1, 32, 32, 3)
         # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/custom_pipeline/pipeline.py#L102
         assert output_str == "This is a local test"
+
+    def test_custom_model_and_pipeline(self):
+        pipe = CustomPipeline(
+            encoder=CustomEncoder(),
+            scheduler=DDIMScheduler(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+
+            pipe_new = CustomPipeline.from_pretrained(tmpdirname)
+            pipe_new.save_pretrained(tmpdirname)
+
+        assert dict(pipe_new.config) == dict(pipe.config)
 
     @slow
     @require_torch_gpu
