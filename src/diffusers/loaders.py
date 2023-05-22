@@ -33,6 +33,7 @@ from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     TEXT_ENCODER_TARGET_MODULES,
+    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -943,7 +944,8 @@ class LoraLoaderMixin:
                 module = self.text_encoder.get_submodule(name)
                 # Construct a new function that performs the LoRA merging. We will monkey patch
                 # this forward pass.
-                lora_layer = getattr(attn_processors[name], self._get_lora_layer_attribute(name))
+                attn_processor_name = ".".join(name.split(".")[:-1])
+                lora_layer = getattr(attn_processors[attn_processor_name], self._get_lora_layer_attribute(name))
                 old_forward = module.forward
 
                 # create a new scope that locks in the old_forward, lora_layer value for each new_forward function

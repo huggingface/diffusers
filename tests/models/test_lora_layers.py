@@ -24,7 +24,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
 from diffusers.models.attention_processor import LoRAAttnProcessor
-from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, floats_tensor, torch_device
+from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, floats_tensor, torch_device
 
 
 def create_unet_lora_layers(unet: nn.Module):
@@ -47,8 +47,10 @@ def create_unet_lora_layers(unet: nn.Module):
 def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
     text_lora_attn_procs = {}
     for name, module in text_encoder.named_modules():
-        if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-            text_lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=module.out_features, cross_attention_dim=None)
+        if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+            text_lora_attn_procs[name] = LoRAAttnProcessor(
+                hidden_size=module.out_proj.out_features, cross_attention_dim=None
+            )
     return text_lora_attn_procs
 
 
