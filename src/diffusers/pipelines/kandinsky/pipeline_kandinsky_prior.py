@@ -559,7 +559,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
 
         if output_type not in ["pt", "np"]:
-            raise ValueError(f"Only the output types "pt" and "np" are supported not `output_type={output_type}`")
+            raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
 
         if output_type == "np":
             image_embeddings = image_embeddings.cpu().numpy()
