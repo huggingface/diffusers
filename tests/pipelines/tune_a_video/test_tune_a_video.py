@@ -169,38 +169,36 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @skip_mps
 class TuneAVideoPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
-        # TODO: Add a test video to huggingface/
         expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-full-mo-di.npy"
         )
 
-        # TODO: Add a model hosted on hf.co/showlab
-        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1")
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
 
         prompt = "A princess playing a guitar, modern disney style"
-        generator = torch.Generator(device="cpu").manual_seed(0)
+        generator = torch.Generator(device="cuda").manual_seed(42)
 
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=25, output_type="pt").frames
+        video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="pt").frames
         video = video_frames.cpu().numpy()
 
         assert np.abs(expected_video - video).mean() < 5e-2
 
     def test_two_step_model(self):
-        # TODO: Add a test video to huggingface/
         expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-2step-mo-di.npy"
         )
-
-        # TODO: Add a model hosted on hf.co/showlab
-        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1")
+        
+        pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
 
         prompt = "A princess playing a guitar, modern disney style"
-        generator = torch.Generator(device="cpu").manual_seed(0)
+        generator = torch.Generator(device="cuda").manual_seed(42)
 
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
+        video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=2, output_type="pt").frames
         video = video_frames.cpu().numpy()
+
 
         assert np.abs(expected_video - video).mean() < 5e-2
