@@ -33,7 +33,7 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import require_torch_gpu, run_test_in_subprocess
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, run_test_in_subprocess
 
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
@@ -42,8 +42,7 @@ from ..pipeline_params import (
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 # Will be run via run_test_in_subprocess
