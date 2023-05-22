@@ -65,6 +65,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    enable_full_determinism,
     get_tests_dir,
     load_numpy,
     require_compel,
@@ -73,8 +74,7 @@ from diffusers.utils.testing_utils import (
 )
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class DownloadTests(unittest.TestCase):
@@ -700,7 +700,6 @@ class CustomPipelineTests(unittest.TestCase):
     def test_download_from_git(self):
         # Because adaptive_avg_pool2d_backward_cuda
         # does not have a deterministic implementation.
-        torch.use_deterministic_algorithms(False)
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
@@ -722,7 +721,6 @@ class CustomPipelineTests(unittest.TestCase):
 
         image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
-        torch.use_deterministic_algorithms(True)
 
     def test_save_pipeline_change_config(self):
         pipe = DiffusionPipeline.from_pretrained(
