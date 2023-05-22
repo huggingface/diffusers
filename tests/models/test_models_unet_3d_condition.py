@@ -29,13 +29,14 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin
 
 
+enable_full_determinism()
+
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
