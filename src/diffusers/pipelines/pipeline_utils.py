@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from requests.exceptions import HTTPError
 import fnmatch
 import importlib
 import inspect
@@ -31,6 +30,7 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
+from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
