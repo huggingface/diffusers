@@ -437,12 +437,10 @@ class KandinskyPipeline(DiffusionPipeline):
             latents = self.scheduler.step(
                 noise_pred,
                 t,
-                latent_model_input,
+                latents,
                 prev_timestep=prev_timestep,
                 generator=generator,
             ).prev_sample
-
-            _, latents = latents.chunk(2)
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
