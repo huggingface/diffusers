@@ -21,7 +21,11 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -251,7 +255,14 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
-        self.orders = self.get_order_list(num_inference_steps)
+
+        if not self.config.lower_order_final and num_inference_steps % self.config.solver_order != 0:
+            logger.warn(
+                "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=True`."
+            )
+            self.register_to_config(lower_order_final=True)
+
+        self.order_list = self.get_order_list(num_inference_steps)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -597,6 +608,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs[-1] = model_output
 
         order = self.order_list[step_index]
+
+        #  For img2img denoising might start with order>1 which is not possible
+        #  In this case make sure that the first two steps are both order=1
+        while self.model_outputs[-order] is None:
+            order -= 1
+
         # For single-step solvers, we use the initial value at each time with order = 1.
         if order == 1:
             self.sample = sample
