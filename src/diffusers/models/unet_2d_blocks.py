@@ -877,7 +877,7 @@ class AttnDownsampleBlock2D(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, temb)
 
             output_states += (hidden_states,)
 
@@ -2046,7 +2046,7 @@ class AttnUpsampleBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, temb)
 
         return hidden_states
 
