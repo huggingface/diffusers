@@ -231,7 +231,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        print(f"image.shape {image.shape}")
 
         assert image.shape == (1, 64, 64, 3)
 
