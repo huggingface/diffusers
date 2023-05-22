@@ -18,6 +18,11 @@ import gc
 import tempfile
 import time
 import unittest
+import pytest
+import subprocess
+import os
+import sys
+import signal
 
 import numpy as np
 import torch
@@ -46,7 +51,18 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
+@pytest.fixture(autouse=True)
+def process_fixture():
+    # This will be run before each test
+    command = [sys.executable, os.path.abspath(__file__)]
+    process = subprocess.Popen(command)
+    enable_full_determinism()
+    yield process
+    # This will be run after each test
+    try:
+        os.kill(process.pid, signal.SIGTERM)  # or signal.SIGKILL
+    except ProcessLookupError:
+        pass
 
 
 class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
