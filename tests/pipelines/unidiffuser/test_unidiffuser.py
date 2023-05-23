@@ -462,7 +462,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
         expected_text_prefix = '" This This'
-        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
+        assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     @require_torch_gpu
     def test_unidiffuser_default_text2img_v1_cuda_fp16(self):
@@ -505,7 +505,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text = unidiffuser_pipe(**inputs).text
 
         expected_text_prefix = '" This This'
-        assert text[0][:len(expected_text_prefix)] == expected_text_prefix
+        assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
 
 @slow
