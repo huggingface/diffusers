@@ -59,8 +59,9 @@ Generating outputs is super easy with 🤗 Diffusers. To generate an image from 
 
 ```python
 from diffusers import DiffusionPipeline
+import torch
 
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipeline.to("cuda")
 pipeline("An image of a squirrel in Picasso style").images[0]
 ```
@@ -182,7 +183,7 @@ just hang out ☕.
   </tr>
 </table>
 
-## ❤️ Popular repos building on 🧨 Diffusers
+## Popular using 🧨 Diffusers
 
 - https://github.com/microsoft/TaskMatrix 
 - https://github.com/invoke-ai/InvokeAI 
@@ -193,6 +194,9 @@ just hang out ☕.
 - https://github.com/deep-floyd/IF  
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
+- +3000 other amazing GitHub repositories 💪
+
+Thank you for using us ❤️
 
 ## Credits
 
