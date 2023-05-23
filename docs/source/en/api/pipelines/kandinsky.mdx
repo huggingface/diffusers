@@ -25,6 +25,262 @@ The Kandinsky model in diffusers comes from ai-forever and the original codebase
 | [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* | - |
 | [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* | - |
 
+## Usage example
+
+In the following, we will walk you through some cool examples of using Kandinsky pipelines to create incredible artwork beyond imagination.
+
+### Text-to-Image Generation
+
+For text-to-image generation, we need to use both [`KandinskyPriorPipeline] and [`KandinskyPipeline`]. The first step is to create CLIP image embedding conditioned on a text prompt. Let's throw a fun prompt at Kandinsky to see what it will come up with :)
+
+```py
+prompt = 'A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting'
+negative_prompt = 'low quality, bad quality'
+```
+
+You should create the CLIP image embeddings for both your `prompt` and `negavie_prompt`. Also, the prior pipeline we use to create these CLIP image embeddings is a diffusion model itself, so you can use `negative_prompt`, `guidance_scale`, and `num_inference_steps` arguments to guide this process, just like how you would normally do with all other pipelines in diffusers.
+
+```py
+from diffusers import KandinskyPipeline, KandinskyPriorPipeline
+import torch
+
+# # create prior 
+pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+generator = torch.Generator(device='cuda').manual_seed(12)
+image_emb = pipe_prior(
+        prompt, 
+        guidance_scale = 1.,
+        num_inference_steps=25,
+        generator=generator, 
+        negative_prompt = negative_prompt).images
+
+zero_image_emb = pipe_prior(
+        negative_prompt, 
+        guidance_scale = 1.,
+        num_inference_steps=25,
+        generator=generator, 
+        negative_prompt = negative_prompt).images
+```
+
+Once we create the image embedding, we can use [`KandinskyPipeline`] to generate images.
+
+```py
+from PIL import Image
+
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows * cols
+
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+    grid_w, grid_h = grid.size
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
+# create diffuser pipeline
+pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+images = pipe(
+	prompt,
+	image_embeds=image_emb,
+	negative_image_embeds =zero_image_emb,
+	num_images_per_prompt=2,
+	height=768,
+	width=768,
+	num_inference_steps=100,
+	guidance_scale=4.0,
+	generator=generator,
+	).images
+```
+
+One cheeseburger monster coming up! Enjoy! 
+
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png)
+
+Kandinsky model works really extremely well with creative prompts. Here is some of the amazing art we created using exact same process but different prompts.
+
+```py
+prompt = "bird eye view shot of a full body woman with cyan light orange magenta makeup, digital art, long braided hair her face separated by makeup in the style of yin Yang surrealism, symmetrical face, real image, contrasting tone, pastel gradient background"
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/hair.png)
+
+```py
+prompt = "A car exploding into colorful dust"
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/dusts.png)
+
+```py
+prompt = "editorial photography of an organic, almost liquid smoke style armchair"
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/smokechair.png)
+
+```py
+prompt = "birds eye view of a quilted paper style alien planet landscape, vibrant colours, Cinematic lighting"
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/alienplanet.png)
+
+
+
+### Text Guided Image-to-Image Generation
+
+The same Kandinsky model weights can be used for text-guided image-to-image translation. In this case, just make sure to load the weights using the [`KandinskyImg2ImgPipeline`] pipeline.
+
+**Note**: You can also directly move the weights of the text-to-image pipelines to the image-to-image pipelines
+without loading them twice by making use of the [`~DiffusionPipeline.components()`] function as explained [here](#converting-between-different-pipelines).
+
+Let's download an image.
+
+```py
+from PIL import Image
+import requests
+from io import BytesIO
+
+# download image
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+response = requests.get(url)
+original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = original_image.resize((768, 512))
+```
+
+![img](https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg)
+
+```py
+import torch
+from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
+
+
+## create prior 
+pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+## create img2img pipeline
+pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+prompt = "A fantasy landscape, Cinematic lighting"
+negative_prompt = 'low quality, bad quality'
+
+
+generator = torch.Generator(device='cuda').manual_seed(30)
+image_emb = pipe_prior(
+	prompt, 
+	guidance_scale = 4.,
+	num_inference_steps=25,
+	generator=generator, 
+	negative_prompt = negative_prompt).images
+
+zero_image_emb = pipe_prior(
+	negative_prompt, 
+	guidance_scale = 4.,
+	num_inference_steps=25,
+	generator=generator, 
+	negative_prompt = negative_prompt).images
+
+out = pipe(
+	prompt,
+	image=original_image,
+	image_embeds=image_emb,
+	negative_image_embeds =zero_image_emb,
+	height=768,
+	width=768,
+	num_inference_steps=500,
+	strength=0.3,
+)
+
+out.images[0].save("fantasy_land.png)
+```
+
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/img2img_fantasyland.png)
+
+
+### Text Guided Inpainting Generation
+
+You can use [`KandinskyInpaintPipeline`] to edit images. In this example, we will add a hat to the portrait of a cat.
+
+```py
+from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
+from diffusers.utils import load_image
+import torch
+import numpy as np
+     
+pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+prompt= "a hat"
+image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
+
+pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+init_image = load_image(
+     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+     "/kandinsky/cat.png")
+
+mask = np.ones((768, 768), dtype=np.float32)
+mask[:250,250:-250] =  0
+
+out = pipe(
+    prompt,
+    image=init_image,
+    mask_image=mask,
+    image_embeds=image_emb,
+    negative_image_embeds =zero_image_emb,
+    height=768,
+    width=768,
+    num_inference_steps=150,
+    )
+
+image = out.images[0]
+image.save("cat_with_hat.png")
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/inpaint_cat_hat.png)
+
+### Interpolate 
+
+The [`KandinskyPriorPipeline`] also comes with a cool utility function that will allow you to interpolate the latent space of different images and texts super easily. Here is an example of how you can create an Impressionist-style portrait for your pet based on "The Starry Night". 
+
+```py
+
+from diffusers import KandinskyPriorPipeline, KandinskyPipeline
+from diffusers.utils import load_image
+import PIL
+
+import torch
+from torchvision import transforms
+
+pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+img1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+    "/kandinsky/cat.png")
+
+img2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" 
+    "/kandinsky/starry_night.jpeg")
+
+images_texts = ["a cat", img1, img2 ]
+weights = [0.3,0.3,0.4]
+image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
+
+pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(
+    "",
+    image_embeds=image_emb,
+    negative_image_embeds =zero_image_emb,
+    height=768,
+    width=768,
+    num_inference_steps=150 ).images[0]
+
+image.save("starry_cat.png")
+```
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/starry_cat.png)
+
 
 ## KandinskyPipeline
 
