@@ -37,19 +37,31 @@ def convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=
 
     return new_checkpoint
 
-def convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix):
-    weight_q, weight_k, weight_v = checkpoint[f"{old_prefix}.qkv.weight"].chunk(3, dim=0)
-    bias_q, bias_k, bias_v = checkpoint[f"{old_prefix}.qkv.bias"].chunk(3, dim=0)
+def convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim=64):
+    c, _, _, _ = checkpoint[f"{old_prefix}.qkv.weight"].shape
+    n_heads = c // (attention_head_dim*3)
+    old_weights = checkpoint[f"{old_prefix}.qkv.weight"].reshape(n_heads, attention_head_dim*3, -1, 1, 1)
+    old_biases = checkpoint[f"{old_prefix}.qkv.bias"].reshape(n_heads, attention_head_dim*3, -1, 1, 1)
+
+    weight_q, weight_k, weight_v = old_weights.chunk(3, dim=1)
+    weight_q = weight_q.reshape(n_heads*attention_head_dim, -1, 1, 1)
+    weight_k = weight_k.reshape(n_heads*attention_head_dim, -1, 1, 1)
+    weight_v = weight_v.reshape(n_heads*attention_head_dim, -1, 1, 1)
+
+    bias_q, bias_k, bias_v = old_biases.chunk(3, dim=1)
+    bias_q = bias_q.reshape(n_heads*attention_head_dim, -1, 1, 1)
+    bias_k = bias_k.reshape(n_heads*attention_head_dim, -1, 1, 1)
+    bias_v = bias_v.reshape(n_heads*attention_head_dim, -1, 1, 1)
 
     new_checkpoint[f"{new_prefix}.group_norm.weight"] = checkpoint[f"{old_prefix}.norm.weight"]
     new_checkpoint[f"{new_prefix}.group_norm.bias"] = checkpoint[f"{old_prefix}.norm.bias"]
 
-    new_checkpoint[f"{new_prefix}.to_q.weight"] = weight_q.squeeze(-1).squeeze(-1)
-    new_checkpoint[f"{new_prefix}.to_q.bias"] = bias_q.squeeze(-1).squeeze(-1)
-    new_checkpoint[f"{new_prefix}.to_k.weight"] = weight_k.squeeze(-1).squeeze(-1)
-    new_checkpoint[f"{new_prefix}.to_k.bias"] = bias_k.squeeze(-1).squeeze(-1)
-    new_checkpoint[f"{new_prefix}.to_v.weight"] = weight_v.squeeze(-1).squeeze(-1)
-    new_checkpoint[f"{new_prefix}.to_v.bias"] = bias_v.squeeze(-1).squeeze(-1)
+    new_checkpoint[f"{new_prefix}.to_q.weight"] = torch.squeeze(weight_q)
+    new_checkpoint[f"{new_prefix}.to_q.bias"] = torch.squeeze(bias_q)
+    new_checkpoint[f"{new_prefix}.to_k.weight"] = torch.squeeze(weight_k)
+    new_checkpoint[f"{new_prefix}.to_k.bias"] = torch.squeeze(bias_k)
+    new_checkpoint[f"{new_prefix}.to_v.weight"] = torch.squeeze(weight_v)
+    new_checkpoint[f"{new_prefix}.to_v.bias"] = torch.squeeze(bias_v)
 
     new_checkpoint[f"{new_prefix}.to_out.0.weight"] = checkpoint[f"{old_prefix}.proj_out.weight"].squeeze(-1).squeeze(-1)
     new_checkpoint[f"{new_prefix}.to_out.0.bias"] = checkpoint[f"{old_prefix}.proj_out.bias"].squeeze(-1).squeeze(-1)
@@ -73,6 +85,7 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
 
     down_block_types = UNET_CONFIG["down_block_types"]
     layers_per_block = UNET_CONFIG["layers_per_block"]
+    attention_head_dim = UNET_CONFIG["attention_head_dim"]
     current_layer = 1
 
     for (i,layer_type) in enumerate(down_block_types):
@@ -92,7 +105,7 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip)
                 new_prefix = f"down_blocks.{i}.attentions.{j}"
                 old_prefix = f"input_blocks.{current_layer}.1"
-                new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix)
+                new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim)
                 current_layer += 1
 
         if i!= len(down_block_types)-1:
@@ -107,7 +120,7 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
     new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
     new_prefix = f"mid_block.attentions.0"
     old_prefix = f"middle_block.1"
-    new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix)
+    new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim)
     new_prefix = f"mid_block.resnets.1"
     old_prefix = f"middle_block.2"
     new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
@@ -129,7 +142,7 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=True)
                 new_prefix = f"up_blocks.{i}.attentions.{j}"
                 old_prefix = f"output_blocks.{current_layer}.1"
-                new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix)
+                new_checkpoint = convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim)
                 current_layer += 1
         
             new_prefix = f"up_blocks.{i}.upsamplers.0"
