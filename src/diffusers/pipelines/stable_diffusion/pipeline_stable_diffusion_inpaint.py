@@ -155,7 +155,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
 
 class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-guided image inpainting using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -166,6 +166,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
     as well as the following saving methods:
         - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
+
+    <Tip>
+
+    It is recommended to use this pipeline with checkpoints that have been specifically fine-tuned for inpainting, such
+    as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). Default
+    text-to-image stable diffusion checkpoints, such as
+    [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) are also compatible with
+    this pipeline, but might be less performant.
+
+    </Tip>
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -949,7 +959,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     " `pipeline.unet` or your `mask_image` or `image` input."
                 )
         elif num_channels_unet != 4:
-            raise ValueError(f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}.")
+            raise ValueError(
+                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
+            )
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -985,12 +997,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if num_channels_unet == 4:
-                    if i == len(timesteps) - 1:
-                        init_latents_proper = masked_image_latents
-                    else:
-                        init_latents_proper = self.scheduler.add_noise(masked_image_latents, noise, torch.tensor([t]))
+                    init_latents_proper = masked_image_latents[:1]
+                    init_mask = mask[:1]
 
-                    latents = (1 - mask) * init_latents_proper + mask * latents
+                    if i < len(timesteps) - 1:
+                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([t]))
+
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

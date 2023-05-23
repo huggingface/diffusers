@@ -226,6 +226,17 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
 
+    <Tip>
+
+    This pipeline can be used both with checkpoints that have been specifically fine-tuned for inpainting, such as
+    [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting)
+     as well as default text-to-image stable diffusion checkpoints, such as
+     [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5).
+    Default text-to-image stable diffusion checkpoints might be preferable for controlnets that have been fine-tuned on
+    those, such as [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
+
+    </Tip>
+
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
@@ -1237,12 +1248,13 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if num_channels_unet == 4:
-                    if i == len(timesteps) - 1:
-                        init_latents_proper = masked_image_latents
-                    else:
+                    init_latents_proper = masked_image_latents[:1]
+                    init_mask = mask[:1]
+
+                    if i < len(timesteps) - 1:
                         init_latents_proper = self.scheduler.add_noise(masked_image_latents, noise, torch.tensor([t]))
 
-                    latents = (1 - mask) * init_latents_proper + mask * latents
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
