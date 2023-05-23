@@ -682,6 +682,7 @@ class TextualInversionLoaderMixin:
                 state_dict = torch.load(model_file, map_location="cpu")
 
             # 2. Load token and embedding correcly from file
+            loaded_token = None
             if isinstance(state_dict, torch.Tensor):
                 if token is None:
                     raise ValueError(
