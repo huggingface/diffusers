@@ -1287,6 +1287,7 @@ def main(args):
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
+        pipeline.unet = unet
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
         scheduler_args = {}
@@ -1304,7 +1305,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_lora_weights(args.output_dir)
+        # pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         images = []
