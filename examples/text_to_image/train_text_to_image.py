@@ -50,7 +50,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0")
+check_min_version("0.16.0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -64,8 +64,8 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
     pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        vae=vae,
-        text_encoder=text_encoder,
+        vae=accelerator.unwrap_model(vae),
+        text_encoder=accelerator.unwrap_model(text_encoder),
         tokenizer=tokenizer,
         unet=accelerator.unwrap_model(unet),
         safety_checker=None,

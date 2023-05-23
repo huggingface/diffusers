@@ -85,7 +85,7 @@ class PipelineTesterMixin:
         raise NotImplementedError(
             "You need to set the attribute `params` in the child test class. "
             "`params` are checked for if all values are present in `__call__`'s signature."
-            " You can set `params` using one of the common set of parameters defined in`pipeline_params.py`"
+            " You can set `params` using one of the common set of parameters defined in `pipeline_params.py`"
             " e.g., `TEXT_TO_IMAGE_PARAMS` defines the common parameters used in text to  "
             "image pipelines, including prompts and prompt embedding overrides."
             "If your pipeline's set of arguments has minor changes from one of the common sets of arguments, "
@@ -175,8 +175,8 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    def test_inference_batch_consistent(self):
-        self._test_inference_batch_consistent()
+    def test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
+        self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
         self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
@@ -235,11 +235,12 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical()
+    def test_inference_batch_single_identical(self, batch_size=3):
+        self._test_inference_batch_single_identical(batch_size=batch_size)
 
     def _test_inference_batch_single_identical(
         self,
+        batch_size=3,
         test_max_difference=None,
         test_mean_pixel_difference=None,
         relax_max_difference=False,
@@ -267,7 +268,7 @@ class PipelineTesterMixin:
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = 3
+        batch_size = batch_size
         for name, value in inputs.items():
             if name in self.batch_params:
                 # prompt is string
@@ -338,6 +339,9 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
+        self._test_float16_inference()
+
+    def _test_float16_inference(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -351,10 +355,13 @@ class PipelineTesterMixin:
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
+        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
+        self._test_save_load_float16()
+
+    def _test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
             if hasattr(module, "half"):
@@ -383,7 +390,9 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-2, "The output of the fp16 pipeline changed after saving and loading.")
+        self.assertLess(
+            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
+        )
 
     def test_save_load_optional_components(self):
         if not hasattr(self.pipeline_class, "_optional_components"):
