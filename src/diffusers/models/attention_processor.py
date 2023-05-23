@@ -414,7 +414,7 @@ class Attention(nn.Module):
 
 class AttnProcessor:
     r"""
-    Processor for implementing the basic attention mechanism.
+    Default processor for performing attention-related computations.
     """
 
     def __call__(
@@ -579,9 +579,9 @@ class CustomDiffusionAttnProcessor(nn.Module):
 
     Args:
         train_kv (`bool`, defaults to `True`):
-            Whether to train the text features.
+            Whether to newly train the key and value matrices corresponding to the text features.
         train_q_out (`bool`, defaults to `True`):
-            Whether to train the latent image features.
+            Whether to newly train query matrices corresponding to the latent image features.
         hidden_size (`int`, *optional*, defaults to `None`):
             The hidden size of the attention layer.
         cross_attention_dim (`int`, *optional*, defaults to `None`):
@@ -670,6 +670,11 @@ class CustomDiffusionAttnProcessor(nn.Module):
 
 
 class AttnAddedKVProcessor:
+    r"""
+    Processor for performing attention-related computations with extra learnable key and value matrices for the text
+    encoder.
+    """
+
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
@@ -719,6 +724,11 @@ class AttnAddedKVProcessor:
 
 
 class AttnAddedKVProcessor2_0:
+    r"""
+    Processor for performing scaled dot product attention (enabled by default if you're using PyTorch 2.0) with extra
+    learnable key and value matrices for the text encoder.
+    """
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
@@ -778,6 +788,9 @@ class AttnAddedKVProcessor2_0:
 
 class LoRAAttnAddedKVProcessor(nn.Module):
     r"""
+    Processor for implementing the LoRA attention mechanism with extra learnable key and value matrices for the text
+    encoder.
+
     Args:
         hidden_size (`int`, *optional*):
             The hidden size of the attention layer.
@@ -855,7 +868,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 class XFormersAttnProcessor:
     r"""
-    Processor for implementing memory efficient attention.
+    Processor for implementing memory efficient attention using xFormers.
 
     Args:
         attention_op (`Callable`, *optional*, defaults to `None`):
@@ -996,7 +1009,7 @@ class AttnProcessor2_0:
 
 class LoRAXFormersAttnProcessor(nn.Module):
     r"""
-    Processor for implementing memory efficient attention with LoRA.
+    Processor for implementing the LoRA attention mechanism with memory efficient attention using xFormers.
 
     Args:
         hidden_size (`int`, *optional*):
@@ -1079,13 +1092,13 @@ class LoRAXFormersAttnProcessor(nn.Module):
 
 class CustomDiffusionXFormersAttnProcessor(nn.Module):
     r"""
-    Processor for implementing memory efficient attention for the Custom Diffusion method.
+    Processor for implementing memory efficient attention using xFormers for the Custom Diffusion method.
 
     Args:
     train_kv (`bool`, defaults to `True`):
-            Whether to train the text features.
+        Whether to newly train the key and value matrices corresponding to the text features.
     train_q_out (`bool`, defaults to `True`):
-        Whether to train the latent image features.
+        Whether to newly train query matrices corresponding to the latent image features.
     hidden_size (`int`, *optional*, defaults to `None`):
         The hidden size of the attention layer.
     cross_attention_dim (`int`, *optional*, defaults to `None`):
@@ -1095,10 +1108,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
     dropout (`float`, *optional*, defaults to 0.0):
         The dropout probability to use.
     attention_op (`Callable`, *optional*, defaults to `None`):
-            The base
-            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
-            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
-            operator.
+        The base
+        [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to use
+        as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best operator.
     """
 
     def __init__(
@@ -1268,6 +1280,8 @@ class SlicedAttnProcessor:
 
 class SlicedAttnAddedKVProcessor:
     r"""
+    Processor for implementing sliced attention with extra learnable key and value matrices for the text encoder.
+
     Args:
         slice_size (`int`, *optional*):
             The number of steps to compute attention. Uses as many slices as `attention_head_dim // slice_size`, and
