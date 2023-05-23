@@ -30,6 +30,7 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
+from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
@@ -1229,6 +1230,17 @@ class DiffusionPipeline(ConfigMixin):
         ignore_patterns = None
 
         if not local_files_only:
+            try:
+                info = model_info(
+                    pretrained_model_name,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+            except HTTPError as e:
+                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                local_files_only = True
+
+        if not local_files_only:
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1238,11 +1250,6 @@ class DiffusionPipeline(ConfigMixin):
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
-            )
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
             )
 
             config_dict = cls._dict_from_json_file(config_file)

@@ -353,7 +353,7 @@ class DownloadTests(unittest.TestCase):
         with mock.patch("requests.request", return_value=response_mock):
             # Download this model to make sure it's in the cache.
             pipe = StableDiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, local_files_only=True
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
             comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
 
