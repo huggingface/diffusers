@@ -176,7 +176,7 @@ class LoRAHookInjector(object):
             hook = LoRAHook()
             hook.install(target_module)
             self.hooks[name] = hook
-            print(name)
+            # print(name)
 
         self.device = pipe.device
         self.dtype = pipe.unet.dtype
@@ -233,6 +233,8 @@ def image_grid(imgs, rows, cols):
 
 
 if __name__ == "__main__":
+    torch.cuda.reset_peak_memory_stats()
+
     pipe = StableDiffusionPipeline.from_pretrained(
         "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
     ).to("cuda")
@@ -258,6 +260,10 @@ if __name__ == "__main__":
     ).images
     image_grid(images, 1, 4).save("test_orig.png")
 
+    mem_bytes = torch.cuda.max_memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    print(f"Without Lora -> {mem_bytes/(10**6)}MB")
+
     # Hook version (some restricted apply)
     install_lora_hook(pipe)
     pipe.apply_lora(lora_fn)
@@ -273,6 +279,10 @@ if __name__ == "__main__":
     image_grid(images, 1, 4).save("test_lora_hook.png")
     uninstall_lora_hook(pipe)
 
+    mem_bytes = torch.cuda.max_memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    print(f"Hook version -> {mem_bytes/(10**6)}MB")
+
     # Diffusers dev version
     pipe.load_lora_weights(lora_fn)
     images = pipe(
@@ -286,6 +296,9 @@ if __name__ == "__main__":
         # cross_attention_kwargs={"scale": 0.5},  # lora scale
     ).images
     image_grid(images, 1, 4).save("test_lora_dev.png")
+
+    mem_bytes = torch.cuda.max_memory_allocated()
+    print(f"Diffusers dev version -> {mem_bytes/(10**6)}MB")
 
     # abs-difference image
     image_hook = np.array(Image.open("test_lora_hook.png"), dtype=np.int16)
