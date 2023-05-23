@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
@@ -213,11 +213,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states,
-        encoder_hidden_states=None,
-        timestep=None,
-        class_labels=None,
-        cross_attention_kwargs=None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
         """
@@ -225,14 +227,20 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
+            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep ( `torch.long`, *optional*):
+            timestep ( `torch.LongTensor`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
                 conditioning.
+            encoder_attention_mask ( `torch.Tensor`, *optional* ).
+                Cross-attention mask, applied to encoder_hidden_states. Two formats supported:
+                    Mask `(batch, sequence_length)` True = keep, False = discard. Bias `(batch, 1, sequence_length)` 0
+                    = keep, -10000 = discard.
+                If ndim == 2: will be interpreted as a mask, then converted into a bias consistent with the format
+                above. This bias will be added to the cross-attention scores.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -241,6 +249,29 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
+        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
+        #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
+        #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
+        # expects mask of shape:
+        #   [batch, key_tokens]
+        # adds singleton query_tokens dimension:
+        #   [batch,                    1, key_tokens]
+        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
+        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
+        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
+        if attention_mask is not None and attention_mask.ndim == 2:
+            # assume that mask is expressed as:
+            #   (1 = keep,      0 = discard)
+            # convert mask into a bias that can be added to attention scores:
+            #       (keep = +0,     discard = -10000.0)
+            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
+
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
@@ -264,7 +295,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         for block in self.transformer_blocks:
             hidden_states = block(
                 hidden_states,
+                attention_mask=attention_mask,
                 encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
                 timestep=timestep,
                 cross_attention_kwargs=cross_attention_kwargs,
                 class_labels=class_labels,

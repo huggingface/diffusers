@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, apply_forward_hook, deprecate
+from ..utils import BaseOutput, apply_forward_hook
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -123,16 +123,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
 
-    @property
-    def block_out_channels(self):
-        deprecate(
-            "block_out_channels",
-            "1.0.0",
-            "Accessing `block_out_channels` directly via vae.block_out_channels is deprecated. Please use `vae.config.block_out_channels instead`",
-            standard_warn=False,
-        )
-        return self.config.block_out_channels
-
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, Decoder)):
             module.gradient_checkpointing = value
@@ -206,12 +196,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=decoded)
 
     def blend_v(self, a, b, blend_extent):
-        for y in range(min(a.shape[2], b.shape[2], blend_extent)):
+        blend_extent = min(a.shape[2], b.shape[2], blend_extent)
+        for y in range(blend_extent):
             b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
         return b
 
     def blend_h(self, a, b, blend_extent):
-        for x in range(min(a.shape[3], b.shape[3], blend_extent)):
+        blend_extent = min(a.shape[3], b.shape[3], blend_extent)
+        for x in range(blend_extent):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 

@@ -27,12 +27,13 @@ from diffusers import (
     UNet3DConditionModel,
 )
 from diffusers.utils import load_numpy, skip_mps, slow
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 @skip_mps
@@ -140,7 +141,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
+        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=3e-3)
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")

@@ -119,6 +119,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         projection_class_embeddings_input_dim: Optional[int] = None,
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
+        global_pool_conditions: bool = False,
     ):
         super().__init__()
 
@@ -497,7 +498,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=self.dtype)
+        t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
 
@@ -516,7 +517,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
 
-        sample += controlnet_cond
+        sample = sample + controlnet_cond
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -550,21 +551,28 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
             down_block_res_sample = controlnet_block(down_block_res_sample)
-            controlnet_down_block_res_samples += (down_block_res_sample,)
+            controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
 
         down_block_res_samples = controlnet_down_block_res_samples
 
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
-        if guess_mode:
-            scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1)  # 0.1 to 1.0
-            scales *= conditioning_scale
+        if guess_mode and not self.config.global_pool_conditions:
+            scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
+
+            scales = scales * conditioning_scale
             down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
-            mid_block_res_sample *= scales[-1]  # last one
+            mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
         else:
             down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
-            mid_block_res_sample *= conditioning_scale
+            mid_block_res_sample = mid_block_res_sample * conditioning_scale
+
+        if self.config.global_pool_conditions:
+            down_block_res_samples = [
+                torch.mean(sample, dim=(2, 3), keepdim=True) for sample in down_block_res_samples
+            ]
+            mid_block_res_sample = torch.mean(mid_block_res_sample, dim=(2, 3), keepdim=True)
 
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)
