@@ -1287,7 +1287,7 @@ def main(args):
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
-        pipeline.unet = unet
+        pipeline.unet = unet.to(weight_dtype)
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
         scheduler_args = {}
