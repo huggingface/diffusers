@@ -24,10 +24,10 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionUpscalePipeline, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):

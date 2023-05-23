@@ -20,7 +20,6 @@ deps = {
     "k-diffusion": "k-diffusion>=0.0.12",
     "librosa": "librosa",
     "numpy": "numpy",
-    "omegaconf": "omegaconf",
     "parameterized": "parameterized",
     "protobuf": "protobuf>=3.20.3,<4",
     "pytest": "pytest",

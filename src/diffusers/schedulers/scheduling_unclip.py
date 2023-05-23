@@ -75,9 +75,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
     """
-    NOTE: do not use this scheduler. The DDPM scheduler has been updated to support the changes made here. This
-    scheduler will be removed and replaced with DDPM.
-
     This is a modified DDPM Scheduler specifically for the karlo unCLIP model.
 
     This scheduler has some minor variations in how it calculates the learned range variance and dynamically

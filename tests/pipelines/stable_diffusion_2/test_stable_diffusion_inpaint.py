@@ -24,22 +24,19 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow
+from diffusers.utils.testing_utils import require_torch_gpu, slow
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusion2InpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusion2InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -133,9 +130,6 @@ class StableDiffusion2InpaintPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
-
 
 @slow
 @require_torch_gpu
@@ -178,7 +172,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 9e-3
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_pipeline_fp16(self):
         init_image = load_image(

@@ -37,13 +37,10 @@ from diffusers import (
 )
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import load_image, require_torch_gpu, skip_mps
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
-
-
-enable_full_determinism()
 
 
 class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -519,4 +516,4 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
 
-        assert_mean_pixel_difference(image, expected_image, 15)
+        assert_mean_pixel_difference(image, expected_image)

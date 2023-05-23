@@ -31,10 +31,11 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | UnCLIP Image Interpolation Pipeline                                                                                                   | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)               | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 | DDIM Noise Comparative Analysis Pipeline                                                                                              | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227))                                                                                                                                                                                                                                                                                                                             | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline)     | - |              [Aengus (Duc-Anh)](https://github.com/aengusng8) |
 | CLIP Guided Img2Img Stable Diffusion Pipeline                                                                                         | Doing CLIP guidance for image to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                  | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion)             | - |               [Nipun Jindal](https://github.com/nipunjindal/) | 
-| TensorRT Stable Diffusion Text to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Text to Image Pipeline](#tensorrt-text2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| TensorRT Stable Diffusion Pipeline                                                                                                    | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Pipeline](#tensorrt-text2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | EDICT Image Editing Pipeline                                                                                                          | Diffusion pipeline for text-guided image editing                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline)                             | - |                    [Joqsan Azocar](https://github.com/Joqsan) | 
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.0986) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )                                    | - |                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) | 
-| TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+
+
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1281,85 +1282,3 @@ pipe = pipe.to("cuda")
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
-
-### TensorRT Image2Image Stable Diffusion Pipeline
-
-The TensorRT Pipeline can be used to accelerate the Image2Image Stable Diffusion Inference run.
-
-NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
-
-```python
-import requests
-from io import BytesIO
-from PIL import Image
-import torch
-from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
-
-# Use the DDIMScheduler scheduler here instead
-scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                            subfolder="scheduler")
-
-
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                                custom_pipeline="stable_diffusion_tensorrt_img2img",
-                                                revision='fp16',
-                                                torch_dtype=torch.float16,
-                                                scheduler=scheduler,)
-
-# re-use cached folder to save ONNX models and TensorRT Engines
-pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", revision='fp16',)
-
-pipe = pipe.to("cuda")
-
-url = "https://pajoca.com/wp-content/uploads/2022/09/tekito-yamakawa-1.png"
-response = requests.get(url)
-input_image = Image.open(BytesIO(response.content)).convert("RGB")
-
-prompt = "photorealistic new zealand hills"
-image = pipe(prompt, image=input_image, strength=0.75,).images[0]
-image.save('tensorrt_img2img_new_zealand_hills.png')
-```
-
-### Stable Diffusion Reference
-
-This pipeline uses the Reference only Control. Refer to the [sd-webui-controlnet discussion](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236).
-
-
-```py
-import torch
-from diffusers import UniPCMultistepScheduler
-from diffusers.utils import load_image
-
-input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
-
-pipe = StableDiffusionReferencePipeline.from_pretrained(
-       "runwayml/stable-diffusion-v1-5",
-       safety_checker=None,
-       torch_dtype=torch.float16
-       ).to('cuda:0')
-
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-
-result_img = pipe(ref_image=input_image,
-      prompt="1girl",
-      num_inference_steps=20,
-      reference_attn=True,
-      reference_adain=True).images[0]
-```
-
-Reference Image
-
-![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
-
-Output Image of `reference_attn=True` and `reference_adain=False`
-
-![output_image](https://github.com/huggingface/diffusers/assets/24734142/813b5c6a-6d89-46ba-b7a4-2624e240eea5)
-
-Output Image of `reference_attn=False` and `reference_adain=True`
-
-![output_image](https://github.com/huggingface/diffusers/assets/24734142/ffc90339-9ef0-4c4d-a544-135c3e5644da)
-
-Output Image of `reference_attn=True` and `reference_adain=True`
-
-![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)

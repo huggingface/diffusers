@@ -30,7 +30,7 @@ if is_flax_available():
 
 @slow
 @require_flax
-class FlaxControlNetPipelineIntegrationTests(unittest.TestCase):
+class FlaxStableDiffusionControlNetPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

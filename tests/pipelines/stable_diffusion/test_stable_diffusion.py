@@ -15,16 +15,11 @@
 
 
 import gc
-import os
-import signal
-import subprocess
-import sys
 import tempfile
 import time
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
@@ -44,32 +39,20 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-@pytest.fixture(autouse=True)
-def process_fixture():
-    # This will be run before each test
-    command = [sys.executable, os.path.abspath(__file__)]
-    process = subprocess.Popen(command)
-    enable_full_determinism()
-    yield process
-    # This will be run after each test
-    try:
-        os.kill(process.pid, signal.SIGTERM)  # or signal.SIGKILL
-    except ProcessLookupError:
-        pass
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -556,17 +539,12 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
         image_shape = output.images[0].shape[:2]
         assert image_shape == (192, 192)
 
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
-
 
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
+    def tearDown(self):
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -595,7 +573,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_1_4_pndm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
@@ -608,7 +586,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.57400, 0.47841, 0.31625, 0.63583, 0.58306, 0.55056, 0.50825, 0.56306, 0.55748])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_ddim(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
@@ -636,7 +614,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.10542, 0.09620, 0.07332, 0.09015, 0.09382, 0.07597, 0.08496, 0.07806, 0.06455])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_dpm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
@@ -650,7 +628,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.03503, 0.03494, 0.01087, 0.03128, 0.02552, 0.00803, 0.00742, 0.00372, 0.00000])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
@@ -925,7 +903,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         )
 
         max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 8e-1
+        assert max_diff < 5e-2
 
     def test_stable_diffusion_compile(self):
         if version.parse(torch.__version__) < version.parse("2.0"):
@@ -1069,7 +1047,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
         )
         max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 3e-3
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_lms(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)

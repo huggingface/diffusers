@@ -30,21 +30,20 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 @skip_mps
-class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPanoramaPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -130,7 +129,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
     # override to speed the overall test timing up.
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=3e-3)
+        super().test_inference_batch_single_identical(batch_size=2)
 
     def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

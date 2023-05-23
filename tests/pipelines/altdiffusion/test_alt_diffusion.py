@@ -26,20 +26,19 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesModelWithTransformation,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
-
-enable_full_determinism()
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-class AltDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+torch.backends.cuda.matmul.allow_tf32 = False
+
+
+class AltDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AltDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -125,12 +124,6 @@ class AltDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMix
             "output_type": "numpy",
         }
         return inputs
-
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
     def test_alt_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

@@ -19,10 +19,10 @@ import numpy as np
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DDPMPipelineFastTests(unittest.TestCase):

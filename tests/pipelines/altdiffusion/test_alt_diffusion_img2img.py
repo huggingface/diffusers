@@ -33,10 +33,10 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesModelWithTransformation,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
@@ -123,7 +123,6 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         tokenizer.model_max_length = 77
 
         init_image = self.dummy_image.to(device)
-        init_image = init_image / 2 + 0.5
 
         # make sure here that pndm scheduler skips prk
         alt_pipe = AltDiffusionImg2ImgPipeline(
@@ -135,7 +134,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=True)
+        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
         alt_pipe = alt_pipe.to(device)
         alt_pipe.set_progress_bar_config(disable=None)
 
@@ -251,7 +250,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
 @slow
@@ -297,4 +296,4 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3

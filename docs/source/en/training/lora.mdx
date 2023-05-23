@@ -146,7 +146,6 @@ pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.
 
 </Tip>
 
-
 ## DreamBooth
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a finetuning technique for personalizing a text-to-image model like Stable Diffusion to generate photorealistic images of a subject in different contexts, given a few images of the subject. However, DreamBooth is very sensitive to hyperparameters and it is easy to overfit. Some important hyperparameters to consider include those that affect the training time (learning rate, number of training steps), and inference time (number of steps, scheduler type).
@@ -270,6 +269,3 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
   ```
 
 * LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
-
-**Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs,
-refer to the respective docstrings.

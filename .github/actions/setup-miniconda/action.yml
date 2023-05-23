@@ -27,7 +27,7 @@ runs:
       - name: Get date
         id: get-date
         shell: bash
-        run: echo "today=$(/bin/date -u '+%Y%m%d')d" >> $GITHUB_OUTPUT
+        run: echo "::set-output name=today::$(/bin/date -u '+%Y%m%d')d"
       - name: Setup miniconda cache
         id: miniconda-cache
         uses: actions/cache@v2

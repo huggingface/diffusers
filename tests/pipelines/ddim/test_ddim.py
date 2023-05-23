@@ -19,13 +19,13 @@ import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -86,18 +86,6 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
-
-    def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
-
-    def test_save_load_local(self):
-        super().test_save_load_local(expected_max_difference=3e-3)
-
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components(expected_max_difference=3e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

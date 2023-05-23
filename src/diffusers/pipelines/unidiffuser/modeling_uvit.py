@@ -1168,6 +1168,8 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             unpatchify=False,
         )[0]
 
+        # print(f"Transformer output shape: {hidden_states.shape}")
+
         # 3. Output
         # Split out the predicted noise representation.
         if self.use_data_type_embedding:

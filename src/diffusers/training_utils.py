@@ -1,16 +1,32 @@
-import contextlib
 import copy
-from random import random
+import os
+import random
 from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
 import torch
 
-from .utils import deprecate, is_transformers_available
+from .utils import deprecate
 
 
-if is_transformers_available():
-    import transformers
+def enable_full_determinism(seed: int):
+    """
+    Helper function for reproducible behavior during distributed training. See
+    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
+    """
+    # set seed first
+    set_seed(seed)
+
+    #  Enable PyTorch deterministic mode. This potentially requires either the environment
+    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
+    # depending on the CUDA version, so we set them both here
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+    # Enable CUDNN deterministic mode
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def set_seed(seed: int):
@@ -181,19 +197,11 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
-        context_manager = contextlib.nullcontext
-        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
-            import deepspeed
-
         for s_param, param in zip(self.shadow_params, parameters):
-            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
-                context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
-
-            with context_manager():
-                if param.requires_grad:
-                    s_param.sub_(one_minus_decay * (s_param - param))
-                else:
-                    s_param.copy_(param)
+            if param.requires_grad:
+                s_param.sub_(one_minus_decay * (s_param - param))
+            else:
+                s_param.copy_(param)
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """

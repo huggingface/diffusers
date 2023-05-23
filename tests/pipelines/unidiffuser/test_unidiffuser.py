@@ -21,13 +21,10 @@ from diffusers import (
     UniDiffuserTextDecoder,
 )
 from diffusers.utils import floats_tensor, load_image, randn_tensor, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
-
-
-enable_full_determinism()
 
 
 class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -114,11 +111,17 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_fixed_latents(self, device, seed=0):
         if type(device) == str:
             device = torch.device(device)
-        generator = torch.Generator(device=device).manual_seed(seed)
+        latent_device = torch.device("cpu")
+        generator = torch.Generator(device=latent_device).manual_seed(seed)
         # Hardcode the shapes for now.
         prompt_latents = randn_tensor((1, 77, 32), generator=generator, device=device, dtype=torch.float32)
         vae_latents = randn_tensor((1, 4, 16, 16), generator=generator, device=device, dtype=torch.float32)
         clip_latents = randn_tensor((1, 1, 32), generator=generator, device=device, dtype=torch.float32)
+
+        # Move latents onto desired device.
+        prompt_latents = prompt_latents.to(device)
+        vae_latents = vae_latents.to(device)
+        clip_latents = clip_latents.to(device)
 
         latents = {
             "prompt_latents": prompt_latents,
@@ -128,6 +131,9 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return latents
 
     def get_dummy_inputs_with_latents(self, device, seed=0):
+        # image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        # image = image.cpu().permute(0, 2, 3, 1)[0]
+        # image = Image.fromarray(np.uint8(image)).convert("RGB")
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/unidiffuser/unidiffuser_example_image.jpg",
         )
@@ -458,11 +464,11 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.5049, 0.5498, 0.5854, 0.3052, 0.4460, 0.6489, 0.5122, 0.4810, 0.6138])
+        expected_img_slice = np.array([0.5762, 0.6270, 0.6572, 0.4966, 0.4639, 0.5664, 0.5254, 0.5068, 0.5713])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
-        expected_text_prefix = '" This This'
-        assert text[0][: len(expected_text_prefix)] == expected_text_prefix
+        expected_text_prefix = " no no no "
+        assert text[0][:10] == expected_text_prefix
 
     @require_torch_gpu
     def test_unidiffuser_default_text2img_v1_cuda_fp16(self):
@@ -484,7 +490,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_img_slice = np.array([0.5054, 0.5498, 0.5854, 0.3052, 0.4458, 0.6489, 0.5122, 0.4810, 0.6138])
+        expected_img_slice = np.array([0.5757, 0.6270, 0.6567, 0.4966, 0.4639, 0.5664, 0.5259, 0.5068, 0.5713])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
     @require_torch_gpu
@@ -504,8 +510,8 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["data_type"] = 1
         text = unidiffuser_pipe(**inputs).text
 
-        expected_text_prefix = '" This This'
-        assert text[0][: len(expected_text_prefix)] == expected_text_prefix
+        expected_text_prefix = " no no no "
+        assert text[0][:10] == expected_text_prefix
 
 
 @slow

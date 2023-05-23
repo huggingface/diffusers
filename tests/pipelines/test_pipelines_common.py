@@ -18,6 +18,9 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+
+
 def to_np(tensor):
     if isinstance(tensor, torch.Tensor):
         tensor = tensor.detach().cpu().numpy()
@@ -62,7 +65,7 @@ class PipelineLatentTesterMixin:
 
         return inputs
 
-    def test_pt_np_pil_outputs_equivalent(self, expected_max_diff=1e-4):
+    def test_pt_np_pil_outputs_equivalent(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -73,12 +76,10 @@ class PipelineLatentTesterMixin:
         output_pil = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="pil"))[0]
 
         max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
-        self.assertLess(
-            max_diff, expected_max_diff, "`output_type=='pt'` generate different results from `output_type=='np'`"
-        )
+        self.assertLess(max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`")
 
         max_diff = np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max()
-        self.assertLess(max_diff, 2.0, "`output_type=='pil'` generate different results from `output_type=='np'`")
+        self.assertLess(max_diff, 1e-4, "`output_type=='pil'` generate different results from `output_type=='np'`")
 
     def test_pt_np_pil_inputs_equivalent(self):
         if len(self.image_params) == 0:
@@ -187,7 +188,7 @@ class PipelineTesterMixin:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_save_load_local(self, expected_max_difference=1e-4):
+    def test_save_load_local(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -206,7 +207,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, expected_max_difference)
+        self.assertLess(max_diff, 1e-4)
 
     def test_pipeline_call_signature(self):
         self.assertTrue(
@@ -307,8 +308,8 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
 
-    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
-        self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
+    def test_inference_batch_single_identical(self, batch_size=3):
+        self._test_inference_batch_single_identical(batch_size=batch_size)
 
     def _test_inference_batch_single_identical(
         self,
@@ -390,7 +391,7 @@ class PipelineTesterMixin:
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
-    def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
+    def test_dict_tuple_outputs_equivalent(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -400,7 +401,7 @@ class PipelineTesterMixin:
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
-        self.assertLess(max_diff, expected_max_difference)
+        self.assertLess(max_diff, 1e-4)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
@@ -410,7 +411,7 @@ class PipelineTesterMixin:
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self, expected_max_diff=1e-2):
+    def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -424,10 +425,10 @@ class PipelineTesterMixin:
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
-        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
+        self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_save_load_float16(self, expected_max_diff=1e-2):
+    def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
             if hasattr(module, "half"):
@@ -456,11 +457,9 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(
-            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
-        )
+        self.assertLess(max_diff, 1e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+    def test_save_load_optional_components(self):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
 
@@ -492,7 +491,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, expected_max_difference)
+        self.assertLess(max_diff, 1e-4)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
@@ -526,8 +525,8 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
-        self._test_attention_slicing_forward_pass(expected_max_diff=expected_max_diff)
+    def test_attention_slicing_forward_pass(self):
+        self._test_attention_slicing_forward_pass()
 
     def _test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
@@ -558,7 +557,7 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
-    def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
+    def test_cpu_offload_forward_pass(self):
         if not self.test_cpu_offload:
             return
 
@@ -575,7 +574,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
-        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
+        self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -658,8 +657,8 @@ class PipelineTesterMixin:
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
 # This helper function is used to check that the image doesn't deviate on average more than 10 pixels from a
 # reference image.
-def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
+def assert_mean_pixel_difference(image, expected_image):
     image = np.asarray(DiffusionPipeline.numpy_to_pil(image)[0], dtype=np.float32)
     expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
     avg_diff = np.abs(image - expected_image).mean()
-    assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
+    assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"

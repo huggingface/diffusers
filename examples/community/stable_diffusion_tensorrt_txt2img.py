@@ -54,9 +54,8 @@ from diffusers.utils import DIFFUSERS_CACHE, logging
 
 """
 Installation instructions
-python3 -m pip install --upgrade transformers diffusers>=0.16.0
-python3 -m pip install --upgrade tensorrt>=8.6.1
-python3 -m pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+python3 -m pip install --upgrade tensorrt
+python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 python3 -m pip install onnxruntime
 """
 
@@ -133,7 +132,7 @@ class Engine:
             config_kwargs["tactic_sources"] = []
 
         engine = engine_from_network(
-            network_from_onnx_path(onnx_path, flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM]),
+            network_from_onnx_path(onnx_path),
             config=CreateConfig(fp16=fp16, profiles=[p], load_timing_cache=timing_cache, **config_kwargs),
             save_timing_cache=timing_cache,
         )
@@ -634,7 +633,6 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         onnx_dir: str = "onnx",
         # TensorRT engine build parameters
         engine_dir: str = "engine",
-        build_preview_features: bool = True,
         force_engine_rebuild: bool = False,
         timing_cache: str = "timing_cache",
     ):
@@ -654,7 +652,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         self.timing_cache = timing_cache
         self.build_static_batch = False
         self.build_dynamic_shape = False
-        self.build_preview_features = build_preview_features
+        self.build_preview_features = False
 
         self.max_batch_size = max_batch_size
         # TODO: Restrict batch size to 4 for larger image dimensions as a WAR for TensorRT limitation.

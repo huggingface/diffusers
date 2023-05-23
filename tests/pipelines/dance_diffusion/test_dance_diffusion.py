@@ -21,13 +21,13 @@ import torch
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ..pipeline_params import UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS, UNCONDITIONAL_AUDIO_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -103,7 +103,7 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
-        return super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+        return super().test_dict_tuple_outputs_equivalent()
 
     @skip_mps
     def test_save_load_optional_components(self):
@@ -112,9 +112,6 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @skip_mps
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

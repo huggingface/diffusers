@@ -20,21 +20,13 @@ import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    load_image,
-    load_numpy,
-    nightly,
-    require_torch_gpu,
-    skip_mps,
-    torch_device,
-)
+from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ..pipeline_params import IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

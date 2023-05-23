@@ -34,7 +34,7 @@ from diffusers import (
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -44,7 +44,7 @@ from ..pipeline_params import (
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -211,10 +211,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):
-        return super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+        return super().test_attention_slicing_forward_pass()
 
 
 @slow
