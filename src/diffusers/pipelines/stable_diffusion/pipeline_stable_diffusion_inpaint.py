@@ -664,6 +664,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
                 for i in range(image.shape[0])
             ]
+            image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
 
