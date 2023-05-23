@@ -70,8 +70,8 @@ class AttnProcsLayers(torch.nn.Module):
         self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
-        # .processor for unet, .k_proj, ".q_proj", ".v_proj", and ".out_proj" for text encoder
-        self.split_keys = [".processor", ".k_proj", ".q_proj", ".v_proj", ".out_proj"]
+        # .processor for unet, .self_attn for text encoder
+        self.split_keys = [".processor", ".self_attn"]
 
         # we add a hook to state_dict() and load_state_dict() so that the
         # naming fits with `unet.attn_processors`
