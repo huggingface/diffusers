@@ -1323,7 +1323,7 @@ image.save('tensorrt_img2img_new_zealand_hills.png')
 
 ### Stable Diffusion Reference
 
-This pipeline uses the Reference only Control. Refer to the [sd-webui-controlnet discussion](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236).
+This pipeline uses the Reference Control. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
 
 
 ```py
@@ -1363,3 +1363,50 @@ Output Image of `reference_attn=False` and `reference_adain=True`
 Output Image of `reference_attn=True` and `reference_adain=True`
 
 ![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)
+
+### Stable Diffusion ControlNet Reference
+
+This pipeline uses the Reference Control with ControlNet. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
+
+
+```py
+import cv2
+import torch
+import numpy as np
+from PIL import Image
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# get canny image
+image = cv2.Canny(np.array(input_image), 100, 200)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image)
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       controlnet=controlnet,
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      image=canny_image,
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/7b9a5830-f173-4b92-b0cf-73d0e9c01d60)
