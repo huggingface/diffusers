@@ -36,6 +36,7 @@ from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPText
 
 from diffusers import (
     AutoencoderKL,
+    ConfigMixin,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
@@ -45,6 +46,7 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
+    ModelMixin,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -118,6 +120,17 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
     results = {"error": error}
     out_queue.put(results, timeout=timeout)
     out_queue.join()
+
+
+class CustomEncoder(ModelMixin, ConfigMixin):
+    def __init__(self):
+        super().__init__()
+
+
+class CustomPipeline(DiffusionPipeline):
+    def __init__(self, encoder: CustomEncoder, scheduler: DDIMScheduler):
+        super().__init__()
+        self.register_modules(encoder=encoder, scheduler=scheduler)
 
 
 class DownloadTests(unittest.TestCase):
@@ -383,7 +396,7 @@ class DownloadTests(unittest.TestCase):
         with mock.patch("requests.request", return_value=response_mock):
             # Download this model to make sure it's in the cache.
             pipe = StableDiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, local_files_only=True
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
             comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
 
@@ -737,6 +750,20 @@ class CustomPipelineTests(unittest.TestCase):
         assert images[0].shape == (1, 32, 32, 3)
         # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/custom_pipeline/pipeline.py#L102
         assert output_str == "This is a local test"
+
+    def test_custom_model_and_pipeline(self):
+        pipe = CustomPipeline(
+            encoder=CustomEncoder(),
+            scheduler=DDIMScheduler(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+
+            pipe_new = CustomPipeline.from_pretrained(tmpdirname)
+            pipe_new.save_pretrained(tmpdirname)
+
+        assert dict(pipe_new.config) == dict(pipe.config)
 
     @slow
     @require_torch_gpu
