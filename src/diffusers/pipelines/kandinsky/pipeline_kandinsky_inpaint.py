@@ -656,12 +656,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
-                "`np`, `pt`, `pil` "
-            )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
+            raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
 
         if output_type in ["np", "pil"]:
             image = image * 0.5 + 0.5
