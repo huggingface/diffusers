@@ -443,7 +443,8 @@ class KandinskyPipeline(DiffusionPipeline):
                 noise_pred,
                 t,
                 latents,
-                # YiYi notes: remove this to test ddim
+                # YiYi notes: only reason this pipeline can't work with unclip scheduler is that can't pass down this argument
+                #             need to use DDPM scheduler instead 
                 #prev_timestep=prev_timestep,
                 generator=generator,
             ).prev_sample
