@@ -433,11 +433,6 @@ class KandinskyPipeline(DiffusionPipeline):
             ):
                 noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
-            if i + 1 == timesteps_tensor.shape[0]:
-                pass
-            else:
-                timesteps_tensor[i + 1]
-
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
                 noise_pred,
