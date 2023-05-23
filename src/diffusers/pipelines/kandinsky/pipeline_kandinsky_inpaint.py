@@ -628,18 +628,15 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
 
-            # CFG is currently implemented exactly as original repo as a baseline,
-            # i.e. we apply cfg to predicted noise, and take predicted variance as it is (uncond + cond)
-            # this means the our latent shape is batch_size *2 instad batch_size
-
             if do_classifier_free_guidance:
                 noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                variance_pred_uncond, variance_pred_text = variance_pred.chunk(2)
+                _, variance_pred_text = variance_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                noise_pred = torch.cat([noise_pred] * 2)
-                variance_pred = torch.cat([variance_pred_uncond, variance_pred_text])
-                noise_pred = torch.cat([noise_pred, variance_pred], dim=1)
+                noise_pred = torch.cat([noise_pred, variance_pred_text], dim=1)
+
+            if not (hasattr(self.scheduler.config, "variance_type") and self.scheduler.config.variance_type in ["learned", "learned_range"]):
+                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             if i + 1 == timesteps_tensor.shape[0]:
                 prev_timestep = None
@@ -650,13 +647,10 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             latents = self.scheduler.step(
                 noise_pred,
                 t,
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
+                latents,
                 prev_timestep=prev_timestep,
                 generator=generator,
-                batch_size=batch_size,
             ).prev_sample
-
-            _, latents = latents.chunk(2)
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
