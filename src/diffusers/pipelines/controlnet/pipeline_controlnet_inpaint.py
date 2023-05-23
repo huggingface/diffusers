@@ -1161,6 +1161,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             generator,
             latents,
         )
+        noise = latents
 
         # 7. Prepare mask latent variables
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
@@ -1180,6 +1181,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 8. Denoising loop
+        num_channels_unet = self.unet.config.in_channels
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1213,7 +1215,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
-                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+                if num_channels_unet == 9:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -1231,6 +1235,14 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if num_channels_unet == 4:
+                    if i == len(timesteps) - 1:
+                        init_latents_proper = masked_image_latents
+                    else:
+                        init_latents_proper = self.scheduler.add_noise(masked_image_latents, noise, torch.tensor([t]))
+
+                    latents = (1 - mask) * init_latents_proper + mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
