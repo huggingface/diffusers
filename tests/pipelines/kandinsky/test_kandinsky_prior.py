@@ -28,13 +28,12 @@ from transformers import (
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import skip_mps
+from diffusers.utils.testing_utils import skip_mps, enable_full_determinism
 
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

@@ -25,13 +25,12 @@ from transformers import XLMRobertaTokenizerFast
 from diffusers import DDIMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, enable_full_determinism
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
