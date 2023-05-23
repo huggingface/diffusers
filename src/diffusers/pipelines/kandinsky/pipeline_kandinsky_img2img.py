@@ -476,9 +476,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
 
-        # This step is taken from the origianl Kandinsky repo
-        #  - add one to get the final alpha values right (the ones from first scale to data during sampling))
-        self.scheduler.timesteps = self.scheduler.timesteps + 1
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
         # the formular to calculate timestep for add_noise is taken from the original kandinsky repo
