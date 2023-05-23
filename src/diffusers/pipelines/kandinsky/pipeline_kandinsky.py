@@ -24,7 +24,6 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -427,16 +426,17 @@ class KandinskyPipeline(DiffusionPipeline):
                 _, variance_pred_text = variance_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                 noise_pred = torch.cat([noise_pred, variance_pred_text], dim=1)
-            
-            
 
-            if not (hasattr(self.scheduler.config, "variance_type") and self.scheduler.config.variance_type in ["learned", "learned_range"]):
+            if not (
+                hasattr(self.scheduler.config, "variance_type")
+                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+            ):
                 noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             if i + 1 == timesteps_tensor.shape[0]:
-                prev_timestep = None
+                pass
             else:
-                prev_timestep = timesteps_tensor[i + 1]
+                timesteps_tensor[i + 1]
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
@@ -444,8 +444,8 @@ class KandinskyPipeline(DiffusionPipeline):
                 t,
                 latents,
                 # YiYi notes: only reason this pipeline can't work with unclip scheduler is that can't pass down this argument
-                #             need to use DDPM scheduler instead 
-                #prev_timestep=prev_timestep,
+                #             need to use DDPM scheduler instead
+                # prev_timestep=prev_timestep,
                 generator=generator,
             ).prev_sample
         # post-processing

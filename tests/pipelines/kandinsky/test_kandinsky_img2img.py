@@ -25,7 +25,7 @@ from transformers import XLMRobertaTokenizerFast
 from diffusers import DDIMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -229,7 +229,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
 
         assert image.shape == (1, 64, 64, 3)
 

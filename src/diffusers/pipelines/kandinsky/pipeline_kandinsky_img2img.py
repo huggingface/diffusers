@@ -27,7 +27,6 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,

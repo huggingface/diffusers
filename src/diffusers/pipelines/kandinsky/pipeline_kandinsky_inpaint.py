@@ -29,7 +29,6 @@ from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -635,7 +634,10 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                 noise_pred = torch.cat([noise_pred, variance_pred_text], dim=1)
 
-            if not (hasattr(self.scheduler.config, "variance_type") and self.scheduler.config.variance_type in ["learned", "learned_range"]):
+            if not (
+                hasattr(self.scheduler.config, "variance_type")
+                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+            ):
                 noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             if i + 1 == timesteps_tensor.shape[0]:

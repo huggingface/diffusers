@@ -26,7 +26,6 @@ from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
-    deprecate,
     is_accelerate_available,
     logging,
     randn_tensor,
