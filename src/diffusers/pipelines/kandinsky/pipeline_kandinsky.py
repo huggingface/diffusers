@@ -22,7 +22,7 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
-from ...schedulers import UnCLIPScheduler
+from ...schedulers import DDIMScheduler
 from ...utils import (
     deprecate,
     is_accelerate_available,
@@ -89,7 +89,7 @@ class KandinskyPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
-        scheduler ([`UnCLIPScheduler`]):
+        scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -102,7 +102,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: UnCLIPScheduler,
+        scheduler: DDIMScheduler,
         movq: VQModel,
     ):
         super().__init__()
