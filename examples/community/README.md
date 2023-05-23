@@ -1320,3 +1320,46 @@ prompt = "photorealistic new zealand hills"
 image = pipe(prompt, image=input_image, strength=0.75,).images[0]
 image.save('tensorrt_img2img_new_zealand_hills.png')
 ```
+
+### Stable Diffusion Reference
+
+This pipeline uses the Reference only Control. Refer to the [sd-webui-controlnet discussion](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236).
+
+
+```py
+import torch
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+pipe = StableDiffusionReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image of `reference_attn=True` and `reference_adain=False`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/813b5c6a-6d89-46ba-b7a4-2624e240eea5)
+
+Output Image of `reference_attn=False` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/ffc90339-9ef0-4c4d-a544-135c3e5644da)
+
+Output Image of `reference_attn=True` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)

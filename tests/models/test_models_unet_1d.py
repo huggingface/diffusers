@@ -23,9 +23,6 @@ from diffusers.utils import floats_tensor, slow, torch_device
 from .test_modeling_common import ModelTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-
-
 class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
 

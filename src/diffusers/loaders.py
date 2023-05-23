@@ -70,8 +70,8 @@ class AttnProcsLayers(torch.nn.Module):
         self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
-        # .processor for unet, .k_proj, ".q_proj", ".v_proj", and ".out_proj" for text encoder
-        self.split_keys = [".processor", ".k_proj", ".q_proj", ".v_proj", ".out_proj"]
+        # .processor for unet, .self_attn for text encoder
+        self.split_keys = [".processor", ".self_attn"]
 
         # we add a hook to state_dict() and load_state_dict() so that the
         # naming fits with `unet.attn_processors`
@@ -954,10 +954,12 @@ class LoraLoaderMixin:
                 module = self.text_encoder.get_submodule(name)
                 # Construct a new function that performs the LoRA merging. We will monkey patch
                 # this forward pass.
-                lora_layer = getattr(attn_processors[name], self._get_lora_layer_attribute(name))
+                attn_processor_name = ".".join(name.split(".")[:-1])
+                lora_layer = getattr(attn_processors[attn_processor_name], self._get_lora_layer_attribute(name))
                 old_forward = module.forward
 
                 # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
+                # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
                 def make_new_forward(old_forward, lora_layer):
                     def new_forward(x):
                         return old_forward(x) + lora_layer(x)

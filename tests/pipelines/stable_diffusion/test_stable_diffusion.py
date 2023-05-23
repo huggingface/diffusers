@@ -15,11 +15,16 @@
 
 
 import gc
+import os
+import signal
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
@@ -39,15 +44,25 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+@pytest.fixture(autouse=True)
+def process_fixture():
+    # This will be run before each test
+    command = [sys.executable, os.path.abspath(__file__)]
+    process = subprocess.Popen(command)
+    enable_full_determinism()
+    yield process
+    # This will be run after each test
+    try:
+        os.kill(process.pid, signal.SIGTERM)  # or signal.SIGKILL
+    except ProcessLookupError:
+        pass
 
 
 class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
@@ -551,8 +566,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineSlowTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+    def setUp(self):
         gc.collect()
         torch.cuda.empty_cache()
 
