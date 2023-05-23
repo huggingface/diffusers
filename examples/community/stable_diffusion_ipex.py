@@ -48,13 +48,13 @@ EXAMPLE_DOC_STRING = """
 
         >>> # For Float32
         >>> pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
-        >>> # For BFloat16 
+        >>> # For BFloat16
         >>> pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> # For Float32
         >>> image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
-        >>> # For BFloat16 
+        >>> # For BFloat16
         >>> with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
         >>>     image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
         ```
