@@ -1271,14 +1271,8 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
                     diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
                     if "self_attn" in diffusers_name:
-                        prefix = ".".join(
-                            diffusers_name.split(".")[:-3]
-                        )  # e.g.: text_model.encoder.layers.0.self_attn
-                        suffix = ".".join(diffusers_name.split(".")[-3:])  # e.g.: to_k_lora.down.weight
-                        for module_name in TEXT_ENCODER_TARGET_MODULES:
-                            diffusers_name = f"{prefix}.{module_name}.{suffix}"
-                            te_state_dict[diffusers_name] = value
-                            te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                        te_state_dict[diffusers_name] = value
+                        te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
 
         unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
