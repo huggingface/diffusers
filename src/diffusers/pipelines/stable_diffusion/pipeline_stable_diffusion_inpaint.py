@@ -266,14 +266,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
+
         # Check shapes, assume num_channels_latents == 4, num_channels_mask == 1, num_channels_masked == 4
         if unet.config.in_channels != 9:
-            logger.warning(
-                f"You have loaded a UNet with {unet.config.in_channels} input channels, whereas by default,"
-                f" {self.__class__} assumes that `pipeline.unet` has 9 input channels: 4 for `num_channels_latents`,"
-                " 1 for `num_channels_mask`, and 4 for `num_channels_masked_image`. If you did not intend to modify"
-                " this behavior, please check whether you have loaded the right checkpoint."
-            )
+            logger.info(f"You have loaded a UNet with {unet.config.in_channels} input channels which.")
 
         self.register_modules(
             vae=vae,
@@ -642,16 +638,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             else:
                 # otherwise initialise latents as init image + noise
                 image = image.to(device=device, dtype=dtype)
-                if isinstance(generator, list):
-                    image_latents = [
-                        self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                        for i in range(batch_size)
-                    ]
-                else:
-                    image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
-
-                image_latents = self.vae.config.scaling_factor * image_latents
-
+                image_latents = self._encode_image(image=image, generator=generator)
                 latents = self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             latents = latents.to(device)
@@ -660,6 +647,19 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         latents = latents * self.scheduler.init_noise_sigma
 
         return latents
+
+    def _encode_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+        else:
+            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents
 
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
@@ -673,17 +673,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        if isinstance(generator, list):
-            masked_image_latents = [
-                self.vae.encode(masked_image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                for i in range(batch_size)
-            ]
-            masked_image_latents = torch.cat(masked_image_latents, dim=0)
-        else:
-            masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
+        masked_image_latents = self._encode_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -929,6 +919,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
         )
+        noise = latents
 
         # 7. Prepare mask latent variables
         mask, masked_image_latents = self.prepare_mask_latents(
@@ -944,16 +935,21 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         )
 
         # 8. Check that sizes of mask, masked image and latents match
-        num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latents.shape[1]
-        if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
-            raise ValueError(
-                f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                " `pipeline.unet` or your `mask_image` or `image` input."
-            )
+        num_channels_unet = self.unet.config.in_channels
+        if num_channels_unet == 9:
+            # default case for runwayml/stable-diffusion-inpainting
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
+                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.unet` or your `mask_image` or `image` input."
+                )
+        elif num_channels_unet != 4:
+            raise ValueError(f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}.")
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -967,7 +963,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
                 # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+
+                if num_channels_unet == 9:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -985,6 +983,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if num_channels_unet == 4:
+                    if i == len(timesteps) - 1:
+                        init_latents_proper = masked_image_latents
+                    else:
+                        init_latents_proper = self.scheduler.add_noise(masked_image_latents, noise, torch.tensor([t]))
+
+                    latents = (1 - mask) * init_latents_proper + mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
