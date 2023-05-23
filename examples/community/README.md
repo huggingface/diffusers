@@ -35,6 +35,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | EDICT Image Editing Pipeline                                                                                                          | Diffusion pipeline for text-guided image editing                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline)                             | - |                    [Joqsan Azocar](https://github.com/Joqsan) | 
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.0986) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )                                    | - |                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) | 
 | TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1410,3 +1411,102 @@ Reference Image
 Output Image
 
 ![output_image](https://github.com/huggingface/diffusers/assets/24734142/7b9a5830-f173-4b92-b0cf-73d0e9c01d60)
+
+
+### Stable Diffusion on IPEX
+
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+**Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
+```python
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
+# For Float32
+pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+# For BFloat16 
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+```
+
+Then you can use the ipex pipeline in a similar way to the default stable diffusion pipeline.
+```python
+# For Float32
+image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+# For BFloat16 
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+```
+
+The following code compares the performance of the original stable diffusion pipeline with the ipex-optimized pipeline.
+
+```python
+import torch
+import intel_extension_for_pytorch as ipex
+from diffusers import StableDiffusionPipeline
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "runwayml/stable-diffusion-v1-5"
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe2 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe)
+    print("Latency of StableDiffusionIPEXPipeline--bf16", latency)
+    latency = elapsed_time(pipe2)
+    print("Latency of StableDiffusionPipeline--bf16",latency)
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe3.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3)
+print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
+latency = elapsed_time(pipe4)
+print("Latency of StableDiffusionPipeline--fp32",latency)
+
+```
