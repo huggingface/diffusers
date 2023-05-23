@@ -183,7 +183,7 @@ just hang out ☕.
   </tr>
 </table>
 
-## Popular using 🧨 Diffusers
+## Popular libraries using 🧨 Diffusers
 
 - https://github.com/microsoft/TaskMatrix 
 - https://github.com/invoke-ai/InvokeAI 
