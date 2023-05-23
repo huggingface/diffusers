@@ -466,6 +466,13 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             w_end = w_start + window_size
             views.append((h_start, h_end, w_start, w_end))
         return views
+    
+    def init_views_output(self,views):
+        if hasattr(self.scheduler, "model_outputs"):
+            # init schedulers: dpmsolver, unipc
+            return [self.scheduler.model_outputs] * len(views)
+        else:
+            return None
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -612,7 +619,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 6. Define panorama grid and initialize views for synthesis.
         views = self.get_views(height, width)
-        blocks_model_outputs = [None] * len(views)
+        blocks_model_outputs = self.init_views_output(views)
         count = torch.zeros_like(latents)
         value = torch.zeros_like(latents)
 
@@ -659,8 +666,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     # compute the previous noisy sample x_t -> x_t-1
                     if hasattr(self.scheduler, "model_outputs"):
                         # rematch model_outputs in each block
-                        if i >= 1:
-                            self.scheduler.model_outputs = blocks_model_outputs[j]
+                        self.scheduler.model_outputs = blocks_model_outputs[j]
                         latents_view_denoised = self.scheduler.step(
                             noise_pred, t, latents_for_view, **extra_step_kwargs
                         ).prev_sample
