@@ -608,6 +608,16 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
+
     def check_inputs(
         self,
         prompt,
@@ -823,6 +833,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         image=None,
         timestep=None,
         is_strength_max=True,
+        return_noise=False,
+        return_image_latents=False,
     ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -837,32 +849,28 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 "However, either the image or the noise timestep has not been provided."
             )
 
+        if return_image_latents or (latents is None and not is_strength_max):
+            image = image.to(device=device, dtype=dtype)
+            image_latents = self._encode_image(image=image, generator=generator)
+
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            if is_strength_max:
-                # if strength is 100% then simply initialise the latents to noise
-                latents = noise
-            else:
-                # otherwise initialise latents as init image + noise
-                image = image.to(device=device, dtype=dtype)
-                if isinstance(generator, list):
-                    image_latents = [
-                        self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                        for i in range(batch_size)
-                    ]
-                else:
-                    image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
-
-                image_latents = self.vae.config.scaling_factor * image_latents
-
-                latents = self.scheduler.add_noise(image_latents, noise, timestep)
+            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
 
-        return latents
+        outputs = (latents,)
+
+        if return_noise:
+            outputs += (noise,)
+
+        if return_image_latents:
+            outputs += (image_latents,)
+
+        return outputs
 
     def _default_height_width(self, height, width, image):
         # NOTE: It is possible that a list of images have different
@@ -902,17 +910,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        if isinstance(generator, list):
-            masked_image_latents = [
-                self.vae.encode(masked_image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                for i in range(batch_size)
-            ]
-            masked_image_latents = torch.cat(masked_image_latents, dim=0)
-        else:
-            masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
+        masked_image_latents = self._encode_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -941,6 +939,21 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_image
+    def _encode_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents
+
     # override DiffusionPipeline
     def save_pretrained(
         self,
@@ -965,6 +978,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -1001,6 +1015,13 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
+            strength (`float`, *optional*, defaults to 1.):
+                Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
+                between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
+                `strength`. The number of denoising steps depends on the amount of noise initially added. When
+                `strength` is 1, added noise will be maximum and the denoising process will run for the full number of
+                iterations specified in `num_inference_steps`. A value of 1, therefore, essentially ignores the masked
+                portion of the reference `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1156,13 +1177,25 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             assert False
 
         # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
+        mask, masked_image, init_image = prepare_mask_and_masked_image(
+            image, mask_image, height, width, return_image=True
+        )
+
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps=num_inference_steps, strength=strength, device=device
+        )
+        # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
+        is_strength_max = strength == 1.0
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        latents = self.prepare_latents(
+        num_channels_unet = self.unet.config.in_channels
+        return_image_latents = num_channels_unet == 4
+        latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -1171,11 +1204,19 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             device,
             generator,
             latents,
+            image=init_image,
+            timestep=latent_timestep,
+            is_strength_max=is_strength_max,
+            return_noise=True,
+            return_image_latents=return_image_latents,
         )
-        noise = latents
+
+        if return_image_latents:
+            latents, noise, image_latents = latents_outputs
+        else:
+            latents, noise = latents_outputs
 
         # 7. Prepare mask latent variables
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
         mask, masked_image_latents = self.prepare_mask_latents(
             mask,
             masked_image,
@@ -1192,7 +1233,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 8. Denoising loop
-        num_channels_unet = self.unet.config.in_channels
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1248,7 +1288,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if num_channels_unet == 4:
-                    init_latents_proper = masked_image_latents[:1]
+                    init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:

@@ -450,39 +450,55 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 9e-2
 
     def test_inpaint(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-inpaint")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint")
 
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = load_image(
-            "https://huggingface.co/lllyasviel/sd-controlnet-canny/resolve/main/images/bird.png"
-        ).resize((512, 512))
+        generator = torch.Generator(device="cpu").manual_seed(33)
 
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main" "/stable_diffusion_inpaint/boy.png"
+        ).resize((512, 512))
         mask_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/input_bench_mask.png"
+            "/stable_diffusion_inpaint/boy_mask.png"
         ).resize((512, 512))
 
-        prompt = "pitch black hole"
+        prompt = "a handsome man with ray-ban sunglasses"
 
-        control_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        ).resize((512, 512))
+        def make_inpaint_condition(image, image_mask):
+            image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
+            image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
+
+            assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
+            image[image_mask > 0.5] = -1.0  # set as masked pixel
+            image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
+            image = torch.from_numpy(image)
+            return image
+
+        control_image = make_inpaint_condition(init_image, mask_image)
 
         output = pipe(
             prompt,
-            image=image,
+            image=init_image,
             mask_image=mask_image,
             control_image=control_image,
+            guidance_scale=9.0,
+            eta=1.0,
             generator=generator,
+            num_inference_steps=20,
             output_type="np",
-            num_inference_steps=3,
         )
+
+        np.save("/home/patrick/diffusers-images/sd_controlnet/boy_ray_ban.npy", output.images[0])
+
+        output_pil = pipe.numpy_to_pil(output.images[0])[0]
+        output_pil.save("/home/patrick/diffusers-images/sd_controlnet/boy_ray_ban.png")
 
         image = output.images[0]
 
