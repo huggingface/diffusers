@@ -635,6 +635,9 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     # get the latents corresponding to the current view coordinates
                     latents_for_view = latents[:, :, h_start:h_end, w_start:w_end]
 
+                    # rematch block's scheduler status
+                    self.scheduler.__dict__.update(views_scheduler_status[j])
+
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
                         torch.cat([latents_for_view] * 2) if do_classifier_free_guidance else latents_for_view
@@ -655,11 +658,11 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    # restore/save views scheduler status before/after sample 
-                    self.scheduler.__dict__.update(views_scheduler_status[j])
                     latents_view_denoised = self.scheduler.step(
                         noise_pred, t, latents_for_view, **extra_step_kwargs
                     ).prev_sample
+
+                    # save views scheduler status after sample 
                     views_scheduler_status[j] = copy.deepcopy(self.scheduler.__dict__)
 
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
