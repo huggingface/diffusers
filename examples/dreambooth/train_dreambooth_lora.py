@@ -1289,7 +1289,8 @@ def main(args):
         print(f"Text encoder layers: {text_encoder_lora_layers}")
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
-            unet_lora_layers=unet_lora_layers,
+            unet_lora_layers=AttnProcsLayers(unet.attn_processors),
+            # unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
 
