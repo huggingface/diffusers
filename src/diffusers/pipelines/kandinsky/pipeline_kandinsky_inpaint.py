@@ -27,7 +27,7 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
-from ...schedulers import UnCLIPScheduler
+from ...schedulers import DDIMScheduler
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         ...     negative_image_embeds=zero_image_emb,
         ...     height=768,
         ...     width=768,
-        ...     num_inference_steps=150,
+        ...     num_inference_steps=50,
         ... )
 
         >>> image = out.images[0]
@@ -244,7 +244,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
-        scheduler ([`UnCLIPScheduler`]):
+        scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -258,7 +258,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         movq: VQModel,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: UnCLIPScheduler,
+        scheduler: DDIMScheduler,
     ):
         super().__init__()
 
@@ -640,17 +640,11 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             ):
                 noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
-            if i + 1 == timesteps_tensor.shape[0]:
-                prev_timestep = None
-            else:
-                prev_timestep = timesteps_tensor[i + 1]
-
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
                 noise_pred,
                 t,
                 latents,
-                prev_timestep=prev_timestep,
                 generator=generator,
             ).prev_sample
 
