@@ -271,6 +271,7 @@ class UNet2DConditionLoadersMixin:
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
+                    print(f"UNet Load LoRA: {type(attn_processor)}")
 
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
