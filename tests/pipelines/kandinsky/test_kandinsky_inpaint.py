@@ -247,17 +247,9 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    # Overriding PipelineTesterMixin::test_inference_batch_single_identical
-    # because UnCLIP undeterminism requires a looser check.
-    @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-        self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-        )
 
 
 @slow
