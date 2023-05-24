@@ -17,6 +17,7 @@ from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from torchvision import transforms
+import PIL
 from tqdm.auto import tqdm
 
 import diffusers
@@ -298,14 +299,14 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
-    if args.logger == "tensorboard":
-        if not is_tensorboard_available():
-            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
+    # if args.logger == "tensorboard":
+    #     if not is_tensorboard_available():
+    #         raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
 
-    elif args.logger == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
+    # elif args.logger == "wandb":
+    #     if not is_wandb_available():
+    #         raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+    #     import wandb
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -467,7 +468,7 @@ def main(args):
     # Preprocessing the datasets and DataLoaders creation.
     augmentations = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=PIL.Image.BICUBIC),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
