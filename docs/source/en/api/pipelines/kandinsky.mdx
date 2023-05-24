@@ -31,7 +31,7 @@ In the following, we will walk you through some cool examples of using the Kandi
 
 ### Text-to-Image Generation
 
-For text-to-image generation, we need to use both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`]. The first step is to create CLIP image embedding conditioned on a text prompt. Let's throw a fun prompt at Kandinsky to see what it comes up with :)
+For text-to-image generation, we need to use both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`]. The first step is to encode text prompts with CLIP and then diffuse the CLIP text embeddings to CLIP image embeddings, as first proposed in [DALL-E 2](https://cdn.openai.com/papers/dall-e-2.pdf). Let's throw a fun prompt at Kandinsky to see what it comes up with :)
 
 ```python
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
