@@ -116,6 +116,22 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
         return sample
 
+    def test_full_uneven_loop(self):
+        scheduler = DPMSolverSinglestepScheduler(**self.get_scheduler_config())
+        num_inference_steps = 50
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+
+        # make sure that the first t is uneven
+        for i, t in enumerate(scheduler.timesteps[3:]):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2574) < 1e-3
+
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
@@ -199,11 +215,23 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_mean.item() - 0.2791) < 1e-3
 
+    def test_full_loop_with_karras(self):
+        sample = self.full_loop(use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2248) < 1e-3
+
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.1453) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.0649) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]
