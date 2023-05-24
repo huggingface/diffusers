@@ -267,22 +267,8 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
-
-        ddim_config = {
-            "num_train_timesteps": 1000,
-            "beta_schedule": "linear",
-            "beta_start": 0.00085,
-            "beta_end": 0.012,
-            "clip_sample": False,
-            "set_alpha_to_one": False,  # not sure what this does, so set to default value for now
-            "steps_offset": 0,
-            "prediction_type": "epsilon",
-            "thresholding": False,
-        }
-
-        ddim_scheduler = DDIMScheduler(**ddim_config)
-        pipeline.scheduler = ddim_scheduler
         pipeline = pipeline.to(torch_device)
+        
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
