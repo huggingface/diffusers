@@ -164,7 +164,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "beta_start": 0.00085,
             "beta_end": 0.012,
             "clip_sample": False,
-            "set_alpha_to_one": False,  # not sure what this does, so set to default value for now
+            "set_alpha_to_one": False,
             "steps_offset": 0,
             "prediction_type": "epsilon",
             "thresholding": False,
