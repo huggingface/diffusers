@@ -268,7 +268,7 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         pipeline = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
         pipeline = pipeline.to(torch_device)
-        
+
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
