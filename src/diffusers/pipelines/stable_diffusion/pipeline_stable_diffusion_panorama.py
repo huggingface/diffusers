@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -95,9 +96,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-
-        if isinstance(scheduler, PNDMScheduler):
-            logger.error("PNDMScheduler for this pipeline is currently not supported.")
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -612,7 +610,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 6. Define panorama grid and initialize views for synthesis.
         views = self.get_views(height, width)
-        views_scheduler_status = [self.scheduler.__dict__] * len(views)
+        views_scheduler_status = [copy.deepcopy(self.scheduler.__dict__)] * len(views)
         count = torch.zeros_like(latents)
         value = torch.zeros_like(latents)
 
@@ -657,11 +655,12 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
+                    # restore/save views scheduler status before/after sample 
                     self.scheduler.__dict__.update(views_scheduler_status[j])
                     latents_view_denoised = self.scheduler.step(
                         noise_pred, t, latents_for_view, **extra_step_kwargs
                     ).prev_sample
-                    views_scheduler_status[j] = self.scheduler.__dict__
+                    views_scheduler_status[j] = copy.deepcopy(self.scheduler.__dict__)
 
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                     count[:, :, h_start:h_end, w_start:w_end] += 1
