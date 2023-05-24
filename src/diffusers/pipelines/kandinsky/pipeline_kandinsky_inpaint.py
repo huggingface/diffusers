@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "a hat"
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
-        >>> pipe = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)
+        >>> pipe = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> init_image = load_image(
