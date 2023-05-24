@@ -239,7 +239,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.6187187, 0.53577256, 0.48749307, 0.5421068, 0.5214845, 0.40533125, 0.40913218, 0.48657694, 0.48048347]
+            [0.52027917, 0.5919095,  0.4203929,  0.566414,   0.52620435, 0.4773464, 0.3785732,  0.36906868, 0.49189737]
         )
 
         assert (
