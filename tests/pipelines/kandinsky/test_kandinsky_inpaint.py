@@ -25,7 +25,7 @@ from transformers import XLMRobertaTokenizerFast
 from diffusers import DDIMScheduler, KandinskyInpaintPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -246,6 +246,18 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert (
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+
+    # Overriding PipelineTesterMixin::test_inference_batch_single_identical
+    # because UnCLIP undeterminism requires a looser check.
+    @skip_mps
+    def test_inference_batch_single_identical(self):
+        test_max_difference = torch_device == "cpu"
+        relax_max_difference = True
+
+        self._test_inference_batch_single_identical(
+            test_max_difference=test_max_difference,
+            relax_max_difference=relax_max_difference,
+        )
 
 
 @slow
