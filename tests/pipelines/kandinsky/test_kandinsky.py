@@ -245,6 +245,7 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/kandinsky/kandinsky_text2img_cat_fp16.npy"
         )
+
         pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
         pipe_prior.to(torch_device)
 
@@ -254,13 +255,15 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "red cat, 4k photo"
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
+        generator = torch.Generator(device="cuda").manual_seed(0)
         image_emb = pipe_prior(
             prompt,
             generator=generator,
+            num_inference_steps=5,
         ).images
         zero_image_emb = pipe_prior("").images
-
+        
+        generator = torch.Generator(device="cuda").manual_seed(0)
         output = pipeline(
             prompt,
             image_embeds=image_emb,
