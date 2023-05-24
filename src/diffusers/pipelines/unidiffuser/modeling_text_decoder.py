@@ -288,7 +288,10 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         order = scores.argsort(descending=True)
         max_seq_length = seq_lengths.max().item()
         # Pad to max_seq_length with stop_token_index
-        output_texts = [F.pad(tokens[i], (0, max_seq_length - seq_lengths[i].item()), mode="constant", value=stop_token_index) for i in order]
+        output_texts = [
+            F.pad(tokens[i], (0, max_seq_length - seq_lengths[i].item()), mode="constant", value=stop_token_index)
+            for i in order
+        ]
         output_texts = torch.stack(output_texts, dim=0)
         seq_lengths = torch.tensor([seq_lengths[i] for i in order], dtype=seq_lengths.dtype)
         return output_texts, seq_lengths

@@ -866,7 +866,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
             )
 
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
-                img_vae_latents, img_clip_latents, text_T, timestep_img=t, timestep_text=max_timestep, data_type=data_type
+                img_vae_latents,
+                img_clip_latents,
+                text_T,
+                timestep_img=t,
+                timestep_text=max_timestep,
+                data_type=data_type,
             )
 
             x_out_uncond = self._combine_joint(img_vae_out_uncond, img_clip_out_uncond, text_out_uncond)
@@ -889,7 +894,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
-                img_vae_latents, img_clip_latents, text_T, timestep_img=t, timestep_text=max_timestep, data_type=data_type
+                img_vae_latents,
+                img_clip_latents,
+                text_T,
+                timestep_img=t,
+                timestep_text=max_timestep,
+                data_type=data_type,
             )
 
             img_out_uncond = self._combine(img_vae_out_uncond, img_clip_out_uncond)
@@ -925,7 +935,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, prompt_embeds, timestep_img=t, timestep_text=max_timestep, data_type=data_type
+                img_vae_latents,
+                img_clip_latents,
+                prompt_embeds,
+                timestep_img=t,
+                timestep_text=max_timestep,
+                data_type=data_type,
             )
 
             img_out = self._combine(img_vae_out, img_clip_out)
@@ -1371,7 +1386,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             gen_image = self.decode_image_latents(image_vae_latents)
 
             # Generate text using the text decoder
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(text_latents, self.text_tokenizer.eos_token_id, device=device)
+            output_token_list, seq_lengths = self.text_decoder.generate_captions(
+                text_latents, self.text_tokenizer.eos_token_id, device=device
+            )
             output_list = output_token_list.cpu().numpy()
             gen_text = [
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
@@ -1382,7 +1399,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             gen_image = self.decode_image_latents(image_vae_latents)
         elif mode in ["img2text", "text"]:
             text_latents = latents
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(text_latents, self.text_tokenizer.eos_token_id, device=device)
+            output_token_list, seq_lengths = self.text_decoder.generate_captions(
+                text_latents, self.text_tokenizer.eos_token_id, device=device
+            )
             output_list = output_token_list.cpu().numpy()
             gen_text = [
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)

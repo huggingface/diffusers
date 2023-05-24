@@ -1133,7 +1133,8 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             )
         else:
             hidden_states = torch.cat(
-                [timestep_img_token, timestep_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
+                [timestep_img_token, timestep_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states],
+                dim=1,
             )
 
         # 1.5. Prepare the positional embeddings and add to hidden states
