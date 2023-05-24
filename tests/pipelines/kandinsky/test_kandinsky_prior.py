@@ -19,12 +19,12 @@ import numpy as np
 import torch
 from torch import nn
 from transformers import (
+    CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionConfig,
     CLIPVisionModelWithProjection,
-    CLIPImageProcessor
 )
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
@@ -127,28 +127,28 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         model = CLIPVisionModelWithProjection(config)
         return model
-    
+
     @property
     def dummy_image_processor(self):
         image_processor = CLIPImageProcessor(
-            crop_size = 224,
+            crop_size=224,
             do_center_crop=True,
             do_normalize=True,
             do_resize=True,
-            image_mean=[0.48145466,0.4578275,0.40821073],
-            image_std= [0.26862954,0.26130258,0.27577711],
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
             resample=3,
-            size=224,)
-        
-        return image_processor
+            size=224,
+        )
 
+        return image_processor
 
     def get_dummy_components(self):
         prior = self.dummy_prior
         image_encoder = self.dummy_image_encoder
         text_encoder = self.dummy_text_encoder
         tokenizer = self.dummy_tokenizer
-        image_processor=self.dummy_image_processor
+        image_processor = self.dummy_image_processor
 
         scheduler = UnCLIPScheduler(
             variance_type="fixed_small_log",

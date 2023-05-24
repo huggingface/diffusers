@@ -18,7 +18,7 @@ from typing import List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection, CLIPImageProcessor
+from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
@@ -152,7 +152,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: UnCLIPScheduler,
-        image_processor: CLIPImageProcessor
+        image_processor: CLIPImageProcessor,
     ):
         super().__init__()
 
@@ -241,8 +241,12 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
                 if isinstance(cond, PIL.Image.Image):
-                    cond = self.image_processor(
-                        cond, return_tensors='pt').pixel_values[0].unsqueeze(0).to(dtype=self.image_encoder.dtype, device=device)
+                    cond = (
+                        self.image_processor(cond, return_tensors="pt")
+                        .pixel_values[0]
+                        .unsqueeze(0)
+                        .to(dtype=self.image_encoder.dtype, device=device)
+                    )
 
                 image_emb = self.image_encoder(cond)["image_embeds"]
 
