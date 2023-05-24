@@ -78,7 +78,7 @@ def image_grid(imgs, rows, cols):
 
 
 # create diffuser pipeline
-pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 images = pipe(
@@ -153,7 +153,7 @@ pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandins
 pipe_prior.to("cuda")
 
 # create img2img pipeline
-pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 prompt = "A fantasy landscape, Cinematic lighting"
@@ -255,7 +255,7 @@ images_texts = ["a cat", img1, img2]
 weights = [0.3, 0.3, 0.4]
 image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
 
-pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(

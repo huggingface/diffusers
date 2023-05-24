@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> image_emb = out.images
         >>> zero_image_emb = out.zero_embeds
 
-        >>> pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky")
+        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1")
         >>> pipe.to("cuda")
 
         >>> image = pipe(

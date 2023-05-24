@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> image_emb = out.images
         >>> zero_image_emb = out.zero_embeds
 
-        >>> pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky")
+        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1")
         >>> pipe.to("cuda")
 
         >>> image = pipe(
@@ -91,7 +91,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> weights = [0.3, 0.3, 0.4]
         >>> image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
 
-        >>> pipe = KandinskyPipeline.from_pretrained("YiYiXu/Kandinsky", torch_dtype=torch.float16)
+        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> image = pipe(

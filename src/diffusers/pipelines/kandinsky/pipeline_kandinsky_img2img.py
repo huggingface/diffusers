@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "A red cartoon frog, 4k"
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
-        >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("YiYiXu/Kandinsky-img2img", torch_dtype=torch.float16)
+        >>> pipe = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> init_image = load_image(
