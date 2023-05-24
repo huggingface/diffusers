@@ -41,7 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import KandinskyPipeline, KandinskyPriorPipeline
         >>> import torch
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/Kandinsky-prior")
         >>> pipe_prior.to("cuda")
 
         >>> prompt = "red cat, 4k photo"
