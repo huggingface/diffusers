@@ -725,7 +725,7 @@ class AttnAddedKVProcessor:
 
 class AttnAddedKVProcessor2_0:
     r"""
-    Processor for performing scaled dot product attention (enabled by default if you're using PyTorch 2.0) with extra
+    Processor for performing scaled dot-product attention (enabled by default if you're using PyTorch 2.0), with extra
     learnable key and value matrices for the text encoder.
     """
 
@@ -937,7 +937,7 @@ class XFormersAttnProcessor:
 
 class AttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot product attention (enabled by default if you're using PyTorch 2.0).
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
 
     def __init__(self):
