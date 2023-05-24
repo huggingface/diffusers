@@ -271,7 +271,6 @@ class UNet2DConditionLoadersMixin:
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
-                    print(f"UNet Load LoRA: {type(attn_processor)}")
 
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
@@ -325,6 +324,10 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {k: v.to(device=self.device, dtype=self.dtype) for k, v in attn_processors.items()}
 
         # set layers
+        print(
+            "All processors are of type: LoRAAttnAddedKVProcessor: ",
+            all(isinstance(attn_processors[k], LoRAAttnAddedKVProcessor) for k in attn_processors),
+        )
         self.set_attn_processor(attn_processors)
 
     def save_attn_procs(
