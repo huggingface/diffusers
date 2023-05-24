@@ -1,7 +1,6 @@
 import contextlib
 import copy
-import os
-import random
+from random import random
 from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
@@ -12,26 +11,6 @@ from .utils import deprecate, is_transformers_available
 
 if is_transformers_available():
     import transformers
-
-
-def enable_full_determinism(seed: int):
-    """
-    Helper function for reproducible behavior during distributed training. See
-    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
-    """
-    # set seed first
-    set_seed(seed)
-
-    #  Enable PyTorch deterministic mode. This potentially requires either the environment
-    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
-    # depending on the CUDA version, so we set them both here
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    torch.use_deterministic_algorithms(True)
-
-    # Enable CUDNN deterministic mode
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
 def set_seed(seed: int):

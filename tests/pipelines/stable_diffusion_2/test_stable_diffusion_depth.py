@@ -49,14 +49,13 @@ from diffusers.utils import (
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 @skip_mps

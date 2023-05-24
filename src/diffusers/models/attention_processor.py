@@ -191,7 +191,10 @@ class Attention(nn.Module):
             elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
                 warnings.warn(
                     "You have specified using flash attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "We will default to PyTorch's native efficient flash attention implementation provided by PyTorch 2.0."
+                    "We will default to PyTorch's native efficient flash attention implementation (`F.scaled_dot_product_attention`) "
+                    "introduced in PyTorch 2.0. In case you are using LoRA or Custom Diffusion, we will fall "
+                    "back to their respective attention processors i.e., we will NOT use the PyTorch 2.0 "
+                    "native efficient flash attention."
                 )
             else:
                 try:
@@ -213,6 +216,9 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
+                print(
+                    f"is_lora is set to {is_lora}, type: LoRAXFormersAttnProcessor: {isinstance(processor, LoRAXFormersAttnProcessor)}"
+                )
             elif is_custom_diffusion:
                 processor = CustomDiffusionXFormersAttnProcessor(
                     train_kv=self.processor.train_kv,
@@ -250,6 +256,7 @@ class Attention(nn.Module):
                 # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
                 # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
                 # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
+                print("Still defaulting to: AttnProcessor2_0 :O")
                 processor = (
                     AttnProcessor2_0()
                     if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
@@ -374,7 +381,8 @@ class Attention(nn.Module):
         if attention_mask is None:
             return attention_mask
 
-        if attention_mask.shape[-1] != target_length:
+        current_length: int = attention_mask.shape[-1]
+        if current_length != target_length:
             if attention_mask.device.type == "mps":
                 # HACK: MPS: Does not support padding by greater than dimension of input tensor.
                 # Instead, we can manually construct the padding tensor.
@@ -382,6 +390,10 @@ class Attention(nn.Module):
                 padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
                 attention_mask = torch.cat([attention_mask, padding], dim=2)
             else:
+                # TODO: for pipelines such as stable-diffusion, padding cross-attn mask:
+                #       we want to instead pad by (0, remaining_length), where remaining_length is:
+                #       remaining_length: int = target_length - current_length
+                # TODO: re-enable tests/models/test_models_unet_2d_condition.py#test_model_xattn_padding
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
 
         if out_dim == 3:
@@ -815,7 +827,13 @@ class XFormersAttnProcessor:
     def __init__(self, attention_op: Optional[Callable] = None):
         self.attention_op = attention_op
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+    ):
         residual = hidden_states
 
         input_ndim = hidden_states.ndim
@@ -824,11 +842,20 @@ class XFormersAttnProcessor:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
+        batch_size, key_tokens, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(attention_mask, key_tokens, batch_size)
+        if attention_mask is not None:
+            # expand our mask's singleton query_tokens dimension:
+            #   [batch*heads,            1, key_tokens] ->
+            #   [batch*heads, query_tokens, key_tokens]
+            # so that it can be added as a bias onto the attention scores that xformers computes:
+            #   [batch*heads, query_tokens, key_tokens]
+            # we do this explicitly because xformers doesn't broadcast the singleton dimension for us.
+            _, query_tokens, _ = hidden_states.shape
+            attention_mask = attention_mask.expand(-1, query_tokens, -1)
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
