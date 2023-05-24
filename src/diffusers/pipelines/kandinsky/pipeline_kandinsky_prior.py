@@ -229,7 +229,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            `tuple`
+            [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
         device = device or self.device
