@@ -286,6 +286,7 @@ class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
         image_emb = pipe_prior(
             prompt,
             generator=generator,
+            num_inference_steps=5,
         ).images
         zero_image_emb = pipe_prior("").images
 

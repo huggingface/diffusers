@@ -279,8 +279,9 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         image_emb = pipe_prior(
             prompt,
             generator=generator,
+            num_inference_steps=5,
         ).images
-        zero_image_emb = pipe_prior("").images
+        zero_image_emb = pipe_prior("", num_inference_steps=5).images
 
         output = pipeline(
             prompt,

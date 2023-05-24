@@ -263,7 +263,7 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=5,
         ).images
-        zero_image_emb = pipe_prior("").images
+        zero_image_emb = pipe_prior("", num_inference_steps=5).images
 
         generator = torch.Generator(device="cuda").manual_seed(0)
         output = pipeline(
