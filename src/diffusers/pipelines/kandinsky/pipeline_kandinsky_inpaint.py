@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import numpy as np
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
 
         >>> prompt = "a hat"

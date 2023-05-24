@@ -271,7 +271,7 @@ class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a hat"
 
-        pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+        pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyInpaintPipeline.from_pretrained("YiYiXu/Kandinsky-inpaint", torch_dtype=torch.float16)

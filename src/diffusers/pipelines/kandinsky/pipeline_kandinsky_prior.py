@@ -40,7 +40,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import KandinskyPipeline, KandinskyPriorPipeline
         >>> import torch
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior")
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior")
         >>> pipe_prior.to("cuda")
 
         >>> prompt = "red cat, 4k photo"
@@ -74,7 +74,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> import torch
         >>> from torchvision import transforms
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("YiYiXu/Kandinsky-prior", torch_dtype=torch.float16)
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
         >>> pipe_prior.to("cuda")
 
         >>> img1 = load_image(
