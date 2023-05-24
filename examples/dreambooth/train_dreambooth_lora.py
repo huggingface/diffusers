@@ -1267,26 +1267,26 @@ def main(args):
         # unet = unet.to(torch.float32)
         unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
 
-        print("*****************Initial state dict*****************")
-        for k in sorted(initial_state_dict.keys()):
-            if isinstance(initial_state_dict[k], torch.Tensor):
-                print(
-                    f"{k} {list(initial_state_dict[k].shape)} mean={torch.mean(initial_state_dict[k]):.3g} std={torch.std(initial_state_dict[k]):.3g}"
-                )
+        # print("*****************Initial state dict*****************")
+        # for k in sorted(initial_state_dict.keys()):
+        #     if isinstance(initial_state_dict[k], torch.Tensor):
+        #         print(
+        #             f"{k} {list(initial_state_dict[k].shape)} mean={torch.mean(initial_state_dict[k]):.3g} std={torch.std(initial_state_dict[k]):.3g}"
+        #         )
 
-        trained_state_dict = unet_lora_layers.state_dict()
-        print("*****************Trained state dict*****************")
-        for k in sorted(trained_state_dict.keys()):
-            if isinstance(trained_state_dict[k], torch.Tensor):
-                print(
-                    f"{k} {list(trained_state_dict[k].shape)} mean={torch.mean(trained_state_dict[k]):.3g} std={torch.std(trained_state_dict[k]):.3g}"
-                )
+        # trained_state_dict = unet_lora_layers.state_dict()
+        # print("*****************Trained state dict*****************")
+        # for k in sorted(trained_state_dict.keys()):
+        #     if isinstance(trained_state_dict[k], torch.Tensor):
+        #         print(
+        #             f"{k} {list(trained_state_dict[k].shape)} mean={torch.mean(trained_state_dict[k]):.3g} std={torch.std(trained_state_dict[k]):.3g}"
+        #         )
 
-        unet_attn_proc_state_dict = AttnProcsLayers(unet.attn_processors).state_dict()
-        for k in unet_attn_proc_state_dict:
-            from_unet = unet_attn_proc_state_dict[k]
-            orig = trained_state_dict[k]
-            print(f"Assertion: {torch.allclose(from_unet, orig)}")
+        # unet_attn_proc_state_dict = AttnProcsLayers(unet.attn_processors).state_dict()
+        # for k in unet_attn_proc_state_dict:
+        #     from_unet = unet_attn_proc_state_dict[k]
+        #     orig = trained_state_dict[k]
+        #     print(f"Assertion: {torch.allclose(from_unet, orig)}")
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
@@ -1295,8 +1295,8 @@ def main(args):
         print(f"Text encoder layers: {text_encoder_lora_layers}")
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
-            unet_lora_layers=AttnProcsLayers(unet.attn_processors),
-            # unet_lora_layers=unet_lora_layers,
+            # unet_lora_layers=AttnProcsLayers(unet.attn_processors),
+            unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
 
@@ -1323,6 +1323,12 @@ def main(args):
 
         # load attention processors
         pipeline.load_lora_weights(args.output_dir)
+        trained_state_dict = unet_lora_layers.state_dict()
+        unet_attn_proc_state_dict = AttnProcsLayers(pipeline.unet.attn_processors).state_dict()
+        for k in unet_attn_proc_state_dict:
+            from_unet = unet_attn_proc_state_dict[k]
+            orig = trained_state_dict[k]
+            print(f"Assertion: {torch.allclose(from_unet, orig)}")
 
         # run inference
         images = []
