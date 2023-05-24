@@ -830,7 +830,7 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    initial_state_dict = unet_lora_layers().state_dict()
+    initial_state_dict = unet_lora_layers.state_dict()
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
