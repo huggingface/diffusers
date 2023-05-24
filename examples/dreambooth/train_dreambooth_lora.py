@@ -1328,7 +1328,7 @@ def main(args):
         for k in unet_attn_proc_state_dict:
             from_unet = unet_attn_proc_state_dict[k]
             orig = trained_state_dict[k]
-            print(f"Assertion: {torch.allclose(from_unet, orig)}")
+            print(f"Assertion: {torch.allclose(from_unet, orig.to(from_unet.dtype))}")
 
         # run inference
         images = []
