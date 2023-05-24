@@ -238,6 +238,8 @@ image.save("cat_with_hat.png")
 
 The [`KandinskyPriorPipeline`] also comes with a cool utility function that will allow you to interpolate the latent space of different images and texts super easily. Here is an example of how you can create an Impressionist-style portrait for your pet based on "The Starry Night". 
 
+Note that you can interpolate between texts and images - in the below example, we passed a text prompt "a cat" and two images to the `interplate` function, along with a `weights` variable containing the corresponding weights for each condition we interplate. 
+
 ```python
 from diffusers import KandinskyPriorPipeline, KandinskyPipeline
 from diffusers.utils import load_image
@@ -259,7 +261,9 @@ img2 = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/starry_night.jpeg"
 )
 
+# add all the conditions we want to interpolate, can be either text or image 
 images_texts = ["a cat", img1, img2]
+# specify the weights for each condition in images_texts
 weights = [0.3, 0.3, 0.4]
 image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
 
