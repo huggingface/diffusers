@@ -458,10 +458,11 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images
+
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0427, 0.0460, 0.0483, 0.0460, 0.0584, 0.0521, 0.1549, 0.1695, 0.1794])
+        expected_slice = np.array([0.5157, 0.6858, 0.6873, 0.4619, 0.6416, 0.6898, 0.3702, 0.5960, 0.6935])
 
         assert np.abs(expected_slice - image_slice).max() < 6e-4
 

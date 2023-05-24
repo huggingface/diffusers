@@ -626,6 +626,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         image=None,
         timestep=None,
         is_strength_max=True,
+        return_noise=False,
+        return_image_latents=False,
     ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -640,23 +642,28 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 "However, either the image or the noise timestep has not been provided."
             )
 
+        if return_image_latents or (latents is None and not is_strength_max):
+            image = image.to(device=device, dtype=dtype)
+            image_latents = self._encode_image(image=image, generator=generator)
+
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            if is_strength_max:
-                # if strength is 100% then simply initialise the latents to noise
-                latents = noise
-            else:
-                # otherwise initialise latents as init image + noise
-                image = image.to(device=device, dtype=dtype)
-                image_latents = self._encode_image(image=image, generator=generator)
-                latents = self.scheduler.add_noise(image_latents, noise, timestep)
+            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
 
-        return latents
+        outputs = (latents,)
+
+        if return_noise:
+            outputs += (noise,)
+
+        if return_image_latents:
+            outputs += (image_latents,)
+
+        return outputs
 
     def _encode_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -917,7 +924,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        latents = self.prepare_latents(
+        num_channels_unet = self.unet.config.in_channels
+        return_image_latents = num_channels_unet == 4
+
+        latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -929,8 +939,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             image=init_image,
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
+            return_noise=True,
+            return_image_latents=return_image_latents,
         )
-        noise = latents
+
+        if return_image_latents:
+            latents, noise, image_latents = latents_outputs
+        else:
+            latents, noise = latents_outputs
 
         # 7. Prepare mask latent variables
         mask, masked_image_latents = self.prepare_mask_latents(
@@ -944,9 +960,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             generator,
             do_classifier_free_guidance,
         )
+        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+        init_image = self._encode_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
-        num_channels_unet = self.unet.config.in_channels
         if num_channels_unet == 9:
             # default case for runwayml/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
@@ -998,7 +1015,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if num_channels_unet == 4:
-                    init_latents_proper = masked_image_latents[:1]
+                    init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:
