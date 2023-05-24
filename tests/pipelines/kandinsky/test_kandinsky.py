@@ -246,7 +246,9 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
             "/kandinsky/kandinsky_text2img_cat_fp16.npy"
         )
 
-        pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
+        pipe_prior = KandinskyPriorPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        )
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)

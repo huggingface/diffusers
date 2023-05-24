@@ -74,7 +74,9 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> import torch
         >>> from torchvision import transforms
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained(
+        ...     "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        ... )
         >>> pipe_prior.to("cuda")
 
         >>> img1 = load_image(

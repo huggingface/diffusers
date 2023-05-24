@@ -263,10 +263,14 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         prompt = "A red cartoon frog, 4k"
 
-        pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
+        pipe_prior = KandinskyPriorPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        )
         pipe_prior.to(torch_device)
 
-        pipeline = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+        pipeline = KandinskyImg2ImgPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+        )
         pipeline = pipeline.to(torch_device)
 
         pipeline.set_progress_bar_config(disable=None)
