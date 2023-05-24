@@ -723,7 +723,6 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         # Following the UniDiffuser U-ViT implementation, we process the transformer output with
         # a LayerNorm layer with per-element affine params
         self.norm_out = nn.LayerNorm(inner_dim)
-        # self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
     def forward(
         self,
@@ -955,12 +954,12 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         self.text_in = nn.Linear(text_dim, self.inner_dim)
 
         # 1.2. Timestep embeddings for t_img, t_text
-        self.t_img_proj = Timesteps(
+        self.timestep_img_proj = Timesteps(
             self.inner_dim,
             flip_sin_to_cos=True,
             downscale_freq_shift=0,
         )
-        self.t_img_embed = (
+        self.timestep_img_embed = (
             TimestepEmbedding(
                 self.inner_dim,
                 4 * self.inner_dim,
@@ -970,12 +969,12 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             else nn.Identity()
         )
 
-        self.t_text_proj = Timesteps(
+        self.timestep_text_proj = Timesteps(
             self.inner_dim,
             flip_sin_to_cos=True,
             downscale_freq_shift=0,
         )
-        self.t_text_embed = (
+        self.timestep_text_embed = (
             TimestepEmbedding(
                 self.inner_dim,
                 4 * self.inner_dim,
@@ -1037,28 +1036,26 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        img_vae: torch.FloatTensor,
-        img_clip: torch.FloatTensor,
-        text: torch.FloatTensor,
-        t_img: Union[torch.Tensor, float, int],
-        t_text: Union[torch.Tensor, float, int],
+        latent_image_embeds: torch.FloatTensor,
+        image_embeds: torch.FloatTensor,
+        prompt_embeds: torch.FloatTensor,
+        timestep_img: Union[torch.Tensor, float, int],
+        timestep_text: Union[torch.Tensor, float, int],
         data_type: Optional[Union[torch.Tensor, float, int]] = 1,
         encoder_hidden_states=None,
-        timestep=None,
-        class_labels=None,
         cross_attention_kwargs=None,
     ):
         """
         Args:
-            img_vae (`torch.FloatTensor` of shape `(batch size, latent channels, height, width)`):
+            latent_image_embeds (`torch.FloatTensor` of shape `(batch size, latent channels, height, width)`):
                 Latent image representation from the VAE encoder.
-            img_clip (`torch.FloatTensor` of shape `(batch size, 1, clip_img_dim)`):
+            image_embeds (`torch.FloatTensor` of shape `(batch size, 1, clip_img_dim)`):
                 CLIP-embedded image representation (unsqueezed in the first dimension).
-            text (`torch.FloatTensor` of shape `(batch size, seq_len, text_dim)`):
+            prompt_embeds (`torch.FloatTensor` of shape `(batch size, seq_len, text_dim)`):
                 CLIP-embedded text representation.
-            t_img (`torch.long` or `float` or `int`):
+            timestep_img (`torch.long` or `float` or `int`):
                 Current denoising step for the image.
-            t_text (`torch.long` or `float` or `int`):
+            timestep_text (`torch.long` or `float` or `int`):
                 Current denoising step for the text.
             data_type: (`torch.int` or `float` or `int`, *optional*, defaults to `1`):
                 Only used in UniDiffuser-v1-style models. Can be either `1`, to use weights trained on nonpublic data,
@@ -1066,11 +1063,6 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep ( `torch.long`, *optional*):
-                Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
-                conditioning.
             cross_attention_kwargs (*optional*):
                 Keyword arguments to supply to the cross attention layers, if used.
 
@@ -1080,43 +1072,43 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             image embedding, the second element is the CLIP image embedding, and the third element is the CLIP text
             embedding.
         """
-        batch_size = img_vae.shape[0]
+        batch_size = latent_image_embeds.shape[0]
 
         # 1. Input
         # 1.1. Map inputs to shape (B, N, inner_dim)
-        vae_hidden_states = self.vae_img_in(img_vae)
-        clip_hidden_states = self.clip_img_in(img_clip)
-        text_hidden_states = self.text_in(text)
+        vae_hidden_states = self.vae_img_in(latent_image_embeds)
+        clip_hidden_states = self.clip_img_in(image_embeds)
+        text_hidden_states = self.text_in(prompt_embeds)
 
         num_text_tokens, num_img_tokens = text_hidden_states.size(1), vae_hidden_states.size(1)
 
         # 1.2. Encode image timesteps to single token (B, 1, inner_dim)
-        if not torch.is_tensor(t_img):
-            t_img = torch.tensor([t_img], dtype=torch.long, device=vae_hidden_states.device)
+        if not torch.is_tensor(timestep_img):
+            timestep_img = torch.tensor([timestep_img], dtype=torch.long, device=vae_hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        t_img = t_img * torch.ones(batch_size, dtype=t_img.dtype, device=t_img.device)
+        timestep_img = timestep_img * torch.ones(batch_size, dtype=timestep_img.dtype, device=timestep_img.device)
 
-        t_img_token = self.t_img_proj(t_img)
+        timestep_img_token = self.timestep_img_proj(timestep_img)
         # t_img_token does not contain any weights and will always return f32 tensors
         # but time_embedding might be fp16, so we need to cast here.
-        t_img_token = t_img_token.to(dtype=self.dtype)
-        t_img_token = self.t_img_embed(t_img_token)
-        t_img_token = t_img_token.unsqueeze(dim=1)
+        timestep_img_token = timestep_img_token.to(dtype=self.dtype)
+        timestep_img_token = self.timestep_img_embed(timestep_img_token)
+        timestep_img_token = timestep_img_token.unsqueeze(dim=1)
 
         # 1.3. Encode text timesteps to single token (B, 1, inner_dim)
-        if not torch.is_tensor(t_text):
-            t_text = torch.tensor([t_text], dtype=torch.long, device=vae_hidden_states.device)
+        if not torch.is_tensor(timestep_text):
+            timestep_text = torch.tensor([timestep_text], dtype=torch.long, device=vae_hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        t_text = t_text * torch.ones(batch_size, dtype=t_text.dtype, device=t_text.device)
+        timestep_text = timestep_text * torch.ones(batch_size, dtype=timestep_text.dtype, device=timestep_text.device)
 
-        t_text_token = self.t_text_proj(t_text)
+        timestep_text_token = self.timestep_text_proj(timestep_text)
         # t_text_token does not contain any weights and will always return f32 tensors
         # but time_embedding might be fp16, so we need to cast here.
-        t_text_token = t_text_token.to(dtype=self.dtype)
-        t_text_token = self.t_text_embed(t_text_token)
-        t_text_token = t_text_token.unsqueeze(dim=1)
+        timestep_text_token = timestep_text_token.to(dtype=self.dtype)
+        timestep_text_token = self.timestep_text_embed(timestep_text_token)
+        timestep_text_token = timestep_text_token.unsqueeze(dim=1)
 
         # 1.4. Concatenate all of the embeddings together.
         if self.use_data_type_embedding:
@@ -1130,8 +1122,8 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             data_type_token = self.data_type_token_embedding(data_type).unsqueeze(dim=1)
             hidden_states = torch.cat(
                 [
-                    t_img_token,
-                    t_text_token,
+                    timestep_img_token,
+                    timestep_text_token,
                     data_type_token,
                     text_hidden_states,
                     clip_hidden_states,
@@ -1141,7 +1133,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             )
         else:
             hidden_states = torch.cat(
-                [t_img_token, t_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
+                [timestep_img_token, timestep_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
             )
 
         # 1.5. Prepare the positional embeddings and add to hidden states
@@ -1160,15 +1152,13 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         hidden_states = self.transformer(
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
-            timestep=timestep,
-            class_labels=class_labels,
+            timestep=None,
+            class_labels=None,
             cross_attention_kwargs=cross_attention_kwargs,
             return_dict=False,
             hidden_states_is_embedding=True,
             unpatchify=False,
         )[0]
-
-        # print(f"Transformer output shape: {hidden_states.shape}")
 
         # 3. Output
         # Split out the predicted noise representation.

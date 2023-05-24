@@ -34,7 +34,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="unet",
         )
 
@@ -46,21 +46,21 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         vae = AutoencoderKL.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="vae",
         )
 
         text_encoder = CLIPTextModel.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="text_encoder",
         )
         clip_tokenizer = CLIPTokenizer.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="clip_tokenizer",
         )
 
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="image_encoder",
         )
         # From the Stable Diffusion Image Variation pipeline tests
@@ -68,11 +68,11 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # image_processor = CLIPImageProcessor.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_tokenizer = GPT2Tokenizer.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="text_tokenizer",
         )
         text_decoder = UniDiffuserTextDecoder.from_pretrained(
-            "dg845/unidiffuser-diffusers-test",
+            "hf-internal-testing/unidiffuser-diffusers-test",
             subfolder="text_decoder",
         )
 
@@ -558,7 +558,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         return latents
 
     def test_unidiffuser_default_joint_v1(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -581,7 +581,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -597,7 +597,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_unidiffuser_default_img2text_v1(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers")
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -611,7 +611,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_joint_v1_fp16(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -634,7 +634,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1_fp16(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -650,7 +650,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_unidiffuser_default_img2text_v1_fp16(self):
-        pipe = UniDiffuserPipeline.from_pretrained("dg845/unidiffuser-diffusers", torch_dtype=torch.float16)
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()

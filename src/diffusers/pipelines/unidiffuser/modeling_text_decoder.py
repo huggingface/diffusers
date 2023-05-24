@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 from transformers import GPT2Config, GPT2LMHeadModel
 from transformers.modeling_utils import ModuleUtilsMixin
@@ -128,31 +129,31 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
 
     def forward(
         self,
-        tokens: torch.Tensor,
-        prefix: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        input_ids: torch.Tensor,
+        prefix_embeds: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
     ):
         """
         Args:
-            tokens (`torch.Tensor` of shape `(N, max_seq_len)`):
+            input_ids (`torch.Tensor` of shape `(N, max_seq_len)`):
                 Text tokens to use for inference.
-            prefix (`torch.Tensor` of shape `(N, prefix_length, 768)`):
+            prefix_embeds (`torch.Tensor` of shape `(N, prefix_length, 768)`):
                 Prefix embedding to preprend to the embedded tokens.
-            mask (`torch.Tensor` of shape `(N, prefix_length + max_seq_len, 768)`, *optional*):
+            attention_mask (`torch.Tensor` of shape `(N, prefix_length + max_seq_len, 768)`, *optional*):
                 Attention mask for the prefix embedding.
             labels (`torch.Tensor`, *optional*):
                 Labels to use for language modeling.
         """
-        embedding_text = self.transformer.transformer.wte(tokens)
-        hidden = self.encode_prefix(prefix)
-        prefix = self.decode_prefix(hidden)
-        embedding_cat = torch.cat((prefix, embedding_text), dim=1)
+        embedding_text = self.transformer.transformer.wte(input_ids)
+        hidden = self.encode_prefix(prefix_embeds)
+        prefix_embeds = self.decode_prefix(hidden)
+        embedding_cat = torch.cat((prefix_embeds, embedding_text), dim=1)
 
         if labels is not None:
-            dummy_token = self.get_dummy_token(tokens.shape[0], tokens.device)
-            labels = torch.cat((dummy_token, tokens), dim=1)
-        out = self.transformer(inputs_embeds=embedding_cat, labels=labels, attention_mask=mask)
+            dummy_token = self.get_dummy_token(input_ids.shape[0], input_ids.device)
+            labels = torch.cat((dummy_token, input_ids), dim=1)
+        out = self.transformer(inputs_embeds=embedding_cat, labels=labels, attention_mask=attention_mask)
         if self.prefix_hidden_dim is not None:
             return out, hidden
         else:
@@ -165,17 +166,15 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         return self.encode_prefix(prefix)
 
     @torch.no_grad()
-    def generate_captions(self, tokenizer, features, device):
+    def generate_captions(self, features, eos_token_id, device):
         """
         Generate captions given text embedding features. Returns list[L].
 
         Args:
-            tokenizer (`GPT2Tokenizer`):
-                Tokenizer of class
-                [`GPT2Tokenizer`](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
-                for tokenizing input to the text decoder model.
             features (`torch.Tensor` of shape `(B, L, D)`):
                 Text embedding features to generate captions from.
+            eos_token_id (`int`):
+                The token ID of the EOS token for the text decoder model.
             device:
                 Device to perform text generation on.
 
@@ -184,19 +183,24 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         """
 
         features = torch.split(features, 1, dim=0)
-        generated_captions = []
+        generated_tokens = []
+        generated_seq_lengths = []
         for feature in features:
             feature = self.decode_prefix(feature.to(device))  # back to the clip feature
             # Only support beam search for now
-            generated_captions.append(self.generate_beam(tokenizer, embed=feature, device=device)[0])
-        return generated_captions
+            output_tokens, seq_lengths = self.generate_beam(eos_token_id, input_embeds=feature, device=device)
+            generated_tokens.append(output_tokens[0])
+            generated_seq_lengths.append(seq_lengths[0])
+        generated_tokens = torch.stack(generated_tokens)
+        generated_seq_lengths = torch.stack(generated_seq_lengths)
+        return generated_tokens, generated_seq_lengths
 
     @torch.no_grad()
     def generate_beam(
         self,
-        tokenizer,
-        prompt=None,
-        embed=None,
+        eos_token_id: Optional[int] = None,
+        input_ids=None,
+        input_embeds=None,
         device=None,
         beam_size: int = 5,
         entry_length: int = 67,
@@ -208,15 +212,14 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         code](https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py#L89).
 
         Args:
-            tokenizer (`GPT2Tokenizer`):
-                Tokenizer of class
-                [`GPT2Tokenizer`](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
-                for tokenizing input to the text decoder model.
-            prompt (`str`, *optional*):
-                A raw text prompt to use as the prefix for beam search. One of `prompt` and `embed` must be supplied.
-            embed (`torch.Tensor` of shape `(B, L, D)`, *optional*):
-                An embedded representation to directly pass to the transformer as a perfix for beam search. One of
-                `prompt` and `embed` must be supplied.
+            eos_token_id (`int`, *optional*):
+                The token ID of the EOS token for the text decoder model.
+            input_ids (`torch.LongTensor` of shape `(batch_size, input_ids_length)`, *optional*):
+                Tokenizer indices of input sequence tokens in the vocabulary. One of `input_ids` and `input_embeds`
+                must be supplied.
+            input_embeds (`torch.FloatTensor` of shape `(batch_size, seq_len, hidden_size)`, *optional*):
+                An embedded representation to directly pass to the transformer as a prefix for beam search. One of
+                `input_ids` and `input_embeds` must be supplied.
             device:
                 The device to perform beam search on.
             beam_size (`int`, *optional*, defaults to `5`):
@@ -227,22 +230,21 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
                 The temperature to use when performing the softmax over logits from the decoding model.
 
         Returns:
-            `List[str]`: A list of strings generated from the decoder model via beam search.
+            `Tuple(torch.Tensor, torch.Tensor)`: A tuple of tensors where the first element is a tensor of generated
+            token sequences sorted by score in descending order, and the second element is the sequence lengths
+            corresponding to those sequences.
         """
         # Generates text until stop_token is reached using beam search with the desired beam size.
-        stop_token_index = tokenizer.eos_token_id
+        stop_token_index = eos_token_id
         tokens = None
         scores = None
-        seq_lengths = torch.ones(beam_size, device=device)
+        seq_lengths = torch.ones(beam_size, device=device, dtype=torch.int)
         is_stopped = torch.zeros(beam_size, device=device, dtype=torch.bool)
 
-        if embed is not None:
-            generated = embed
+        if input_embeds is not None:
+            generated = input_embeds
         else:
-            assert prompt is not None
-            tokens = torch.tensor(tokenizer.encode(prompt))
-            tokens = tokens.unsqueeze(0).to(device)
-            generated = self.transformer.transformer.wte(tokens)
+            generated = self.transformer.transformer.wte(input_ids)
 
         for i in range(entry_length):
             outputs = self.transformer(inputs_embeds=generated)
@@ -283,11 +285,10 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
                 break
 
         scores = scores / seq_lengths
-        output_list = tokens.cpu().numpy()
-        output_texts = [
-            tokenizer.decode(output[: int(length)], skip_special_tokens=True)
-            for output, length in zip(output_list, seq_lengths)
-        ]
         order = scores.argsort(descending=True)
-        output_texts = [output_texts[i] for i in order]
-        return output_texts
+        max_seq_length = seq_lengths.max().item()
+        # Pad to max_seq_length with stop_token_index
+        output_texts = [F.pad(tokens[i], (0, max_seq_length - seq_lengths[i].item()), mode="constant", value=stop_token_index) for i in order]
+        output_texts = torch.stack(output_texts, dim=0)
+        seq_lengths = torch.tensor([seq_lengths[i] for i in order], dtype=seq_lengths.dtype)
+        return output_texts, seq_lengths

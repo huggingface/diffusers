@@ -24,8 +24,8 @@ Resources:
 * [Original Code](https://github.com/thu-ml/unidiffuser).
 
 Available Checkpoints are:
-- *UniDiffuser-v0 (512x512 resolution)* [dg845/unidiffuser-diffusers-v0](https://huggingface.co/dg845/unidiffuser-diffusers-v0)
-- *UniDiffuser-v1 (512x512 resolution)* [dg845/unidiffuser-diffusers-v1](https://huggingface.co/dg845/unidiffuser-diffusers)
+- *UniDiffuser-v0 (512x512 resolution)* [thu-ml/unidiffuser-v0](https://huggingface.co/thu-ml/unidiffuser-v0)
+- *UniDiffuser-v1 (512x512 resolution)* [thu-ml/unidiffuser-v1](https://huggingface.co/thu-ml/unidiffuser-v1)
 
 This pipeline was contributed by our community member [dg845](https://github.com/dg845).
 
@@ -49,7 +49,7 @@ import torch
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers"
+model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
@@ -98,7 +98,7 @@ import torch
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers"
+model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
@@ -125,7 +125,7 @@ from io import BytesIO
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers"
+model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
@@ -156,7 +156,7 @@ from io import BytesIO
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers"
+model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 
@@ -188,7 +188,7 @@ import torch
 from diffusers import UniDiffuserPipeline
 
 device = "cuda"
-model_id_or_path = "dg845/unidiffuser-diffusers"
+model_id_or_path = "thu-ml/unidiffuser-v1"
 pipe = UniDiffuserPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
 pipe.to(device)
 

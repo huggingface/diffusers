@@ -848,7 +848,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents, text_latents = self._split_joint(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t, data_type=data_type
+                img_vae_latents, img_clip_latents, text_latents, timestep_img=t, timestep_text=t, data_type=data_type
             )
 
             x_out = self._combine_joint(img_vae_out, img_clip_out, text_out)
@@ -862,11 +862,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
             _, _, text_out_uncond = self.unet(
-                img_vae_T, img_clip_T, text_latents, t_img=max_timestep, t_text=t, data_type=data_type
+                img_vae_T, img_clip_T, text_latents, timestep_img=max_timestep, timestep_text=t, data_type=data_type
             )
 
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
-                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep, data_type=data_type
+                img_vae_latents, img_clip_latents, text_T, timestep_img=t, timestep_text=max_timestep, data_type=data_type
             )
 
             x_out_uncond = self._combine_joint(img_vae_out_uncond, img_clip_out_uncond, text_out_uncond)
@@ -877,7 +877,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=0, data_type=data_type
+                img_vae_latents, img_clip_latents, prompt_embeds, timestep_img=t, timestep_text=0, data_type=data_type
             )
 
             img_out = self._combine(img_vae_out, img_clip_out)
@@ -889,7 +889,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
-                img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=max_timestep, data_type=data_type
+                img_vae_latents, img_clip_latents, text_T, timestep_img=t, timestep_text=max_timestep, data_type=data_type
             )
 
             img_out_uncond = self._combine(img_vae_out_uncond, img_clip_out_uncond)
@@ -898,7 +898,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         elif mode == "img2text":
             # Image-conditioned text generation
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae, img_clip, latents, t_img=0, t_text=t, data_type=data_type
+                img_vae, img_clip, latents, timestep_img=0, timestep_text=t, data_type=data_type
             )
 
             if guidance_scale <= 1.0:
@@ -909,14 +909,14 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
-                img_vae_T, img_clip_T, latents, t_img=max_timestep, t_text=t, data_type=data_type
+                img_vae_T, img_clip_T, latents, timestep_img=max_timestep, timestep_text=t, data_type=data_type
             )
 
             return guidance_scale * text_out + (1.0 - guidance_scale) * text_out_uncond
         elif mode == "text":
             # Unconditional ("marginal") text generation (no CFG)
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae, img_clip, latents, t_img=max_timestep, t_text=t, data_type=data_type
+                img_vae, img_clip, latents, timestep_img=max_timestep, timestep_text=t, data_type=data_type
             )
 
             return text_out
@@ -925,7 +925,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_latents, img_clip_latents = self._split(latents, height, width)
 
             img_vae_out, img_clip_out, text_out = self.unet(
-                img_vae_latents, img_clip_latents, prompt_embeds, t_img=t, t_text=max_timestep, data_type=data_type
+                img_vae_latents, img_clip_latents, prompt_embeds, timestep_img=t, timestep_text=max_timestep, data_type=data_type
             )
 
             img_out = self._combine(img_vae_out, img_clip_out)
@@ -1371,13 +1371,23 @@ class UniDiffuserPipeline(DiffusionPipeline):
             gen_image = self.decode_image_latents(image_vae_latents)
 
             # Generate text using the text decoder
-            gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
+            output_token_list, seq_lengths = self.text_decoder.generate_captions(text_latents, self.text_tokenizer.eos_token_id, device=device)
+            output_list = output_token_list.cpu().numpy()
+            gen_text = [
+                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
+                for output, length in zip(output_list, seq_lengths)
+            ]
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
             gen_image = self.decode_image_latents(image_vae_latents)
         elif mode in ["img2text", "text"]:
             text_latents = latents
-            gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
+            output_token_list, seq_lengths = self.text_decoder.generate_captions(text_latents, self.text_tokenizer.eos_token_id, device=device)
+            output_list = output_token_list.cpu().numpy()
+            gen_text = [
+                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
+                for output, length in zip(output_list, seq_lengths)
+            ]
 
         # 10. Convert to PIL
         if output_type == "pil" and gen_image is not None:
