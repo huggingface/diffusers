@@ -18,7 +18,7 @@ from typing import List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection, CLIPImageProcessor
 
 from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
@@ -108,21 +108,6 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
 """
 
 
-def _convert_image_to_rgb(image):
-    return image.convert("RGB")
-
-
-image_transforms = transforms.Compose(
-    [
-        transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(224),
-        _convert_image_to_rgb,
-        transforms.ToTensor(),
-        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-    ]
-)
-
-
 @dataclass
 class KandinskyPriorPipelineOutput(BaseOutput):
     """
@@ -167,6 +152,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: UnCLIPScheduler,
+        image_processor: CLIPImageProcessor
     ):
         super().__init__()
 
@@ -176,6 +162,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             scheduler=scheduler,
             image_encoder=image_encoder,
+            image_processor=image_processor,
         )
 
     @torch.no_grad()
@@ -254,7 +241,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
                 if isinstance(cond, PIL.Image.Image):
-                    cond = image_transforms(cond).unsqueeze(0).to(dtype=self.image_encoder.dtype, device=device)
+                    cond = self.image_processor(
+                        cond, return_tensors='pt').pixel_values[0].unsqueeze(0).to(dtype=self.image_encoder.dtype, device=device)
 
                 image_emb = self.image_encoder(cond)["image_embeds"]
 
