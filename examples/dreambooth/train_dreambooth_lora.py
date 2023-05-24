@@ -1282,6 +1282,12 @@ def main(args):
                     f"{k} {list(trained_state_dict[k].shape)} mean={torch.mean(trained_state_dict[k]):.3g} std={torch.std(trained_state_dict[k]):.3g}"
                 )
 
+        unet_attn_proc_state_dict = AttnProcsLayers(unet.attn_processors).state_dict()
+        for k in unet_attn_proc_state_dict:
+            from_unet = unet_attn_proc_state_dict[k]
+            orig = trained_state_dict[k]
+            print(f"Assertion: {torch.allclose(from_unet, orig)}")
+
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
             text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
