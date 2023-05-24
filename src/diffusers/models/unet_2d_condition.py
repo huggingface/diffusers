@@ -518,9 +518,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
                 f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
             )
-        print("set_attn_processor() is called.")
-        for k in processor:
-            print(f"{k}: {type(processor[k])}")
+        # print("set_attn_processor() is called.")
+        # for k in processor:
+        #     print(f"{k}: {type(processor[k])}")
 
 
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):

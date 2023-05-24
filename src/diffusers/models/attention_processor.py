@@ -290,7 +290,7 @@ class Attention(nn.Module):
             logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
             self._modules.pop("processor")
 
-        print(f"Processor type: {type(processor)}")
+        # print(f"Processor type: {type(processor)}")
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
@@ -759,7 +759,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        print(f"{self.__class__.__name__} have been called.")
+        # print(f"{self.__class__.__name__} have been called.")
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
