@@ -662,7 +662,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         noise_pred, t, latents_for_view, **extra_step_kwargs
                     ).prev_sample
 
-                    # save views scheduler status after sample 
+                    # save views scheduler status after sample
                     views_scheduler_status[j] = copy.deepcopy(self.scheduler.__dict__)
 
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
