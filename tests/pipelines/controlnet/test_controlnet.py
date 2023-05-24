@@ -202,6 +202,8 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_stable_diffusion_lora(self):
+        super().test_pipe_lora_support()
 
 class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionControlNetPipeline
@@ -341,6 +343,9 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    def test_stable_diffusion_lora(self):
+        super().test_pipe_lora_support()
 
     # override PipelineTesterMixin
     @unittest.skip("save pretrained not implemented")

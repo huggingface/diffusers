@@ -308,6 +308,9 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             except NotImplementedError:
                 pass
 
+    def test_stable_diffusion_lora(self):
+        super().test_pipe_lora_support()
+
     # override PipelineTesterMixin
     @unittest.skip("save pretrained not implemented")
     def test_save_load_float16(self):

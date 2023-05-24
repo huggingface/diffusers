@@ -17,6 +17,7 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
 
+from ..models.test_models_unet_2d_condition import create_lora_layers
 
 def to_np(tensor):
     if isinstance(tensor, torch.Tensor):
@@ -653,6 +654,40 @@ class PipelineTesterMixin:
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_pipe_lora_support(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # forward 1
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        # set lora layers
+        lora_attn_procs = create_lora_layers(pipe.unet)
+        pipe.unet.set_attn_processor(lora_attn_procs)
+        pipe = pipe.to(torch_device)
+
+        # forward 2
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
+        image = output.images
+        image_slice_1 = image[0, -3:, -3:, -1]
+
+        # forward 3
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
+        image = output.images
+        image_slice_2 = image[0, -3:, -3:, -1]
+
+        assert np.abs(image_slice - image_slice_1).max() < 1e-2
+        assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
