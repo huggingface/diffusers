@@ -209,6 +209,7 @@ init_image = load_image(
 )
 
 mask = np.ones((768, 768), dtype=np.float32)
+# Let's mask out an area above the cat's head
 mask[:250, 250:-250] = 0
 
 out = pipe(
