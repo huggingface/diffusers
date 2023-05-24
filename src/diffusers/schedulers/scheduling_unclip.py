@@ -109,23 +109,13 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small_log",
         clip_sample: bool = True,
         clip_sample_range: Optional[float] = 1.0,
-        thresholding: bool = False,
-        dynamic_thresholding_ratio: float = 0.995,
-        sample_min_value: Optional[float] = None,
-        sample_max_value: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
-        beta_schedule: str = "squaredcos_cap_v2",  # "linear"
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
+        beta_schedule: str = "squaredcos_cap_v2",
     ):
-        if beta_schedule == "squaredcos_cap_v2":
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        elif beta_schedule == "linear":
-            # Linear schedule from Ho et al, extended to work for any number of diffusion steps.
-            scale = 1000 / num_train_timesteps
-            self.betas = torch.linspace(beta_start * scale, beta_end * scale, num_train_timesteps, dtype=torch.float64)
-        else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+        if beta_schedule != "squaredcos_cap_v2":
+            raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
+
+        self.betas = betas_for_alpha_bar(num_train_timesteps)
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
