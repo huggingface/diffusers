@@ -22,7 +22,7 @@ import torch
 from PIL import Image
 from transformers import XLMRobertaTokenizerFast
 
-from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline, DDIMScheduler, UNet2DConditionModel, VQModel
+from diffusers import DDIMScheduler, KandinskyInpaintPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
@@ -161,14 +161,15 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = DDIMScheduler(
             num_train_timesteps=1000,
-            beta_schedule= "linear",
-            beta_start= 0.00085,
+            beta_schedule="linear",
+            beta_start=0.00085,
             beta_end=0.012,
             clip_sample=False,
-            set_alpha_to_one=False, 
-            steps_offset= 1,
-            prediction_type= "epsilon",
-            thresholding=False)
+            set_alpha_to_one=False,
+            steps_offset=1,
+            prediction_type="epsilon",
+            thresholding=False,
+        )
 
         components = {
             "text_encoder": text_encoder,
@@ -236,7 +237,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.8326919, 0.73790467, 0.20918581, 0.9309612,  0.5511791,  0.43713328, 0.5513321,  0.49922934, 0.59497786]
+            [0.8326919, 0.73790467, 0.20918581, 0.9309612, 0.5511791, 0.43713328, 0.5513321, 0.49922934, 0.59497786]
         )
 
         assert (
