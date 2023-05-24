@@ -46,7 +46,6 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
@@ -60,7 +59,6 @@ from diffusers.models.attention_processor import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-import copy
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -832,6 +830,7 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
+    initial_state_dict = unet_lora_layers().state_dict()
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -845,7 +844,7 @@ def main(args):
                     hidden_size=module.out_features, cross_attention_dim=None
                 )
         text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = StableDiffusionPipeline.from_pretrained(
+        temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, text_encoder=text_encoder
         )
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
@@ -1265,34 +1264,40 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unet.to(torch.float32)
+        # unet = unet.to(torch.float32)
         unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
 
-        # initial_state_dict = initial_unet_lora_layers.state_dict()
-        # trained_state_dict = unet_lora_layers.state_dict()
-        # logger.info("Checking between initial state dict and trained state dict.")
-        # for k in trained_state_dict:
-        #     trained_param = trained_state_dict[k]
-        #     initial_param = initial_state_dict[k]
-        #     logger.info((trained_param.cpu() - initial_param).max())
+        print("*****************Initial state dict*****************")
+        for k in sorted(initial_state_dict.keys()):
+            if isinstance(initial_state_dict[k], torch.Tensor):
+                print(
+                    f"{k} {list(initial_state_dict[k].shape)} mean={torch.mean(initial_state_dict[k]):.3g} std={torch.std(initial_state_dict[k]):.3g}"
+                )
+
+        trained_state_dict = unet_lora_layers.state_dict()
+        print("*****************Trained state dict*****************")
+        for k in sorted(trained_state_dict.keys()):
+            if isinstance(trained_state_dict[k], torch.Tensor):
+                print(
+                    f"{k} {list(trained_state_dict[k].shape)} mean={torch.mean(trained_state_dict[k]):.3g} std={torch.std(trained_state_dict[k]):.3g}"
+                )
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
             text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
 
+        print(f"Text encoder layers: {text_encoder_lora_layers}")
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
-        # unet.save_attn_procs(save_directory=args.output_dir,)
 
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
-        # pipeline.unet = unet.to(weight_dtype)
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
         scheduler_args = {}
