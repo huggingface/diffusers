@@ -462,12 +462,14 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(33)
 
         init_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main" "/stable_diffusion_inpaint/boy.png"
-        ).resize((512, 512))
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy.png"
+        )
+        init_image = init_image.resize((512, 512))
+
         mask_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/boy_mask.png"
-        ).resize((512, 512))
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
+        )
+        mask_image = mask_image.resize((512, 512))
 
         prompt = "a handsome man with ray-ban sunglasses"
 
