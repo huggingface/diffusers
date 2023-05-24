@@ -41,7 +41,7 @@ negative_prompt = "low quality, bad quality"
 We will pass both the `prompt` and `negative_prompt` to our prior diffusion pipeline. In contrast to other diffusion pipelines, such as Stable Diffusion, the `prompt` and `negative_prompt` shall be passed separately so that we can retrieve a CLIP image embedding for each prompt input. You can use `guidance_scale`, and `num_inference_steps` arguments to guide this process, just like how you would normally do with all other pipelines in diffusers.
 
 ```python
-from diffusers import KandinskyPipeline, KandinskyPriorPipeline
+from diffusers import KandinskyPriorPipeline
 import torch
 
 # create prior
