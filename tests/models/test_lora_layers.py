@@ -22,7 +22,14 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
-from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.models.attention_processor import (
+    Attention,
+    AttnProcessor,
+    AttnProcessor2_0,
+    LoRAAttnProcessor,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, floats_tensor, torch_device
 
 
@@ -212,3 +219,59 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
+
+    def create_lora_weight_file(self, tmpdirname):
+        pipeline_components, lora_components = self.get_dummy_components()
+        unet_lora_attn_procs = lora_components["unet_lora_attn_procs"]
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe.unet.set_attn_processor(unet_lora_attn_procs)
+        sd_pipe.unet.save_attn_procs(tmpdirname)
+        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+
+    def test_lora_unet_attn_processors(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            self.create_lora_weight_file(tmpdirname)
+
+            pipeline_components, _ = self.get_dummy_components()
+            sd_pipe = StableDiffusionPipeline(**pipeline_components)
+            sd_pipe = sd_pipe.to(torch_device)
+            sd_pipe.set_progress_bar_config(disable=None)
+
+            # check if vanilla attention processors are used
+            for _, module in sd_pipe.unet.named_modules():
+                if isinstance(module, Attention):
+                    self.assertIsInstance(module.processor, (AttnProcessor, AttnProcessor2_0))
+
+            # load LoRA weight file
+            sd_pipe.load_lora_weights(tmpdirname)
+
+            # check if lora attention processors are used
+            for _, module in sd_pipe.unet.named_modules():
+                if isinstance(module, Attention):
+                    self.assertIsInstance(module.processor, LoRAAttnProcessor)
+
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    def test_lora_unet_attn_processors_with_xformers(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            self.create_lora_weight_file(tmpdirname)
+
+            pipeline_components, _ = self.get_dummy_components()
+            sd_pipe = StableDiffusionPipeline(**pipeline_components)
+            sd_pipe = sd_pipe.to(torch_device)
+            sd_pipe.set_progress_bar_config(disable=None)
+
+            # enable XFormers
+            sd_pipe.enable_xformers_memory_efficient_attention()
+
+            # check if xFormers attention processors are used
+            for _, module in sd_pipe.unet.named_modules():
+                if isinstance(module, Attention):
+                    self.assertIsInstance(module.processor, XFormersAttnProcessor)
+
+            # load LoRA weight file
+            sd_pipe.load_lora_weights(tmpdirname)
+
+            # check if lora attention processors are used
+            for _, module in sd_pipe.unet.named_modules():
+                if isinstance(module, Attention):
+                    self.assertIsInstance(module.processor, LoRAXFormersAttnProcessor)
