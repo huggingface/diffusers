@@ -1279,7 +1279,6 @@ class LoraLoaderMixin:
         unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
-        print("converted", len(new_state_dict), "keys")
         return new_state_dict, network_alpha
 
 

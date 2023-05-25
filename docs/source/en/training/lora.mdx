@@ -309,6 +309,12 @@ We then load the checkpoint downloaded from CivitAI:
 pipeline.load_lora_weights(".", weight_name="light_and_shadow.safetensors")
 ```
 
+<Tip warning={true}>
+
+If you're loading a checkpoint in the `safetensors` format, please ensure you have `safetensors` installed.
+
+</Tip>
+
 And then it's time for running inference: 
 
 ```python 
