@@ -349,6 +349,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            temb_channels=temb_channels,
         )
     elif up_block_type == "AttnUpDecoderBlock2D":
         return AttnUpDecoderBlock2D(
@@ -361,6 +362,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            temb_channels=temb_channels,
         )
     elif up_block_type == "KUpBlock2D":
         return KUpBlock2D(
@@ -396,7 +398,7 @@ class UNetMidBlock2D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
+        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
@@ -434,7 +436,8 @@ class UNetMidBlock2D(nn.Module):
                         dim_head=attn_num_head_channels if attn_num_head_channels is not None else in_channels,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
-                        norm_num_groups=resnet_groups,
+                        norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
+                        spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                         residual_connection=True,
                         bias=True,
                         upcast_softmax=True,
@@ -466,7 +469,7 @@ class UNetMidBlock2D(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
-                hidden_states = attn(hidden_states)
+                hidden_states = attn(hidden_states, temb=temb)
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -2116,12 +2119,13 @@ class UpDecoderBlock2D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
+        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
+        temb_channels=None,
     ):
         super().__init__()
         resnets = []
@@ -2133,7 +2137,7 @@ class UpDecoderBlock2D(nn.Module):
                 ResnetBlock2D(
                     in_channels=input_channels,
                     out_channels=out_channels,
-                    temb_channels=None,
+                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
@@ -2151,9 +2155,9 @@ class UpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=None)
+            hidden_states = resnet(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -2177,6 +2181,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        temb_channels=None,
     ):
         super().__init__()
         resnets = []
@@ -2189,7 +2194,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                 ResnetBlock2D(
                     in_channels=input_channels,
                     out_channels=out_channels,
-                    temb_channels=None,
+                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
@@ -2206,7 +2211,8 @@ class AttnUpDecoderBlock2D(nn.Module):
                     dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    norm_num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
+                    spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
@@ -2222,10 +2228,10 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb=None)
-            hidden_states = attn(hidden_states)
+            hidden_states = resnet(hidden_states, temb=temb)
+            hidden_states = attn(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

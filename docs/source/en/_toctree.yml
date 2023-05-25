@@ -166,6 +166,8 @@
       title: DiT
     - local: api/pipelines/if
       title: IF
+    - local: api/pipelines/kandinsky
+      title: Kandinsky
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
