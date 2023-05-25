@@ -53,6 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> # !pip install transformers accelerate
         >>> from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
+        >>> import numpy as np
         >>> import torch
 
         >>> init_image = load_image(
@@ -95,7 +96,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # generate image
         >>> image = pipe(
-        ...     "spiderman",
+        ...     "a beautiful man",
         ...     num_inference_steps=20,
         ...     generator=generator,
         ...     eta=1.0,
@@ -949,7 +950,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         return mask, masked_image_latents
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_vae_image
-    def _encode_image(self, image: torch.Tensor, generator: torch.Generator):
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
                 self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
