@@ -98,7 +98,7 @@ _deps = [
     "numpy",
     "omegaconf",
     "parameterized",
-    "protobuf>=3.20.3,<4",
+    "protobuf>=3.20.1,<4",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -109,7 +109,6 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
-    "torch>=1.4",
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
@@ -204,16 +203,12 @@ extras["test"] = deps_list(
     "torchvision",
     "transformers",
 )
-extras["torch"] = deps_list("torch", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = (
-    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
-)
 
 install_requires = [
     deps["importlib_metadata"],
