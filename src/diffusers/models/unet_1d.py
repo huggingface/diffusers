@@ -56,11 +56,11 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for Fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
             Whether to flip sin to cos for Fourier time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock1D", "DownBlock1DNoSkip", "AttnDownBlock1D")`:
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock1D", "DownBlock1DNoSkip", "AttnDownBlock1D")`):
             Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`:
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`):
             Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(32, 32, 64)`:
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(32, 32, 64)`):
             Tuple of block output channels.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock1D"`): Block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
@@ -204,7 +204,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The noisy input tensor with the following shape `(batch_size, num_channels, sample_size)`.
-            timestep (`torch.FloatTensor` or `float` or `int): The number of timesteps to denoise an input.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.
 

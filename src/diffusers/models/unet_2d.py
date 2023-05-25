@@ -55,13 +55,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for Fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip sin to cos for Fourier time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`:
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`):
             Tuple of downsample block types.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
             Block type for middle of UNet, it can be either `UNetMidBlock2D` or `UnCLIPUNetMidBlock2D`.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`:
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`):
             Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`:
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`):
             Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
@@ -230,7 +230,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int): The number of timesteps to denoise an input.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):

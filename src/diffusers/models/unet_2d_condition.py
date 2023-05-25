@@ -98,11 +98,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        encoder_hid_dim (`int`, *optional*, defaults to None):
-            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
-            dimension to `cross_attention_dim`.
-        encoder_hid_dim_type (`str`, *optional*, defaults to None):
-            If given, the `encoder_hidden_states` and potentially other embeddings will be down-projected to text
+        encoder_hid_dim (`int`, *optional*, defaults to `None`):
+            If given, `encoder_hidden_states` will be projected from this dimension to `cross_attention_dim`.
+        encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
+            If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
@@ -123,7 +122,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_embedding_act_fn (`str`, *optional*, defaults to `None`):
             Optional activation function to use only once on the time embeddings before they are passed to the rest of
             the UNet. Choose from `silu`, `mish`, `gelu`, and `swish`.
-        timestep_post_act (`str, *optional*, defaults to `None`):
+        timestep_post_act (`str`, *optional*, defaults to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, defaults to `None`):
             The dimension of `cond_proj` layer in the timestep embedding.

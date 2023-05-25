@@ -343,7 +343,7 @@ class ModelMixin(torch.nn.Module):
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
                       the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`~ModelMixin.save_config`].
+                      with [`~ModelMixin.save_pretrained`].
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
@@ -360,7 +360,7 @@ class ModelMixin(torch.nn.Module):
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            output_loading_info(`bool`, *optional*, defaults to `False`):
+            output_loading_info (`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
@@ -411,10 +411,8 @@ class ModelMixin(torch.nn.Module):
 
         <Tip>
 
-        You need to log-in with `huggingface-cli login` if you want to use private or [gated
-        models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-        You can also activate the special
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
+        `huggingface-cli login`. You can also activate the special
         ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
         firewalled environment.
 

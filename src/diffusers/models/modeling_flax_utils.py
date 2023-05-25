@@ -49,7 +49,7 @@ class FlaxModelMixin:
     [`FlaxModelMixin`] takes care of storing the model configuration and provides methods for loading, downloading and
     saving models.
 
-        - **config_name** ([`str`]) -- Filename to save a model to when calling [`~models.ModelMixin.save_pretrained`].
+        - **config_name** ([`str`]) -- Filename to save a model to when calling [`~FlaxModelMixin.save_pretrained`].
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
@@ -500,7 +500,7 @@ class FlaxModelMixin:
     ):
         """
         Save a model and its configuration file to a directory so that it can be reloaded using the
-        [`~models.FlaxModelMixin.from_pretrained`] class method.
+        [`~FlaxModelMixin.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
