@@ -328,7 +328,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-        masked_image_latents = self._encode_image(masked_image, generator=generator)
+        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:

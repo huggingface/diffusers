@@ -644,7 +644,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_image(image=image, generator=generator)
+            image_latents = self._encode_vae_image(image=image, generator=generator)
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -665,7 +665,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         return outputs
 
-    def _encode_image(self, image: torch.Tensor, generator: torch.Generator):
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
                 self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
@@ -691,7 +691,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-        masked_image_latents = self._encode_image(masked_image, generator=generator)
+        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -961,7 +961,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             do_classifier_free_guidance,
         )
         init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-        init_image = self._encode_image(init_image, generator=generator)
+        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
