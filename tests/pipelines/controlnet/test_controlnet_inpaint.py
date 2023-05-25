@@ -496,18 +496,12 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             num_inference_steps=20,
             output_type="np",
         )
-
-        np.save("/home/patrick/diffusers-images/sd_controlnet/boy_ray_ban.npy", output.images[0])
-
-        output_pil = pipe.numpy_to_pil(output.images[0])[0]
-        output_pil.save("/home/patrick/diffusers-images/sd_controlnet/boy_ray_ban.png")
-
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/inpaint.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/boy_ray_ban.npy"
         )
 
         assert np.abs(expected_image - image).max() < 9e-2
