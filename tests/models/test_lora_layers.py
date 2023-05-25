@@ -276,3 +276,33 @@ class LoraLoaderMixinTests(unittest.TestCase):
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
                     self.assertIsInstance(module.processor, LoRAXFormersAttnProcessor)
+
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    def test_lora_save_load_with_xformers(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+
+        # enable XFormers
+        sd_pipe.enable_xformers_memory_efficient_attention()
+
+        original_images = sd_pipe(**pipeline_inputs).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            LoraLoaderMixin.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        lora_images = sd_pipe(**pipeline_inputs).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Outputs shouldn't match.
+        self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
