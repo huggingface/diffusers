@@ -767,6 +767,8 @@ class LoraLoaderMixin:
 
         <Tip warning={true}>
 
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+
         This function is experimental and might change in the future.
 
         </Tip>
