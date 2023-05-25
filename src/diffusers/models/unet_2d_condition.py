@@ -99,7 +99,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
         encoder_hid_dim (`int`, *optional*, defaults to `None`):
-            If given, `encoder_hidden_states` will be projected from this dimension to `cross_attention_dim`.
+            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
+            dimension to `cross_attention_dim`.
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
             If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
