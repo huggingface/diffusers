@@ -221,11 +221,12 @@ class LoraLoaderMixinTests(unittest.TestCase):
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
     def create_lora_weight_file(self, tmpdirname):
-        pipeline_components, lora_components = self.get_dummy_components()
-        unet_lora_attn_procs = lora_components["unet_lora_attn_procs"]
-        sd_pipe = StableDiffusionPipeline(**pipeline_components)
-        sd_pipe.unet.set_attn_processor(unet_lora_attn_procs)
-        sd_pipe.unet.save_attn_procs(tmpdirname)
+        _, lora_components = self.get_dummy_components()
+        LoraLoaderMixin.save_lora_weights(
+            save_directory=tmpdirname,
+            unet_lora_layers=lora_components["unet_lora_layers"],
+            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+        )
         self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
 
     def test_lora_unet_attn_processors(self):
