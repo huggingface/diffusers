@@ -161,7 +161,7 @@ def kl_divergence(hidden_states):
 def preprocess(image):
     warnings.warn(
         "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor instead",
+        " use VaeImageProcessor.preprocess instead",
         FutureWarning,
     )
     if isinstance(image, torch.Tensor):

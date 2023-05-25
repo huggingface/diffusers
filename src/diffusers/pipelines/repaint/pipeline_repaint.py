@@ -33,7 +33,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
     warnings.warn(
         "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor instead",
+        " use VaeImageProcessor.preprocess instead",
         FutureWarning,
     )
     if isinstance(image, torch.Tensor):
