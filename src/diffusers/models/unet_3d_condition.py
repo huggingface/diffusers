@@ -43,9 +43,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class UNet3DConditionOutput(BaseOutput):
     """
+    The output of [`UNet3DConditionModel`].
+
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_frames, num_channels, height, width)`):
-            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
     sample: torch.FloatTensor
@@ -53,11 +55,11 @@ class UNet3DConditionOutput(BaseOutput):
 
 class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
-    UNet3DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
-    and returns sample shaped output.
+    A conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
+    shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
@@ -66,7 +68,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
@@ -75,7 +77,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
-            If `None`, it will skip the normalization and activation layers in post-processing
+            If `None`, normalization and activation layers is skipped in post-processing.
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
@@ -281,13 +283,13 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         r"""
         Enable sliced attention computation.
 
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
+        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
 
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
+                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
+                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
@@ -345,12 +347,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
-        Parameters:
-            `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `Attention` layers.
-            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
+        Sets the attention processor to use to compute attention.
 
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
         """
         count = len(self.attn_processors.keys())
 
@@ -398,21 +403,24 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple]:
         r"""
+        The [`UNet3DConditionModel`] forward method.
+
         Args:
-            sample (`torch.FloatTensor`): (batch, num_frames, channel, height, width) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
+            sample (`torch.FloatTensor`):
+                The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.FloatTensor`):
+                The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition.UNet3DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_2d_condition.UNet3DConditionOutput`] instead of a plain
+                tuple.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
 
         Returns:
-            [`~models.unet_2d_condition.UNet3DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition.UNet3DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
+                a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).

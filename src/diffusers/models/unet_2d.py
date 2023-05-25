@@ -27,9 +27,11 @@ from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 @dataclass
 class UNet2DOutput(BaseOutput):
     """
+    The output of [`UNet2DModel`].
+
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
-            Hidden states output. Output of last layer of model.
+            The hidden states output from the last layer of the model.
     """
 
     sample: torch.FloatTensor
@@ -37,46 +39,45 @@ class UNet2DOutput(BaseOutput):
 
 class UNet2DModel(ModelMixin, ConfigMixin):
     r"""
-    UNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+    A 2D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the model (such as downloading or saving, etc.)
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
             Height and width of input/output sample. Dimensions must be a multiple of `2 ** (len(block_out_channels) -
             1)`.
-        in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
+        in_channels (`int`, *optional*, defaults to 3): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
         time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
-        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
-        flip_sin_to_cos (`bool`, *optional*, defaults to :
-            obj:`True`): Whether to flip sin to cos for fourier time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to :
-            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
-            types.
+        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for Fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
+            Whether to flip sin to cos for Fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`:
+            Tuple of downsample block types.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
-            The mid block type. Choose from `UNetMidBlock2D` or `UnCLIPUNetMidBlock2D`.
-        up_block_types (`Tuple[str]`, *optional*, defaults to :
-            obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to :
-            obj:`(224, 448, 672, 896)`): Tuple of block output channels.
+            Block type for middle of UNet, it can be either `UNetMidBlock2D` or `UnCLIPUNetMidBlock2D`.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`:
+            Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`:
+            Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
         downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
-        norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
-        norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
+        norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for normalization.
+        norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
-            for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to None):
+            for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
+        class_embed_type (`str`, *optional*, defaults to `None`):
             The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
             `"timestep"`, or `"identity"`.
-        num_class_embeds (`int`, *optional*, defaults to None):
-            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
-            class conditioning with `class_embed_type` equal to `None`.
+        num_class_embeds (`int`, *optional*, defaults to `None`):
+            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim` when performing class
+            conditioning with `class_embed_type` equal to `None`.
     """
 
     @register_to_config
@@ -224,17 +225,21 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
         r"""
+        The [`UNet2DModel`] forward method.
+
         Args:
-            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            sample (`torch.FloatTensor`):
+                The noisy input tensor with the following shape `(batch, channel, height, width)`.
+            timestep (`torch.FloatTensor` or `float` or `int): The number of timesteps to denoise an input.
             class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is the sample tensor.
         """
         # 0. center input if necessary
         if self.config.center_input_sample:

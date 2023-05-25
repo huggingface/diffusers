@@ -50,9 +50,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
     """
+    The output of [`UNet2DConditionModel`].
+
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
-            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
     sample: torch.FloatTensor
@@ -60,17 +62,17 @@ class UNet2DConditionOutput(BaseOutput):
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
-    UNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
-    and returns sample shaped output.
+    A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
+    shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
             Height and width of input/output sample.
-        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
-        out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
+        in_channels (`int`, *optional*, defaults to 4): Number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
         flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
             Whether to flip the sin to cos in the time embedding.
@@ -78,9 +80,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
-            The mid block type. Choose from `UNetMidBlock2DCrossAttn` or `UNetMidBlock2DSimpleCrossAttn`, will skip the
-            mid block layer if `None`.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+            Block type for middle of UNet, it can be either `UNetMidBlock2DCrossAttn` or
+            `UNetMidBlock2DSimpleCrossAttn`. If `None`, the mid block layer is skipped.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
             The tuple of upsample blocks to use.
         only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
             Whether to include self-attention in the basic transformer blocks, see
@@ -92,7 +94,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
-            If `None`, it will skip the normalization and activation layers in post-processing
+            If `None`, normalization and activation layers is skipped in post-processing.
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
@@ -104,38 +106,38 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
-            for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to None):
+            for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
+        class_embed_type (`str`, *optional*, defaults to `None`):
             The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
             `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
-        addition_embed_type (`str`, *optional*, defaults to None):
+        addition_embed_type (`str`, *optional*, defaults to `None`):
             Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
             "text". "text" will use the `TextTimeEmbedding` layer.
-        num_class_embeds (`int`, *optional*, defaults to None):
+        num_class_embeds (`int`, *optional*, defaults to `None`):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
-        time_embedding_type (`str`, *optional*, default to `positional`):
+        time_embedding_type (`str`, *optional*, defaults to `positional`):
             The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
-        time_embedding_dim (`int`, *optional*, default to `None`):
+        time_embedding_dim (`int`, *optional*, defaults to `None`):
             An optional override for the dimension of the projected time embedding.
-        time_embedding_act_fn (`str`, *optional*, default to `None`):
-            Optional activation function to use on the time embeddings only one time before they as passed to the rest
-            of the unet. Choose from `silu`, `mish`, `gelu`, and `swish`.
-        timestep_post_act (`str, *optional*, default to `None`):
+        time_embedding_act_fn (`str`, *optional*, defaults to `None`):
+            Optional activation function to use only once on the time embeddings before they are passed to the rest of
+            the UNet. Choose from `silu`, `mish`, `gelu`, and `swish`.
+        timestep_post_act (`str, *optional*, defaults to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
-        time_cond_proj_dim (`int`, *optional*, default to `None`):
-            The dimension of `cond_proj` layer in timestep embedding.
+        time_cond_proj_dim (`int`, *optional*, defaults to `None`):
+            The dimension of `cond_proj` layer in the timestep embedding.
         conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
-            using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
+            `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
         class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
             embeddings with the class embeddings.
         mid_block_only_cross_attention (`bool`, *optional*, defaults to `None`):
             Whether to use cross attention with the mid block when using the `UNetMidBlock2DSimpleCrossAttn`. If
-            `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is None, the
-            `only_cross_attention` value will be used as the value for `mid_block_only_cross_attention`. Else, it will
-            default to `False`.
+            `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is `None`, the
+            `only_cross_attention` value is used as the value for `mid_block_only_cross_attention`. Default to `False`
+            otherwise.
     """
 
     _supports_gradient_checkpointing = True
@@ -530,11 +532,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
+        Sets the attention processor to use to compute attention.
+
         Parameters:
-            `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `Attention` layers.
-            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
 
         """
         count = len(self.attn_processors.keys())
@@ -568,13 +574,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         r"""
         Enable sliced attention computation.
 
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
+        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
 
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
+                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
+                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
@@ -649,29 +655,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
+        The [`UNet2DConditionModel`] forward method.
+
         Args:
-            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
+            sample (`torch.FloatTensor`):
+                The noisy input tensor with the following shape `(batch, channel, height, width)`.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.FloatTensor`):
+                The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             encoder_attention_mask (`torch.Tensor`):
-                (batch, sequence_length) cross-attention mask, applied to encoder_hidden_states. True = keep, False =
-                discard. Mask will be converted into a bias, which adds large negative values to attention scores
-                corresponding to "discard" tokens.
+                A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
+                `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
+                which adds large negative values to the attention scores corresponding to "discard" tokens.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            added_cond_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified includes additonal conditions that can be used for additonal time
-                embeddings or encoder hidden states projections. See the configurations `encoder_hid_dim_type` and
-                `addition_embed_type` for more information.
+                A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
+                a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).

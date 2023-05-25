@@ -35,9 +35,11 @@ from .unet_2d_blocks_flax import (
 @flax.struct.dataclass
 class FlaxUNet2DConditionOutput(BaseOutput):
     """
+    The output of [`FlaxUNet2DConditionModel`].
+
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
-            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
     sample: jnp.ndarray
@@ -46,17 +48,17 @@ class FlaxUNet2DConditionOutput(BaseOutput):
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a
-    timestep and returns sample shaped output.
+    A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
+    shaped output.
 
-    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it's generic methods
+    implemented for all models (such as downloading or saving).
 
-    Also, this model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
-    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    This model is also a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax Linen module and refer to the Flax documentation for all matters related to its
     general usage and behavior.
 
-    Finally, this model supports inherent JAX features such as:
+    Inherent JAX features such as the following are supported:
     - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
     - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
     - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
@@ -69,12 +71,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4):
             The number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
-            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
-            The tuple of upsample blocks to use. The corresponding class names will be: "FlaxUpBlock2D",
-            "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
+            The tuple of downsample blocks to use.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D",)`):
+            The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
@@ -89,8 +89,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            enable memory efficient attention https://arxiv.org/abs/2112.05682
-
+            Enable memory efficient attention as described [here](https://arxiv.org/abs/2112.05682).
     """
 
     sample_size: int = 32

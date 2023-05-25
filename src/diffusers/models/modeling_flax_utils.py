@@ -44,10 +44,12 @@ logger = logging.get_logger(__name__)
 
 class FlaxModelMixin:
     r"""
-    Base class for all flax models.
+    Base class for all Flax models.
 
-    [`FlaxModelMixin`] takes care of storing the configuration of the models and handles methods for loading,
-    downloading and saving models.
+    [`FlaxModelMixin`] takes care of storing the model configuration and provides methods for loading, downloading and
+    saving models.
+
+        - **config_name** ([`str`]) -- Filename to save a model to when calling [`~models.ModelMixin.save_pretrained`].
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
@@ -89,15 +91,15 @@ class FlaxModelMixin:
         Cast the floating-point `params` to `jax.numpy.bfloat16`. This returns a new `params` tree and does not cast
         the `params` in place.
 
-        This method can be used on TPU to explicitly convert the model parameters to bfloat16 precision to do full
+        This method can be used on a TPU to explicitly convert the model parameters to bfloat16 precision to do full
         half-precision training or to save weights in bfloat16 for inference in order to save memory and improve speed.
 
         Arguments:
             params (`Union[Dict, FrozenDict]`):
                 A `PyTree` of model parameters.
             mask (`Union[Dict, FrozenDict]`):
-                A `PyTree` with same structure as the `params` tree. The leaves should be booleans, `True` for params
-                you want to cast, and should be `False` for those you want to skip.
+                A `PyTree` with same structure as the `params` tree. The leaves should be booleans. It should be `True`
+                for params you want to cast, and `False` for those you want to skip.
 
         Examples:
 
@@ -132,8 +134,8 @@ class FlaxModelMixin:
             params (`Union[Dict, FrozenDict]`):
                 A `PyTree` of model parameters.
             mask (`Union[Dict, FrozenDict]`):
-                A `PyTree` with same structure as the `params` tree. The leaves should be booleans, `True` for params
-                you want to cast, and should be `False` for those you want to skip
+                A `PyTree` with same structure as the `params` tree. The leaves should be booleans. It should be `True`
+                for params you want to cast, and `False` for those you want to skip.
 
         Examples:
 
@@ -155,15 +157,15 @@ class FlaxModelMixin:
         Cast the floating-point `params` to `jax.numpy.float16`. This returns a new `params` tree and does not cast the
         `params` in place.
 
-        This method can be used on GPU to explicitly convert the model parameters to float16 precision to do full
+        This method can be used on a GPU to explicitly convert the model parameters to float16 precision to do full
         half-precision training or to save weights in float16 for inference in order to save memory and improve speed.
 
         Arguments:
             params (`Union[Dict, FrozenDict]`):
                 A `PyTree` of model parameters.
             mask (`Union[Dict, FrozenDict]`):
-                A `PyTree` with same structure as the `params` tree. The leaves should be booleans, `True` for params
-                you want to cast, and should be `False` for those you want to skip
+                A `PyTree` with same structure as the `params` tree. The leaves should be booleans. It should be `True`
+                for params you want to cast, and `False` for those you want to skip.
 
         Examples:
 
@@ -201,71 +203,68 @@ class FlaxModelMixin:
         **kwargs,
     ):
         r"""
-        Instantiate a pretrained flax model from a pre-trained model configuration.
-
-        The warning *Weights from XXX not initialized from pretrained model* means that the weights of XXX do not come
-        pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning
-        task.
-
-        The warning *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, therefore those
-        weights are discarded.
+        Instantiate a pretrained Flax model from a pretrained model configuration.
 
         Parameters:
             pretrained_model_name_or_path (`str` or `os.PathLike`):
                 Can be either:
 
-                    - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids are namespaced under a user or organization name, like
-                      `runwayml/stable-diffusion-v1-5`.
-                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
-                      e.g., `./my_model_directory/`.
+                    - A string, the *model id* (for example `runwayml/stable-diffusion-v1-5`) of a pretrained model
+                      hosted on the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      using [`~FlaxModelMixin.save_pretrained`].
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
                 The data type of the computation. Can be one of `jax.numpy.float32`, `jax.numpy.float16` (on GPUs) and
                 `jax.numpy.bfloat16` (on TPUs).
 
                 This can be used to enable mixed-precision training or half-precision inference on GPUs or TPUs. If
-                specified all the computation will be performed with the given `dtype`.
+                specified, all the computation will be performed with the given `dtype`.
 
-                **Note that this only specifies the dtype of the computation and does not influence the dtype of model
-                parameters.**
+                <Tip>
 
-                If you wish to change the dtype of the model parameters, see [`~ModelMixin.to_fp16`] and
-                [`~ModelMixin.to_bf16`].
+                This only specifies the dtype of the *computation* and does not influence the dtype of model
+                parameters.
+
+                If you wish to change the dtype of the model parameters, see [`~FlaxModelMixin.to_fp16`] and
+                [`~FlaxModelMixin.to_bf16`].
+
+                </Tip>
+
             model_args (sequence of positional arguments, *optional*):
-                All remaining positional arguments will be passed to the underlying model's `__init__` method.
+                All remaining positional arguments are passed to the underlying model's `__init__` method.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory in which a downloaded pretrained model configuration should be cached if the
-                standard cache should not be used.
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
             resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
-                file exists.
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
             proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only(`bool`, *optional*, defaults to `False`):
-                Whether or not to only look at local files (i.e., do not try to download the model).
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
             revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
-                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
-                identifier allowed by git.
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
             from_pt (`bool`, *optional*, defaults to `False`):
                 Load the model weights from a PyTorch checkpoint save file.
             kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to update the configuration object (after it being loaded) and initiate the model (e.g.,
-                `output_attentions=True`). Behaves differently depending on whether a `config` is provided or
+                Can be used to update the configuration object (after it is loaded) and initiate the model (for
+                example, `output_attentions=True`). Behaves differently depending on whether a `config` is provided or
                 automatically loaded:
 
-                    - If a configuration is provided with `config`, `**kwargs` will be directly passed to the
-                      underlying model's `__init__` method (we assume all relevant updates to the configuration have
-                      already been done)
-                    - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~ConfigMixin.from_config`]). Each key of `kwargs` that corresponds to
-                      a configuration attribute will be used to override said attribute with the supplied `kwargs`
-                      value. Remaining keys that do not correspond to any configuration attribute will be passed to the
-                      underlying model's `__init__` function.
+                    - If a configuration is provided with `config`, `kwargs` are directly passed to the underlying
+                      model's `__init__` method (we assume all relevant updates to the configuration have already been
+                      done).
+                    - If a configuration is not provided, `kwargs` are first passed to the configuration class
+                      initialization function [`~ConfigMixin.from_config`]. Each key of the `kwargs` that corresponds
+                      to a configuration attribute is used to override said attribute with the supplied `kwargs` value.
+                      Remaining keys that do not correspond to any configuration attribute are passed to the underlying
+                      model's `__init__` function.
 
         Examples:
 
@@ -276,7 +275,16 @@ class FlaxModelMixin:
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # Model was saved using *save_pretrained('./test/saved_model/')* (for example purposes, not runnable).
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("./test/saved_model/")
-        ```"""
+        ```
+
+        If you get the error message below, you need to finetune the weights for your downstream task:
+
+        ```bash
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
+        You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+        ```
+        """
         config = kwargs.pop("config", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -491,18 +499,18 @@ class FlaxModelMixin:
         is_main_process: bool = True,
     ):
         """
-        Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~FlaxModelMixin.from_pretrained`]` class method
+        Save a model and its configuration file to a directory so that it can be reloaded using the
+        [`~models.FlaxModelMixin.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
-                Directory to which to save. Will be created if it doesn't exist.
+                Directory to save a model and its configuration file to. Will be created if it doesn't exist.
             params (`Union[Dict, FrozenDict]`):
                 A `PyTree` of model parameters.
             is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful when in distributed training like
-                TPUs and need to call this function on all processes. In this case, set `is_main_process=True` only on
-                the main process to avoid race conditions.
+                Whether the process calling this is the main process or not. Useful during distributed training and you
+                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
+                process to avoid race conditions.
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")

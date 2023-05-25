@@ -28,9 +28,11 @@ from .unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up
 @dataclass
 class UNet1DOutput(BaseOutput):
     """
+    The output of [`UNet1DModel`].
+
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, sample_size)`):
-            Hidden states output. Output of last layer of model.
+            The hidden states output from the last layer of the model.
     """
 
     sample: torch.FloatTensor
@@ -38,10 +40,10 @@ class UNet1DOutput(BaseOutput):
 
 class UNet1DModel(ModelMixin, ConfigMixin):
     r"""
-    UNet1DModel is a 1D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+    A 1D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the model (such as downloading or saving, etc.)
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
 
     Parameters:
         sample_size (`int`, *optional*): Default length of sample. Should be adaptable at runtime.
@@ -49,24 +51,24 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
         extra_in_channels (`int`, *optional*, defaults to 0):
             Number of additional channels to be added to the input of the first down block. Useful for cases where the
-            input data has more channels than what the model is initially designed for.
+            input data has more channels than what the model was initially designed for.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
-        freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
-        flip_sin_to_cos (`bool`, *optional*, defaults to :
-            obj:`False`): Whether to flip sin to cos for fourier time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to :
-            obj:`("DownBlock1D", "DownBlock1DNoSkip", "AttnDownBlock1D")`): Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to :
-            obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to :
-            obj:`(32, 32, 64)`): Tuple of block output channels.
-        mid_block_type (`str`, *optional*, defaults to "UNetMidBlock1D"): block type for middle of UNet.
-        out_block_type (`str`, *optional*, defaults to `None`): optional output processing of UNet.
-        act_fn (`str`, *optional*, defaults to None): optional activation function in UNet blocks.
-        norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
-        layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
-        downsample_each_block (`int`, *optional*, defaults to False:
-            experimental feature for using a UNet without upsampling.
+        freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for Fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
+            Whether to flip sin to cos for Fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock1D", "DownBlock1DNoSkip", "AttnDownBlock1D")`:
+            Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`:
+            Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(32, 32, 64)`:
+            Tuple of block output channels.
+        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock1D"`): Block type for middle of UNet.
+        out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
+        act_fn (`str`, *optional*, defaults to `None`): Optional activation function in UNet blocks.
+        norm_num_groups (`int`, *optional*, defaults to 8): The number of groups for normalization.
+        layers_per_block (`int`, *optional*, defaults to 1): The number of layers per block.
+        downsample_each_block (`int`, *optional*, defaults to `False`):
+            Experimental feature for using a UNet without upsampling.
     """
 
     @register_to_config
@@ -197,15 +199,19 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[UNet1DOutput, Tuple]:
         r"""
+        The [`UNet1DModel`] forward method.
+
         Args:
-            sample (`torch.FloatTensor`): `(batch_size, num_channels, sample_size)` noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            sample (`torch.FloatTensor`):
+                The noisy input tensor with the following shape `(batch_size, num_channels, sample_size)`.
+            timestep (`torch.FloatTensor` or `float` or `int): The number of timesteps to denoise an input.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_1d.UNet1DOutput`] or `tuple`: [`~models.unet_1d.UNet1DOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~models.unet_1d.UNet1DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_1d.UNet1DOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is the sample tensor.
         """
 
         # 1. time

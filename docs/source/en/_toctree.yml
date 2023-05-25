@@ -152,6 +152,12 @@
       title: Vae Image Processor
     title: Main Classes
   - sections:
+    - local: api/models/overview
+      title: Overview
+    - local: api/models/unet
+      title: UNet
+    title: Models
+  - sections:
     - local: api/pipelines/overview
       title: Overview
     - local: api/pipelines/alt_diffusion
