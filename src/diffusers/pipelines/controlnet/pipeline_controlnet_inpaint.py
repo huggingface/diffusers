@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> init_image = init_image.resize((512, 512))
 
-        >>> generator = torch.Generator(device="cpu").manual_seed(33)
+        >>> generator = torch.Generator(device="cpu").manual_seed(1)
 
         >>> mask_image = load_image(
         ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
