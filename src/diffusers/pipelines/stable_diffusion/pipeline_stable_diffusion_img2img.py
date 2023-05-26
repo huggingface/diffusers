@@ -553,7 +553,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
         batch_size = batch_size * num_images_per_prompt
 
         if image.shape[1] ==4:           
-            initial_latents = image
+            init_latents = image
 
         else:
 
