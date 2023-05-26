@@ -552,11 +552,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         batch_size = batch_size * num_images_per_prompt
 
-        if image.shape[1] ==4:           
+        if image.shape[1] == 4:
             init_latents = image
 
         else:
-
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
