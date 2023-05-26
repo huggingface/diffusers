@@ -187,7 +187,9 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         for feature in features:
             feature = self.decode_prefix(feature.to(device))  # back to the clip feature
             # Only support beam search for now
-            output_tokens, seq_lengths = self.generate_beam(input_embeds=feature, device=device, eos_token_id=eos_token_id)
+            output_tokens, seq_lengths = self.generate_beam(
+                input_embeds=feature, device=device, eos_token_id=eos_token_id
+            )
             generated_tokens.append(output_tokens[0])
             generated_seq_lengths.append(seq_lengths[0])
         generated_tokens = torch.stack(generated_tokens)
