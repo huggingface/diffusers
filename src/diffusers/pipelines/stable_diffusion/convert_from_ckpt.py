@@ -140,17 +140,17 @@ def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
         new_item = new_item.replace("norm.weight", "group_norm.weight")
         new_item = new_item.replace("norm.bias", "group_norm.bias")
 
-        new_item = new_item.replace("q.weight", "query.weight")
-        new_item = new_item.replace("q.bias", "query.bias")
+        new_item = new_item.replace("q.weight", "to_q.weight")
+        new_item = new_item.replace("q.bias", "to_q.bias")
 
-        new_item = new_item.replace("k.weight", "key.weight")
-        new_item = new_item.replace("k.bias", "key.bias")
+        new_item = new_item.replace("k.weight", "to_k.weight")
+        new_item = new_item.replace("k.bias", "to_k.bias")
 
-        new_item = new_item.replace("v.weight", "value.weight")
-        new_item = new_item.replace("v.bias", "value.bias")
+        new_item = new_item.replace("v.weight", "to_v.weight")
+        new_item = new_item.replace("v.bias", "to_v.bias")
 
-        new_item = new_item.replace("proj_out.weight", "proj_attn.weight")
-        new_item = new_item.replace("proj_out.bias", "proj_attn.bias")
+        new_item = new_item.replace("proj_out.weight", "to_out.0.weight")
+        new_item = new_item.replace("proj_out.bias", "to_out.0.bias")
 
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
 
@@ -204,8 +204,12 @@ def assign_to_checkpoint(
                 new_path = new_path.replace(replacement["old"], replacement["new"])
 
         # proj_attn.weight has to be converted from conv 1D to linear
-        if "proj_attn.weight" in new_path:
+        is_attn_weight = "proj_attn.weight" in new_path or ("attentions" in new_path and "to_" in new_path)
+        shape = old_checkpoint[path["old"]].shape
+        if is_attn_weight and len(shape) == 3:
             checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0]
+        elif is_attn_weight and len(shape) == 4:
+            checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0, 0]
         else:
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
@@ -723,8 +727,8 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-def convert_ldm_clip_checkpoint(checkpoint):
-    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
+    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
 
     keys = list(checkpoint.keys())
 
@@ -988,6 +992,7 @@ def download_from_original_stable_diffusion_ckpt(
     controlnet: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
+    local_files_only=False,
 ) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -1033,6 +1038,8 @@ def download_from_original_stable_diffusion_ckpt(
             Whether to load the safety checker or not. Defaults to `True`.
         pipeline_class (`str`, *optional*, defaults to `None`):
             The pipeline class to use. Pass `None` to determine automatically.
+        local_files_only (`bool`, *optional*, defaults to `False`):
+            Whether or not to only look at local files (i.e., do not try to download the model).
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
@@ -1288,7 +1295,7 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor=feature_extractor,
         )
     elif model_type == "FrozenCLIPEmbedder":
-        text_model = convert_ldm_clip_checkpoint(checkpoint)
+        text_model = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
         if load_safety_checker:

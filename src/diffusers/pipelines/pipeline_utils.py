@@ -30,6 +30,7 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
+from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
@@ -296,8 +297,7 @@ def maybe_raise_or_warn(
 
         if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
-                f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
-                f" {expected_class_obj}"
+                f"{passed_class_obj[name]} is of type: {model_cls}, but should be" f" {expected_class_obj}"
             )
     else:
         logger.warning(
@@ -355,6 +355,9 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
+    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
+    offload_folder: Optional[Union[str, os.PathLike]],
+    offload_state_dict: bool,
     model_variants: Dict[str, str],
     name: str,
     from_flax: bool,
@@ -417,6 +420,9 @@ def load_sub_model(
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
         loading_kwargs["device_map"] = device_map
+        loading_kwargs["max_memory"] = max_memory
+        loading_kwargs["offload_folder"] = offload_folder
+        loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
         if from_flax:
             loading_kwargs["from_flax"] = True
@@ -486,15 +492,19 @@ class DiffusionPipeline(ConfigMixin):
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
+                module_path_items = module.__module__.split(".")
+                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
                 path = module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in LOADABLE_CLASSES, then it is a custom module.
                 # Or if it's a pipeline module, then the module is inside the pipeline
                 # folder so we set the library to module name.
-                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                if is_pipeline_module:
                     library = pipeline_dir
+                elif library not in LOADABLE_CLASSES:
+                    library = module.__module__
 
                 # retrieve class_name
                 class_name = module.__class__.__name__
@@ -531,7 +541,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        method. The pipeline can easily be re-loaded using the [`~DiffusionPipeline.from_pretrained`] class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -809,15 +819,24 @@ class DiffusionPipeline(ConfigMixin):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier to maximum memory. Will default to the maximum memory available for each
+                GPU and the available CPU RAM if unset.
+            offload_folder (`str` or `os.PathLike`, *optional*):
+                If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
+            offload_state_dict (`bool`, *optional*):
+                If `True`, will temporarily offload the CPU state dict to the hard drive to avoid getting out of CPU
+                RAM if the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to
+                `True` when there is some disk offload.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-            use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
-                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
-                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the pipeline will load the `safetensors` weights if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the pipeline will forcibly load the models from
+                `safetensors` weights. If set to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -874,6 +893,9 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
@@ -1022,7 +1044,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
-            importable_classes = ALL_IMPORTABLE_CLASSES if is_pipeline_module else LOADABLE_CLASSES[library_name]
+            importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
             # 6.3 Use passed sub model or load class_name from library_name
@@ -1047,6 +1069,9 @@ class DiffusionPipeline(ConfigMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=device_map,
+                    max_memory=max_memory,
+                    offload_folder=offload_folder,
+                    offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
                     name=name,
                     from_flax=from_flax,
@@ -1087,7 +1112,7 @@ class DiffusionPipeline(ConfigMixin):
         Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
 
         Parameters:
-             pretrained_model_name (`str` or `os.PathLike`, *optional*):
+            pretrained_model_name (`str` or `os.PathLike`, *optional*):
                 Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
                 https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                 `CompVis/ldm-text2im-large-256`.
@@ -1205,6 +1230,17 @@ class DiffusionPipeline(ConfigMixin):
         ignore_patterns = None
 
         if not local_files_only:
+            try:
+                info = model_info(
+                    pretrained_model_name,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+            except HTTPError as e:
+                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                local_files_only = True
+
+        if not local_files_only:
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1214,11 +1250,6 @@ class DiffusionPipeline(ConfigMixin):
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
-            )
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
             )
 
             config_dict = cls._dict_from_json_file(config_file)
@@ -1250,7 +1281,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 

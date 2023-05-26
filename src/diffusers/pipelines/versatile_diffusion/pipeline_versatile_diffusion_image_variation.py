@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -21,6 +22,7 @@ import torch
 import torch.utils.checkpoint
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
@@ -71,6 +73,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -189,6 +192,11 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -414,12 +422,12 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 8. Post-processing
-        image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        else:
+            image = latents
 
-        # 9. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image,)

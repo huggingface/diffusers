@@ -979,7 +979,7 @@ def main(args):
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            initial_global_step = global_step * args.gradient_accumulation_steps
+            initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
