@@ -187,7 +187,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         for feature in features:
             feature = self.decode_prefix(feature.to(device))  # back to the clip feature
             # Only support beam search for now
-            output_tokens, seq_lengths = self.generate_beam(eos_token_id, input_embeds=feature, device=device)
+            output_tokens, seq_lengths = self.generate_beam(input_embeds=feature, device=device, eos_token_id=eos_token_id)
             generated_tokens.append(output_tokens[0])
             generated_seq_lengths.append(seq_lengths[0])
         generated_tokens = torch.stack(generated_tokens)
@@ -197,13 +197,13 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @torch.no_grad()
     def generate_beam(
         self,
-        eos_token_id: Optional[int] = None,
         input_ids=None,
         input_embeds=None,
         device=None,
         beam_size: int = 5,
         entry_length: int = 67,
         temperature: float = 1.0,
+        eos_token_id: Optional[int] = None,
     ):
         """
         Generates text using the given tokenizer and text prompt or token embedding via beam search. This
