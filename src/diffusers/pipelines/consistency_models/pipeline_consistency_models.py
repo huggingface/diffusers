@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Optional, Tuple, Union, Callable
+from typing import Callable, List, Optional, Union
 
 import torch
 
@@ -13,9 +13,7 @@ def append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
-        raise ValueError(
-            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
-        )
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
     return x[(...,) + (None,) * dims_to_append]
 
 
@@ -23,6 +21,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     r"""
     Sampling pipeline for consistency models.
     """
+
     def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
         super().__init__()
 
@@ -30,7 +29,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
-    
+
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     # Additionally prepare sigma_min, sigma_max kwargs for CM multistep scheduler
     def prepare_extra_step_kwargs(self, generator, eta, sigma_min, sigma_max):
@@ -43,7 +42,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
-        
+
         accepts_sigma_min = "sigma_min" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_sigma_min:
             # Assume accepting sigma_min always means scheduler also accepts sigma_max
@@ -55,27 +54,21 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
+
     def get_scalings(self, sigma, sigma_data: float = 0.5):
         c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
         c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
         c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
         return c_skip, c_out, c_in
-    
+
     def get_scalings_for_boundary_condition(self, sigma, sigma_min: float = 0.002, sigma_data: float = 0.5):
         # sigma_min should be in original sigma space, not in karras sigma space
         # (e.g. not exponentiated by 1 / rho)
-        c_skip = sigma_data**2 / (
-            (sigma - sigma_min) ** 2 + sigma_data**2
-        )
-        c_out = (
-            (sigma - sigma_min)
-            * sigma_data
-            / (sigma**2 + sigma_data**2) ** 0.5
-        )
+        c_skip = sigma_data**2 / ((sigma - sigma_min) ** 2 + sigma_data**2)
+        c_out = (sigma - sigma_min) * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
         c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
         return c_skip, c_out, c_in
-    
+
     def denoise(self, x_t, sigma, sigma_min: float = 0.002, sigma_data: float = 0.5, clip_denoised=True):
         """
         Run the consistency model forward...?
@@ -92,11 +85,11 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
         return model_output, denoised
-    
+
     def to_d(x, sigma, denoised):
         """Converts a denoiser output to a Karras ODE derivative."""
         return (x - denoised) / append_dims(sigma, x.ndim)
-    
+
     @torch.no_grad()
     def __call__(
         self,
@@ -149,7 +142,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # 3. Get sigma schedule
         assert hasattr(self.scheduler, "sigmas"), "Scheduler needs to operate in sigma space"
         sigmas = self.scheduler.sigmas
-        
+
         # 4. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta, sigma_min, sigma_max)
 
@@ -185,17 +178,17 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                         progress_bar.update()
                         if callback is not None and i % callback_steps == 0:
                             callback(i, t, sample)
-        
+
         # 6. Post-process image sample
         sample = (sample / 2 + 0.5).clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
 
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
-        
+
         if not return_dict:
             return (sample,)
-        
+
         # TODO: Offload to cpu?
 
         return ImagePipelineOutput(images=sample)

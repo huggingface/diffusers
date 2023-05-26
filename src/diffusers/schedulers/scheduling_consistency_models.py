@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -35,6 +35,7 @@ def append_zero(x):
 class CMStochasticIterativeSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
+
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
@@ -55,9 +56,9 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
+    (1-beta) over time from t = [0,1]. Contains a function alpha_bar that takes an argument t and transforms it to the
+    cumulative product of (1-beta) up to that part of the diffusion process.
+
     Args:
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
@@ -82,7 +83,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.
 
-    [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models" https://arxiv.org/pdf/2303.01469
+    [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
+    https://arxiv.org/pdf/2303.01469
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -145,7 +147,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
-        
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
@@ -164,7 +166,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.rho = rho
         self.is_scale_input_called = False
         self.use_karras_sigmas = use_karras_sigmas
-    
+
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -176,6 +178,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
+
         Args:
             sample (`torch.FloatTensor`): input sample
             timestep (`int`, optional): current timestep
@@ -187,6 +190,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
@@ -220,7 +224,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
-    
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
@@ -244,7 +248,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
-    
+
     # Modified from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
     # Use self.rho instead of hardcoded 7.0 for rho
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
@@ -259,7 +263,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
-    
+
     # TODO: add_noise meant to be called during training (forward diffusion process)
     # TODO: need to check if this corresponds to noise added during training
     # TODO: may want multiple add_noise-type methods for CD, CT
@@ -295,12 +299,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigma: float,
         sigma_min: float = 0.002,
         sigma_max: float = 80.0,
-        generator: Optional[torch.Generator] = None
+        generator: Optional[torch.Generator] = None,
     ) -> Tuple[torch.FloatTensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
-        higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
-        TODO Args:
+        higher noise level sigma_hat = sigma_i + gamma_i*sigma_i. TODO Args:
         """
         step_idx = (self.sigmas == sigma).nonzero().item()
         sigma_hat = self.sigmas[step_idx + 1].clamp(min=sigma_min, max=sigma_max)
@@ -312,7 +315,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sample_hat = sample + ((sigma_hat**2 - sigma_min**2) ** 0.5 * z)
 
         return sample_hat, sigma_hat
-    
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -327,6 +330,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
+
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`float`): current timestep in the diffusion chain.
@@ -401,6 +405,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample,)
 
         return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
-    
+
     def __len__(self):
         return self.config.num_train_timesteps

@@ -1,10 +1,8 @@
 import gc
-import random
 import unittest
 
 import numpy as np
 import torch
-from PIL import Image
 
 from diffusers import (
     CMStochasticIterativeScheduler,
@@ -15,15 +13,14 @@ from diffusers import (
     KDPM2DiscreteScheduler,
     UNet2DModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
-class ConsistencyModelPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+
+class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     params = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
     batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
 
@@ -58,13 +55,13 @@ class ConsistencyModelPipelineFastTests(
         }
 
         return components
-    
+
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         inputs = {
             "num_inference_steps": 2,
             "clip_denoised": True,
@@ -76,7 +73,7 @@ class ConsistencyModelPipelineFastTests(
         }
 
         return inputs
-    
+
     def test_consistency_model_pipeline_multistep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -93,7 +90,7 @@ class ConsistencyModelPipelineFastTests(
         expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_onestep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -111,14 +108,12 @@ class ConsistencyModelPipelineFastTests(
         expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_k_dpm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_uncond_unet
         # TODO: get reasonable args for KDPM2DiscreteScheduler
-        scheduler = KDPM2DiscreteScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="linear"
-        )
+        scheduler = KDPM2DiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="linear")
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -132,14 +127,12 @@ class ConsistencyModelPipelineFastTests(
         expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_k_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_uncond_unet
         # TODO: get reasonable args for EulerDiscreteScheduler
-        scheduler = EulerDiscreteScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="linear"
-        )
+        scheduler = EulerDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="linear")
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -153,14 +146,12 @@ class ConsistencyModelPipelineFastTests(
         expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_k_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_uncond_unet
         # TODO: get reasonable args for EulerAncestralDiscreteScheduler
-        scheduler = EulerAncestralDiscreteScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="linear"
-        )
+        scheduler = EulerAncestralDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="linear")
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -174,14 +165,12 @@ class ConsistencyModelPipelineFastTests(
         expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_k_heun(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_uncond_unet
         # TODO: get reasonable args for HeunDiscreteScheduler
-        scheduler = HeunDiscreteScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="linear"
-        )
+        scheduler = HeunDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="linear")
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
