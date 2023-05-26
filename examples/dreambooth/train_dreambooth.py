@@ -681,6 +681,7 @@ def collate_fn(examples, with_prior_preservation=False):
     }
 
     if has_attention_mask:
+        attention_mask = torch.cat(attention_mask, dim=0)
         batch["attention_mask"] = attention_mask
 
     return batch
