@@ -668,7 +668,7 @@ class DownloadTests(unittest.TestCase):
         pipe.load_textual_inversion(ten)
 
         token = pipe.tokenizer.convert_tokens_to_ids("<x>")
-        assert token == num_tokens, "Added token must be at spot `num_tokens`"
+        assert token == num_tokens + 10, "Added token must be at spot `num_tokens`"
         assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 32
         assert pipe._maybe_convert_prompt("<x>", pipe.tokenizer) == "<x>"
 
@@ -683,12 +683,12 @@ class DownloadTests(unittest.TestCase):
         pipe.load_textual_inversion([ten1, ten2])
 
         token = pipe.tokenizer.convert_tokens_to_ids("<xxxxx>")
-        assert token == num_tokens + 8, "Added token must be at spot `num_tokens`"
+        assert token == num_tokens + 11, "Added token must be at spot `num_tokens`"
         assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 32
         assert pipe._maybe_convert_prompt("<xxxxx>", pipe.tokenizer) == "<xxxxx>"
 
         token = pipe.tokenizer.convert_tokens_to_ids("<xxxxxx>")
-        assert token == num_tokens + 9, "Added token must be at spot `num_tokens`"
+        assert token == num_tokens + 12, "Added token must be at spot `num_tokens`"
         assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
         assert pipe._maybe_convert_prompt("<xxxxxx>", pipe.tokenizer) == "<xxxxxx>"
 
@@ -710,9 +710,9 @@ class DownloadTests(unittest.TestCase):
         token_1 = pipe.tokenizer.convert_tokens_to_ids("<xxxx>_1")
         token_2 = pipe.tokenizer.convert_tokens_to_ids("<xxxx>_2")
 
-        assert token == num_tokens + 5, "Added token must be at spot `num_tokens`"
-        assert token_1 == num_tokens + 6, "Added token must be at spot `num_tokens`"
-        assert token_2 == num_tokens + 7, "Added token must be at spot `num_tokens`"
+        assert token == num_tokens + 13, "Added token must be at spot `num_tokens`"
+        assert token_1 == num_tokens + 14, "Added token must be at spot `num_tokens`"
+        assert token_2 == num_tokens + 15, "Added token must be at spot `num_tokens`"
         assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
         assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
         assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
