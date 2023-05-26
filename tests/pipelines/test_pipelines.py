@@ -678,7 +678,7 @@ class DownloadTests(unittest.TestCase):
 
         # multi embedding state dict load
         ten1 = {"<xxxxx>": torch.ones((32,))}
-        ten2 = {"<xxxxxx>": 2 x torch.ones((1, 32))}
+        ten2 = {"<xxxxxx>": 2 * torch.ones((1, 32))}
 
         pipe.load_textual_inversion([ten1, ten2])
 
@@ -699,7 +699,7 @@ class DownloadTests(unittest.TestCase):
         # auto1111 multi-token state dict load
         ten = {
             "string_to_param": {
-                "*": torch.cat([3 x torch.ones((1, 32)), 4 x torch.ones((1, 32)), 5 x torch.ones((1, 32))])
+                "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
             },
             "name": "<xxxx>",
         }
