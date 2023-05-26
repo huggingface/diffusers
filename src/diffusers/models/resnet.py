@@ -52,17 +52,17 @@ class Upsample1D(nn.Module):
         elif use_conv:
             self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
 
-    def forward(self, x):
-        assert x.shape[1] == self.channels
+    def forward(self, inputs):
+        assert inputs.shape[1] == self.channels
         if self.use_conv_transpose:
-            return self.conv(x)
+            return self.conv(inputs)
 
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        outputs = F.interpolate(inputs, scale_factor=2.0, mode="nearest")
 
         if self.use_conv:
-            x = self.conv(x)
+            outputs = self.conv(outputs)
 
-        return x
+        return outputs
 
 
 class Downsample1D(nn.Module):
