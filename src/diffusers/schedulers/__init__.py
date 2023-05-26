@@ -28,6 +28,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .scheduling_consistency_models import CMStochasticIterativeScheduler
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddim_inverse import DDIMInverseScheduler
     from .scheduling_ddpm import DDPMScheduler
