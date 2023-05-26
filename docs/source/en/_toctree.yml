@@ -232,6 +232,8 @@
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
+    - local: api/pipelines/unidiffuser
+      title: UniDiffuser
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
