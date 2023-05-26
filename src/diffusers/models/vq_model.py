@@ -82,6 +82,7 @@ class VQModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
         scaling_factor: float = 0.18215,
+        norm_type: str = "group",  # group, spatial
     ):
         super().__init__()
 
@@ -112,6 +113,7 @@ class VQModel(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
+            norm_type=norm_type,
         )
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
@@ -131,8 +133,8 @@ class VQModel(ModelMixin, ConfigMixin):
             quant, emb_loss, info = self.quantize(h)
         else:
             quant = h
-        quant = self.post_quant_conv(quant)
-        dec = self.decoder(quant)
+        quant2 = self.post_quant_conv(quant)
+        dec = self.decoder(quant2, quant if self.config.norm_type == "spatial" else None)
 
         if not return_dict:
             return (dec,)

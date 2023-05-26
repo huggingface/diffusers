@@ -27,7 +27,9 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
+    XFormersAttnProcessor,
 )
 from .utils import (
     DIFFUSERS_CACHE,
@@ -279,7 +281,10 @@ class UNet2DConditionLoadersMixin:
                     attn_processor_class = LoRAAttnAddedKVProcessor
                 else:
                     cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
-                    attn_processor_class = LoRAAttnProcessor
+                    if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
+                        attn_processor_class = LoRAXFormersAttnProcessor
+                    else:
+                        attn_processor_class = LoRAAttnProcessor
 
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
@@ -687,6 +692,7 @@ class TextualInversionLoaderMixin:
                 state_dict = pretrained_model_name_or_path
 
             # 2. Load token and embedding correcly from file
+            loaded_token = None
             if isinstance(state_dict, torch.Tensor):
                 if token is None:
                     raise ValueError(

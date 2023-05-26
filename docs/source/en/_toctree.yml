@@ -132,6 +132,8 @@
   - sections:
     - local: api/models
       title: Models
+    - local: api/attnprocessor
+      title: Attention Processor
     - local: api/diffusion_pipeline
       title: Diffusion Pipeline
     - local: api/logging
@@ -166,6 +168,8 @@
       title: DiT
     - local: api/pipelines/if
       title: IF
+    - local: api/pipelines/kandinsky
+      title: Kandinsky
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -228,6 +232,8 @@
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
+    - local: api/pipelines/unidiffuser
+      title: UniDiffuser
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
