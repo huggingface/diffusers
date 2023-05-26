@@ -28,8 +28,8 @@
       title: Load community pipelines
     - local: using-diffusers/using_safetensors
       title: Load safetensors
-    - local: using-diffusers/kerascv
-      title: Load KerasCV Stable Diffusion checkpoints
+    - local: using-diffusers/other-formats
+      title: Load different Stable Diffusion formats
     title: Loading & Hub
   - sections:
     - local: using-diffusers/pipeline_overview
