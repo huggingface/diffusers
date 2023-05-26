@@ -312,7 +312,7 @@ class PipelineTesterMixin:
             for arg in additional_params_copy_to_batched_inputs:
                 batched_inputs[arg] = inputs[arg]
 
-            batched_inputs["output_type"] = None
+            batched_inputs["output_type"] = "np"
 
             if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
                 batched_inputs.pop("output_type")

@@ -100,7 +100,8 @@ accelerate launch train_custom_diffusion.py \
   --lr_warmup_steps=0 \
   --max_train_steps=250 \
   --scale_lr --hflip  \
-  --modifier_token "<new1>" 
+  --modifier_token "<new1>" \
+  --push_to_hub
 ```
 
 **Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
@@ -132,7 +133,8 @@ accelerate launch train_custom_diffusion.py \
   --scale_lr --hflip  \
   --modifier_token "<new1>" \
   --validation_prompt="<new1> cat sitting in a bucket" \
-  --report_to="wandb"
+  --report_to="wandb" \
+  --push_to_hub
 ```
 
 Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/26ghrcau) where you can check out the intermediate results along with other training details.  
@@ -168,7 +170,8 @@ accelerate launch train_custom_diffusion.py \
   --max_train_steps=500 \
   --num_class_images=200 \
   --scale_lr --hflip  \
-  --modifier_token "<new1>+<new2>" 
+  --modifier_token "<new1>+<new2>" \
+  --push_to_hub
 ```
 
 Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/3990tzkg) where you can check out the intermediate results along with other training details.  
@@ -207,7 +210,8 @@ accelerate launch train_custom_diffusion.py \
   --scale_lr --hflip --noaug \
   --freeze_model crossattn \
   --modifier_token "<new1>" \
-  --enable_xformers_memory_efficient_attention 
+  --enable_xformers_memory_efficient_attention \
+  --push_to_hub
 ```
 
 ## Inference

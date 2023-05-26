@@ -20,12 +20,12 @@ The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion syst
 
 Start by creating an instance of [`DiffusionPipeline`] and specify which pipeline [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads) you would like to download.
 
-In this guide, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
+In this guide, you'll use [`DiffusionPipeline`] for text-to-image generation with [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5):
 
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+>>> generator = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
