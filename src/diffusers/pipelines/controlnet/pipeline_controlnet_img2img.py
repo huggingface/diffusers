@@ -1034,14 +1034,15 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
-                    controlnet_latent_model_input = latents
+                    control_model_input = latents
+                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
                 else:
-                    controlnet_latent_model_input = latent_model_input
+                    control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    controlnet_latent_model_input,
+                    control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=control_image,
