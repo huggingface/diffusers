@@ -89,14 +89,12 @@ EXAMPLE_DOC_STRING = """
         ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
-        >>> # speed up diffusion process with faster scheduler and memory optimization
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-
         >>> pipe.enable_model_cpu_offload()
 
         >>> # generate image
         >>> image = pipe(
-        ...     "a beautiful man",
+        ...     "a handsome man with ray-ban sunglasses",
         ...     num_inference_steps=20,
         ...     generator=generator,
         ...     eta=1.0,
