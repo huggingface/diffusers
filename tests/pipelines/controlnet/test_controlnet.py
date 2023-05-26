@@ -25,8 +25,8 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
-    EulerDiscreteScheduler,
     DDIMScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
