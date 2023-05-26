@@ -146,7 +146,12 @@ class VaeImageProcessor(ConfigMixin):
 
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
-            _, _, height, width = image.shape
+            _, channel, height, width = image.shape
+            
+            # don't need any preprocess if the image is latents
+            if channel ==4: 
+                return image
+
             if self.config.do_resize and (
                 height % self.config.vae_scale_factor != 0 or width % self.config.vae_scale_factor != 0
             ):
@@ -154,6 +159,7 @@ class VaeImageProcessor(ConfigMixin):
                     f"Currently we only support resizing for PIL image - please resize your pytorch tensor to be divisible by {self.config.vae_scale_factor}"
                     f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
                 )
+        
 
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.config.do_normalize
