@@ -32,7 +32,6 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -142,6 +141,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -160,12 +160,10 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=True)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"] / 2 + 0.5
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -178,12 +176,10 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=True)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"] / 2 + 0.5
         negative_prompt = "french fries"
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
@@ -198,14 +194,12 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=True)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * 2
         inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
-        inputs["image"] = inputs["image"] / 2 + 0.5
         image = sd_pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
 
@@ -221,12 +215,10 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=True)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"] / 2 + 0.5
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
