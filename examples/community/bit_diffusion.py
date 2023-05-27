@@ -4,7 +4,6 @@ import torch
 from einops import rearrange, reduce
 
 from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, ImagePipelineOutput, UNet2DConditionModel
-from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
 
 
