@@ -12,6 +12,102 @@ from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import LMSDiscreteScheduler
+        >>> from mixdiff import StableDiffusionTilingPipeline
+
+        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+        >>> pipeline = StableDiffusionTilingPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+        >>> pipeline.to("cuda:0")
+
+        >>> image = pipeline(
+        >>>     prompt=[[
+        >>>         "A charming house in the countryside, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        >>>         "A dirt road in the countryside crossing pastures, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        >>>         "An old and rusty giant robot lying on a dirt road, by jakub rozalski, dark sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece"
+        >>>     ]],
+        >>>     tile_height=640,
+        >>>     tile_width=640,
+        >>>     tile_row_overlap=0,
+        >>>     tile_col_overlap=256,
+        >>>     guidance_scale=8,
+        >>>     seed=7178915308,
+        >>>     num_inference_steps=50,
+    >>> )["sample"][0]
+        ```
+"""
+
+
+def _tile2pixel_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
+    """Given a tile row and column numbers returns the range of pixels affected by that tiles in the overall image
+
+    Returns a tuple with:
+        - Starting coordinates of rows in pixel space
+        - Ending coordinates of rows in pixel space
+        - Starting coordinates of columns in pixel space
+        - Ending coordinates of columns in pixel space
+    """
+    px_row_init = 0 if tile_row == 0 else tile_row * (tile_height - tile_row_overlap)
+    px_row_end = px_row_init + tile_height
+    px_col_init = 0 if tile_col == 0 else tile_col * (tile_width - tile_col_overlap)
+    px_col_end = px_col_init + tile_width
+    return px_row_init, px_row_end, px_col_init, px_col_end
+
+
+def _pixel2latent_indices(px_row_init, px_row_end, px_col_init, px_col_end):
+    """Translates coordinates in pixel space to coordinates in latent space"""
+    return px_row_init // 8, px_row_end // 8, px_col_init // 8, px_col_end // 8
+
+
+def _tile2latent_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
+    """Given a tile row and column numbers returns the range of latents affected by that tiles in the overall image
+
+    Returns a tuple with:
+        - Starting coordinates of rows in latent space
+        - Ending coordinates of rows in latent space
+        - Starting coordinates of columns in latent space
+        - Ending coordinates of columns in latent space
+    """
+    px_row_init, px_row_end, px_col_init, px_col_end = _tile2pixel_indices(
+        tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+    )
+    return _pixel2latent_indices(px_row_init, px_row_end, px_col_init, px_col_end)
+
+
+def _tile2latent_exclusive_indices(
+    tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap, rows, columns
+):
+    """Given a tile row and column numbers returns the range of latents affected only by that tile in the overall image
+
+    Returns a tuple with:
+        - Starting coordinates of rows in latent space
+        - Ending coordinates of rows in latent space
+        - Starting coordinates of columns in latent space
+        - Ending coordinates of columns in latent space
+    """
+    row_init, row_end, col_init, col_end = _tile2latent_indices(
+        tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+    )
+    row_segment = segment(row_init, row_end)
+    col_segment = segment(col_init, col_end)
+    # Iterate over the rest of tiles, clipping the region for the current tile
+    for row in range(rows):
+        for column in range(columns):
+            if row != tile_row and column != tile_col:
+                clip_row_init, clip_row_end, clip_col_init, clip_col_end = _tile2latent_indices(
+                    row, column, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+                )
+                row_segment = row_segment - segment(clip_row_init, clip_row_end)
+                col_segment = col_segment - segment(clip_col_init, clip_col_end)
+    # return row_init, row_end, col_init, col_end
+    return row_segment[0], row_segment[1], col_segment[0], col_segment[1]
 
 
 class StableDiffusionExtrasMixin:
@@ -82,6 +178,31 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         seed_reroll_regions: Optional[List[Tuple[int, int, int, int, int]]] = None,
         cpu_vae: Optional[bool] = False,
     ):
+        r"""
+        Function to run the diffusion pipeline with tiling support.
+
+        Args:
+            prompt: either a single string (no tiling) or a list of lists with all the prompts to use (one list for each row of tiles). This will also define the tiling structure.
+            num_inference_steps: number of diffusions steps.
+            guidance_scale: classifier-free guidance.
+            seed: general random seed to initialize latents.
+            tile_height: height in pixels of each grid tile.
+            tile_width: width in pixels of each grid tile.
+            tile_row_overlap: number of overlap pixels between tiles in consecutive rows.
+            tile_col_overlap: number of overlap pixels between tiles in consecutive columns.
+            guidance_scale_tiles: specific weights for classifier-free guidance in each tile.
+            guidance_scale_tiles: specific weights for classifier-free guidance in each tile. If None, the value provided in guidance_scale will be used.
+            seed_tiles: specific seeds for the initialization latents in each tile. These will override the latents generated for the whole canvas using the standard seed parameter.
+            seed_tiles_mode: either "full" "exclusive". If "full", all the latents affected by the tile be overriden. If "exclusive", only the latents that are affected exclusively by this tile (and no other tiles) will be overrriden.
+            seed_reroll_regions: a list of tuples in the form (start row, end row, start column, end column, seed) defining regions in pixel space for which the latents will be overriden using the given seed. Takes priority over seed_tiles.
+            cpu_vae: the decoder from latent space to pixel space can require too mucho GPU RAM for large images. If you find out of memory errors at the end of the generation process, try setting this parameter to True to run the decoder in CPU. Slower, but should run without memory issues.
+
+        Examples:
+
+        Returns:
+            A PIL image with the generated image.
+
+        """
         if not isinstance(prompt, list) or not all(isinstance(row, list) for row in prompt):
             raise ValueError(f"`prompt` has to be a list of lists but is {type(prompt)}")
         grid_rows = len(prompt)
@@ -257,7 +378,7 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         # scale and decode the image latents with vae
         image = self.decode_latents(latents, cpu_vae)
 
-        return {"sample": image}
+        return {"images": image}
 
     def _gaussian_weights(self, tile_width, tile_height, nbatches):
         """Generates a gaussian mask of weights for tile contributions"""
@@ -281,68 +402,3 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
 
         weights = np.outer(y_probs, x_probs)
         return torch.tile(torch.tensor(weights, device=self.device), (nbatches, self.unet.config.in_channels, 1, 1))
-
-
-def _tile2pixel_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
-    """Given a tile row and column numbers returns the range of pixels affected by that tiles in the overall image
-
-    Returns a tuple with:
-        - Starting coordinates of rows in pixel space
-        - Ending coordinates of rows in pixel space
-        - Starting coordinates of columns in pixel space
-        - Ending coordinates of columns in pixel space
-    """
-    px_row_init = 0 if tile_row == 0 else tile_row * (tile_height - tile_row_overlap)
-    px_row_end = px_row_init + tile_height
-    px_col_init = 0 if tile_col == 0 else tile_col * (tile_width - tile_col_overlap)
-    px_col_end = px_col_init + tile_width
-    return px_row_init, px_row_end, px_col_init, px_col_end
-
-
-def _pixel2latent_indices(px_row_init, px_row_end, px_col_init, px_col_end):
-    """Translates coordinates in pixel space to coordinates in latent space"""
-    return px_row_init // 8, px_row_end // 8, px_col_init // 8, px_col_end // 8
-
-
-def _tile2latent_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
-    """Given a tile row and column numbers returns the range of latents affected by that tiles in the overall image
-
-    Returns a tuple with:
-        - Starting coordinates of rows in latent space
-        - Ending coordinates of rows in latent space
-        - Starting coordinates of columns in latent space
-        - Ending coordinates of columns in latent space
-    """
-    px_row_init, px_row_end, px_col_init, px_col_end = _tile2pixel_indices(
-        tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
-    )
-    return _pixel2latent_indices(px_row_init, px_row_end, px_col_init, px_col_end)
-
-
-def _tile2latent_exclusive_indices(
-    tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap, rows, columns
-):
-    """Given a tile row and column numbers returns the range of latents affected only by that tile in the overall image
-
-    Returns a tuple with:
-        - Starting coordinates of rows in latent space
-        - Ending coordinates of rows in latent space
-        - Starting coordinates of columns in latent space
-        - Ending coordinates of columns in latent space
-    """
-    row_init, row_end, col_init, col_end = _tile2latent_indices(
-        tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
-    )
-    row_segment = segment(row_init, row_end)
-    col_segment = segment(col_init, col_end)
-    # Iterate over the rest of tiles, clipping the region for the current tile
-    for row in range(rows):
-        for column in range(columns):
-            if row != tile_row and column != tile_col:
-                clip_row_init, clip_row_end, clip_col_init, clip_col_end = _tile2latent_indices(
-                    row, column, tile_width, tile_height, tile_row_overlap, tile_col_overlap
-                )
-                row_segment = row_segment - segment(clip_row_init, clip_row_end)
-                col_segment = col_segment - segment(clip_col_init, clip_col_end)
-    # return row_init, row_end, col_init, col_end
-    return row_segment[0], row_segment[1], col_segment[0], col_segment[1]
