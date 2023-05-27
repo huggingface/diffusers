@@ -759,7 +759,7 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline):
             image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+            image = [np.array(i).astype(np.float32) / 127.5 - 1.0 for i in image]
 
             image = np.stack(image, axis=0)  # to np
             image = torch.from_numpy(image.transpose(0, 3, 1, 2))

@@ -123,7 +123,6 @@ class StableDiffusionInpaintPipelineLegacy(
     """
     _optional_components = ["feature_extractor"]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -136,6 +135,13 @@ class StableDiffusionInpaintPipelineLegacy(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        deprecation_message = (
+            f"The class {self.__class__} is deprecated and will be removed in v1.0.0. You can achieve exactly the same functionality"
+            "by loading your model into `StableDiffusionInpaintPipeline` instead. See https://github.com/huggingface/diffusers/pull/3533"
+            "for more information."
+        )
+        deprecate("legacy is outdated", "1.0.0", deprecation_message, standard_warn=False)
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
