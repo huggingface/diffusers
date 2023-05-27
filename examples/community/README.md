@@ -36,6 +36,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.0986) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )                                    | - |                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) | 
 | TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
+| CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1510,3 +1511,87 @@ latency = elapsed_time(pipe4)
 print("Latency of StableDiffusionPipeline--fp32",latency)
 
 ```
+  
+  
+### CLIP Guided Images Mixing With Stable Diffusion
+
+![clip_guided_images_mixing_examples](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/main.png)
+
+CLIP guided stable diffusion images mixing pipline allows to combine two images using standard diffusion models.  
+This approach is using (optional) CoCa model to avoid writing image description.  
+[More code examples](https://github.com/TheDenk/images_mixing)
+
+## Example Images Mixing (with CoCa)
+```python
+import requests
+from io import BytesIO
+
+import PIL
+import torch
+import open_clip
+from open_clip import SimpleTokenizer
+from diffusers import DiffusionPipeline
+from transformers import CLIPFeatureExtractor, CLIPModel
+
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+# Loading additional models
+feature_extractor = CLIPFeatureExtractor.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+)
+clip_model = CLIPModel.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
+)
+coca_model = open_clip.create_model('coca_ViT-L-14', pretrained='laion2B-s13B-b90k').to('cuda')
+coca_model.dtype = torch.float16
+coca_transform = open_clip.image_transform(
+    coca_model.visual.image_size,
+    is_train = False,
+    mean = getattr(coca_model.visual, 'image_mean', None),
+    std = getattr(coca_model.visual, 'image_std', None),
+)
+coca_tokenizer = SimpleTokenizer()
+
+# Pipline creating
+mixing_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="clip_guided_images_mixing_stable_diffusion",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    coca_model=coca_model,
+    coca_tokenizer=coca_tokenizer,
+    coca_transform=coca_transform,
+    torch_dtype=torch.float16,
+)
+mixing_pipeline.enable_attention_slicing()
+mixing_pipeline = mixing_pipeline.to("cuda")
+
+# Pipline running
+generator = torch.Generator(device="cuda").manual_seed(17) 
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+content_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir.jpg")
+style_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/gigachad.jpg")
+
+pipe_images = mixing_pipeline(
+    num_inference_steps=50,
+    content_image=content_image,
+    style_image=style_image,
+    noise_strength=0.65,
+    slerp_latent_style_strength=0.9,
+    slerp_prompt_style_strength=0.1,
+    slerp_clip_image_style_strength=0.1,
+    guidance_scale=9.0,
+    batch_size=1,
+    clip_guidance_scale=100,
+    generator=generator,
+).images
+```
+
+![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
