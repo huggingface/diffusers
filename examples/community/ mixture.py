@@ -40,7 +40,7 @@ EXAMPLE_DOC_STRING = """
         >>>     guidance_scale=8,
         >>>     seed=7178915308,
         >>>     num_inference_steps=50,
-    >>> )["sample"][0]
+    >>> )["images"][0]
         ```
 """
 
