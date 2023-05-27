@@ -1510,3 +1510,33 @@ latency = elapsed_time(pipe4)
 print("Latency of StableDiffusionPipeline--fp32",latency)
 
 ```
+
+### Stable Diffusion Mixture
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+    
+```python
+from diffusers import LMSDiscreteScheduler
+from mixdiff import StableDiffusionTilingPipeline
+
+# Creater scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = StableDiffusionTilingPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+pipeline.to("cuda:0")
+
+# Mixture of Diffusers generation
+image = pipeline(
+    prompt=[[
+        "A charming house in the countryside, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        "A dirt road in the countryside crossing pastures, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        "An old and rusty giant robot lying on a dirt road, by jakub rozalski, dark sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece"
+    ]],
+    tile_height=640,
+    tile_width=640,
+    tile_row_overlap=0,
+    tile_col_overlap=256,
+    guidance_scale=8,
+    seed=7178915308,
+    num_inference_steps=50,
+)["sample"][0]
+```
