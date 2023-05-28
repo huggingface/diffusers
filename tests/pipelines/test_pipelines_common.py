@@ -10,6 +10,8 @@ from typing import Callable, Union
 import numpy as np
 import torch
 
+import PIL
+
 import diffusers
 from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
@@ -42,6 +44,18 @@ class PipelineLatentTesterMixin:
     def get_dummy_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inputs(device, seed)
 
+        def convert_to_pt(image):
+            if isinstance(image, torch.Tensor):
+                input_image = image
+            elif isinstance(image, np.ndarray):
+                input_image = VaeImageProcessor.numpy_to_pt(image)
+            elif isinstance(image, PIL.Image.Image):
+                input_image = VaeImageProcessor.pil_to_numpy(image)
+                input_image = VaeImageProcessor.numpy_to_pt(input_image)
+            else:
+                raise VaelueError(f"unsupported input_image_type {type(image)}")
+            return input_image
+
         def convert_pt_to_type(image, input_image_type):
             if input_image_type == "pt":
                 input_image = image
@@ -56,7 +70,9 @@ class PipelineLatentTesterMixin:
 
         for image_param in self.image_params:
             if image_param in inputs.keys():
-                inputs[image_param] = convert_pt_to_type(inputs[image_param], input_image_type)
+                inputs[image_param] = convert_pt_to_type(
+                    convert_to_pt(inputs[image_param]).to(device), 
+                    input_image_type)
 
         inputs["output_type"] = output_type
 
@@ -101,6 +117,8 @@ class PipelineLatentTesterMixin:
     def test_latents_input(self):
         if len(self.image_params) == 0:
             return
+        if not (hasattr(self.pipeline_class, "_accept_image_latents") and self.pipeline_class._accept_image_latents):
+            return 
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

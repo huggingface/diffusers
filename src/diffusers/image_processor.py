@@ -67,6 +67,18 @@ class VaeImageProcessor(ConfigMixin):
             pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
+    
+    @staticmethod
+    def pil_to_numpy(images):
+        """
+        Convert a PIL image or a list of PIL images to numpy image
+        """
+        if not isinstance(images, list):
+            images = [images]
+        images = [np.array(image).astype(np.float32) / 255.0 for image in images]
+        images = np.stack(images, axis=0)
+
+        return images
 
     @staticmethod
     def numpy_to_pt(images):
