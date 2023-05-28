@@ -91,6 +91,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    _accept_image_latents = False
 
     def __init__(
         self,
@@ -484,6 +485,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
 
         if isinstance(image[0], PIL.Image.Image):
             width, height = image[0].size
+        elif isinstance(image[0], np.ndarray):
+            width, height = image[0].shape[:-1]
         else:
             height, width = image[0].shape[-2:]
 
@@ -674,7 +677,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
         )
 
         # 5. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 6. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
