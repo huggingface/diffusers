@@ -1,5 +1,5 @@
-# Inspired by: https://github.com/Mikubill/sd-webui-controlnet/discussions/1236
-from typing import Any, Callable, Dict, List, Optional, Union
+# Inspired by: https://github.com/Mikubill/sd-webui-controlnet/discussions/1236 and https://github.com/Mikubill/sd-webui-controlnet/discussions/1280
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -162,7 +162,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        ref_image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -356,12 +356,13 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
         def hacked_basic_transformer_inner_forward(
             self,
-            hidden_states,
-            encoder_hidden_states=None,
-            timestep=None,
-            attention_mask=None,
-            cross_attention_kwargs=None,
-            class_labels=None,
+            hidden_states: torch.FloatTensor,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            timestep: Optional[torch.LongTensor] = None,
+            cross_attention_kwargs: Dict[str, Any] = None,
+            class_labels: Optional[torch.LongTensor] = None,
         ):
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
@@ -427,7 +428,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 attn_output = self.attn2(
                     norm_hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=encoder_attention_mask,
                     **cross_attention_kwargs,
                 )
                 hidden_states = attn_output + hidden_states
@@ -473,11 +474,12 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
         def hack_CrossAttnDownBlock2D_forward(
             self,
-            hidden_states,
-            temb=None,
-            encoder_hidden_states=None,
-            attention_mask=None,
-            cross_attention_kwargs=None,
+            hidden_states: torch.FloatTensor,
+            temb: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
         ):
             eps = 1e-6
 
@@ -490,6 +492,8 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
                 if MODE == "write":
@@ -566,13 +570,14 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
 
         def hacked_CrossAttnUpBlock2D_forward(
             self,
-            hidden_states,
-            res_hidden_states_tuple,
-            temb=None,
-            encoder_hidden_states=None,
-            cross_attention_kwargs=None,
-            upsample_size=None,
-            attention_mask=None,
+            hidden_states: torch.FloatTensor,
+            res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+            temb: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            upsample_size: Optional[int] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
         ):
             eps = 1e-6
             # TODO(Patrick, William) - attention mask is not used
@@ -586,6 +591,8 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
 

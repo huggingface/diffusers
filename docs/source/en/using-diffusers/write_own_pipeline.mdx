@@ -36,7 +36,7 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 
 That was super easy, but how did the pipeline do that? Let's breakdown the pipeline and take a look at what's happening under the hood.
 
-In the example above, the pipeline contains a UNet model and a DDPM scheduler. The pipeline denoises an image by taking random noise the size of the desired output and passing it through the model several times. At each timestep, the model predicts the *noise residual* and the scheduler uses it to predict a less noisy image. The pipeline repeats this process until it reaches the end of the specified number of inference steps. 
+In the example above, the pipeline contains a [`UNet2DModel`] model and a [`DDPMScheduler`]. The pipeline denoises an image by taking random noise the size of the desired output and passing it through the model several times. At each timestep, the model predicts the *noise residual* and the scheduler uses it to predict a less noisy image. The pipeline repeats this process until it reaches the end of the specified number of inference steps. 
 
 To recreate the pipeline with the model and scheduler separately, let's write our own denoising process.
 

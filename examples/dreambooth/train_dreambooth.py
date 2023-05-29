@@ -46,6 +46,7 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
@@ -62,7 +63,15 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
+def save_model_card(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    train_text_encoder=False,
+    prompt=str,
+    repo_folder=None,
+    pipeline: DiffusionPipeline = None,
+):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -74,8 +83,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- stable-diffusion
-- stable-diffusion-diffusers
+- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
+- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
 - text-to-image
 - diffusers
 - dreambooth
@@ -672,6 +681,7 @@ def collate_fn(examples, with_prior_preservation=False):
     }
 
     if has_attention_mask:
+        attention_mask = torch.cat(attention_mask, dim=0)
         batch["attention_mask"] = attention_mask
 
     return batch
@@ -1297,6 +1307,7 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
+                pipeline=pipeline,
             )
             upload_folder(
                 repo_id=repo_id,

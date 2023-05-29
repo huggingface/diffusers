@@ -30,6 +30,7 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
+from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
@@ -491,15 +492,19 @@ class DiffusionPipeline(ConfigMixin):
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
+                module_path_items = module.__module__.split(".")
+                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
                 path = module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in LOADABLE_CLASSES, then it is a custom module.
                 # Or if it's a pipeline module, then the module is inside the pipeline
                 # folder so we set the library to module name.
-                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                if is_pipeline_module:
                     library = pipeline_dir
+                elif library not in LOADABLE_CLASSES:
+                    library = module.__module__
 
                 # retrieve class_name
                 class_name = module.__class__.__name__
@@ -1039,7 +1044,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
-            importable_classes = ALL_IMPORTABLE_CLASSES if is_pipeline_module else LOADABLE_CLASSES[library_name]
+            importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
             # 6.3 Use passed sub model or load class_name from library_name
@@ -1225,6 +1230,17 @@ class DiffusionPipeline(ConfigMixin):
         ignore_patterns = None
 
         if not local_files_only:
+            try:
+                info = model_info(
+                    pretrained_model_name,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+            except HTTPError as e:
+                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                local_files_only = True
+
+        if not local_files_only:
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1234,11 +1250,6 @@ class DiffusionPipeline(ConfigMixin):
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
-            )
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
             )
 
             config_dict = cls._dict_from_json_file(config_file)

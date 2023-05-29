@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -21,7 +22,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ...image_processor import VaeImageProcessor
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler
 from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -95,9 +96,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-
-        if isinstance(scheduler, PNDMScheduler):
-            logger.error("PNDMScheduler for this pipeline is currently not supported.")
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -612,6 +610,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 6. Define panorama grid and initialize views for synthesis.
         views = self.get_views(height, width)
+        views_scheduler_status = [copy.deepcopy(self.scheduler.__dict__)] * len(views)
         count = torch.zeros_like(latents)
         value = torch.zeros_like(latents)
 
@@ -632,9 +631,12 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 # denoised (latent) crops are then averaged to produce the final latent
                 # for the current timestep via MultiDiffusion. Please see Sec. 4.1 in the
                 # MultiDiffusion paper for more details: https://arxiv.org/abs/2302.08113
-                for h_start, h_end, w_start, w_end in views:
+                for j, (h_start, h_end, w_start, w_end) in enumerate(views):
                     # get the latents corresponding to the current view coordinates
                     latents_for_view = latents[:, :, h_start:h_end, w_start:w_end]
+
+                    # rematch block's scheduler status
+                    self.scheduler.__dict__.update(views_scheduler_status[j])
 
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = (
@@ -659,6 +661,10 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     latents_view_denoised = self.scheduler.step(
                         noise_pred, t, latents_for_view, **extra_step_kwargs
                     ).prev_sample
+
+                    # save views scheduler status after sample
+                    views_scheduler_status[j] = copy.deepcopy(self.scheduler.__dict__)
+
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                     count[:, :, h_start:h_end, w_start:w_end] += 1
 
