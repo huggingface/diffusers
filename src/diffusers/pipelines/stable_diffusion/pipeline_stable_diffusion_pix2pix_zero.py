@@ -732,19 +732,24 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         image = image.to(device=device, dtype=dtype)
 
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if isinstance(generator, list):
-            latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)]
-            latents = torch.cat(latents, dim=0)
+        if image.shape[1] == 4:
+            latents = image
+        
         else:
-            latents = self.vae.encode(image).latent_dist.sample(generator)
 
-        latents = self.vae.config.scaling_factor * latents
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            if isinstance(generator, list):
+                latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)]
+                latents = torch.cat(latents, dim=0)
+            else:
+                latents = self.vae.encode(image).latent_dist.sample(generator)
+
+            latents = self.vae.config.scaling_factor * latents
 
         if batch_size != latents.shape[0]:
             if batch_size % latents.shape[0] == 0:
@@ -1184,7 +1189,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 4. Prepare latent variables
         latents = self.prepare_image_latents(image, batch_size, self.vae.dtype, device, generator)
