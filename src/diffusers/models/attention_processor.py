@@ -222,9 +222,6 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
-                print(
-                    f"is_lora is set to {is_lora}, type: LoRAXFormersAttnProcessor: {isinstance(processor, LoRAXFormersAttnProcessor)}"
-                )
             elif is_custom_diffusion:
                 processor = CustomDiffusionXFormersAttnProcessor(
                     train_kv=self.processor.train_kv,
@@ -262,7 +259,6 @@ class Attention(nn.Module):
                 # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
                 # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
                 # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
-                print("Still defaulting to: AttnProcessor2_0 :O")
                 processor = (
                     AttnProcessor2_0()
                     if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
