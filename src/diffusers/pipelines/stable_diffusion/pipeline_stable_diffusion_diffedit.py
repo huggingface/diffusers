@@ -1228,7 +1228,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
         inverted_latents = [latents.detach().clone()]
         with self.progress_bar(total=num_inference_steps - 1) as progress_bar:
-            for i, t in enumerate(timesteps[:-1]):
+            for i, t in enumerate(timesteps[1:]):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)

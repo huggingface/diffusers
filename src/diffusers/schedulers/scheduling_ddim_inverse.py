@@ -200,7 +200,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round().copy().astype(np.int64)
+        timesteps = (np.arange(-1, num_inference_steps-1) * step_ratio).round().copy().astype(np.int64)
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.timesteps += self.config.steps_offset
 
@@ -215,13 +215,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         # 1. get previous step value (=t+1)
-        if self.revert_all_steps:
-            timestep, prev_timestep = (
-                min(timestep - self.config.num_train_timesteps // self.num_inference_steps, 999),
-                timestep,
-            )
-        else:
-            prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
+        prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep] if timestep >= 0 else self.final_alpha_cumprod
