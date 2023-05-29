@@ -25,9 +25,11 @@
     - local: using-diffusers/schedulers
       title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Load and add custom pipelines
-    - local: using-diffusers/kerascv
-      title: Load KerasCV Stable Diffusion checkpoints
+      title: Load community pipelines
+    - local: using-diffusers/using_safetensors
+      title: Load safetensors
+    - local: using-diffusers/other-formats
+      title: Load different Stable Diffusion formats
     title: Loading & Hub
   - sections:
     - local: using-diffusers/pipeline_overview
@@ -42,16 +44,18 @@
       title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
       title: Text-guided depth-to-image
+    - local: using-diffusers/textual_inversion_inference
+      title: Textual inversion
+    - local: training/distributed_inference
+      title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
-      title: Community Pipelines
+      title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a Pipeline
-    - local: using-diffusers/using_safetensors
-      title: Using safetensors
+      title: How to contribute a community pipeline
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: Stable Diffusion in JAX/Flax
     - local: using-diffusers/weighted_prompts
@@ -60,6 +64,10 @@
   - sections:
     - local: training/overview
       title: Overview
+    - local: training/create_dataset
+      title: Create a dataset for training
+    - local: training/adapt_a_model
+      title: Adapt a model to a new task
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text_inversion
@@ -74,6 +82,8 @@
       title: ControlNet
     - local: training/instructpix2pix
       title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -103,6 +113,8 @@
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -120,6 +132,8 @@
   - sections:
     - local: api/models
       title: Models
+    - local: api/attnprocessor
+      title: Attention Processor
     - local: api/diffusion_pipeline
       title: Diffusion Pipeline
     - local: api/logging
@@ -140,6 +154,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/controlnet
+      title: ControlNet
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -150,6 +166,10 @@
       title: DDPM
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/if
+      title: IF
+    - local: api/pipelines/kandinsky
+      title: Kandinsky
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -165,7 +185,7 @@
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/spectrogram_diffusion
-      title: "Spectrogram Diffusion"
+      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -193,10 +213,10 @@
         title: Self-Attention Guidance
       - local: api/pipelines/stable_diffusion/panorama
         title: MultiDiffusion Panorama
-      - local: api/pipelines/stable_diffusion/controlnet
-        title: Text-to-Image Generation with ControlNet Conditioning
       - local: api/pipelines/stable_diffusion/model_editing
         title: Text-to-Image Model Editing
+      - local: api/pipelines/stable_diffusion/diffedit
+        title: DiffEdit
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -212,6 +232,8 @@
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
+    - local: api/pipelines/unidiffuser
+      title: UniDiffuser
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
@@ -232,12 +254,16 @@
       title: DPM Discrete Scheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: DPM Discrete Scheduler with ancestral sampling
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     - local: api/schedulers/euler_ancestral
       title: Euler Ancestral Scheduler
     - local: api/schedulers/euler
       title: Euler scheduler
     - local: api/schedulers/heun
       title: Heun Scheduler
+    - local: api/schedulers/multistep_dpm_solver_inverse
+      title: Inverse Multistep DPM-Solver
     - local: api/schedulers/ipndm
       title: IPNDM
     - local: api/schedulers/lms_discrete

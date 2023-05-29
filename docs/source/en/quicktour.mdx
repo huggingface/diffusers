@@ -33,7 +33,7 @@ The quicktour is a simplified version of the introductory 🧨 Diffusers [notebo
 Before you begin, make sure you have all the necessary libraries installed:
 
 ```bash
-pip install --upgrade diffusers accelerate transformers
+!pip install --upgrade diffusers accelerate transformers
 ```
 
 - [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) speeds up model loading for inference and training.
@@ -121,9 +121,9 @@ Save the image by calling `save`:
 
 You can also use the pipeline locally. The only difference is you need to download the weights first:
 
-```
-git lfs install
-git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+```bash
+!git lfs install
+!git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 Then load the saved weights into the pipeline:

@@ -352,12 +352,39 @@ class LabelEmbedding(nn.Module):
         labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
-    def forward(self, labels, force_drop_ids=None):
+    def forward(self, labels: torch.LongTensor, force_drop_ids=None):
         use_dropout = self.dropout_prob > 0
         if (self.training and use_dropout) or (force_drop_ids is not None):
             labels = self.token_drop(labels, force_drop_ids)
         embeddings = self.embedding_table(labels)
         return embeddings
+
+
+class TextImageProjection(nn.Module):
+    def __init__(
+        self,
+        text_embed_dim: int = 1024,
+        image_embed_dim: int = 768,
+        cross_attention_dim: int = 768,
+        num_image_text_embeds: int = 10,
+    ):
+        super().__init__()
+
+        self.num_image_text_embeds = num_image_text_embeds
+        self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
+        self.text_proj = nn.Linear(text_embed_dim, cross_attention_dim)
+
+    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+        batch_size = text_embeds.shape[0]
+
+        # image
+        image_text_embeds = self.image_embeds(image_embeds)
+        image_text_embeds = image_text_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
+
+        # text
+        text_embeds = self.text_proj(text_embeds)
+
+        return torch.cat([image_text_embeds, text_embeds], dim=1)
 
 
 class CombinedTimestepLabelEmbeddings(nn.Module):
@@ -377,3 +404,87 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         conditioning = timesteps_emb + class_labels  # (N, D)
 
         return conditioning
+
+
+class TextTimeEmbedding(nn.Module):
+    def __init__(self, encoder_dim: int, time_embed_dim: int, num_heads: int = 64):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(encoder_dim)
+        self.pool = AttentionPooling(num_heads, encoder_dim)
+        self.proj = nn.Linear(encoder_dim, time_embed_dim)
+        self.norm2 = nn.LayerNorm(time_embed_dim)
+
+    def forward(self, hidden_states):
+        hidden_states = self.norm1(hidden_states)
+        hidden_states = self.pool(hidden_states)
+        hidden_states = self.proj(hidden_states)
+        hidden_states = self.norm2(hidden_states)
+        return hidden_states
+
+
+class TextImageTimeEmbedding(nn.Module):
+    def __init__(self, text_embed_dim: int = 768, image_embed_dim: int = 768, time_embed_dim: int = 1536):
+        super().__init__()
+        self.text_proj = nn.Linear(text_embed_dim, time_embed_dim)
+        self.text_norm = nn.LayerNorm(time_embed_dim)
+        self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
+
+    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+        # text
+        time_text_embeds = self.text_proj(text_embeds)
+        time_text_embeds = self.text_norm(time_text_embeds)
+
+        # image
+        time_image_embeds = self.image_proj(image_embeds)
+
+        return time_image_embeds + time_text_embeds
+
+
+class AttentionPooling(nn.Module):
+    # Copied from https://github.com/deep-floyd/IF/blob/2f91391f27dd3c468bf174be5805b4cc92980c0b/deepfloyd_if/model/nn.py#L54
+
+    def __init__(self, num_heads, embed_dim, dtype=None):
+        super().__init__()
+        self.dtype = dtype
+        self.positional_embedding = nn.Parameter(torch.randn(1, embed_dim) / embed_dim**0.5)
+        self.k_proj = nn.Linear(embed_dim, embed_dim, dtype=self.dtype)
+        self.q_proj = nn.Linear(embed_dim, embed_dim, dtype=self.dtype)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, dtype=self.dtype)
+        self.num_heads = num_heads
+        self.dim_per_head = embed_dim // self.num_heads
+
+    def forward(self, x):
+        bs, length, width = x.size()
+
+        def shape(x):
+            # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
+            x = x.view(bs, -1, self.num_heads, self.dim_per_head)
+            # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
+            x = x.transpose(1, 2)
+            # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
+            x = x.reshape(bs * self.num_heads, -1, self.dim_per_head)
+            # (bs*n_heads, length, dim_per_head) --> (bs*n_heads, dim_per_head, length)
+            x = x.transpose(1, 2)
+            return x
+
+        class_token = x.mean(dim=1, keepdim=True) + self.positional_embedding.to(x.dtype)
+        x = torch.cat([class_token, x], dim=1)  # (bs, length+1, width)
+
+        # (bs*n_heads, class_token_length, dim_per_head)
+        q = shape(self.q_proj(class_token))
+        # (bs*n_heads, length+class_token_length, dim_per_head)
+        k = shape(self.k_proj(x))
+        v = shape(self.v_proj(x))
+
+        # (bs*n_heads, class_token_length, length+class_token_length):
+        scale = 1 / math.sqrt(math.sqrt(self.dim_per_head))
+        weight = torch.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+
+        # (bs*n_heads, dim_per_head, class_token_length)
+        a = torch.einsum("bts,bcs->bct", weight, v)
+
+        # (bs, length+1, width)
+        a = a.reshape(bs, -1, 1).transpose(1, 2)
+
+        return a[:, 0, :]  # cls_token

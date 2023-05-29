@@ -45,7 +45,6 @@ else:
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
     from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
-    from .pipeline_stable_diffusion_controlnet import StableDiffusionControlNetPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
@@ -75,10 +74,12 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         StableDiffusionDepth2ImgPipeline,
+        StableDiffusionDiffEditPipeline,
         StableDiffusionPix2PixZeroPipeline,
     )
 else:
     from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+    from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
     from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
 
 
@@ -128,7 +129,6 @@ if is_transformers_available() and is_flax_available():
 
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
     from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
-    from .pipeline_flax_stable_diffusion_controlnet import FlaxStableDiffusionControlNetPipeline
     from .pipeline_flax_stable_diffusion_img2img import FlaxStableDiffusionImg2ImgPipeline
     from .pipeline_flax_stable_diffusion_inpaint import FlaxStableDiffusionInpaintPipeline
     from .safety_checker_flax import FlaxStableDiffusionSafetyChecker

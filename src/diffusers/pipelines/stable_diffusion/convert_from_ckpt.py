@@ -31,33 +31,30 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import (
+from ...models import (
     AutoencoderKL,
     ControlNetModel,
+    PriorTransformer,
+    UNet2DConditionModel,
+)
+from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
-    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    PriorTransformer,
-    StableDiffusionControlNetPipeline,
-    StableDiffusionPipeline,
-    StableUnCLIPImg2ImgPipeline,
-    StableUnCLIPPipeline,
     UnCLIPScheduler,
-    UNet2DConditionModel,
 )
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
+from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from ..paint_by_example import PaintByExampleImageEncoder
+from ..pipeline_utils import DiffusionPipeline
+from .safety_checker import StableDiffusionSafetyChecker
+from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -143,17 +140,17 @@ def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
         new_item = new_item.replace("norm.weight", "group_norm.weight")
         new_item = new_item.replace("norm.bias", "group_norm.bias")
 
-        new_item = new_item.replace("q.weight", "query.weight")
-        new_item = new_item.replace("q.bias", "query.bias")
+        new_item = new_item.replace("q.weight", "to_q.weight")
+        new_item = new_item.replace("q.bias", "to_q.bias")
 
-        new_item = new_item.replace("k.weight", "key.weight")
-        new_item = new_item.replace("k.bias", "key.bias")
+        new_item = new_item.replace("k.weight", "to_k.weight")
+        new_item = new_item.replace("k.bias", "to_k.bias")
 
-        new_item = new_item.replace("v.weight", "value.weight")
-        new_item = new_item.replace("v.bias", "value.bias")
+        new_item = new_item.replace("v.weight", "to_v.weight")
+        new_item = new_item.replace("v.bias", "to_v.bias")
 
-        new_item = new_item.replace("proj_out.weight", "proj_attn.weight")
-        new_item = new_item.replace("proj_out.bias", "proj_attn.bias")
+        new_item = new_item.replace("proj_out.weight", "to_out.0.weight")
+        new_item = new_item.replace("proj_out.bias", "to_out.0.bias")
 
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
 
@@ -207,8 +204,12 @@ def assign_to_checkpoint(
                 new_path = new_path.replace(replacement["old"], replacement["new"])
 
         # proj_attn.weight has to be converted from conv 1D to linear
-        if "proj_attn.weight" in new_path:
+        is_attn_weight = "proj_attn.weight" in new_path or ("attentions" in new_path and "to_" in new_path)
+        shape = old_checkpoint[path["old"]].shape
+        if is_attn_weight and len(shape) == 3:
             checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0]
+        elif is_attn_weight and len(shape) == 4:
+            checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0, 0]
         else:
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
@@ -726,8 +727,8 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-def convert_ldm_clip_checkpoint(checkpoint):
-    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
+    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
 
     keys = list(checkpoint.keys())
 
@@ -990,7 +991,9 @@ def download_from_original_stable_diffusion_ckpt(
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
     load_safety_checker: bool = True,
-) -> StableDiffusionPipeline:
+    pipeline_class: DiffusionPipeline = None,
+    local_files_only=False,
+) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
     config file.
@@ -1018,6 +1021,8 @@ def download_from_original_stable_diffusion_ckpt(
         model_type (`str`, *optional*, defaults to `None`):
             The pipeline type. `None` to automatically infer, or one of `["FrozenOpenCLIPEmbedder",
             "FrozenCLIPEmbedder", "PaintByExample"]`.
+        is_img2img (`bool`, *optional*, defaults to `False`):
+            Whether the model should be loaded as an img2img pipeline.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
             checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to
             `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for
@@ -1026,12 +1031,31 @@ def download_from_original_stable_diffusion_ckpt(
             Whether the attention computation should always be upcasted. This is necessary when running stable
             diffusion 2.1.
         device (`str`, *optional*, defaults to `None`):
-            The device to use. Pass `None` to determine automatically. :param from_safetensors: If `checkpoint_path` is
-            in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
-            StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+            The device to use. Pass `None` to determine automatically.
+        from_safetensors (`str`, *optional*, defaults to `False`):
+            If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.
         load_safety_checker (`bool`, *optional*, defaults to `True`):
             Whether to load the safety checker or not. Defaults to `True`.
+        pipeline_class (`str`, *optional*, defaults to `None`):
+            The pipeline class to use. Pass `None` to determine automatically.
+        local_files_only (`bool`, *optional*, defaults to `False`):
+            Whether or not to only look at local files (i.e., do not try to download the model).
+        return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
+
+    # import pipelines here to avoid circular import error when using from_ckpt method
+    from diffusers import (
+        LDMTextToImagePipeline,
+        PaintByExamplePipeline,
+        StableDiffusionControlNetPipeline,
+        StableDiffusionPipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
+    )
+
+    if pipeline_class is None:
+        pipeline_class = StableDiffusionPipeline
+
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
 
@@ -1193,7 +1217,7 @@ def download_from_original_stable_diffusion_ckpt(
                     requires_safety_checker=False,
                 )
             else:
-                pipe = StableDiffusionPipeline(
+                pipe = pipeline_class(
                     vae=vae,
                     text_encoder=text_model,
                     tokenizer=tokenizer,
@@ -1271,7 +1295,7 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor=feature_extractor,
         )
     elif model_type == "FrozenCLIPEmbedder":
-        text_model = convert_ldm_clip_checkpoint(checkpoint)
+        text_model = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
         if load_safety_checker:
@@ -1293,7 +1317,7 @@ def download_from_original_stable_diffusion_ckpt(
                 feature_extractor=feature_extractor,
             )
         else:
-            pipe = StableDiffusionPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_model,
                 tokenizer=tokenizer,
@@ -1320,7 +1344,7 @@ def download_controlnet_from_original_ckpt(
     upcast_attention: Optional[bool] = None,
     device: str = None,
     from_safetensors: bool = False,
-) -> StableDiffusionPipeline:
+) -> DiffusionPipeline:
     if not is_omegaconf_available():
         raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
 

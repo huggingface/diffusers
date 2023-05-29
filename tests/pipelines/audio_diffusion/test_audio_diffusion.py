@@ -30,10 +30,10 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 class PipelineFastTests(unittest.TestCase):

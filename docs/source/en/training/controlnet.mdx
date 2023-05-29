@@ -33,7 +33,12 @@ cd diffusers
 pip install -e .
 ```
 
-Then navigate into the example folder and run:
+Then navigate into the [example folder](https://github.com/huggingface/diffusers/tree/main/examples/controlnet)
+```bash
+cd examples/controlnet
+```
+
+Now run:
 ```bash
 pip install -r requirements.txt
 ```
@@ -64,6 +69,8 @@ The original dataset is hosted in the ControlNet [repo](https://huggingface.co/l
 
 Our training examples use [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) because that is what the original set of ControlNet models was trained on. However, ControlNet can be trained to augment any compatible Stable Diffusion model (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) or [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1).
 
+To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
+
 ## Training
 
 Download the following images to condition our training with:
@@ -74,6 +81,9 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument.
+
+The training script creates and saves a `diffusion_pytorch_model.bin` file in your repository.
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
@@ -87,7 +97,8 @@ accelerate launch train_controlnet.py \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --train_batch_size=4
+ --train_batch_size=4 \
+ --push_to_hub
 ```
 
 This default configuration requires ~38GB VRAM.
@@ -110,7 +121,32 @@ accelerate launch train_controlnet.py \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
- --gradient_accumulation_steps=4
+ --gradient_accumulation_steps=4 \
+  --push_to_hub
+```
+
+## Training with multiple GPUs
+
+`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
+for running distributed training with `accelerate`. Here is an example command:
+
+```bash 
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="path to save model"
+
+accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=4 \
+ --mixed_precision="fp16" \
+ --tracker_project_name="controlnet-demo" \
+ --report_to=wandb \
+  --push_to_hub
 ```
 
 ## Example results
@@ -158,7 +194,8 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
- --use_8bit_adam
+ --use_8bit_adam \
+  --push_to_hub
 ```
 
 ## Training on a 12 GB GPU
@@ -186,7 +223,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
- --set_grads_to_none
+ --set_grads_to_none \
+  --push_to_hub
 ```
 
 When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
@@ -250,7 +288,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
- --mixed_precision fp16
+ --mixed_precision fp16 \
+ --push_to_hub
 ```
 
 ## Inference

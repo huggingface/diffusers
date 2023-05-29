@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL
@@ -21,7 +21,7 @@ import torch
 from PIL import Image
 
 from .configuration_utils import ConfigMixin, register_to_config
-from .utils import CONFIG_NAME, PIL_INTERPOLATION
+from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -82,7 +82,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pt_to_numpy(images):
         """
-        Convert a numpy image to a pytorch tensor
+        Convert a pytorch tensor to a numpy image
         """
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()
         return images
@@ -93,6 +93,13 @@ class VaeImageProcessor(ConfigMixin):
         Normalize an image array to [-1,1]
         """
         return 2.0 * images - 1.0
+
+    @staticmethod
+    def denormalize(images):
+        """
+        Denormalize an image array to [0,1]
+        """
+        return (images / 2 + 0.5).clamp(0, 1)
 
     def resize(self, images: PIL.Image.Image) -> PIL.Image.Image:
         """
@@ -165,17 +172,39 @@ class VaeImageProcessor(ConfigMixin):
 
     def postprocess(
         self,
-        image,
+        image: torch.FloatTensor,
         output_type: str = "pil",
+        do_denormalize: Optional[List[bool]] = None,
     ):
-        if isinstance(image, torch.Tensor) and output_type == "pt":
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(
+                f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
+            )
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+
+        if output_type == "latent":
+            return image
+
+        if do_denormalize is None:
+            do_denormalize = [self.config.do_normalize] * image.shape[0]
+
+        image = torch.stack(
+            [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
+        )
+
+        if output_type == "pt":
             return image
 
         image = self.pt_to_numpy(image)
 
         if output_type == "np":
             return image
-        elif output_type == "pil":
+
+        if output_type == "pil":
             return self.numpy_to_pil(image)
-        else:
-            raise ValueError(f"Unsupported output_type {output_type}.")

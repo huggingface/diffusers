@@ -735,7 +735,7 @@ def main():
                         torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
                         for mask in masks
                     ]
-                )
+                ).to(dtype=weight_dtype)
                 mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
 
                 # Sample noise that we'll add to the latents

@@ -24,7 +24,7 @@ The output is an "edited" image that reflects the edit instruction applied on th
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
 </p>
 
-The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
+The `train_instruct_pix2pix.py` script (you can find the it [here](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)) shows how to implement the training procedure and adapt it for Stable Diffusion.
 
 ***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
@@ -44,7 +44,12 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Then cd in the example folder
+```bash
+cd examples/instruct_pix2pix
+```
+
+Now run
 ```bash
 pip install -r requirements.txt
 ```
@@ -72,17 +77,16 @@ write_basic_config()
 ### Toy example
 
 As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
-is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
+is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-Configure environment variables such as the dataset identifier and the Stable Diffusion
-checkpoint:
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to specify the dataset name in `DATASET_ID`:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 ```
 
-Now, we can launch training:
+Now, we can launch training. The script saves all the components (`feature_extractor`, `scheduler`, `text_encoder`, `unet`, etc) in a subfolder in your repository.
 
 ```bash
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
@@ -96,7 +100,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
     --mixed_precision=fp16 \
-    --seed=42 
+    --seed=42 \
+    --push_to_hub
 ```
 
 Additionally, we support performing validation inference to monitor training progress
@@ -117,7 +122,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
     --validation_prompt="make the mountains snowy" \
     --seed=42 \
-    --report_to=wandb 
+    --report_to=wandb \
+    --push_to_hub
  ```
 
  We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
@@ -125,6 +131,28 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
  [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
 
  ***Note: In the original paper, the authors observed that even when the model is trained with an image resolution of 256x256, it generalizes well to bigger resolutions such as 512x512. This is likely because of the larger dataset they used during training.***
+
+ ## Training with multiple GPUs
+
+`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
+for running distributed training with `accelerate`. Here is an example command:
+
+```bash 
+accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
+ --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
+ --dataset_name=sayakpaul/instructpix2pix-1000-samples \
+ --use_ema \
+ --enable_xformers_memory_efficient_attention \
+ --resolution=512 --random_flip \
+ --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
+ --max_train_steps=15000 \
+ --checkpointing_steps=5000 --checkpoints_total_limit=1 \
+ --learning_rate=5e-05 --lr_warmup_steps=0 \
+ --conditioning_dropout_prob=0.05 \
+ --mixed_precision=fp16 \
+ --seed=42 \
+ --push_to_hub
+```
 
  ## Inference
 

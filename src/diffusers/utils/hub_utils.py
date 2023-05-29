@@ -199,7 +199,10 @@ if not os.path.isfile(cache_version_file):
     cache_version = 0
 else:
     with open(cache_version_file) as f:
-        cache_version = int(f.read())
+        try:
+            cache_version = int(f.read())
+        except ValueError:
+            cache_version = 0
 
 if cache_version < 1:
     old_cache_is_not_empty = os.path.isdir(old_diffusers_cache) and len(os.listdir(old_diffusers_cache)) > 0
@@ -277,7 +280,7 @@ def _get_model_file(
         if (
             revision in DEPRECATED_REVISION_ARGS
             and (weights_name == WEIGHTS_NAME or weights_name == SAFETENSORS_WEIGHTS_NAME)
-            and version.parse(version.parse(__version__).base_version) >= version.parse("0.17.0")
+            and version.parse(version.parse(__version__).base_version) >= version.parse("0.18.0")
         ):
             try:
                 model_file = hf_hub_download(

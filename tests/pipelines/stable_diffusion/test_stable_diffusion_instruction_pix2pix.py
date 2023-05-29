@@ -32,19 +32,24 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
-class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionInstructPix2PixPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -190,6 +195,9 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
         expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow

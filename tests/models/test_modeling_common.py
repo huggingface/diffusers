@@ -15,6 +15,7 @@
 
 import inspect
 import tempfile
+import traceback
 import unittest
 import unittest.mock as mock
 from typing import Dict, List, Tuple
@@ -26,8 +27,32 @@ from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils import logging, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_2, run_test_in_subprocess
+
+
+# Will be run via run_test_in_subprocess
+def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
+    error = None
+    try:
+        init_dict, model_class = in_queue.get(timeout=timeout)
+
+        model = model_class(**init_dict)
+        model.to(torch_device)
+        model = torch.compile(model)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        assert new_model.__class__ == model_class
+    except Exception:
+        error = f"{traceback.format_exc()}"
+
+    results = {"error": error}
+    out_queue.put(results, timeout=timeout)
+    out_queue.join()
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -155,6 +180,49 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
+    def test_getattr_is_correct(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        # save some things to test
+        model.dummy_attribute = 5
+        model.register_to_config(test_attribute=5)
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        # 30 for warning
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            assert hasattr(model, "dummy_attribute")
+            assert getattr(model, "dummy_attribute") == 5
+            assert model.dummy_attribute == 5
+
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        # 30 for warning
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            assert hasattr(model, "save_pretrained")
+            fn = model.save_pretrained
+            fn_1 = getattr(model, "save_pretrained")
+
+            assert fn == fn_1
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+        # warning should be thrown
+        with self.assertWarns(FutureWarning):
+            assert model.test_attribute == 5
+
+        with self.assertWarns(FutureWarning):
+            assert getattr(model, "test_attribute") == 5
+
+        with self.assertRaises(AttributeError) as error:
+            model.does_not_exist
+
+        assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
+
     def test_from_save_pretrained_variant(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -192,20 +260,11 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
-    @require_torch_gpu
+    @require_torch_2
     def test_from_save_pretrained_dynamo(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model = torch.compile(model)
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
-            new_model = self.model_class.from_pretrained(tmpdirname)
-            new_model.to(torch_device)
-
-        assert new_model.__class__ == self.model_class
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        inputs = [init_dict, self.model_class]
+        run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=inputs)
 
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -225,7 +284,7 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype)
                 assert new_model.dtype == dtype
 
-    def test_determinism(self):
+    def test_determinism(self, expected_max_diff=1e-5):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -245,7 +304,7 @@ class ModelTesterMixin:
         out_1 = out_1[~np.isnan(out_1)]
         out_2 = out_2[~np.isnan(out_2)]
         max_diff = np.amax(np.abs(out_1 - out_2))
-        self.assertLessEqual(max_diff, 1e-5)
+        self.assertLessEqual(max_diff, expected_max_diff)
 
     def test_output(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

@@ -1,5 +1,6 @@
 import inspect
 import logging
+import multiprocessing
 import os
 import random
 import re
@@ -26,6 +27,7 @@ from .import_utils import (
     is_opencv_available,
     is_torch_available,
     is_torch_version,
+    is_torchsde_available,
 )
 from .logging import get_logger
 
@@ -216,6 +218,13 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
+def require_torchsde(test_case):
+    """
+    Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
+    """
+    return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+
+
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
         # local_path = "/home/patrick_huggingface_co/"
@@ -277,6 +286,16 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def preprocess_image(image: PIL.Image, batch_size: int):
+    w, h = image.size
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = np.array(image).astype(np.float32) / 255.0
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
+    image = torch.from_numpy(image)
+    return 2.0 * image - 1.0
 
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
@@ -459,6 +478,50 @@ def pytest_terminal_summary_main(tr, id):
     config.option.tbstyle = orig_tbstyle
 
 
+# Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers/testing_utils.py#L1787
+def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+    """
+    To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
+
+    Args:
+        test_case (`unittest.TestCase`):
+            The test that will run `target_func`.
+        target_func (`Callable`):
+            The function implementing the actual testing logic.
+        inputs (`dict`, *optional*, defaults to `None`):
+            The inputs that will be passed to `target_func` through an (input) queue.
+        timeout (`int`, *optional*, defaults to `None`):
+            The timeout (in seconds) that will be passed to the input and output queues. If not specified, the env.
+            variable `PYTEST_TIMEOUT` will be checked. If still `None`, its value will be set to `600`.
+    """
+    if timeout is None:
+        timeout = int(os.environ.get("PYTEST_TIMEOUT", 600))
+
+    start_methohd = "spawn"
+    ctx = multiprocessing.get_context(start_methohd)
+
+    input_queue = ctx.Queue(1)
+    output_queue = ctx.JoinableQueue(1)
+
+    # We can't send `unittest.TestCase` to the child, otherwise we get issues regarding pickle.
+    input_queue.put(inputs, timeout=timeout)
+
+    process = ctx.Process(target=target_func, args=(input_queue, output_queue, timeout))
+    process.start()
+    # Kill the child process if we can't get outputs from it in time: otherwise, the hanging subprocess prevents
+    # the test to exit properly.
+    try:
+        results = output_queue.get(timeout=timeout)
+        output_queue.task_done()
+    except Exception as e:
+        process.terminate()
+        test_case.fail(e)
+    process.join(timeout=timeout)
+
+    if results["error"] is not None:
+        test_case.fail(f'{results["error"]}')
+
+
 class CaptureLogger:
     """
     Args:
@@ -496,3 +559,21 @@ class CaptureLogger:
 
     def __repr__(self):
         return f"captured: {self.out}\n"
+
+
+def enable_full_determinism():
+    """
+    Helper function for reproducible behavior during distributed training. See
+    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
+    """
+    #  Enable PyTorch deterministic mode. This potentially requires either the environment
+    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
+    # depending on the CUDA version, so we set them both here
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+    # Enable CUDNN deterministic mode
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
