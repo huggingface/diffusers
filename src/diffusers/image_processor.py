@@ -49,6 +49,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
         do_normalize: bool = True,
+        do_convert_rgb: bool = False,
     ):
         super().__init__()
 
@@ -113,6 +114,14 @@ class VaeImageProcessor(ConfigMixin):
         """
         return (images / 2 + 0.5).clamp(0, 1)
 
+    @staticmethod
+    def convert_to_rgb(images: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        Converts an image to RGB format. 
+        """
+        images = images.convert("RGB")
+        return images 
+
     def resize(self, images: PIL.Image.Image) -> PIL.Image.Image:
         """
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
@@ -138,10 +147,11 @@ class VaeImageProcessor(ConfigMixin):
             )
 
         if isinstance(image[0], PIL.Image.Image):
+            if self.config.do_convert_rgb:
+                image = [self.convert_to_rgb(i) for i in image]
             if self.config.do_resize:
                 image = [self.resize(i) for i in image]
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
-            image = np.stack(image, axis=0)  # to np
+            image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
 
         elif isinstance(image[0], np.ndarray):
