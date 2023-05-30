@@ -148,7 +148,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
         }
         return inputs
     
-    def get_dummy_inversion_inputs_by_type(self, device, seed=0, input_image_type="pt"):
+    def get_dummy_inversion_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inversion_inputs(device, seed)
 
         if input_image_type == "pt":
@@ -162,6 +162,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
             raise ValueError(f"unsupported input_image_type {input_image_type}")
         
         inputs["image"] = image
+        inputs["output_type"] = output_type
         
         return inputs
 
@@ -301,7 +302,27 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_pix2pixl_zero_inversion_pt_np_pil_inputs_equivalent(self):
+    def test_stable_diffusion_pix2pix_zero_inversion_pt_np_pil_outputs_equivalent(self):
+
+        device = torch_device
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        output_pt = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, output_type="pt")).images
+        output_np = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, output_type="np")).images
+        output_pil = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, output_type="pil")).images
+
+        max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
+        self.assertLess(
+            max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`"
+        )
+
+        max_diff = np.abs(np.array(output_pil[0]) - (output_np[0] * 255).round()).max()
+        self.assertLess(max_diff, 2.0, "`output_type=='pil'` generate different results from `output_type=='np'`")
+
+    def test_stable_diffusion_pix2pix_zero_inversion_pt_np_pil_inputs_equivalent(self):
 
         device = torch_device
         components = self.get_dummy_components()
