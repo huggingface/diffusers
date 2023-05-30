@@ -901,7 +901,7 @@ class LoraLoaderMixin:
 
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alpha = None
-        if any("alpha" in k for k in state_dict.keys()):
+        if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
             state_dict, network_alpha = self._convert_kohya_lora_to_diffusers(state_dict)
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
