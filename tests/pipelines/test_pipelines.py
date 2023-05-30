@@ -663,6 +663,19 @@ class DownloadTests(unittest.TestCase):
                 out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
                 assert out.shape == (1, 128, 128, 3)
 
+        # multiple references to multi embedding
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<cat>": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname)
+
+            assert pipe._maybe_convert_prompt("<cat> <cat>", pipe.tokenizer) == "<cat> <cat>_1 <cat>_2 <cat> <cat>_1 <cat>_2"
+
+            prompt = "hey <cat> <cat>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
         # single token state dict load
         ten = {"<x>": torch.ones((32,))}
         pipe.load_textual_inversion(ten)
