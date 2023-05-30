@@ -162,7 +162,7 @@
       title: AutoencoderKL
     - local: api/models/transformer2d
       title: Transformer2D
-    - title: api/models/transformer_temporal
+    - local: api/models/transformer_temporal
       title: Transformer Temporal
     - local: api/models/prior_transformer
       title: Prior Transformer
