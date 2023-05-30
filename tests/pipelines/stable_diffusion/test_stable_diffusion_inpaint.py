@@ -239,11 +239,12 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        
+
         # check that the pipeline raises value error when num_inference_steps is < 1
         inputs["strength"] = 0.01
         with self.assertRaises(ValueError):
             sd_pipe(**inputs).images
+
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
     pipeline_class = StableDiffusionInpaintPipeline

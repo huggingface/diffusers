@@ -654,6 +654,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
         else:
             latents = latents.to(device)
+            latents = latents * self.scheduler.init_noise_sigma
 
         outputs = (latents,)
 
@@ -912,7 +913,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps=num_inference_steps, strength=strength, device=device
         )
-        # check that number of inference steps is not < 1 - as this doesn't make sense 
+        # check that number of inference steps is not < 1 - as this doesn't make sense
         if num_inference_steps < 1:
             raise ValueError(
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
