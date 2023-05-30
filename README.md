@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="./docs/source/en/imgs/diffusers_library.jpg" width="400"/>
+    <img src="https://huggingface.co/docs/diffusers/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
@@ -128,57 +128,57 @@ just hang out ☕.
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Unconditional Image Generation</td>
-    <td><a href="./api/pipelines/ddpm"> DDPM </a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/ddpm"> DDPM </a></td> 
     <td><a href="https://huggingface.co/google/ddpm-ema-church-256"> google/ddpm-ema-church-256 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/text2img">Stable Diffusion Text-to-Image</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/text2img">Stable Diffusion Text-to-Image</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/unclip">unclip</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/unclip">unclip</a></td>
       <td><a href="https://huggingface.co/kakaobrain/karlo-v1-alpha"> kakaobrain/karlo-v1-alpha </a></td>
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/if">if</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
       <td><a href="https://huggingface.co/lllyasviel/sd-controlnet-canny"> lllyasviel/sd-controlnet-canny </a></td>
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/img2img">Stable Diffusion Image-to-Image</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/img2img">Stable Diffusion Image-to-Image</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image Inpainting</td>
-    <td><a href="./api/pipelines/stable_diffusion/inpaint">Stable Diffusion Inpaint</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/inpaint">Stable Diffusion Inpaint</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-inpainting"> runwayml/stable-diffusion-inpainting </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Image Variation</td>
-    <td><a href="./stable_diffusion/image_variation">Stable Diffusion Image Variation</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/image_variation">Stable Diffusion Image Variation</a></td>
       <td><a href="https://huggingface.co/lambdalabs/sd-image-variations-diffusers"> lambdalabs/sd-image-variations-diffusers </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Super Resolution</td>
-    <td><a href="./stable_diffusion/stable_diffusion/upscale">Stable Diffusion Upscale</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/upscale">Stable Diffusion Upscale</a></td>
       <td><a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler"> stabilityai/stable-diffusion-x4-upscaler </a></td>
   </tr>
   <tr>
     <td>Super Resolution</td>
-    <td><a href="./stable_diffusion/latent_upscale">Stable Diffusion Latent Upscale</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/latent_upscale">Stable Diffusion Latent Upscale</a></td>
       <td><a href="https://huggingface.co/stabilityai/sd-x2-latent-upscaler"> stabilityai/sd-x2-latent-upscaler </a></td>
   </tr>
 </table>

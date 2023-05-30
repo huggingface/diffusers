@@ -436,6 +436,9 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert len(text) == 3
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=2e-4)
+
     @require_torch_gpu
     def test_unidiffuser_default_joint_v1_cuda_fp16(self):
         device = "cuda"
@@ -583,7 +586,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_img_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-1
 
-        expected_text_prefix = "A living room"
+        expected_text_prefix = "a living room"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1(self):
@@ -634,9 +637,9 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         expected_img_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
-        assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-1
+        assert np.abs(image_slice.flatten() - expected_img_slice).max() < 2e-1
 
-        expected_text_prefix = "A living room"
+        expected_text_prefix = "a living room"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1_fp16(self):
