@@ -90,9 +90,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 for x in self.get_scalings_for_boundary_condition(sigma, sigma_min=sigma_min, sigma_data=sigma_data)
             ]
         else:
-            c_skip, c_out, c_in = [
-                append_dims(x, x_t.ndim) for x in self.get_scalings(sigma, sigma_data=sigma_data)
-            ]
+            c_skip, c_out, c_in = [append_dims(x, x_t.ndim) for x in self.get_scalings(sigma, sigma_data=sigma_data)]
         rescaled_t = 1000 * 0.25 * torch.log(sigma + 1e-44)
         model_output = self.unet(c_in * x_t, rescaled_t).sample
         denoised = c_out * model_output + c_skip * x_t

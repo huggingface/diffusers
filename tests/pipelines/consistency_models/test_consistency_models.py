@@ -31,7 +31,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
             subfolder="test_unet",
         )
         return unet
-    
+
     @property
     def dummy_cond_unet(self):
         unet = UNet2DModel.from_pretrained(
@@ -149,7 +149,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_onestep_distillation(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -168,7 +168,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_onestep_class_cond_distillation(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components(class_cond=True)
