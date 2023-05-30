@@ -540,8 +540,11 @@ class LoRAAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None, scale=1.0):
         residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
 
@@ -834,6 +837,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
+
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -905,8 +909,12 @@ class XFormersAttnProcessor:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
     ):
         residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
 
@@ -1081,8 +1089,11 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None):
         residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
 
@@ -1334,8 +1345,12 @@ class SlicedAttnAddedKVProcessor:
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
-    def __call__(self, attn: "Attention", hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: "Attention", hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
         residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
 
         batch_size, sequence_length, _ = hidden_states.shape
