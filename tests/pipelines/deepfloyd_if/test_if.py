@@ -42,8 +42,6 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
 
-    test_xformers_attention = False
-
     def get_dummy_components(self):
         return self._get_dummy_components()
 
@@ -80,6 +78,9 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-2,
         )
+
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
 @slow

@@ -37,8 +37,6 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
 
-    test_xformers_attention = False
-
     def get_dummy_components(self):
         return self._get_dummy_components()
 
@@ -61,6 +59,9 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
         }
 
         return inputs
+
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
