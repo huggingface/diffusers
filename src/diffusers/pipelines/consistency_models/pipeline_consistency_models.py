@@ -22,13 +22,15 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     Sampling pipeline for consistency models.
     """
 
-    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
+    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers, distillation: bool = False) -> None:
         super().__init__()
 
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
         )
+
+        self.distillation = distillation
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     # Additionally prepare sigma_min, sigma_max kwargs for CM multistep scheduler
@@ -69,16 +71,28 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
         return c_skip, c_out, c_in
 
-    def denoise(self, x_t, sigma, sigma_min: float = 0.002, sigma_data: float = 0.5, clip_denoised=True):
+    def denoise(
+        self,
+        x_t,
+        sigma,
+        sigma_min: float = 0.002,
+        sigma_data: float = 0.5,
+        clip_denoised=True,
+    ):
         """
         Run the consistency model forward...?
         """
         # sigma_min should be in original sigma space, not in karras sigma space
         # (e.g. not exponentiated by 1 / rho)
-        c_skip, c_out, c_in = [
-            append_dims(x, x_t.ndim)
-            for x in self.get_scalings_for_boundary_condition(sigma, sigma_min=sigma_min, sigma_data=sigma_data)
-        ]
+        if self.distillation:
+            c_skip, c_out, c_in = [
+                append_dims(x, x_t.ndim)
+                for x in self.get_scalings_for_boundary_condition(sigma, sigma_min=sigma_min, sigma_data=sigma_data)
+            ]
+        else:
+            c_skip, c_out, c_in = [
+                append_dims(x, x_t.ndim) for x in self.get_scalings(sigma, sigma_data=sigma_data)
+            ]
         rescaled_t = 1000 * 0.25 * torch.log(sigma + 1e-44)
         model_output = self.unet(c_in * x_t, rescaled_t).sample
         denoised = c_out * model_output + c_skip * x_t
