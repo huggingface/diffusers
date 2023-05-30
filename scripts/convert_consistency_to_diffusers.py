@@ -4,6 +4,24 @@ import torch
 
 from diffusers.models.unet_2d import UNet2DModel
 
+TEST_UNET_CONFIG = {
+    "sample_size": 32,
+    "in_channels": 3,
+    "out_channels": 3,
+    "layers_per_block": 2,
+    "num_class_embeds": 10,
+    "block_out_channels": [32, 64],
+    "attention_head_dim": 8,
+    "down_block_types": [
+        "ResnetDownsampleBlock2D",
+        "AttnDownsampleBlock2D",
+    ],
+    "up_block_types": [
+        "AttnUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+    ],
+    "resnet_time_scale_shift": "scale_shift",
+}
 
 UNET_CONFIG = {
     "sample_size": 64,
@@ -19,7 +37,12 @@ UNET_CONFIG = {
         "AttnDownsampleBlock2D",
         "AttnDownsampleBlock2D",
     ],
-    "up_block_types": ["AttnUpsampleBlock2D", "AttnUpsampleBlock2D", "AttnUpsampleBlock2D", "ResnetUpsampleBlock2D"],
+    "up_block_types": [
+        "AttnUpsampleBlock2D",
+        "AttnUpsampleBlock2D",
+        "AttnUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+    ],
     "resnet_time_scale_shift": "scale_shift",
 }
 
@@ -77,7 +100,7 @@ def convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attent
     return new_checkpoint
 
 
-def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
+def con_pt_to_diffuser(checkpoint_path: str, unet_config):
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     new_checkpoint = {}
 
@@ -86,14 +109,15 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
     new_checkpoint["time_embedding.linear_2.weight"] = checkpoint["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = checkpoint["time_embed.2.bias"]
 
-    new_checkpoint["class_embedding.weight"] = checkpoint["label_emb.weight"]
+    if unet_config["num_class_embeds"] is not None:
+        new_checkpoint["class_embedding.weight"] = checkpoint["label_emb.weight"]
 
     new_checkpoint["conv_in.weight"] = checkpoint["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = checkpoint["input_blocks.0.0.bias"]
 
-    down_block_types = UNET_CONFIG["down_block_types"]
-    layers_per_block = UNET_CONFIG["layers_per_block"]
-    attention_head_dim = UNET_CONFIG["attention_head_dim"]
+    down_block_types = unet_config["down_block_types"]
+    layers_per_block = unet_config["layers_per_block"]
+    attention_head_dim = unet_config["attention_head_dim"]
     current_layer = 1
 
     for i, layer_type in enumerate(down_block_types):
@@ -135,7 +159,7 @@ def con_pt_to_diffuser(checkpoint_path: str, output_path: str):
     new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
 
     current_layer = 0
-    up_block_types = UNET_CONFIG["up_block_types"]
+    up_block_types = unet_config["up_block_types"]
 
     for i, layer_type in enumerate(up_block_types):
         if layer_type == "ResnetUpsampleBlock2D":
@@ -174,12 +198,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--unet_path", default=None, type=str, required=True, help="Path to the unet.pt to convert.")
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the unet.pt to convert.")
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model.")
+    parser.add_argument("--checkpoint_name", default="cd_imagenet64_l2", type=str, help="Checkpoint to convert.")
 
     args = parser.parse_args()
 
-    converted_unet_ckpt = con_pt_to_diffuser(args.unet_path, args.dump_path)
-    image_unet = UNet2DModel(**UNET_CONFIG)
+    if args.checkpoint_name == "cd_imagenet64_l2":
+        unet_config = UNET_CONFIG
+    elif args.checkpoint_name == "test":
+        unet_config = TEST_UNET_CONFIG
+        unet_config["num_class_embeds"] = None
+    elif args.checkpoint_name == "test_class_cond":
+        unet_config = TEST_UNET_CONFIG
+    else:
+        raise ValueError(
+            f"Checkpoint type {args.checkpoint_name} is not currently supported."
+        )
+
+    converted_unet_ckpt = con_pt_to_diffuser(args.unet_path, unet_config)
+
+    image_unet = UNet2DModel(**unet_config)
     # print(image_unet)
     # exit()
     image_unet.load_state_dict(converted_unet_ckpt)
