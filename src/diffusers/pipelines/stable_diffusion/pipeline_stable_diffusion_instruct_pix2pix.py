@@ -103,6 +103,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    _accept_image_latents = True
 
     def __init__(
         self,
@@ -295,8 +296,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         )
 
         # 3. Preprocess image
-        image = preprocess(image)
-        height, width = image.shape[-2:]
+        image = self.image_processor.preprocess(image)
 
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -312,6 +312,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             do_classifier_free_guidance,
             generator,
         )
+
+        height, width = image_latents.shape[-2:]
+        height = height * self.vae_scale_factor
+        width = width * self.vae_scale_factor
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -751,17 +755,22 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
 
-        if isinstance(generator, list):
-            image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
-            image_latents = torch.cat(image_latents, dim=0)
+        if image.shape[1] == 4:
+            image_latents = image
         else:
-            image_latents = self.vae.encode(image).latent_dist.mode()
+
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            if isinstance(generator, list):
+                image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
+                image_latents = torch.cat(image_latents, dim=0)
+            else:
+                image_latents = self.vae.encode(image).latent_dist.mode()
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
