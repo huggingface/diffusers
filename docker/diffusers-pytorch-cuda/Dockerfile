@@ -42,5 +42,4 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         pytorch-lightning \
         xformers
 
-
 CMD ["/bin/bash"]
