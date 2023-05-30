@@ -35,7 +35,11 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
-from ..pipeline_params import IMAGE_TO_IMAGE_IMAGE_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
@@ -198,27 +202,25 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
-    
-    def test_latents_input(self):
 
+    def test_latents_input(self):
         components = self.get_dummy_components()
         pipe = StableDiffusionInstructPix2PixPipeline(**components)
         pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        
+
         out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
 
         vae = components["vae"]
         inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
 
         inputs["image"] = vae.encode(inputs["image"]).latent_dist.mode()
-        
+
         out_latents_inputs = pipe(**inputs)[0]
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
-
 
 
 @slow

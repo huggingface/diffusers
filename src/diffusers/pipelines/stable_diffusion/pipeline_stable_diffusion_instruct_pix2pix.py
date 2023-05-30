@@ -759,7 +759,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         if image.shape[1] == 4:
             image_latents = image
         else:
-
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
