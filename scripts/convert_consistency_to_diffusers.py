@@ -10,7 +10,7 @@ TEST_UNET_CONFIG = {
     "in_channels": 3,
     "out_channels": 3,
     "layers_per_block": 2,
-    "num_class_embeds": 10,
+    "num_class_embeds": 1000,
     "block_out_channels": [32, 64],
     "attention_head_dim": 8,
     "down_block_types": [
