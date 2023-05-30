@@ -180,7 +180,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             sigma = sigma_max
             sigma_in = sample.new_ones([sample.shape[0]]) * sigma
             _, sample = self.denoise(
-                sample, sigma_in, class_labels=class_labels, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
+                sample,
+                sigma_in,
+                class_labels=class_labels,
+                sigma_min=sigma_min,
+                sigma_data=sigma_data,
+                clip_denoised=clip_denoised,
             )
         else:
             # Multistep sampling or Karras sampler
@@ -193,7 +198,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                     # TODO: check shapes, might need equivalent of s_in in original code
                     # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L510
                     model_output, denoised = self.denoise(
-                        sample, sigma_in, class_labels=class_labels, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
+                        sample,
+                        sigma_in,
+                        class_labels=class_labels,
+                        sigma_min=sigma_min,
+                        sigma_data=sigma_data,
+                        clip_denoised=clip_denoised,
                     )
 
                     # Works for both Karras-style schedulers (e.g. Euler, Heun) and the CM multistep scheduler
