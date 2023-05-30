@@ -1277,15 +1277,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         inverted_latents = latents.detach().clone()
 
         # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
-
-        # 9. Convert to PIL.
-        if output_type == "pil":
-            image = self.image_processor.numpy_to_pil(image)
 
         if not return_dict:
             return (inverted_latents, image)
