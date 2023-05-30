@@ -33,6 +33,8 @@ from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
+from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
+from onnxruntime.training.ortmodule import ORTModule
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -46,8 +48,6 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
 
 if is_wandb_available():
     import wandb

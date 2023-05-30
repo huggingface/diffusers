@@ -15,6 +15,8 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
+from onnxruntime.training.ortmodule import ORTModule
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -26,8 +28,6 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.17.0.dev0")

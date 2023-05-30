@@ -31,6 +31,8 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
+from onnxruntime.training.ortmodule import ORTModule
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
@@ -53,8 +55,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
 
 if is_wandb_available():
     import wandb
@@ -751,7 +751,7 @@ def main():
     )
 
     text_encoder = ORTModule(text_encoder)
-    unet = ORTModule(unet)
+    # unet = ORTModule(unet)
     vae = ORTModule(vae)
 
     # For mixed precision training we cast the unet and vae weights to half-precision
