@@ -4,6 +4,7 @@ import torch
 
 from diffusers.models.unet_2d import UNet2DModel
 
+
 TEST_UNET_CONFIG = {
     "sample_size": 32,
     "in_channels": 3,
@@ -198,7 +199,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--unet_path", default=None, type=str, required=True, help="Path to the unet.pt to convert.")
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model.")
+    parser.add_argument(
+        "--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model."
+    )
     parser.add_argument("--checkpoint_name", default="cd_imagenet64_l2", type=str, help="Checkpoint to convert.")
 
     args = parser.parse_args()
@@ -211,9 +214,7 @@ if __name__ == "__main__":
     elif args.checkpoint_name == "test_class_cond":
         unet_config = TEST_UNET_CONFIG
     else:
-        raise ValueError(
-            f"Checkpoint type {args.checkpoint_name} is not currently supported."
-        )
+        raise ValueError(f"Checkpoint type {args.checkpoint_name} is not currently supported.")
 
     converted_unet_ckpt = con_pt_to_diffuser(args.unet_path, unet_config)
 
