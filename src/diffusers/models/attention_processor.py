@@ -540,7 +540,9 @@ class LoRAAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None, scale=1.0):
+    def __call__(
+        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None, scale=1.0
+    ):
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -1089,7 +1091,9 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None):
+    def __call__(
+        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
+    ):
         residual = hidden_states
 
         if attn.spatial_norm is not None:
