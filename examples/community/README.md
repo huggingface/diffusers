@@ -1326,6 +1326,8 @@ image.save('tensorrt_img2img_new_zealand_hills.png')
 
 This pipeline uses the Reference Control. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
 
+Based on [this issue](https://github.com/huggingface/diffusers/issues/3566),
+- `EulerAncestralDiscreteScheduler` got poor results.
 
 ```py
 import torch
@@ -1369,6 +1371,9 @@ Output Image of `reference_attn=True` and `reference_adain=True`
 
 This pipeline uses the Reference Control with ControlNet. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
 
+Based on [this issue](https://github.com/huggingface/diffusers/issues/3566),
+- `EulerAncestralDiscreteScheduler` got poor results.
+- `guess_mode=True` works well for ControlNet v1.1
 
 ```py
 import cv2
