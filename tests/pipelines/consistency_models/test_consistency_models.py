@@ -35,6 +35,8 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
             out_channels=3,
             down_block_types=("ResnetDownsampleBlock2D", "AttnDownsampleBlock2D"),
             up_block_types=("AttnUpsampleBlock2D", "ResnetUpsampleBlock2D"),
+            num_class_embeds=10,
+            resnet_time_scale_shift="scale_shift",
         )
         return model
 
