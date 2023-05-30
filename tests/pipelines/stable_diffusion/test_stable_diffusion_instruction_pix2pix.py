@@ -162,6 +162,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 
         image = np.array(inputs["image"]).astype(np.float32) / 255.0
         image = torch.from_numpy(image).unsqueeze(0).to(device)
+        image = image / 2 + 0.5
         image = image.permute(0, 3, 1, 2)
         inputs["image"] = image.repeat(2, 1, 1, 1)
 
