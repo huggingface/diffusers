@@ -227,7 +227,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 class_labels = torch.tensor([class_labels], dtype=torch.int)
             elif class_labels is None:
                 # Randomly generate batch_size class labels
-                class_labels = torch.randint(0, self.num_classes, size=batch_size)
+                class_labels = torch.randint(0, self.num_classes, size=(batch_size,))
             class_labels.to(device)
 
         # 4. Set timesteps
