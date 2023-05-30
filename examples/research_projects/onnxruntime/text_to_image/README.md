@@ -54,9 +54,11 @@ In order to leverage onnxruntime to accelerate training, please use train_text_t
 The command to train a DDPM UNetCondition model on the Pokemon dataset with onnxruntime:
 
 ```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export dataset_name="lambdalabs/pokemon-blip-captions"
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" \
-  --dataset_name="lambdalabs/pokemon-blip-captions" \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$dataset_name \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \

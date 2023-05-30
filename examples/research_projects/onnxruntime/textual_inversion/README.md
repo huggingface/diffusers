@@ -73,9 +73,12 @@ In order to leverage onnxruntime to accelerate training, please use textual_inve
 The command to train on custom data with onnxruntime:
 
 ```bash
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export DATA_DIR="path-to-dir-containing-images"
+
 accelerate launch textual_inversion.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
-  --train_data_dir="path-to-dir-containing-images" \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" --initializer_token="toy" \
   --resolution=512 \
