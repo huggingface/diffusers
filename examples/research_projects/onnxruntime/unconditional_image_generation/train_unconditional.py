@@ -28,7 +28,6 @@ from diffusers.utils.import_utils import is_xformers_available
 
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
-from types import MethodType
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.17.0.dev0")

@@ -57,8 +57,8 @@ The command to train a DDPM UNetCondition model on the Pokemon dataset with onnx
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" \
+  --dataset_name="lambdalabs/pokemon-blip-captions" \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
