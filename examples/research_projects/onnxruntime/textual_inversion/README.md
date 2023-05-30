@@ -53,7 +53,19 @@ If you have already cloned the repo, then you won't need to go through these ste
 
 <br>
 
-Now let's get our dataset.Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+Now let's get our dataset. For this example we will use some cat images: https://huggingface.co/datasets/diffusers/cat_toy_example .
+
+Let's first download it locally:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./cat"
+snapshot_download("diffusers/cat_toy_example", local_dir=local_dir, repo_type="dataset", ignore_patterns=".gitattributes")
+```
+
+This will be our training data.
+Now we can launch the training using
 
 ## Use ONNXRuntime to accelerate training
 In order to leverage onnxruntime to accelerate training, please use textual_inversion.py
@@ -61,12 +73,9 @@ In order to leverage onnxruntime to accelerate training, please use textual_inve
 The command to train on custom data with onnxruntime:
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export DATA_DIR="path-to-dir-containing-images"
-
 accelerate launch textual_inversion.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$DATA_DIR \
+  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --train_data_dir="path-to-dir-containing-images" \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" --initializer_token="toy" \
   --resolution=512 \
