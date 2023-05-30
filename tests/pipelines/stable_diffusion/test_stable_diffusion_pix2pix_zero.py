@@ -47,7 +47,7 @@ enable_full_determinism()
 @skip_mps
 class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPix2PixZeroPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"image"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = frozenset(
         []

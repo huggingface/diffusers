@@ -634,7 +634,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        image,
         source_embeds,
         target_embeds,
         callback_steps,
@@ -814,7 +813,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
         height: Optional[int] = None,
@@ -915,7 +913,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            image,
             source_embeds,
             target_embeds,
             callback_steps,
