@@ -57,7 +57,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
+
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     # Unlike stable diffusion, no VAE so no vae_scale_factor, num_channels_latent => num_channels
     def prepare_latents(self, batch_size, num_channels, height, width, dtype, device, generator, latents=None):
@@ -122,14 +122,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def to_d(x, sigma, denoised):
         """Converts a denoiser output to a Karras ODE derivative."""
         return (x - denoised) / append_dims(sigma, x.ndim)
-    
+
     def check_inputs(self, latents, batch_size, img_size, callback_steps):
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
             if latents.shape != expected_shape:
-                raise ValueError(
-                    f"The shape of latents is {latents.shape} but is expected to be {expected_shape}."
-                )
+                raise ValueError(f"The shape of latents is {latents.shape} but is expected to be {expected_shape}.")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
