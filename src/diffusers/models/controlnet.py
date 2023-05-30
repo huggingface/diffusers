@@ -37,6 +37,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class ControlNetOutput(BaseOutput):
+    """
+    The output of [`ControlNetModel`].
+
+    Args:
+        down_block_res_samples (`tuple[torch.Tensor]`):
+        mid_down_block_re_sample (`torch.Tensor`):
+    """
+
     down_block_res_samples: Tuple[torch.Tensor]
     mid_block_res_sample: torch.Tensor
 
@@ -87,6 +95,58 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 
 class ControlNetModel(ModelMixin, ConfigMixin):
+    """
+    A ControlNet model.
+
+    Args:
+        in_channels (`int`, defaults to 4):
+            The number of channels in the input sample.
+        flip_sin_to_cos (`bool`, defaults to `True`):
+            Whether to flip the sin to cos in the time embedding.
+        freq_shift (`int`, defaults to 0):
+            The frequency shift to apply to the time embedding.
+        down_block_types (`tuple[str]`, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+            The tuple of downsample blocks to use.
+        only_cross_attention (`Union[bool, Tuple[bool]]`, defaults to `False`):
+        block_out_channels (`tuple[int]`, defaults to `(320, 640, 1280, 1280)`):
+            The tuple of output channels for each block.
+        layers_per_block (`int`, defaults to 2):
+            The number of layers per block.
+        downsample_padding (`int`, defaults to 1):
+            The padding to use for the downsampling convolution.
+        mid_block_scale_factor (`float`, defaults to 1):
+            The scale factor to use for the mid block.
+        act_fn (`str`, defaults to "silu"):
+            The activation function to use.
+        norm_num_groups (`int`, *optional*, defaults to 32):
+            The number of groups to use for the normalization. If None, normalization and activation layers is skipped
+            in post-processing.
+        norm_eps (`float`, defaults to 1e-5):
+            The epsilon to use for the normalization.
+        cross_attention_dim (`int`, defaults to 1280):
+            The dimension of the cross attention features.
+        attention_head_dim (`Union[int, Tuple[int]]`, defaults to 8):
+            The dimension of the attention heads.
+        use_linear_projection (`bool`, defaults to `False`):
+        class_embed_type (`str`, *optional*, defaults to `None`):
+            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from None,
+            `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
+        num_class_embeds (`int`, *optional*, defaults to 0):
+            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
+            class conditioning with `class_embed_type` equal to `None`.
+        upcast_attention (`bool`, defaults to `False`):
+        resnet_time_scale_shift (`str`, defaults to `"default"`):
+            Time scale shift config for ResNet blocks (see `ResnetBlock2D`). Choose from `default` or `scale_shift`.
+        projection_class_embeddings_input_dim (`int`, *optional*, defaults to `None`):
+            The dimension of the `class_labels` input when `class_embed_type="projection"`. Required when
+            `class_embed_type="projection"`.
+        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
+        conditioning_embedding_out_channels (`tuple[int]`, *optional*, defaults to `(16, 32, 96, 256)`):
+            The tuple of output channel for each block in the `conditioning_embedding` layer.
+        global_pool_conditions (`bool`, defaults to `False`):
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -268,12 +328,12 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         load_weights_from_unet: bool = True,
     ):
         r"""
-        Instantiate Controlnet class from UNet2DConditionModel.
+        Instantiate a [`ControlNetModel`] from [`UNet2DConditionModel`].
 
         Parameters:
             unet (`UNet2DConditionModel`):
-                UNet model which weights are copied to the ControlNet. Note that all configuration options are also
-                copied where applicable.
+                The UNet model weights to copy to the [`ControlNetModel`]. All configuration options are also copied
+                where applicable.
         """
         controlnet = cls(
             in_channels=unet.config.in_channels,
@@ -341,11 +401,15 @@ class ControlNetModel(ModelMixin, ConfigMixin):
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
+        Sets the attention processor to use to compute attention.
+
         Parameters:
-            `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
                 of **all** `Attention` layers.
-            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
+
+                If `processor` is a `dict`, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
 
         """
         count = len(self.attn_processors.keys())
@@ -381,13 +445,13 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         r"""
         Enable sliced attention computation.
 
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
+        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
 
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
+                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
+                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
@@ -460,6 +524,37 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
+        """
+        The [`ControlNetModel`] forward method.
+
+        Args:
+            sample (`torch.FloatTensor`):
+                The noisy input tensor.
+            timestep (`Union[torch.Tensor, float, int]`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states.
+            controlnet_cond (`torch.FloatTensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            conditioning_scale (`float`, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond (`torch.Tensor`, *optional*, defaults to `None`):
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+            cross_attention_kwargs(`dict[str]`, *optional*, defaults to `None`):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            guess_mode (`bool`, defaults to `False`):
+                In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
+                you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
+            return_dict (`bool`, defaults to `True`):
+                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.controlnet.ControlNetOutput`] **or** `tuple`:
+                If return_dict is True, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
+                returned where the first element is the sample tensor.
+        """
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 

@@ -160,6 +160,14 @@
       title: VQModel
     - local: api/models/autoencoderkl
       title: AutoencoderKL
+    - local: api/models/transformer2d
+      title: Transformer2D
+    - title: api/models/transformer_temporal
+      title: Transformer Temporal
+    - local: api/models/prior_transformer
+      title: Prior Transformer
+    - local: api/models/controlnet
+      title: ControlNet
     title: Models
   - sections:
     - local: api/pipelines/overview

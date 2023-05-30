@@ -16,6 +16,8 @@ from .modeling_utils import ModelMixin
 @dataclass
 class PriorTransformerOutput(BaseOutput):
     """
+    The output of [`PriorTransformer`].
+
     Args:
         predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
             The predicted CLIP image embedding conditioned on the CLIP text embedding input.
@@ -26,27 +28,20 @@ class PriorTransformerOutput(BaseOutput):
 
 class PriorTransformer(ModelMixin, ConfigMixin):
     """
-    The prior transformer from unCLIP is used to predict CLIP image embeddings from CLIP text embeddings. Note that the
-    transformer predicts the image embeddings through a denoising diffusion process.
-
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
-
-    For more details, see the original paper: https://arxiv.org/abs/2204.06125
+    A Prior Transformer model.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 32): The number of heads to use for multi-head attention.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_layers (`int`, *optional*, defaults to 20): The number of layers of Transformer blocks to use.
-        embedding_dim (`int`, *optional*, defaults to 768): The dimension of the CLIP embeddings. Note that CLIP
-            image embeddings and text embeddings are both the same dimension.
-        num_embeddings (`int`, *optional*, defaults to 77): The max number of clip embeddings allowed. I.e. the
-            length of the prompt after it has been tokenized.
+        embedding_dim (`int`, *optional*, defaults to 768):
+            The dimension of the CLIP embeddings. Image embeddings and text embeddings are both the same dimension.
+        num_embeddings (`int`, *optional*, defaults to 77): The max number of CLIP embeddings allowed (the
+            length of the prompt after it has been tokenized).
         additional_embeddings (`int`, *optional*, defaults to 4): The number of additional tokens appended to the
-            projected hidden_states. The actual length of the used hidden_states is `num_embeddings +
+            projected `hidden_states`. The actual length of the used `hidden_states` is `num_embeddings +
             additional_embeddings`.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-
     """
 
     @register_to_config
@@ -178,10 +173,12 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         """
+        The [`PriorTransformer`] forward method.
+
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
-                x_t, the currently predicted image embeddings.
-            timestep (`torch.long`):
+                The currently predicted image embeddings.
+            timestep (`torch.LongTensor`):
                 Current denoising step.
             proj_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
                 Projected embedding vector the denoising process is conditioned on.
@@ -190,13 +187,13 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             attention_mask (`torch.BoolTensor` of shape `(batch_size, num_embeddings)`):
                 Text mask for the text embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.prior_transformer.PriorTransformerOutput`] instead of a plain
+                Whether or not to return a [`~models.prior_transformer.PriorTransformerOutput`] instead of a plain
                 tuple.
 
         Returns:
             [`~models.prior_transformer.PriorTransformerOutput`] or `tuple`:
-            [`~models.prior_transformer.PriorTransformerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+                If return_dict is True, a [`~models.prior_transformer.PriorTransformerOutput`] is returned, otherwise a
+                tuple is returned where the first element is the sample tensor.
         """
         batch_size = hidden_states.shape[0]
 

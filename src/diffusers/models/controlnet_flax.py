@@ -32,6 +32,14 @@ from .unet_2d_blocks_flax import (
 
 @flax.struct.dataclass
 class FlaxControlNetOutput(BaseOutput):
+    """
+    The output of [`FlaxControlNetModel`].
+
+    Args:
+        down_block_res_samples (`jnp.ndarray`):
+        mid_block_res_sample (`jnp.ndarray`):
+    """
+
     down_block_res_samples: jnp.ndarray
     mid_block_res_sample: jnp.ndarray
 
@@ -95,21 +103,17 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
 @flax_register_to_config
 class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    Quoting from https://arxiv.org/abs/2302.05543: "Stable Diffusion uses a pre-processing method similar to VQ-GAN
-    [11] to convert the entire dataset of 512 × 512 images into smaller 64 × 64 “latent images” for stabilized
-    training. This requires ControlNets to convert image-based conditions to 64 × 64 feature space to match the
-    convolution size. We use a tiny network E(·) of four convolution layers with 4 × 4 kernels and 2 × 2 strides
-    (activated by ReLU, channels are 16, 32, 64, 128, initialized with Gaussian weights, trained jointly with the full
-    model) to encode image-space conditions ... into feature maps ..."
+    A ControlNet model.
 
-    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it’s generic methods
+    implemented for all models (such as downloading or saving).
 
-    Also, this model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
-    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    This model is also a Flax Linen [`flax.linen.Module`](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax Linen module and refer to the Flax documentation for all matters related to its
     general usage and behavior.
 
-    Finally, this model supports inherent JAX features such as:
+    Inherent JAX features such as the following are supported:
+
     - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
     - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
     - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
@@ -120,9 +124,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The size of the input sample.
         in_channels (`int`, *optional*, defaults to 4):
             The number of channels in the input sample.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
-            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
+            The tuple of downsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
@@ -137,11 +140,9 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         controlnet_conditioning_channel_order (`str`, *optional*, defaults to `rgb`):
-            The channel order of conditional image. Will convert it to `rgb` if it's `bgr`
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
-            The tuple of output channel for each block in conditioning_embedding layer
-
-
+            The tuple of output channel for each block in the `conditioning_embedding` layer.
     """
     sample_size: int = 32
     in_channels: int = 4

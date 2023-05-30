@@ -29,10 +29,12 @@ from .modeling_utils import ModelMixin
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
     """
+    The output of [`Transformer2DModel`].
+
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            Hidden states conditioned on `encoder_hidden_states` input. If discrete, returns probability distributions
-            for the unnoised latent pixels.
+            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
+            distributions for the unnoised latent pixels.
     """
 
     sample: torch.FloatTensor
@@ -40,40 +42,30 @@ class Transformer2DModelOutput(BaseOutput):
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
     """
-    Transformer model for image-like data. Takes either discrete (classes of vector embeddings) or continuous (actual
-    embeddings) inputs.
-
-    When input is continuous: First, project the input (aka embedding) and reshape to b, t, d. Then apply standard
-    transformer action. Finally, reshape to image.
-
-    When input is discrete: First, input (classes of latent pixels) is converted to embeddings and has positional
-    embeddings applied, see `ImagePositionalEmbeddings`. Then apply standard transformer action. Finally, predict
-    classes of unnoised image.
-
-    Note that it is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised
-    image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
+    A 2D Transformer model for image-like data.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
         attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
         in_channels (`int`, *optional*):
-            Pass if the input is continuous. The number of channels in the input and output.
+            The number of channels in the input and output (specify if the input is **continuous**).
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
-        sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
-            Note that this is fixed at training time as it is used for learning a number of position embeddings. See
-            `ImagePositionalEmbeddings`.
+        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
         num_vector_embeds (`int`, *optional*):
-            Pass if the input is discrete. The number of classes of the vector embeddings of the latent pixels.
+            The number of classes of the vector embeddings of the latent pixels (specify if the input is **discrete**).
             Includes the class for the masked latent pixel.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
-            The number of diffusion steps used during training. Note that this is fixed at training time as it is used
-            to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
-            up to but not more than steps than `num_embeds_ada_norm`.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
+        num_embeds_ada_norm ( `int`, *optional*):
+            The number of diffusion steps used during training. Pass if at least one of the norm_layers is
+            `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
+            added to the hidden states.
+
+            During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
-            Configure if the TransformerBlocks' attention should contain a bias parameter.
+            Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
 
     @register_to_config
@@ -223,31 +215,34 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         """
+        The [`Transformer2DModel`] forward method.
+
         Args:
-            hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
-                When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
-                hidden_states
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+                Input hidden_states.
             encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.LongTensor`, *optional*):
-                Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
+                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
-                conditioning.
-            encoder_attention_mask ( `torch.Tensor`, *optional* ).
-                Cross-attention mask, applied to encoder_hidden_states. Two formats supported:
-                    Mask `(batch, sequence_length)` True = keep, False = discard. Bias `(batch, 1, sequence_length)` 0
-                    = keep, -10000 = discard.
-                If ndim == 2: will be interpreted as a mask, then converted into a bias consistent with the format
+                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
+                `AdaLayerZeroNorm`.
+            encoder_attention_mask ( `torch.Tensor`, *optional*):
+                Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
+
+                    * Mask `(batch, sequence_length)` True = keep, False = discard.
+                    * Bias `(batch, 1, sequence_length)` 0 = keep, -10000 = discard.
+
+                If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
                 above. This bias will be added to the cross-attention scores.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
 
         Returns:
-            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
-            [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.

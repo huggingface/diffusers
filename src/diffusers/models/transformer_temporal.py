@@ -26,9 +26,11 @@ from .modeling_utils import ModelMixin
 @dataclass
 class TransformerTemporalModelOutput(BaseOutput):
     """
+    The output of [`TransformerTemporalModel`].
+
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size x num_frames, num_channels, height, width)`)
-            Hidden states conditioned on `encoder_hidden_states` input.
+        sample (`torch.FloatTensor` of shape `(batch_size x num_frames, num_channels, height, width)`):
+            The hidden states output conditioned on `encoder_hidden_states` input.
     """
 
     sample: torch.FloatTensor
@@ -36,24 +38,23 @@ class TransformerTemporalModelOutput(BaseOutput):
 
 class TransformerTemporalModel(ModelMixin, ConfigMixin):
     """
-    Transformer model for video-like data.
+    A Transformer model for video-like data.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
         attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
         in_channels (`int`, *optional*):
-            Pass if the input is continuous. The number of channels in the input and output.
+            The number of channels in the input and output (specify if the input is **continuous**).
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
-        sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
-            Note that this is fixed at training time as it is used for learning a number of position embeddings. See
-            `ImagePositionalEmbeddings`.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
         attention_bias (`bool`, *optional*):
-            Configure if the TransformerBlocks' attention should contain a bias parameter.
+            Configure if the `TransformerBlock` attention should contain a bias parameter.
         double_self_attention (`bool`, *optional*):
-            Configure if each TransformerBlock should contain two self-attention layers
+            Configure if each `TransformerBlock` should contain two self-attention layers.
     """
 
     @register_to_config
@@ -114,25 +115,27 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         """
+        The [`TransformerTemporal`] forward method.
+
         Args:
-            hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
-                When continous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
-                hidden_states
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+                Input hidden_states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.long`, *optional*):
-                Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
+                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
-                conditioning.
+                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
+                `AdaLayerZeroNorm`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
 
         Returns:
-            [`~models.transformer_2d.TransformerTemporalModelOutput`] or `tuple`:
-            [`~models.transformer_2d.TransformerTemporalModelOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`~models.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
+                returned, otherwise a `tuple` where the first element is the sample tensor.
         """
         # 1. Input
         batch_frames, channel, height, width = hidden_states.shape
