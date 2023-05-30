@@ -29,13 +29,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 @skip_mps
@@ -174,6 +174,12 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineLatentTesterMixin, Pi
         # the pipeline does not expect pndm so test if it raises error.
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
 
 @slow

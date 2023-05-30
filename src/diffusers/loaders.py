@@ -27,7 +27,9 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
+    XFormersAttnProcessor,
 )
 from .utils import (
     DIFFUSERS_CACHE,
@@ -70,6 +72,9 @@ class AttnProcsLayers(torch.nn.Module):
         self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
+        # .processor for unet, .k_proj, ".q_proj", ".v_proj", and ".out_proj" for text encoder
+        self.split_keys = [".processor", ".k_proj", ".q_proj", ".v_proj", ".out_proj"]
+
         # we add a hook to state_dict() and load_state_dict() so that the
         # naming fits with `unet.attn_processors`
         def map_to(module, state_dict, *args, **kwargs):
@@ -81,10 +86,19 @@ class AttnProcsLayers(torch.nn.Module):
 
             return new_state_dict
 
+        def remap_key(key, state_dict):
+            for k in self.split_keys:
+                if k in key:
+                    return key.split(k)[0] + k
+
+            raise ValueError(
+                f"There seems to be a problem with the state_dict: {set(state_dict.keys())}. {key} has to have one of {self.split_keys}."
+            )
+
         def map_from(module, state_dict, *args, **kwargs):
             all_keys = list(state_dict.keys())
             for key in all_keys:
-                replace_key = key.split(".processor")[0] + ".processor"
+                replace_key = remap_key(key, state_dict)
                 new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
                 state_dict[new_key] = state_dict[key]
                 del state_dict[key]
@@ -267,7 +281,10 @@ class UNet2DConditionLoadersMixin:
                     attn_processor_class = LoRAAttnAddedKVProcessor
                 else:
                     cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
-                    attn_processor_class = LoRAAttnProcessor
+                    if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
+                        attn_processor_class = LoRAXFormersAttnProcessor
+                    else:
+                        attn_processor_class = LoRAAttnProcessor
 
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
@@ -670,6 +687,7 @@ class TextualInversionLoaderMixin:
                 state_dict = torch.load(model_file, map_location="cpu")
 
             # 2. Load token and embedding correcly from file
+            loaded_token = None
             if isinstance(state_dict, torch.Tensor):
                 if token is None:
                     raise ValueError(
@@ -898,6 +916,9 @@ class LoraLoaderMixin:
                 attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
                 self._modify_text_encoder(attn_procs_text_encoder)
 
+                # save lora attn procs of text encoder so that it can be easily retrieved
+                self._text_encoder_lora_attn_procs = attn_procs_text_encoder
+
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
         # contain the module names of the `unet` as its keys WITHOUT any prefix.
         elif not all(
@@ -906,6 +927,12 @@ class LoraLoaderMixin:
             self.unet.load_attn_procs(state_dict)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
+
+    @property
+    def text_encoder_lora_attn_procs(self):
+        if hasattr(self, "_text_encoder_lora_attn_procs"):
+            return self._text_encoder_lora_attn_procs
+        return
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -1110,7 +1137,7 @@ class LoraLoaderMixin:
     def save_lora_weights(
         self,
         save_directory: Union[str, os.PathLike],
-        unet_lora_layers: Dict[str, torch.nn.Module] = None,
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
@@ -1123,13 +1150,14 @@ class LoraLoaderMixin:
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module`]):
+            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the UNet. Specifying this helps to make the
-                serialization process easier and cleaner.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module`]):
+                serialization process easier and cleaner. Values can be both LoRA torch.nn.Modules layers or torch
+                weights.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Since the `text_encoder` comes from
                 `transformers`, we cannot rejig it. That is why we have to explicitly pass the text encoder LoRA state
-                dict.
+                dict. Values can be both LoRA torch.nn.Modules layers or torch weights.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful when in distributed training like
                 TPUs and need to call this function on all processes. In this case, set `is_main_process=True` only on
@@ -1157,15 +1185,22 @@ class LoraLoaderMixin:
         # Create a flat dictionary.
         state_dict = {}
         if unet_lora_layers is not None:
-            unet_lora_state_dict = {
-                f"{self.unet_name}.{module_name}": param
-                for module_name, param in unet_lora_layers.state_dict().items()
-            }
+            weights = (
+                unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
+            )
+
+            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
             state_dict.update(unet_lora_state_dict)
+
         if text_encoder_lora_layers is not None:
+            weights = (
+                text_encoder_lora_layers.state_dict()
+                if isinstance(text_encoder_lora_layers, torch.nn.Module)
+                else text_encoder_lora_layers
+            )
+
             text_encoder_lora_state_dict = {
-                f"{self.text_encoder_name}.{module_name}": param
-                for module_name, param in text_encoder_lora_layers.state_dict().items()
+                f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
             }
             state_dict.update(text_encoder_lora_state_dict)
 
@@ -1297,7 +1332,7 @@ class FromCkptMixin:
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
-        if from_safetensors and use_safetensors is True:
+        if from_safetensors and use_safetensors is False:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
         # TODO: For now we only support stable diffusion

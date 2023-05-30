@@ -31,11 +31,11 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | UnCLIP Image Interpolation Pipeline                                                                                                   | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)               | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 | DDIM Noise Comparative Analysis Pipeline                                                                                              | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227))                                                                                                                                                                                                                                                                                                                             | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline)     | - |              [Aengus (Duc-Anh)](https://github.com/aengusng8) |
 | CLIP Guided Img2Img Stable Diffusion Pipeline                                                                                         | Doing CLIP guidance for image to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                  | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion)             | - |               [Nipun Jindal](https://github.com/nipunjindal/) | 
-| TensorRT Stable Diffusion Pipeline                                                                                                    | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Pipeline](#tensorrt-text2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| TensorRT Stable Diffusion Text to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Text to Image Pipeline](#tensorrt-text2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | EDICT Image Editing Pipeline                                                                                                          | Diffusion pipeline for text-guided image editing                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline)                             | - |                    [Joqsan Azocar](https://github.com/Joqsan) | 
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.0986) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )                                    | - |                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) | 
-
-
+| TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1281,4 +1281,232 @@ pipe.scheduler = RePaintScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+```
+
+### TensorRT Image2Image Stable Diffusion Pipeline
+
+The TensorRT Pipeline can be used to accelerate the Image2Image Stable Diffusion Inference run.
+
+NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
+
+```python
+import requests
+from io import BytesIO
+from PIL import Image
+import torch
+from diffusers import DDIMScheduler
+from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+
+# Use the DDIMScheduler scheduler here instead
+scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
+                                            subfolder="scheduler")
+
+
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
+                                                custom_pipeline="stable_diffusion_tensorrt_img2img",
+                                                revision='fp16',
+                                                torch_dtype=torch.float16,
+                                                scheduler=scheduler,)
+
+# re-use cached folder to save ONNX models and TensorRT Engines
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", revision='fp16',)
+
+pipe = pipe.to("cuda")
+
+url = "https://pajoca.com/wp-content/uploads/2022/09/tekito-yamakawa-1.png"
+response = requests.get(url)
+input_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+prompt = "photorealistic new zealand hills"
+image = pipe(prompt, image=input_image, strength=0.75,).images[0]
+image.save('tensorrt_img2img_new_zealand_hills.png')
+```
+
+### Stable Diffusion Reference
+
+This pipeline uses the Reference Control. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
+
+
+```py
+import torch
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+pipe = StableDiffusionReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image of `reference_attn=True` and `reference_adain=False`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/813b5c6a-6d89-46ba-b7a4-2624e240eea5)
+
+Output Image of `reference_attn=False` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/ffc90339-9ef0-4c4d-a544-135c3e5644da)
+
+Output Image of `reference_attn=True` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)
+
+### Stable Diffusion ControlNet Reference
+
+This pipeline uses the Reference Control with ControlNet. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
+
+
+```py
+import cv2
+import torch
+import numpy as np
+from PIL import Image
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# get canny image
+image = cv2.Canny(np.array(input_image), 100, 200)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image)
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       controlnet=controlnet,
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      image=canny_image,
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/7b9a5830-f173-4b92-b0cf-73d0e9c01d60)
+
+
+### Stable Diffusion on IPEX
+
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+**Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
+```python
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
+# For Float32
+pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+# For BFloat16 
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+```
+
+Then you can use the ipex pipeline in a similar way to the default stable diffusion pipeline.
+```python
+# For Float32
+image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+# For BFloat16 
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+```
+
+The following code compares the performance of the original stable diffusion pipeline with the ipex-optimized pipeline.
+
+```python
+import torch
+import intel_extension_for_pytorch as ipex
+from diffusers import StableDiffusionPipeline
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "runwayml/stable-diffusion-v1-5"
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe2 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe)
+    print("Latency of StableDiffusionIPEXPipeline--bf16", latency)
+    latency = elapsed_time(pipe2)
+    print("Latency of StableDiffusionPipeline--bf16",latency)
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe3.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3)
+print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
+latency = elapsed_time(pipe4)
+print("Latency of StableDiffusionPipeline--fp32",latency)
+
 ```

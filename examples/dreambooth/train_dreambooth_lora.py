@@ -31,9 +31,10 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, model_info, upload_folder
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
+from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -67,7 +68,15 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
+def save_model_card(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    train_text_encoder=False,
+    prompt=str,
+    repo_folder=None,
+    pipeline: DiffusionPipeline = None,
+):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -79,8 +88,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- stable-diffusion
-- stable-diffusion-diffusers
+- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
+- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
 - text-to-image
 - diffusers
 - lora
@@ -508,6 +517,8 @@ class DreamBoothDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = exif_transpose(instance_image)
+
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -523,6 +534,8 @@ class DreamBoothDataset(Dataset):
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = exif_transpose(class_image)
+
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -587,16 +600,6 @@ class PromptDataset(Dataset):
         example["prompt"] = self.prompt
         example["index"] = index
         return example
-
-
-def model_has_vae(args):
-    config_file_name = os.path.join("vae", AutoencoderKL.config_name)
-    if os.path.isdir(args.pretrained_model_name_or_path):
-        config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
-        return os.path.isfile(config_file_name)
-    else:
-        files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
-        return any(file.rfilename == config_file_name for file in files_in_repo)
 
 
 def tokenize_prompt(tokenizer, prompt, tokenizer_max_length=None):
@@ -753,11 +756,13 @@ def main(args):
     text_encoder = text_encoder_cls.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
-    if model_has_vae(args):
+    try:
         vae = AutoencoderKL.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
         )
-    else:
+    except OSError:
+        # IF does not have a VAE so let's just set it to None
+        # We don't have to error out here
         vae = None
 
     unet = UNet2DConditionModel.from_pretrained(
@@ -834,7 +839,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    accelerator.register_for_checkpointing(unet_lora_layers)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
@@ -848,13 +852,72 @@ def main(args):
                     hidden_size=module.out_features, cross_attention_dim=None
                 )
         text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = StableDiffusionPipeline.from_pretrained(
+        temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, text_encoder=text_encoder
         )
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
         text_encoder = temp_pipeline.text_encoder
-        accelerator.register_for_checkpointing(text_encoder_lora_layers)
         del temp_pipeline
+
+    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    def save_model_hook(models, weights, output_dir):
+        # there are only two options here. Either are just the unet attn processor layers
+        # or there are the unet and text encoder atten layers
+        unet_lora_layers_to_save = None
+        text_encoder_lora_layers_to_save = None
+
+        if args.train_text_encoder:
+            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
+        unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
+
+        for model in models:
+            state_dict = model.state_dict()
+
+            if (
+                text_encoder_lora_layers is not None
+                and text_encoder_keys is not None
+                and state_dict.keys() == text_encoder_keys
+            ):
+                # text encoder
+                text_encoder_lora_layers_to_save = state_dict
+            elif state_dict.keys() == unet_keys:
+                # unet
+                unet_lora_layers_to_save = state_dict
+
+            # make sure to pop weight so that corresponding model is not saved again
+            weights.pop()
+
+        LoraLoaderMixin.save_lora_weights(
+            output_dir,
+            unet_lora_layers=unet_lora_layers_to_save,
+            text_encoder_lora_layers=text_encoder_lora_layers_to_save,
+        )
+
+    def load_model_hook(models, input_dir):
+        # Note we DON'T pass the unet and text encoder here an purpose
+        # so that the we don't accidentally override the LoRA layers of
+        # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
+        # with new torch.nn.Modules / weights. We simply use the pipeline class as
+        # an easy way to load the lora checkpoints
+        temp_pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            revision=args.revision,
+            torch_dtype=weight_dtype,
+        )
+        temp_pipeline.load_lora_weights(input_dir)
+
+        # load lora weights into models
+        models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
+        if len(models) > 1:
+            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
+
+        # delete temporary pipeline and pop models
+        del temp_pipeline
+        for _ in range(len(models)):
+            models.pop()
+
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -1130,17 +1193,10 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        # We combine the text encoder and UNet LoRA parameters with a simple
-                        # custom logic. `accelerator.save_state()` won't know that. So,
-                        # use `LoraLoaderMixin.save_lora_weights()`.
-                        LoraLoaderMixin.save_lora_weights(
-                            save_directory=save_path,
-                            unet_lora_layers=unet_lora_layers,
-                            text_encoder_lora_layers=text_encoder_lora_layers,
-                        )
+                        accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1217,8 +1273,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
+        unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
+            text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
+
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
@@ -1250,6 +1310,7 @@ def main(args):
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
+        images = []
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
@@ -1279,6 +1340,7 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
+                pipeline=pipeline,
             )
             upload_folder(
                 repo_id=repo_id,

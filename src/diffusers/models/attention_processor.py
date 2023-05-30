@@ -62,9 +62,14 @@ class Attention(nn.Module):
         cross_attention_norm_num_groups: int = 32,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
+        spatial_norm_dim: Optional[int] = None,
         out_bias: bool = True,
         scale_qk: bool = True,
         only_cross_attention: bool = False,
+        eps: float = 1e-5,
+        rescale_output_factor: float = 1.0,
+        residual_connection: bool = False,
+        _from_deprecated_attn_block=False,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
@@ -72,6 +77,12 @@ class Attention(nn.Module):
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
+        self.rescale_output_factor = rescale_output_factor
+        self.residual_connection = residual_connection
+
+        # we make use of this private variable to know whether this class is loaded
+        # with an deprecated state dict so that we can convert it on the fly
+        self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
         self.scale = dim_head**-0.5 if self.scale_qk else 1.0
@@ -91,9 +102,14 @@ class Attention(nn.Module):
             )
 
         if norm_num_groups is not None:
-            self.group_norm = nn.GroupNorm(num_channels=query_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
+            self.group_norm = nn.GroupNorm(num_channels=query_dim, num_groups=norm_num_groups, eps=eps, affine=True)
         else:
             self.group_norm = None
+
+        if spatial_norm_dim is not None:
+            self.spatial_norm = SpatialNorm(f_channels=query_dim, zq_channels=spatial_norm_dim)
+        else:
+            self.spatial_norm = None
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -181,7 +197,10 @@ class Attention(nn.Module):
             elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
                 warnings.warn(
                     "You have specified using flash attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "We will default to PyTorch's native efficient flash attention implementation provided by PyTorch 2.0."
+                    "We will default to PyTorch's native efficient flash attention implementation (`F.scaled_dot_product_attention`) "
+                    "introduced in PyTorch 2.0. In case you are using LoRA or Custom Diffusion, we will fall "
+                    "back to their respective attention processors i.e., we will NOT use the PyTorch 2.0 "
+                    "native efficient flash attention."
                 )
             else:
                 try:
@@ -334,11 +353,14 @@ class Attention(nn.Module):
             beta=beta,
             alpha=self.scale,
         )
+        del baddbmm_input
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
 
         attention_probs = attention_scores.softmax(dim=-1)
+        del attention_scores
+
         attention_probs = attention_probs.to(dtype)
 
         return attention_probs
@@ -360,7 +382,8 @@ class Attention(nn.Module):
         if attention_mask is None:
             return attention_mask
 
-        if attention_mask.shape[-1] != target_length:
+        current_length: int = attention_mask.shape[-1]
+        if current_length != target_length:
             if attention_mask.device.type == "mps":
                 # HACK: MPS: Does not support padding by greater than dimension of input tensor.
                 # Instead, we can manually construct the padding tensor.
@@ -368,6 +391,10 @@ class Attention(nn.Module):
                 padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
                 attention_mask = torch.cat([attention_mask, padding], dim=2)
             else:
+                # TODO: for pipelines such as stable-diffusion, padding cross-attn mask:
+                #       we want to instead pad by (0, remaining_length), where remaining_length is:
+                #       remaining_length: int = target_length - current_length
+                # TODO: re-enable tests/models/test_models_unet_2d_condition.py#test_model_xattn_padding
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
 
         if out_dim == 3:
@@ -400,17 +427,37 @@ class Attention(nn.Module):
 
 
 class AttnProcessor:
+    r"""
+    Default processor for performing attention-related computations.
+    """
+
     def __call__(
         self,
         attn: Attention,
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
+        temb=None,
     ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
@@ -433,6 +480,14 @@ class AttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
 
@@ -461,6 +516,18 @@ class LoRALinearLayer(nn.Module):
 
 
 class LoRAAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+    """
+
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
         super().__init__()
 
@@ -474,10 +541,21 @@ class LoRAAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query)
@@ -502,10 +580,36 @@ class LoRAAttnProcessor(nn.Module):
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
 class CustomDiffusionAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing attention for the Custom Diffusion method.
+
+    Args:
+        train_kv (`bool`, defaults to `True`):
+            Whether to newly train the key and value matrices corresponding to the text features.
+        train_q_out (`bool`, defaults to `True`):
+            Whether to newly train query matrices corresponding to the latent image features.
+        hidden_size (`int`, *optional*, defaults to `None`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*, defaults to `None`):
+            The number of channels in the `encoder_hidden_states`.
+        out_bias (`bool`, defaults to `True`):
+            Whether to include the bias parameter in `train_q_out`.
+        dropout (`float`, *optional*, defaults to 0.0):
+            The dropout probability to use.
+    """
+
     def __init__(
         self,
         train_kv=True,
@@ -584,6 +688,11 @@ class CustomDiffusionAttnProcessor(nn.Module):
 
 
 class AttnAddedKVProcessor:
+    r"""
+    Processor for performing attention-related computations with extra learnable key and value matrices for the text
+    encoder.
+    """
+
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
@@ -633,6 +742,11 @@ class AttnAddedKVProcessor:
 
 
 class AttnAddedKVProcessor2_0:
+    r"""
+    Processor for performing scaled dot-product attention (enabled by default if you're using PyTorch 2.0), with extra
+    learnable key and value matrices for the text encoder.
+    """
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
@@ -691,6 +805,19 @@ class AttnAddedKVProcessor2_0:
 
 
 class LoRAAttnAddedKVProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism with extra learnable key and value matrices for the text
+    encoder.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*, defaults to `None`):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+    """
+
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
         super().__init__()
 
@@ -758,15 +885,52 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 
 class XFormersAttnProcessor:
+    r"""
+    Processor for implementing memory efficient attention using xFormers.
+
+    Args:
+        attention_op (`Callable`, *optional*, defaults to `None`):
+            The base
+            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
+            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
+            operator.
+    """
+
     def __init__(self, attention_op: Optional[Callable] = None):
         self.attention_op = attention_op
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = (
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+    ):
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, key_tokens, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(attention_mask, key_tokens, batch_size)
+        if attention_mask is not None:
+            # expand our mask's singleton query_tokens dimension:
+            #   [batch*heads,            1, key_tokens] ->
+            #   [batch*heads, query_tokens, key_tokens]
+            # so that it can be added as a bias onto the attention scores that xformers computes:
+            #   [batch*heads, query_tokens, key_tokens]
+            # we do this explicitly because xformers doesn't broadcast the singleton dimension for us.
+            _, query_tokens, _ = hidden_states.shape
+            attention_mask = attention_mask.expand(-1, query_tokens, -1)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
@@ -792,15 +956,46 @@ class XFormersAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
 class AttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    """
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
@@ -811,6 +1006,9 @@ class AttnProcessor2_0:
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
@@ -840,10 +1038,36 @@ class AttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
 class LoRAXFormersAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism with memory efficient attention using xFormers.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        attention_op (`Callable`, *optional*, defaults to `None`):
+            The base
+            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
+            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
+            operator.
+    """
+
     def __init__(self, hidden_size, cross_attention_dim, rank=4, attention_op: Optional[Callable] = None):
         super().__init__()
 
@@ -858,10 +1082,21 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query).contiguous()
@@ -887,10 +1122,40 @@ class LoRAXFormersAttnProcessor(nn.Module):
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
 class CustomDiffusionXFormersAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing memory efficient attention using xFormers for the Custom Diffusion method.
+
+    Args:
+    train_kv (`bool`, defaults to `True`):
+        Whether to newly train the key and value matrices corresponding to the text features.
+    train_q_out (`bool`, defaults to `True`):
+        Whether to newly train query matrices corresponding to the latent image features.
+    hidden_size (`int`, *optional*, defaults to `None`):
+        The hidden size of the attention layer.
+    cross_attention_dim (`int`, *optional*, defaults to `None`):
+        The number of channels in the `encoder_hidden_states`.
+    out_bias (`bool`, defaults to `True`):
+        Whether to include the bias parameter in `train_q_out`.
+    dropout (`float`, *optional*, defaults to 0.0):
+        The dropout probability to use.
+    attention_op (`Callable`, *optional*, defaults to `None`):
+        The base
+        [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to use
+        as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best operator.
+    """
+
     def __init__(
         self,
         train_kv=True,
@@ -976,14 +1241,34 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
 
 
 class SlicedAttnProcessor:
+    r"""
+    Processor for implementing sliced attention.
+
+    Args:
+        slice_size (`int`, *optional*):
+            The number of steps to compute attention. Uses as many slices as `attention_head_dim // slice_size`, and
+            `attention_head_dim` must be a multiple of the `slice_size`.
+    """
+
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
         dim = query.shape[-1]
@@ -1025,10 +1310,27 @@ class SlicedAttnProcessor:
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
 class SlicedAttnAddedKVProcessor:
+    r"""
+    Processor for implementing sliced attention with extra learnable key and value matrices for the text encoder.
+
+    Args:
+        slice_size (`int`, *optional*):
+            The number of steps to compute attention. Uses as many slices as `attention_head_dim // slice_size`, and
+            `attention_head_dim` must be a multiple of the `slice_size`.
+    """
+
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
@@ -1114,3 +1416,26 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
 ]
+
+
+class SpatialNorm(nn.Module):
+    """
+    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
+    """
+
+    def __init__(
+        self,
+        f_channels,
+        zq_channels,
+    ):
+        super().__init__()
+        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
+        self.conv_y = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_b = nn.Conv2d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, f, zq):
+        f_size = f.shape[-2:]
+        zq = F.interpolate(zq, size=f_size, mode="nearest")
+        norm_f = self.norm_layer(f)
+        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
+        return new_f

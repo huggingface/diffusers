@@ -18,6 +18,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
@@ -33,6 +34,9 @@ from ..test_pipelines_common import (
     PipelineTesterMixin,
     assert_mean_pixel_difference,
 )
+
+
+enable_full_determinism()
 
 
 class StableUnCLIPImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):

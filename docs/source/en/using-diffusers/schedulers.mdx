@@ -28,18 +28,15 @@ The following paragraphs show how to do so with the 🧨 Diffusers library.
 
 ## Load pipeline
 
-Let's start by loading the stable diffusion pipeline.
-Remember that you have to be a registered user on the 🤗 Hugging Face Hub, and have "click-accepted" the [license](https://huggingface.co/runwayml/stable-diffusion-v1-5) in order to use stable diffusion.
+Let's start by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model in the [`DiffusionPipeline`]:
 
 ```python
 from huggingface_hub import login
 from diffusers import DiffusionPipeline
 import torch
 
-# first we need to login with our access token
 login()
 
-# Now we can download the pipeline
 pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 ```
 

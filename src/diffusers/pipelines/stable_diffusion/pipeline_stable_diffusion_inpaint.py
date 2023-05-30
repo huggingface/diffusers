@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -36,7 +36,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def prepare_mask_and_masked_image(image, mask, height, width):
+def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
     """
     Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
     converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
@@ -146,12 +146,16 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
     masked_image = image * (mask < 0.5)
 
+    # n.b. ensure backwards compatibility as old function does not return image
+    if return_image:
+        return mask, masked_image, image
+
     return mask, masked_image
 
 
 class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-guided image inpainting using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -162,6 +166,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
     as well as the following saving methods:
         - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
+
+    <Tip>
+
+    It is recommended to use this pipeline with checkpoints that have been specifically fine-tuned for inpainting, such
+    as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). Default
+    text-to-image stable diffusion checkpoints, such as
+    [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) are also compatible with
+    this pipeline, but might be less performant.
+
+    </Tip>
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -262,14 +276,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
+
         # Check shapes, assume num_channels_latents == 4, num_channels_mask == 1, num_channels_masked == 4
         if unet.config.in_channels != 9:
-            logger.warning(
-                f"You have loaded a UNet with {unet.config.in_channels} input channels, whereas by default,"
-                f" {self.__class__} assumes that `pipeline.unet` has 9 input channels: 4 for `num_channels_latents`,"
-                " 1 for `num_channels_mask`, and 4 for `num_channels_masked_image`. If you did not intend to modify"
-                " this behavior, please check whether you have loaded the right checkpoint."
-            )
+            logger.info(f"You have loaded a UNet with {unet.config.in_channels} input channels which.")
 
         self.register_modules(
             vae=vae,
@@ -552,17 +562,20 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         height,
         width,
+        strength,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -600,8 +613,22 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+        return_noise=False,
+        return_image_latents=False,
+    ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -609,14 +636,48 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        if (image is None or timestep is None) and not is_strength_max:
+            raise ValueError(
+                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                "However, either the image or the noise timestep has not been provided."
+            )
+
+        if return_image_latents or (latents is None and not is_strength_max):
+            image = image.to(device=device, dtype=dtype)
+            image_latents = self._encode_vae_image(image=image, generator=generator)
+
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-        return latents
+
+        outputs = (latents,)
+
+        if return_noise:
+            outputs += (noise,)
+
+        if return_image_latents:
+            outputs += (image_latents,)
+
+        return outputs
+
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents
 
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
@@ -630,17 +691,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        if isinstance(generator, list):
-            masked_image_latents = [
-                self.vae.encode(masked_image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                for i in range(batch_size)
-            ]
-            masked_image_latents = torch.cat(masked_image_latents, dim=0)
-        else:
-            masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
+        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -669,6 +720,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
+
     @torch.no_grad()
     def __call__(
         self,
@@ -677,6 +738,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -690,6 +752,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -710,6 +773,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
+            strength (`float`, *optional*, defaults to 1.):
+                Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
+                between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
+                `strength`. The number of denoising steps depends on the amount of noise initially added. When
+                `strength` is 1, added noise will be maximum and the denoising process will run for the full number of
+                iterations specified in `num_inference_steps`. A value of 1, therefore, essentially ignores the masked
+                portion of the reference `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -754,7 +824,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
         Examples:
 
         ```py
@@ -802,6 +875,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             prompt,
             height,
             width,
+            strength,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -833,16 +907,27 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image, height, width)
-
-        # 5. set timesteps
+        # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps=num_inference_steps, strength=strength, device=device
+        )
+        # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
+        is_strength_max = strength == 1.0
+
+        # 5. Preprocess mask and image
+        mask, masked_image, init_image = prepare_mask_and_masked_image(
+            image, mask_image, height, width, return_image=True
+        )
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        latents = self.prepare_latents(
+        num_channels_unet = self.unet.config.in_channels
+        return_image_latents = num_channels_unet == 4
+
+        latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -851,7 +936,17 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             device,
             generator,
             latents,
+            image=init_image,
+            timestep=latent_timestep,
+            is_strength_max=is_strength_max,
+            return_noise=True,
+            return_image_latents=return_image_latents,
         )
+
+        if return_image_latents:
+            latents, noise, image_latents = latents_outputs
+        else:
+            latents, noise = latents_outputs
 
         # 7. Prepare mask latent variables
         mask, masked_image_latents = self.prepare_mask_latents(
@@ -865,17 +960,25 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             generator,
             do_classifier_free_guidance,
         )
+        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
-        num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latents.shape[1]
-        if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+        if num_channels_unet == 9:
+            # default case for runwayml/stable-diffusion-inpainting
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
+                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.unet` or your `mask_image` or `image` input."
+                )
+        elif num_channels_unet != 4:
             raise ValueError(
-                f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                " `pipeline.unet` or your `mask_image` or `image` input."
+                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
             )
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -890,12 +993,18 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
                 # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+
+                if num_channels_unet == 9:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds, return_dict=False)[
-                    0
-                ]
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -904,6 +1013,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if num_channels_unet == 4:
+                    init_latents_proper = image_latents[:1]
+                    init_mask = mask[:1]
+
+                    if i < len(timesteps) - 1:
+                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([t]))
+
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
