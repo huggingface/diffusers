@@ -103,7 +103,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
-    _accept_image_latents = True
 
     def __init__(
         self,
