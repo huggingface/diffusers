@@ -31,6 +31,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         )
 
         self.distillation = distillation
+        self.num_classes = unet.config.num_class_embeds
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     # Additionally prepare sigma_min, sigma_max kwargs for CM multistep scheduler
@@ -75,6 +76,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         self,
         x_t,
         sigma,
+        class_labels=None,
         sigma_min: float = 0.002,
         sigma_data: float = 0.5,
         clip_denoised=True,
@@ -92,7 +94,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         else:
             c_skip, c_out, c_in = [append_dims(x, x_t.ndim) for x in self.get_scalings(sigma, sigma_data=sigma_data)]
         rescaled_t = 1000 * 0.25 * torch.log(sigma + 1e-44)
-        model_output = self.unet(c_in * x_t, rescaled_t).sample
+        model_output = self.unet(c_in * x_t, rescaled_t, class_labels=class_labels).sample
         denoised = c_out * model_output + c_skip * x_t
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
@@ -106,6 +108,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
+        class_labels: Optional[Union[torch.IntTensor, List[int], int]] = None,
         num_inference_steps: int = 40,
         clip_denoised: bool = True,
         sigma_min: float = 0.002,
@@ -144,27 +147,40 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # 1. Sample image latents x_0 ~ N(0, sigma_0^2 * I)
         sample = randn_tensor(shape, generator=generator, device=device) * self.scheduler.init_noise_sigma
 
-        # 2. Set timesteps
+        # 2. Handle class_labels for class-conditional models
+        if self.num_classes is not None:
+            if isinstance(class_labels, list):
+                class_labels = torch.tensor(class_labels, dtype=torch.int)
+            elif isinstance(class_labels, int):
+                assert batch_size == 1, "Batch size must be 1 if classes is an int"
+                class_labels = torch.tensor([class_labels], dtype=torch.int)
+            elif class_labels is None:
+                # Randomly generate batch_size class labels
+                class_labels = torch.randint(0, self.num_classes, size=batch_size)
+            class_labels.to(device)
+
+        # 3. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
         timesteps = self.scheduler.timesteps
 
         # Now get Karras sigma schedule (which I think the original implementation always uses)
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L376
         # TODO: how do we ensure that this in Karras sigma space rather than in "original" sigma space?
-        # 3. Get sigma schedule
+        # 4. Get sigma schedule
         assert hasattr(self.scheduler, "sigmas"), "Scheduler needs to operate in sigma space"
         sigmas = self.scheduler.sigmas
 
-        # 4. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 5. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta, sigma_min, sigma_max)
 
-        # 5. Denoising loop
+        # 6. Denoising loop
         if num_inference_steps == 1:
             # Onestep sampling: simply evaluate the consistency model at the first sigma
             # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L643
-            sigma = sigmas[0]
+            sigma = sigma_max
+            sigma_in = sample.new_ones([sample.shape[0]]) * sigma
             _, sample = self.denoise(
-                sample, sigma, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
+                sample, sigma_in, class_labels=class_labels, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
             )
         else:
             # Multistep sampling or Karras sampler
@@ -173,11 +189,11 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 # Don't loop over last timestep
                 for i, t in enumerate(timesteps[:-1]):
                     sigma = sigmas[i]
-                    # TODO: handle class labels
+                    sigma_in = sample.new_ones([sample.shape[0]]) * sigma
                     # TODO: check shapes, might need equivalent of s_in in original code
                     # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L510
                     model_output, denoised = self.denoise(
-                        sample, sigma, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
+                        sample, sigma_in, class_labels=class_labels, sigma_min=sigma_min, sigma_data=sigma_data, clip_denoised=clip_denoised
                     )
 
                     # Works for both Karras-style schedulers (e.g. Euler, Heun) and the CM multistep scheduler
@@ -191,7 +207,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                         if callback is not None and i % callback_steps == 0:
                             callback(i, t, sample)
 
-        # 6. Post-process image sample
+        # 7. Post-process image sample
         sample = (sample / 2 + 0.5).clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
 
