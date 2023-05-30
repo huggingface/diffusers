@@ -26,27 +26,30 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
 
     @property
     def dummy_uncond_unet(self):
-        torch.manual_seed(0)
-        model = UNet2DModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=3,
-            out_channels=3,
-            down_block_types=("ResnetDownsampleBlock2D", "AttnDownsampleBlock2D"),
-            up_block_types=("AttnUpsampleBlock2D", "ResnetUpsampleBlock2D"),
-            num_class_embeds=10,
-            resnet_time_scale_shift="scale_shift",
+        unet = UNet2DModel.from_pretrained(
+            "dg845/consistency-models-test",
+            subfolder="test_unet",
         )
-        return model
+        return unet
+    
+    @property
+    def dummy_cond_unet(self):
+        unet = UNet2DModel.from_pretrained(
+            "dg845/consistency-models-test",
+            subfolder="test_unet_class_cond",
+        )
+        return unet
 
-    def get_dummy_components(self):
-        unet = self.dummy_uncond_unet
+    def get_dummy_components(self, class_cond=False):
+        if class_cond:
+            unet = self.dummy_cond_unet
+        else:
+            unet = self.dummy_uncond_unet
 
         # Default to CM multistep sampler
         # TODO: need to determine most sensible settings for these args
         scheduler = CMStochasticIterativeScheduler(
-            num_train_timesteps=1000,
+            num_train_timesteps=40,
             beta_start=0.0001,
             beta_end=0.02,
         )
@@ -54,6 +57,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         components = {
             "unet": unet,
             "scheduler": scheduler,
+            "distillation": False,
         }
 
         return components
@@ -93,6 +97,42 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
+    def test_consistency_model_pipeline_multistep_distillation(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["distillation"] = True
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        # TODO: get correct expected_slice
+        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_consistency_model_pipeline_multistep_class_cond_distillation(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(class_cond=True)
+        components["distillation"] = True
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        # TODO: get correct expected_slice
+        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
     def test_consistency_model_pipeline_onestep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -106,8 +146,44 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get correct expected_slice
-        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+        expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    
+    def test_consistency_model_pipeline_onestep_distillation(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["distillation"] = True
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 1
+        image = pipe(**inputs).images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        print(f"Image slice: {image_slice.flatten()}")
+        expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    
+    def test_consistency_model_pipeline_onestep_class_cond_distillation(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(class_cond=True)
+        components["distillation"] = True
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 1
+        image = pipe(**inputs).images
+        assert image.shape == (1, 32, 32, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
