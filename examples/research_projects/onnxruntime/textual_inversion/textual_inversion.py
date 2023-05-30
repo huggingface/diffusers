@@ -751,7 +751,7 @@ def main():
     )
 
     text_encoder = ORTModule(text_encoder)
-    # unet = ORTModule(unet)
+    unet = ORTModule(unet)
     vae = ORTModule(vae)
 
     # For mixed precision training we cast the unet and vae weights to half-precision
