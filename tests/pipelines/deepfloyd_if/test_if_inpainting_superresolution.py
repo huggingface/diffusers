@@ -20,6 +20,7 @@ import torch
 
 from diffusers import IFInpaintingSuperResolutionPipeline
 from diffusers.utils import floats_tensor
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import skip_mps, torch_device
 
 from ..pipeline_params import (
@@ -62,6 +63,10 @@ class IFInpaintingSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipeli
 
         return inputs
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
