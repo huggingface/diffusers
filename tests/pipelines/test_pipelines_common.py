@@ -8,9 +8,8 @@ import unittest
 from typing import Callable, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
 
 import diffusers
 from diffusers import DiffusionPipeline
@@ -53,7 +52,7 @@ class PipelineLatentTesterMixin:
                 input_image = VaeImageProcessor.pil_to_numpy(image)
                 input_image = VaeImageProcessor.numpy_to_pt(input_image)
             else:
-                raise VaelueError(f"unsupported input_image_type {type(image)}")
+                raise ValueError(f"unsupported input_image_type {type(image)}")
             return input_image
 
         def convert_pt_to_type(image, input_image_type):
@@ -71,8 +70,8 @@ class PipelineLatentTesterMixin:
         for image_param in self.image_params:
             if image_param in inputs.keys():
                 inputs[image_param] = convert_pt_to_type(
-                    convert_to_pt(inputs[image_param]).to(device), 
-                    input_image_type)
+                    convert_to_pt(inputs[image_param]).to(device), input_image_type
+                )
 
         inputs["output_type"] = output_type
 
@@ -118,7 +117,7 @@ class PipelineLatentTesterMixin:
         if len(self.image_params) == 0:
             return
         if not (hasattr(self.pipeline_class, "_accept_image_latents") and self.pipeline_class._accept_image_latents):
-            return 
+            return
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

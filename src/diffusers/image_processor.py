@@ -67,7 +67,7 @@ class VaeImageProcessor(ConfigMixin):
             pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
-    
+
     @staticmethod
     def pil_to_numpy(images):
         """

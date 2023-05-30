@@ -733,9 +733,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         if image.shape[1] == 4:
             latents = image
-        
-        else:
 
+        else:
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -743,7 +742,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 )
 
             if isinstance(generator, list):
-                latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)]
+                latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
                 latents = torch.cat(latents, dim=0)
             else:
                 latents = self.vae.encode(image).latent_dist.sample(generator)

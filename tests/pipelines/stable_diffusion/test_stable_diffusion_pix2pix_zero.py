@@ -32,7 +32,6 @@ from diffusers import (
     StableDiffusionPix2PixZeroPipeline,
     UNet2DConditionModel,
 )
-
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, load_pt, require_torch_gpu, skip_mps
@@ -49,9 +48,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
     pipeline_class = StableDiffusionPix2PixZeroPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"image"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )
+    image_params = frozenset([])
 
     @classmethod
     def setUpClass(cls):
@@ -147,7 +144,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
             "output_type": "numpy",
         }
         return inputs
-    
+
     def get_dummy_inversion_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inversion_inputs(device, seed)
 
@@ -160,10 +157,10 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
             image = VaeImageProcessor.numpy_to_pil(image)
         else:
             raise ValueError(f"unsupported input_image_type {input_image_type}")
-        
+
         inputs["image"] = image
         inputs["output_type"] = output_type
-        
+
         return inputs
 
     def test_save_load_optional_components(self):
@@ -303,7 +300,6 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_zero_inversion_pt_np_pil_outputs_equivalent(self):
-
         device = torch_device
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
@@ -315,15 +311,12 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
         output_pil = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, output_type="pil")).images
 
         max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
-        self.assertLess(
-            max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`"
-        )
+        self.assertLess(max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`")
 
         max_diff = np.abs(np.array(output_pil[0]) - (output_np[0] * 255).round()).max()
         self.assertLess(max_diff, 2.0, "`output_type=='pil'` generate different results from `output_type=='np'`")
 
     def test_stable_diffusion_pix2pix_zero_inversion_pt_np_pil_inputs_equivalent(self):
-
         device = torch_device
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
@@ -332,13 +325,15 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
 
         out_input_pt = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, input_image_type="pt")).images
         out_input_np = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, input_image_type="np")).images
-        out_input_pil = sd_pipe.invert(**self.get_dummy_inversion_inputs_by_type(device, input_image_type="pil")).images
+        out_input_pil = sd_pipe.invert(
+            **self.get_dummy_inversion_inputs_by_type(device, input_image_type="pil")
+        ).images
 
         max_diff = np.abs(out_input_pt - out_input_np).max()
         self.assertLess(max_diff, 1e-4, "`input_type=='pt'` generate different result from `input_type=='np'`")
 
         assert_mean_pixel_difference(out_input_pil, out_input_np, expected_max_diff=1)
-        
+
     # Non-determinism caused by the scheduler optimizing the latent inputs during inference
     @unittest.skip("non-deterministic pipeline")
     def test_inference_batch_single_identical(self):
