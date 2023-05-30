@@ -40,6 +40,13 @@ class PipelineLatentTesterMixin:
             "`image_params` are tested for if all accepted input image types (i.e. `pt`,`pil`,`np`) are producing same results"
         )
 
+    @property
+    def image_latents_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `image_latents_params` in the child test class. "
+            "`image_latents_params` are tested for if passing latents directly are producing same results"
+        )
+
     def get_dummy_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inputs(device, seed)
 
@@ -114,9 +121,7 @@ class PipelineLatentTesterMixin:
         self.assertLess(max_diff, 1e-2, "`input_type=='pt'` generate different result from `input_type=='np'`")
 
     def test_latents_input(self):
-        if len(self.image_params) == 0:
-            return
-        if not (hasattr(self.pipeline_class, "_accept_image_latents") and self.pipeline_class._accept_image_latents):
+        if len(self.image_latents_params) == 0:
             return
 
         components = self.get_dummy_components()
@@ -130,7 +135,7 @@ class PipelineLatentTesterMixin:
         vae = components["vae"]
         inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
         generator = inputs["generator"]
-        for image_param in self.image_params:
+        for image_param in self.image_latents_params:
             if image_param in inputs.keys():
                 inputs[image_param] = (
                     vae.encode(inputs[image_param]).latent_dist.sample(generator) * vae.config.scaling_factor

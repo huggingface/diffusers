@@ -48,7 +48,8 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
     pipeline_class = StableDiffusionPix2PixZeroPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"image"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([])
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     @classmethod
     def setUpClass(cls):

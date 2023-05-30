@@ -53,6 +53,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -203,6 +204,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    # Overwrite the default test_latents_inputs because pix2pix encode the image differently
     def test_latents_input(self):
         components = self.get_dummy_components()
         pipe = StableDiffusionInstructPix2PixPipeline(**components)
@@ -214,8 +216,10 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 
         vae = components["vae"]
         inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
-
-        inputs["image"] = vae.encode(inputs["image"]).latent_dist.mode()
+        
+        for image_param in self.image_latents_params:
+            if image_param in inputs.keys():
+                inputs[image_param] = vae.encode(inputs[image_param]).latent_dist.mode()
 
         out_latents_inputs = pipe(**inputs)[0]
 

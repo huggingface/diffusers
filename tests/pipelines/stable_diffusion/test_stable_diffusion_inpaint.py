@@ -88,6 +88,7 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     image_params = frozenset([])
     # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
