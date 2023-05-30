@@ -663,6 +663,65 @@ class DownloadTests(unittest.TestCase):
                 out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
                 assert out.shape == (1, 128, 128, 3)
 
+        # single token state dict load
+        ten = {"<x>": torch.ones((32,))}
+        pipe.load_textual_inversion(ten)
+
+        token = pipe.tokenizer.convert_tokens_to_ids("<x>")
+        assert token == num_tokens + 10, "Added token must be at spot `num_tokens`"
+        assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 32
+        assert pipe._maybe_convert_prompt("<x>", pipe.tokenizer) == "<x>"
+
+        prompt = "hey <x>"
+        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        assert out.shape == (1, 128, 128, 3)
+
+        # multi embedding state dict load
+        ten1 = {"<xxxxx>": torch.ones((32,))}
+        ten2 = {"<xxxxxx>": 2 * torch.ones((1, 32))}
+
+        pipe.load_textual_inversion([ten1, ten2])
+
+        token = pipe.tokenizer.convert_tokens_to_ids("<xxxxx>")
+        assert token == num_tokens + 11, "Added token must be at spot `num_tokens`"
+        assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 32
+        assert pipe._maybe_convert_prompt("<xxxxx>", pipe.tokenizer) == "<xxxxx>"
+
+        token = pipe.tokenizer.convert_tokens_to_ids("<xxxxxx>")
+        assert token == num_tokens + 12, "Added token must be at spot `num_tokens`"
+        assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
+        assert pipe._maybe_convert_prompt("<xxxxxx>", pipe.tokenizer) == "<xxxxxx>"
+
+        prompt = "hey <xxxxx> <xxxxxx>"
+        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        assert out.shape == (1, 128, 128, 3)
+
+        # auto1111 multi-token state dict load
+        ten = {
+            "string_to_param": {
+                "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
+            },
+            "name": "<xxxx>",
+        }
+
+        pipe.load_textual_inversion(ten)
+
+        token = pipe.tokenizer.convert_tokens_to_ids("<xxxx>")
+        token_1 = pipe.tokenizer.convert_tokens_to_ids("<xxxx>_1")
+        token_2 = pipe.tokenizer.convert_tokens_to_ids("<xxxx>_2")
+
+        assert token == num_tokens + 13, "Added token must be at spot `num_tokens`"
+        assert token_1 == num_tokens + 14, "Added token must be at spot `num_tokens`"
+        assert token_2 == num_tokens + 15, "Added token must be at spot `num_tokens`"
+        assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
+        assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
+        assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
+        assert pipe._maybe_convert_prompt("<xxxx>", pipe.tokenizer) == "<xxxx> <xxxx>_1 <xxxx>_2"
+
+        prompt = "hey <xxxx>"
+        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        assert out.shape == (1, 128, 128, 3)
+
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
         with tempfile.TemporaryDirectory() as tmpdirname:

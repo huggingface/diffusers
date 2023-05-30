@@ -505,8 +505,8 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
-                        self.mean_bank.append(mean)
-                        self.var_bank.append(var)
+                        self.mean_bank.append([mean])
+                        self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -545,8 +545,8 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
-                        self.mean_bank.append(mean)
-                        self.var_bank.append(var)
+                        self.mean_bank.append([mean])
+                        self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -605,8 +605,8 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
-                        self.mean_bank.append(mean)
-                        self.var_bank.append(var)
+                        self.mean_bank.append([mean])
+                        self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -642,8 +642,8 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
-                        self.mean_bank.append(mean)
-                        self.var_bank.append(var)
+                        self.mean_bank.append([mean])
+                        self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
