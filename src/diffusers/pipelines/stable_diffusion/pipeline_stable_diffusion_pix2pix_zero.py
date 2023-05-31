@@ -1093,7 +1093,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def invert(
         self,
         prompt: Optional[str] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -1117,8 +1124,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`, *optional*):
-                `Image`, or tensor representing an image batch which will be used for conditioning.
+            image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, or tensor representing an image batch which will be used for conditioning. Can also accpet
+                image latents as `image`, if passing latents directly, it will not be encoded again.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

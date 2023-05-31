@@ -150,7 +150,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.5,
         image_guidance_scale: float = 1.5,
@@ -173,8 +180,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be repainted according to `prompt`.
+            image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, or tensor representing an image batch which will be repainted according to `prompt`. Can also
+                accpet image latents as `image`, if passing latents directly, it will not be encoded again.
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

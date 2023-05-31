@@ -766,9 +766,21 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         control_image: Union[
-            torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -797,8 +809,12 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`,
-                    `List[List[torch.FloatTensor]]`, or `List[List[PIL.Image.Image]]`):
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The initial image will be used as the starting point for the image generation process. Can also accpet
+                image latents as `image`, if passing latents directly, it will not be encoded again.
+            control_image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. `PIL.Image.Image` can
                 also be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If

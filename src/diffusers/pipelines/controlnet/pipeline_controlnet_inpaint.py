@@ -968,7 +968,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         control_image: Union[
-            torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
