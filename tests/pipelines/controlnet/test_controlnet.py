@@ -41,6 +41,8 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
@@ -99,8 +101,8 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
