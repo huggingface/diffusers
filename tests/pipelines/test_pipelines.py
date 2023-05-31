@@ -670,7 +670,10 @@ class DownloadTests(unittest.TestCase):
 
             pipe.load_textual_inversion(tmpdirname)
 
-            assert pipe._maybe_convert_prompt("<cat> <cat>", pipe.tokenizer) == "<cat> <cat>_1 <cat>_2 <cat> <cat>_1 <cat>_2"
+            assert (
+                pipe._maybe_convert_prompt("<cat> <cat>", pipe.tokenizer)
+                == "<cat> <cat>_1 <cat>_2 <cat> <cat>_1 <cat>_2"
+            )
 
             prompt = "hey <cat> <cat>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
