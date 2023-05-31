@@ -1596,6 +1596,23 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
+AttentionProcessor = Union[
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    LoRAAttnProcessor,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAAttnAddedKVProcessor,
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+]
+
+
 class SpatialNorm(nn.Module):
     """
     Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
@@ -1617,20 +1634,3 @@ class SpatialNorm(nn.Module):
         norm_f = self.norm_layer(f)
         new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
         return new_f
-
-
-AttentionProcessor = Union[
-    AttnProcessor,
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-    SlicedAttnProcessor,
-    AttnAddedKVProcessor,
-    SlicedAttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    LoRAAttnProcessor,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAAttnAddedKVProcessor,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-]
