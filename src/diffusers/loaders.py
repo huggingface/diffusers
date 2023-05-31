@@ -839,6 +839,9 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
+        # set lora scale to a reasonable default
+        self._scale = 1
+
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
                 "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
@@ -934,6 +937,10 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @property
+    def lora_scale(self):
+        return self._scale
+
+    @property
     def text_encoder_lora_attn_procs(self):
         if hasattr(self, "_text_encoder_lora_attn_procs"):
             return self._text_encoder_lora_attn_procs
@@ -958,7 +965,7 @@ class LoraLoaderMixin:
                 old_forward = module.forward
 
                 def new_forward(x):
-                    return old_forward(x) + lora_layer(x)
+                    return old_forward(x) + self.lora_scale() * lora_layer(x)
 
                 # Monkey-patch.
                 module.forward = new_forward
