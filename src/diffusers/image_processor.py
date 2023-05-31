@@ -115,12 +115,12 @@ class VaeImageProcessor(ConfigMixin):
         return (images / 2 + 0.5).clamp(0, 1)
 
     @staticmethod
-    def convert_to_rgb(images: PIL.Image.Image) -> PIL.Image.Image:
+    def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
         """
         Converts an image to RGB format.
         """
-        images = images.convert("RGB")
-        return images
+        image = image.convert("RGB")
+        return image
 
     def resize(
         self,
