@@ -41,7 +41,6 @@ from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttn
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    disable_full_determinism,
     enable_full_determinism,
     require_torch_2,
     require_torch_gpu,
@@ -370,7 +369,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
 
     @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
     def test_stable_diffusion_attn_processors(self):
-        disable_full_determinism()
+        # disable_full_determinism()
         device = "cuda"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
@@ -416,7 +415,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
-        enable_full_determinism()
+        # enable_full_determinism()
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
