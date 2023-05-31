@@ -216,7 +216,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 
         vae = components["vae"]
         inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
-        
+
         for image_param in self.image_latents_params:
             if image_param in inputs.keys():
                 inputs[image_param] = vae.encode(inputs[image_param]).latent_dist.mode()

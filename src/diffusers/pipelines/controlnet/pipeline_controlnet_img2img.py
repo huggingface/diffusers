@@ -29,7 +29,6 @@ from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    PIL_INTERPOLATION,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -624,7 +623,14 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
         image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
         image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
 
-        if not image_is_pil and not image_is_tensor and not image_is_np and not image_is_pil_list and not image_is_tensor_list and not image_is_np_list:
+        if (
+            not image_is_pil
+            and not image_is_tensor
+            and not image_is_np
+            and not image_is_pil_list
+            and not image_is_tensor_list
+            and not image_is_np_list
+        ):
             raise TypeError(
                 "image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors"
             )
@@ -978,7 +984,6 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             control_image = control_images
         else:
             assert False
-
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

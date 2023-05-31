@@ -117,17 +117,17 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def convert_to_rgb(images: PIL.Image.Image) -> PIL.Image.Image:
         """
-        Converts an image to RGB format. 
+        Converts an image to RGB format.
         """
         images = images.convert("RGB")
-        return images 
+        return images
 
     def resize(
-        self, 
-        images: PIL.Image.Image, 
+        self,
+        images: PIL.Image.Image,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        ) -> PIL.Image.Image:
+    ) -> PIL.Image.Image:
         """
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
@@ -136,7 +136,9 @@ class VaeImageProcessor(ConfigMixin):
         if width is None:
             width = images.width
 
-        width, height = (x - x % self.config.vae_scale_factor for x in (width, height))  # resize to integer multiple of vae_scale_factor
+        width, height = (
+            x - x % self.config.vae_scale_factor for x in (width, height)
+        )  # resize to integer multiple of vae_scale_factor
         images = images.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
         return images
 
