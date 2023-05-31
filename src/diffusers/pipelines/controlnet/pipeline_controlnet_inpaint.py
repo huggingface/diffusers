@@ -632,12 +632,17 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         self,
         prompt,
         image,
+        height,
+        width,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
     ):
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -859,6 +864,31 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         return outputs
 
+    def _default_height_width(self, height, width, image):
+        # NOTE: It is possible that a list of images have different
+        # dimensions for each image, so just checking the first image
+        # is not _exactly_ correct, but it is simple.
+        while isinstance(image, list):
+            image = image[0]
+
+        if height is None:
+            if isinstance(image, PIL.Image.Image):
+                height = image.height
+            elif isinstance(image, torch.Tensor):
+                height = image.shape[2]
+
+            height = (height // 8) * 8  # round down to nearest multiple of 8
+
+        if width is None:
+            if isinstance(image, PIL.Image.Image):
+                width = image.width
+            elif isinstance(image, torch.Tensor):
+                width = image.shape[3]
+
+            width = (width // 8) * 8  # round down to nearest multiple of 8
+
+        return height, width
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
@@ -1050,10 +1080,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        # 0. Default height and width to unet
+        height, width = self._default_height_width(height, width, image)
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             control_image,
+            height,
+            width,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -1109,7 +1144,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-            height, width = control_image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
 
@@ -1127,7 +1161,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 control_images.append(control_image_)
 
             control_image = control_images
-            height, width = control_image[0].shape[-2:]
         else:
             assert False
 
