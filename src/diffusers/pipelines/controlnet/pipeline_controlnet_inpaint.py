@@ -786,6 +786,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     def prepare_control_image(
         self,
         image,
+        width,
+        height,
         batch_size,
         num_images_per_prompt,
         device,
@@ -793,7 +795,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(image,  width=width, height=height).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -1137,6 +1139,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
                 image=control_image,
+                width=width,
+                height=height,
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
@@ -1150,6 +1154,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             for control_image_ in control_image:
                 control_image_ = self.prepare_control_image(
                     image=control_image_,
+                    width=width,
+                    height=height,
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,

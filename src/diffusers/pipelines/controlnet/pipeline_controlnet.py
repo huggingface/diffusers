@@ -626,6 +626,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
     def prepare_image(
         self,
         image,
+        width,
+        height,
         batch_size,
         num_images_per_prompt,
         device,
@@ -843,6 +845,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         if isinstance(controlnet, ControlNetModel):
             image = self.prepare_image(
                 image=image,
+                width=width,
+                height=height,
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
@@ -857,6 +861,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             for image_ in image:
                 image_ = self.prepare_image(
                     image=image_,
+                    width=width,
+                    height=height,
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
