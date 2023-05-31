@@ -30,7 +30,8 @@ class VaeImageProcessor(ConfigMixin):
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
-            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
+            `height` and `width` arguments from `preprocess` method
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             VAE scale factor. If `do_resize` is True, the image will be automatically resized to multiples of this
             factor.
@@ -38,6 +39,8 @@ class VaeImageProcessor(ConfigMixin):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1]
+        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+            Whether to converts the images to RGB format.
     """
 
     config_name = CONFIG_NAME
@@ -124,7 +127,7 @@ class VaeImageProcessor(ConfigMixin):
 
     def resize(
         self,
-        images: PIL.Image.Image,
+        image: PIL.Image.Image,
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> PIL.Image.Image:
@@ -132,15 +135,15 @@ class VaeImageProcessor(ConfigMixin):
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
         if height is None:
-            height = images.height
+            height = image.height
         if width is None:
-            width = images.width
+            width = image.width
 
         width, height = (
             x - x % self.config.vae_scale_factor for x in (width, height)
         )  # resize to integer multiple of vae_scale_factor
-        images = images.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
-        return images
+        image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+        return image
 
     def preprocess(
         self,
