@@ -122,18 +122,29 @@ class VaeImageProcessor(ConfigMixin):
         images = images.convert("RGB")
         return images 
 
-    def resize(self, images: PIL.Image.Image) -> PIL.Image.Image:
+    def resize(
+        self, 
+        images: PIL.Image.Image, 
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        ) -> PIL.Image.Image:
         """
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
-        w, h = images.size
-        w, h = (x - x % self.config.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
-        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.config.resample])
+        if height is None:
+            height = images.height
+        if width is None:
+            width = images.width
+
+        width, height = (x - x % self.config.vae_scale_factor for x in (width, height))  # resize to integer multiple of vae_scale_factor
+        images = images.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
         return images
 
     def preprocess(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Preprocess the image input, accepted formats are PIL images, numpy arrays or pytorch tensors"
@@ -150,7 +161,7 @@ class VaeImageProcessor(ConfigMixin):
             if self.config.do_convert_rgb:
                 image = [self.convert_to_rgb(i) for i in image]
             if self.config.do_resize:
-                image = [self.resize(i) for i in image]
+                image = [self.resize(i, height, width) for i in image]
             image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
 
