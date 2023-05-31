@@ -42,8 +42,8 @@ from diffusers.utils.testing_utils import (
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
