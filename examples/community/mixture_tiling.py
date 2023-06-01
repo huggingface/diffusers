@@ -13,8 +13,8 @@ from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMSchedu
 from diffusers.utils import logging
 
 try:
-    from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
     from ligo.segments import segment
+    from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 except ImportError:
     raise ImportError("Please install transformers and ligo-segments to use the mixture pipeline")
 
