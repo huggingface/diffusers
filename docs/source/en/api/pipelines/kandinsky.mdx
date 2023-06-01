@@ -19,15 +19,15 @@ The Kandinsky model is created by [Arseniy Shakhmatov](https://github.com/cene55
 
 ## Available Pipelines:
 
-| Pipeline | Tasks | Colab
+| Pipeline | Tasks |
 |---|---|:---:|
-| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* | - |
-| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* | - |
-| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* | - |
+| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* |
+| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* |
 
 ## Usage example
 
-In the following, we will walk you through some cool examples of using the Kandinsky pipelines to create some visually aesthetic artwork.
+In the following, we will walk you through some examples of how to use the Kandinsky pipelines to create some visually aesthetic artwork.
 
 ### Text-to-Image Generation
 
@@ -48,9 +48,7 @@ pipelines are diffusion models.
 from diffusers import DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
-)
+pipe_prior = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
 pipe_prior.to("cuda")
 
 t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
@@ -78,7 +76,9 @@ generate negative image embeddings by simply passing a prompt and negative promp
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image_embeds, negative_image_embeds = pipe_prior([prompt, negative_prompt], generator=[generator, generator]).image_embeds
+image_embeds, negative_image_embeds = pipe_prior(
+    [prompt, negative_prompt], generator=[generator, generator]
+).image_embeds
 ```
 
 </Tip>
@@ -87,7 +87,10 @@ image_embeds, negative_image_embeds = pipe_prior([prompt, negative_prompt], gene
 Next, we can pass the embeddings as well as the prompt to the text-to-image pipeline. Remember that 
 in case you are using a customized negative prompt, that you should pass this one also to the text-to-image pipeline.
 
-images = pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, negative_prompt=negative_prompt).images
+```py
+images = pipe(
+    prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, negative_prompt=negative_prompt
+).images
 ```
 
 One cheeseburger monster coming up! Enjoy! 
@@ -158,7 +161,9 @@ prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 generator = torch.Generator(device="cuda").manual_seed(30)
-image_embeds, negative_image_embeds = pipe_prior([prompt, negative_prompt], generator=[generator, generator]).image_embeds
+image_embeds, negative_image_embeds = pipe_prior(
+    [prompt, negative_prompt], generator=[generator, generator]
+).image_embeds
 
 out = pipe(
     prompt,
@@ -181,7 +186,7 @@ out.images[0].save("fantasy_land.png")
 
 You can use [`KandinskyInpaintPipeline`] to edit images. In this example, we will add a hat to the portrait of a cat.
 
-```python
+```py
 from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
 from diffusers.utils import load_image
 import torch
