@@ -1030,8 +1030,10 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
         # Validate image dimensions
         mask_width, mask_height = mask_image.size
         if mask_height != self.image_height or mask_width != self.image_width:
-            raise ValueError(f"Input image height and width {self.image_height} and {self.image_width} are not equal to "
-                            f"the respective dimensions of the mask image {mask_height} and {mask_width}")
+            raise ValueError(
+                f"Input image height and width {self.image_height} and {self.image_width} are not equal to "
+                f"the respective dimensions of the mask image {mask_height} and {mask_width}"
+            )
 
         # load resources
         self.__loadResources(self.image_height, self.image_width, batch_size)
@@ -1062,7 +1064,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
             # Initialize timesteps
             timesteps, t_start = self.__initialize_timesteps(self.denoising_steps, strength)
 
-            # VAE encode masked image            
+            # VAE encode masked image
             masked_latents = self.__encode_image(masked_image)
             masked_latents = torch.cat([masked_latents] * 2)
 
@@ -1070,7 +1072,14 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
             text_embeddings = self.__encode_prompt(prompt, negative_prompt)
 
             # UNet denoiser
-            latents = self.__denoise_latent(latents, text_embeddings, timesteps=timesteps, step_offset=t_start, mask=mask, masked_image_latents=masked_latents)
+            latents = self.__denoise_latent(
+                latents,
+                text_embeddings,
+                timesteps=timesteps,
+                step_offset=t_start,
+                mask=mask,
+                masked_image_latents=masked_latents,
+            )
 
             # VAE decode latent
             images = self.__decode_latent(latents)
