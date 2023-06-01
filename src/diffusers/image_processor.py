@@ -40,7 +40,7 @@ class VaeImageProcessor(ConfigMixin):
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1]
         do_convert_rgb (`bool`, *optional*, defaults to be `False`):
-            Whether to converts the images to RGB format.
+            Whether to convert the images to RGB format.
     """
 
     config_name = CONFIG_NAME
@@ -75,7 +75,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pil_to_numpy(images):
         """
-        Convert a PIL image or a list of PIL images to numpy image
+        Convert a PIL image or a list of PIL images to numpy arrays.
         """
         if not isinstance(images, list):
             images = [images]
