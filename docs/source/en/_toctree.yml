@@ -144,6 +144,8 @@
       title: Outputs
     - local: api/loaders
       title: Loaders
+    - local: api/utilities
+      title: Utilities
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
