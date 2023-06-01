@@ -4,9 +4,7 @@ from enum import Enum
 from typing import List, Optional, Tuple, Union
 
 import torch
-from ligo.segments import segment
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -14,18 +12,22 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
 
+try:
+    from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+    from ligo.segments import segment
+except ImportError:
+    raise ImportError("Please install transformers and ligo-segments to use the mixture pipeline")
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import LMSDiscreteScheduler
-        >>> from mixdiff import StableDiffusionTilingPipeline
+        >>> from diffusers import LMSDiscreteScheduler, DiffusionPipeline
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
-        >>> pipeline = StableDiffusionTilingPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
-        >>> pipeline.to("cuda:0")
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler, custom_pipeline="mixture_tiling")
+        >>> pipeline.to("cuda")
 
         >>> image = pipeline(
         >>>     prompt=[[
