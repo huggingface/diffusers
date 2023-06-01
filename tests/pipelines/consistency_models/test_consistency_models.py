@@ -50,8 +50,9 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         # TODO: need to determine most sensible settings for these args
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
-            beta_start=0.0001,
-            beta_end=0.02,
+            sigma_min=0.002,
+            sigma_max=80.0,
+            timesteps=np.array([22, 39]),
         )
 
         components = {
@@ -164,7 +165,6 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        print(f"Image slice: {image_slice.flatten()}")
         expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

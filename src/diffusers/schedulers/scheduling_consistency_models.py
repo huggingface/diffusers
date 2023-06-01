@@ -122,50 +122,20 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps: int = 1000,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        num_train_timesteps: int = 40,
+        sigma_min: float = 0.002,
+        sigma_max: float = 80.0,
         sigma_data: float = 0.5,
         rho: float = 7.0,
-        prediction_type: str = "sample",
-        interpolation_type: str = "linear",
-        use_karras_sigmas: Optional[bool] = True,
+        timesteps: Optional[np.ndarray] = None,
     ):
-        if trained_betas is not None:
-            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
-        elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
-
-        self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas)
-
         # standard deviation of the initial noise distribution
-        self.init_noise_sigma = self.sigmas.max()
+        self.init_noise_sigma = sigma_max
 
         # setable values
         self.num_inference_steps = None
-        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
-        self.timesteps = torch.from_numpy(timesteps)
-        self.sigma_data = sigma_data
-        self.rho = rho
+        self.timesteps = timesteps
         self.is_scale_input_called = False
-        self.use_karras_sigmas = use_karras_sigmas
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
@@ -198,24 +168,17 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
-
-        timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        log_sigmas = np.log(sigmas)
-
-        if self.config.interpolation_type == "linear":
-            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        elif self.config.interpolation_type == "log_linear":
-            sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
+        
+        # TODO: timesteps should be increasing rather than decreasing??
+        if self.timesteps is None:
+            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         else:
-            raise ValueError(
-                f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
-                " 'linear' or 'log_linear'"
-            )
-
-        if self.use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = self.timesteps
+        
+        # Map timesteps to Karras sigmas directly for multistep sampling
+        # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
+        ramp = timesteps / (self.config.num_train_timesteps - 1)
+        sigmas = self._convert_to_karras(ramp)
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -225,40 +188,15 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
-    def _sigma_to_t(self, sigma, log_sigmas):
-        # get log sigma
-        log_sigma = np.log(sigma)
-
-        # get distribution
-        dists = log_sigma - log_sigmas[:, np.newaxis]
-
-        # get sigmas range
-        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
-        high_idx = low_idx + 1
-
-        low = log_sigmas[low_idx]
-        high = log_sigmas[high_idx]
-
-        # interpolate sigmas
-        w = (low - log_sigma) / (low - high)
-        w = np.clip(w, 0, 1)
-
-        # transform interpolation to time range
-        t = (1 - w) * low_idx + w * high_idx
-        t = t.reshape(sigma.shape)
-        return t
-
     # Modified from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
-    # Use self.rho instead of hardcoded 7.0 for rho
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    # Use self.rho instead of hardcoded 7.0 for rho, sigma_min/max from config, configurable ramp function
+    def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        sigma_min: float = self.config.sigma_min
+        sigma_max: float = self.config.sigma_max
 
         rho = self.rho
-        ramp = np.linspace(0, 1, num_inference_steps)
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
@@ -297,14 +235,14 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         sigma: float,
-        sigma_min: float = 0.002,
-        sigma_max: float = 80.0,
         generator: Optional[torch.Generator] = None,
     ) -> Tuple[torch.FloatTensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i. TODO Args:
         """
+        sigma_min = self.config.sigma_min
+        sigma_max = self.config.sigma_max
         step_idx = (self.sigmas == sigma).nonzero().item()
         sigma_hat = self.sigmas[step_idx + 1].clamp(min=sigma_min, max=sigma_max)
 
@@ -321,8 +259,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        sigma_min: float = 0.002,
-        sigma_max: float = 80.0,
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
@@ -369,12 +305,17 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
+        
+        sigma_min = self.config.sigma_min
+        sigma_max = self.config.sigma_max
 
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.index_for_timestep(timestep)
+        
+        # sigma corresponds to t and sigma_next corresponds to next_t in original implementation
         sigma = self.sigmas[step_index]
         sigma_next = self.sigmas[step_index + 1]
 
-        # sample z ~ N(0, s_noise^2 * I)
+        # 1. Sample z ~ N(0, s_noise^2 * I)
         noise = randn_tensor(
             model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
         )
@@ -382,24 +323,9 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         sigma_hat = sigma_next.clamp(min=sigma_min, max=sigma_max)
 
-        # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        # NOTE: "original_sample" should not be an expected prediction_type but is left in for
-        # backwards compatibility
-        if self.config.prediction_type == "original_sample" or self.config.prediction_type == "sample":
-            pred_original_sample = model_output
-        elif self.config.prediction_type == "epsilon":
-            pred_original_sample = sample - sigma_hat * model_output
-        elif self.config.prediction_type == "v_prediction":
-            # * c_out + input * c_skip
-            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
-        else:
-            raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
-            )
-
         # 2. Return noisy sample
         # tau = sigma_hat, eps = sigma_min
-        prev_sample = pred_original_sample + z * (sigma_hat**2 - sigma_min**2) ** 0.5
+        prev_sample = model_output + z * (sigma_hat**2 - sigma_min**2) ** 0.5
 
         if not return_dict:
             return (prev_sample,)

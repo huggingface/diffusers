@@ -239,6 +239,10 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # TODO: how do we ensure that this in Karras sigma space rather than in "original" sigma space?
         # 5. Get sigma schedule
         assert hasattr(self.scheduler, "sigmas"), "Scheduler needs to operate in sigma space"
+        if hasattr(self.scheduler, "sigma_min"):
+            # Overwrite sigma_min with sigma_min from the scheduler
+            sigma_min = self.scheduler.sigma_min
+            sigma_max = self.scheduler.sigma_max
         sigmas = self.scheduler.sigmas
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
