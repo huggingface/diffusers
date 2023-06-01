@@ -368,13 +368,13 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
         image_embeds: torch.FloatTensor,
         negative_image_embeds: torch.FloatTensor,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         strength: float = 0.3,
         guidance_scale: float = 7.0,
         num_images_per_prompt: int = 1,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -392,6 +392,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -413,9 +416,6 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.

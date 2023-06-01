@@ -220,7 +220,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(device))
-        image = output.images
+        image = output.image_embeds
 
         image_from_tuple = pipe(
             **self.get_dummy_inputs(device),
@@ -276,12 +276,12 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_emb = pipe_prior(
+        image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
             num_inference_steps=5,
-        ).images
-        zero_image_emb = pipe_prior("", num_inference_steps=5).images
+            negative_prompt="",
+        ).to_tuple()
 
         output = pipeline(
             prompt,
