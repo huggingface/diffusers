@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -50,32 +49,6 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
     prev_sample: torch.FloatTensor
     # derivative: torch.FloatTensor
     # pred_original_sample: Optional[torch.FloatTensor] = None
-
-
-# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
-    """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1]. Contains a function alpha_bar that takes an argument t and transforms it to the
-    cumulative product of (1-beta) up to that part of the diffusion process.
-
-    Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-    Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
-    """
-
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
-
-    betas = []
-    for i in range(num_diffusion_timesteps):
-        t1 = i / num_diffusion_timesteps
-        t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return torch.tensor(betas, dtype=torch.float32)
 
 
 class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
@@ -168,13 +141,13 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
-        
+
         # TODO: timesteps should be increasing rather than decreasing??
         if self.timesteps is None:
             timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         else:
             timesteps = self.timesteps
-        
+
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
         ramp = timesteps / (self.config.num_train_timesteps - 1)
@@ -196,7 +169,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigma_min: float = self.config.sigma_min
         sigma_max: float = self.config.sigma_max
 
-        rho = self.rho
+        rho = self.config.rho
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
@@ -305,14 +278,13 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        
+
         sigma_min = self.config.sigma_min
         sigma_max = self.config.sigma_max
 
         step_index = self.index_for_timestep(timestep)
-        
-        # sigma corresponds to t and sigma_next corresponds to next_t in original implementation
-        sigma = self.sigmas[step_index]
+
+        # sigma_next corresponds to next_t in original implementation
         sigma_next = self.sigmas[step_index + 1]
 
         # 1. Sample z ~ N(0, s_noise^2 * I)
