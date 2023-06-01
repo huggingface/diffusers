@@ -12,6 +12,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
 
+
 try:
     from ligo.segments import segment
     from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
