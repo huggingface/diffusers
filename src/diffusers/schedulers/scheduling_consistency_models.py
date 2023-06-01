@@ -146,7 +146,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         if self.timesteps is None:
             timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         else:
-            timesteps = self.timesteps
+            timesteps = self.timesteps.astype(np.float32)
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
@@ -265,7 +265,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    f" `{self.__class__}.step()` is not supported. Make sure to pass"
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
