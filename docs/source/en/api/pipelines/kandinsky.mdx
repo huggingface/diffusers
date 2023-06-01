@@ -64,33 +64,33 @@ generator = torch.Generator(device="cuda").manual_seed(12)
 image_embeds, negative_image_embeds = pipe_prior(prompt, generator=generator).to_tuple()
 ```
 
-<Tip>
+<Tip warning={true}>
 
 The text-to-image pipeline expects both `image_embeds`, `negative_image_embeds` and the original 
-`prompt` as it uses another text encoder to better guide the text-to-image diffusion process of `t2i_pipe`.
+`prompt` as the text-to-image pipeline uses another text encoder to better guide the second diffusion 
+process of `t2i_pipe`.
 
-By default, the prior returns unconditioned negative image embeddings. For better results, you can however
-generate negative image embeddings by simply passing a prompt and negative prompt to the prior.
+By default, the prior returns unconditioned negative image embeddings corresponding to the negative prompt of `""`.
+For better results, you can also pass a `negative_prompt` to the prior. This will increase the effective batch size
+of the prior by a factor of 2.
 
 ```py
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image_embeds, negative_image_embeds = pipe_prior(
-    [prompt, negative_prompt], generator=[generator, generator]
-).image_embeds
+image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt, generator=generator).to_tuple()
 ```
 
 </Tip>
 
 
 Next, we can pass the embeddings as well as the prompt to the text-to-image pipeline. Remember that 
-in case you are using a customized negative prompt, that you should pass this one also to the text-to-image pipeline.
+in case you are using a customized negative prompt, that you should pass this one also to the text-to-image pipelines
+with `negative_prompt=negative_prompt`:
 
 ```py
-images = pipe(
-    prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, negative_prompt=negative_prompt
-).images
+image = t2i_pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds).images[0]
+image.save("cheeseburger_monster.png")
 ```
 
 One cheeseburger monster coming up! Enjoy! 
@@ -161,9 +161,7 @@ prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 generator = torch.Generator(device="cuda").manual_seed(30)
-image_embeds, negative_image_embeds = pipe_prior(
-    [prompt, negative_prompt], generator=[generator, generator]
-).image_embeds
+image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt, generator=generator).to_tuple()
 
 out = pipe(
     prompt,
@@ -172,7 +170,6 @@ out = pipe(
     negative_image_embeds=negative_image_embeds,
     height=768,
     width=768,
-    num_inference_steps=500,
     strength=0.3,
 )
 
@@ -198,7 +195,7 @@ pipe_prior = KandinskyPriorPipeline.from_pretrained(
 pipe_prior.to("cuda")
 
 prompt = "a hat"
-prior_output = pipe_prior(prompt, return_dict=False)
+prior_output = pipe_prior(prompt)
 
 pipe = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
 pipe.to("cuda")
@@ -265,7 +262,7 @@ prior_out = pipe_prior.interpolate(images_texts, weights)
 pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipe.to("cuda")
 
-image = pipe(prompt, **prior_out, height=768, width=768, num_inference_steps=150).images[0]
+image = pipe(prompt, **prior_out, height=768, width=768).images[0]
 
 image.save("starry_cat.png")
 ```

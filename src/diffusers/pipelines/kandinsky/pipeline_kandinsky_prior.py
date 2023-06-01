@@ -231,7 +231,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         image_embeddings = []
         for cond, weight in zip(images_and_prompts, weights):
             if isinstance(cond, str):
-                image_emb = self.__call__(
+                image_emb = self(
                     cond,
                     num_inference_steps=num_inference_steps,
                     num_images_per_prompt=num_images_per_prompt,
@@ -239,7 +239,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                     latents=latents,
                     negative_prompt=negative_prior_prompt,
                     guidance_scale=guidance_scale,
-                ).images
+                ).image_embeds
 
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
                 if isinstance(cond, PIL.Image.Image):
@@ -261,7 +261,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         image_emb = torch.cat(image_embeddings).sum(dim=0, keepdim=True)
 
-        out_zero = self.__call__(
+        out_zero = self(
             negative_prompt,
             num_inference_steps=num_inference_steps,
             num_images_per_prompt=num_images_per_prompt,
@@ -270,7 +270,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             negative_prompt=negative_prior_prompt,
             guidance_scale=guidance_scale,
         )
-        zero_image_emb = out_zero.zero_embeds if negative_prompt == "" else out_zero.images
+        zero_image_emb = out_zero.negative_image_embeds if negative_prompt == "" else out_zero.image_embeds
 
         return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=zero_image_emb)
 
@@ -484,14 +484,24 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         """
 
         if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
+            prompt = [prompt]
+        elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt]
+        elif not isinstance(negative_prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        # if the negative prompt is defined we double the batch size to
+        # directly retrieve the negative prompt embedding
+        if negative_prompt is not None:
+            prompt = prompt + negative_prompt
+            negative_prompt = 2 * negative_prompt
 
         device = self._execution_device
 
+        batch_size = len(prompt)
         batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
@@ -548,7 +558,12 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         latents = self.prior.post_process_latents(latents)
 
         image_embeddings = latents
-        zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
+
+        # if negative prompt has been defined, we retrieve split the image embedding into two
+        if negative_prompt is None:
+            zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
+        else:
+            image_embeddings, zero_embeds = image_embeddings.chunk(2)
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
