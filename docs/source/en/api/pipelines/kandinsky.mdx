@@ -31,69 +31,63 @@ In the following, we will walk you through some cool examples of using the Kandi
 
 ### Text-to-Image Generation
 
-For text-to-image generation, we need to use both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`]. The first step is to encode text prompts with CLIP and then diffuse the CLIP text embeddings to CLIP image embeddings, as first proposed in [DALL-E 2](https://cdn.openai.com/papers/dall-e-2.pdf). Let's throw a fun prompt at Kandinsky to see what it comes up with :)
+For text-to-image generation, we need to use both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`].
+The first step is to encode text prompts with CLIP and then diffuse the CLIP text embeddings to CLIP image embeddings,
+as first proposed in [DALL-E 2](https://cdn.openai.com/papers/dall-e-2.pdf).
+Let's throw a fun prompt at Kandinsky to see what it comes up with.
 
-```python
+```py
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
-negative_prompt = "low quality, bad quality"
 ```
 
-We will pass both the `prompt` and `negative_prompt` to our prior diffusion pipeline. In contrast to other diffusion pipelines, such as Stable Diffusion, the `prompt` and `negative_prompt` shall be passed separately so that we can retrieve a CLIP image embedding for each prompt input. You can use `guidance_scale`, and `num_inference_steps` arguments to guide this process, just like how you would normally do with all other pipelines in diffusers.
+First, let's instantiate the prior pipeline and the text-to-image pipeline. Both 
+pipelines are diffusion models.
 
-```python
-from diffusers import KandinskyPriorPipeline
+
+```py
+from diffusers import DiffusionPipeline
 import torch
 
-# create prior
-pipe_prior = KandinskyPriorPipeline.from_pretrained(
+pipe_prior = DiffusionPipeline.from_pretrained(
     "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
 )
 pipe_prior.to("cuda")
 
-generator = torch.Generator(device="cuda").manual_seed(12)
-image_emb = pipe_prior(
-    prompt, guidance_scale=1.0, num_inference_steps=25, generator=generator, negative_prompt=negative_prompt
-).images
-
-zero_image_emb = pipe_prior(
-    negative_prompt, guidance_scale=1.0, num_inference_steps=25, generator=generator, negative_prompt=negative_prompt
-).images
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+t2i_pipe.to("cuda")
 ```
 
-Once we create the image embedding, we can use [`KandinskyPipeline`] to generate images.
+Now we pass the prompt through the prior to generate image embeddings. The prior
+returns both the image embeddings corresponding to the prompt and negative/unconditional image 
+embeddings corresponding to an empty string.
 
-```python
-from PIL import Image
-from diffusers import KandinskyPipeline
+```py
+generator = torch.Generator(device="cuda").manual_seed(12)
+image_embeds, negative_image_embeds = pipe_prior(prompt, generator=generator).to_tuple()
+```
+
+<Tip>
+
+The text-to-image pipeline expects both `image_embeds`, `negative_image_embeds` and the original 
+`prompt` as it uses another text encoder to better guide the text-to-image diffusion process of `t2i_pipe`.
+
+By default, the prior returns unconditioned negative image embeddings. For better results, you can however
+generate negative image embeddings by simply passing a prompt and negative prompt to the prior.
+
+```py
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+negative_prompt = "low quality, bad quality"
+
+image_embeds, negative_image_embeds = pipe_prior([prompt, negative_prompt], generator=[generator, generator]).image_embeds
+```
+
+</Tip>
 
 
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
+Next, we can pass the embeddings as well as the prompt to the text-to-image pipeline. Remember that 
+in case you are using a customized negative prompt, that you should pass this one also to the text-to-image pipeline.
 
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
-
-
-# create diffuser pipeline
-pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
-pipe.to("cuda")
-
-images = pipe(
-    prompt,
-    image_embeds=image_emb,
-    negative_image_embeds=zero_image_emb,
-    num_images_per_prompt=2,
-    height=768,
-    width=768,
-    num_inference_steps=100,
-    guidance_scale=4.0,
-    generator=generator,
-).images
+images = pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, negative_prompt=negative_prompt).images
 ```
 
 One cheeseburger monster coming up! Enjoy! 
@@ -164,19 +158,13 @@ prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 generator = torch.Generator(device="cuda").manual_seed(30)
-image_emb = pipe_prior(
-    prompt, guidance_scale=4.0, num_inference_steps=25, generator=generator, negative_prompt=negative_prompt
-).images
-
-zero_image_emb = pipe_prior(
-    negative_prompt, guidance_scale=4.0, num_inference_steps=25, generator=generator, negative_prompt=negative_prompt
-).images
+image_embeds, negative_image_embeds = pipe_prior([prompt, negative_prompt], generator=[generator, generator]).image_embeds
 
 out = pipe(
     prompt,
     image=original_image,
-    image_embeds=image_emb,
-    negative_image_embeds=zero_image_emb,
+    image_embeds=image_embeds,
+    negative_image_embeds=negative_image_embeds,
     height=768,
     width=768,
     num_inference_steps=500,
@@ -205,7 +193,7 @@ pipe_prior = KandinskyPriorPipeline.from_pretrained(
 pipe_prior.to("cuda")
 
 prompt = "a hat"
-image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
+prior_output = pipe_prior(prompt, return_dict=False)
 
 pipe = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
 pipe.to("cuda")
@@ -222,8 +210,7 @@ out = pipe(
     prompt,
     image=init_image,
     mask_image=mask,
-    image_embeds=image_emb,
-    negative_image_embeds=zero_image_emb,
+    **prior_output,
     height=768,
     width=768,
     num_inference_steps=150,
@@ -246,7 +233,6 @@ from diffusers.utils import load_image
 import PIL
 
 import torch
-from torchvision import transforms
 
 pipe_prior = KandinskyPriorPipeline.from_pretrained(
     "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
@@ -263,16 +249,18 @@ img2 = load_image(
 
 # add all the conditions we want to interpolate, can be either text or image
 images_texts = ["a cat", img1, img2]
+
 # specify the weights for each condition in images_texts
 weights = [0.3, 0.3, 0.4]
-image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
+
+# We can leave the prompt empty
+prompt = ""
+prior_out = pipe_prior.interpolate(images_texts, weights)
 
 pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipe.to("cuda")
 
-image = pipe(
-    "", image_embeds=image_emb, negative_image_embeds=zero_image_emb, height=768, width=768, num_inference_steps=150
-).images[0]
+image = pipe(prompt, **prior_out, height=768, width=768, num_inference_steps=150).images[0]
 
 image.save("starry_cat.png")
 ```

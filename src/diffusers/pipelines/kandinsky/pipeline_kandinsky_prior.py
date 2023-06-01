@@ -116,14 +116,14 @@ class KandinskyPriorPipelineOutput(BaseOutput):
     Output class for KandinskyPriorPipeline.
 
     Args:
-        images (`torch.FloatTensor`)
+        image_embeds (`torch.FloatTensor`)
             clip image embeddings for text prompt
-        zero_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
+        negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
             clip image embeddings for unconditional tokens
     """
 
-    images: Union[torch.FloatTensor, np.ndarray]
-    zero_embeds: Union[torch.FloatTensor, np.ndarray]
+    image_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class KandinskyPriorPipeline(DiffusionPipeline):
@@ -272,7 +272,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         )
         zero_image_emb = out_zero.zero_embeds if negative_prompt == "" else out_zero.images
 
-        return image_emb, zero_image_emb
+        return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=zero_image_emb)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -560,4 +560,4 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         if not return_dict:
             return (image_embeddings, zero_embeds)
 
-        return KandinskyPriorPipelineOutput(images=image_embeddings, zero_embeds=zero_embeds)
+        return KandinskyPriorPipelineOutput(image_embeds=image_embeddings, negative_image_embeds=zero_embeds)
