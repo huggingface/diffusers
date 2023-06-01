@@ -580,6 +580,9 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
+    # unet.load_state_dict(torch.load("/home/mp5847/src/diffusers/examples/text_to_image/unet_edited.pt").state_dict())
+    # unet.load_state_dict(torch.load("/home/mp5847/src/diffusers/examples/text_to_image/diffusers-VanGogh-ESDx1-UNET.pt"))
+
     # Add the placeholder token in tokenizer
     num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
     if num_added_tokens == 0:

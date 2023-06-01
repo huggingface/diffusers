@@ -472,6 +472,19 @@ def main():
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    
+    # print all parameters names and their shape
+    for name, param in unet.named_parameters():
+        if "attn" in name:
+            #set the attention layer to be trainable
+            param.requires_grad_(True)
+        else:
+            param.requires_grad_(False)
+            
+    # print trainable parameters
+    for name, param in unet.named_parameters():
+        if param.requires_grad:
+            print(name, param.shape)
 
     # Create EMA for the unet.
     if args.use_ema:

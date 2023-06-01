@@ -28,6 +28,11 @@ if __name__ == "__main__":
     pipe_pretrained = StableDiffusionPipeline.from_pretrained(args.model_pretrained, torch_dtype=torch.float16)
     pipe_pretrained.to(device)
 
+    if(args.create_grid):
+        #check if folder exists
+        if os.path.exists(args.output_dir):
+           #delete folder
+            os.system(f"rm -rf {args.output_dir}")
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("Generating images ...")
@@ -49,10 +54,50 @@ if __name__ == "__main__":
         task_vector = TaskVector(pretrained_checkpoint="unet_pretrained.pt", 
                                 finetuned_checkpoint="unet_finetuned.pt")
 
+        vector = task_vector.vector
+        # for key in vector.keys():
+        #     weights = vector[key].squeeze()
+        #     if(len(weights.shape) == 2):
+                
+        #         #plot weights then save
+        #         import matplotlib.pyplot as plt
+        #         plt.imshow(weights.cpu().numpy())
+        #         plt.savefig(f"/scratch/mp5847/diffusers_visualize_layers/{key}.png")
+        #         plt.close()
+                
+        #         #plot distribution of weights
+        #         plt.hist(weights.cpu().numpy().flatten())
+        #         plt.savefig(f"/scratch/mp5847/diffusers_visualize_layers/{key}_hist.png")
+        #         plt.close()
+            
+        # assert False
+        
+        # perform masking in task vector
+        sum_ = 0
+        count = 0
+        mask = 0.0
+        for key in task_vector.vector.keys():
+            weights = task_vector.vector[key]
+            
+            sum_ += (weights**2).sum().item()
+            count_0_orig = torch.sum(weights == 0).item()
+            weights[(abs(weights) < mask)] = 0
+            count_0_after = torch.sum(weights == 0).item()
+            count += count_0_after - count_0_orig
+            sum_ += weights.sum().item()
+            
+        print("Number of weights changed to 0: ", count)
+        print("Distance: ", sum_)
+           
         neg_task_vector = -task_vector
         unet_edited = neg_task_vector.apply_to("unet_pretrained.pt", scaling_coef=args.tv_edit_alpha)
         pipe_pretrained.unet = unet_edited
         pipe_finetuned = pipe_pretrained
+
+        #save unet edited
+        torch.save(pipe_finetuned.unet, "unet_edited.pt")
+
+        # assert False
 
         os.remove("unet_pretrained.pt")
         os.remove("unet_finetuned.pt")

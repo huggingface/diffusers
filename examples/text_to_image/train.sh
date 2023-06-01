@@ -1,5 +1,5 @@
-export MODEL_NAME="stabilityai/stable-diffusion-2"
-export DATASET_NAME="/scratch/mp5847/diffusers_generated_datasets/elon_musk"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATASET_NAME="/scratch/mp5847/diffusers_generated_datasets/van_gogh_5000_sd_v1.4"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -13,5 +13,5 @@ accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --checkpointing_steps=500 \
-  --output_dir="/scratch/mp5847/diffusers_ckpt/elon_musk_full_lr=1e-05" 
+  --checkpointing_steps=1000 \
+  --output_dir="/scratch/mp5847/diffusers_ckpt/van_gogh_5000_attention_lr=1e-5_sd_v1.4" 
