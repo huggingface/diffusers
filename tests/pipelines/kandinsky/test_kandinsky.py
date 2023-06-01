@@ -207,7 +207,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(device))
-        image = output.image_embeds
+        image = output.images
 
         image_from_tuple = pipe(
             **self.get_dummy_inputs(device),

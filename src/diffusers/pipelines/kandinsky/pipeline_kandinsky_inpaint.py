@@ -629,7 +629,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 added_cond_kwargs=added_cond_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
 
             if do_classifier_free_guidance:
                 noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)

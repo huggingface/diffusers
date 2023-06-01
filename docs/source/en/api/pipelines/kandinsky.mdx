@@ -271,6 +271,59 @@ image.save("starry_cat.png")
 
 ## Optimization
 
+Running Kandinsky in inference requires running both a first prior pipeline: [`KandinskyPriorPipeline`]
+and a second image decoding pipeline which is one of [`KandinskyPipeline`], [`KandinskyImg2ImgPipeline`], or [`KandinskyInpaintPipeline`].
+
+The bulk of the computation time will always be the second image decoding pipeline, so when looking 
+into optimizing the model, one should look into the second image decoding pipeline.
+
+When running with PyTorch < 2.0, we strongly recommend making use of [`xformers`](https://github.com/facebookresearch/xformers)
+to speed-up the optimization. This can be done by simply running:
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+t2i_pipe.enable_xformers_memory_efficient_attention()
+```
+
+When running on PyTorch >= 2.0, PyTorch's SDPA attention will automatically be used. For more information on 
+PyTorch's SDPA, feel free to have a look at [this blog post](https://pytorch.org/blog/accelerated-diffusers-pt-20/).
+
+To be user, you can also manually set the pipeline to use PyTorch's 2.0 efficient attention:
+
+```py
+from diffusers.models.attention_processor import AttnAddedKVProcessor2_0
+
+t2i_pipe.unet.set_attn_processor(AttnAddedKVProcessor2_0())
+```
+
+The slowest and most memory intense attention processor is the default `AttnAddedKVProcessor` processor.
+We do **not** recommend using it except for testing purposes or cases where very high determistic behaviour is desired. 
+You can set it with:
+
+```py
+from diffusers.models.attention_processor import AttnAddedKVProcessor
+
+t2i_pipe.unet.set_attn_processor(AttnAddedKVProcessor())
+```
+
+With PyTorch >= 2.0, you can also use Kandinsky with `torch.compile` which depending 
+on your hardware can signficantly speed-up your inference time once the model is compiled.
+To use Kandinsksy with `torch.compile`, you can do:
+
+```py
+t2i_pipe.unet.to(memory_format=torch.channels_last)
+t2i_pipe.unet = torch.compile(t2i_pipe.unet, mode="reduce-overhead", fullgraph=True)
+```
+
+After compilation you should see a very fast inference time. For more information,
+feel free to have a look at [Our PyTorch 2.0 benchmark](https://huggingface.co/docs/diffusers/main/en/optimization/torch2.0).
+
+
+
+
 
 ## KandinskyPriorPipeline
 
@@ -285,15 +338,14 @@ image.save("starry_cat.png")
 	- all
 	- __call__
 
-## KandinskyInpaintPipeline
-
-[[autodoc]] KandinskyInpaintPipeline
-	- all
-	- __call__
-	
 ## KandinskyImg2ImgPipeline
 
 [[autodoc]] KandinskyImg2ImgPipeline
 	- all
 	- __call__
 
+## KandinskyInpaintPipeline
+
+[[autodoc]] KandinskyInpaintPipeline
+	- all
+	- __call__
