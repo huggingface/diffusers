@@ -57,7 +57,7 @@ class VaeImageProcessor(ConfigMixin):
         super().__init__()
 
     @staticmethod
-    def numpy_to_pil(images):
+    def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
@@ -73,7 +73,7 @@ class VaeImageProcessor(ConfigMixin):
         return pil_images
 
     @staticmethod
-    def pil_to_numpy(images):
+    def pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
         """
         Convert a PIL image or a list of PIL images to numpy arrays.
         """
@@ -85,7 +85,7 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def numpy_to_pt(images):
+    def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
         """
         Convert a numpy image to a pytorch tensor
         """
@@ -96,7 +96,7 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def pt_to_numpy(images):
+    def pt_to_numpy(images: torch.FloatTensor) -> np.ndarray:
         """
         Convert a pytorch tensor to a numpy image
         """
