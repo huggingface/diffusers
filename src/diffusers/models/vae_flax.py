@@ -737,9 +737,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
     - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
 
     Parameters:
-        in_channels (:obj:`int`, *optional*, defaults to 3):
+        in_channels (`int`, *optional*, defaults to 3):
             Number of channels in the input image.
-        out_channels (:obj:`int`, *optional*, defaults to 3):
+        out_channels (`int`, *optional*, defaults to 3):
             Number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
             Tuple of downsample block types.
@@ -753,7 +753,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             The activation function to use.
         latent_channels (`int`, *optional*, defaults to `4`):
             Number of channels in the latent space.
-        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
+        norm_num_groups (`int`, *optional*, defaults to `32`):
             The number of groups for normalization.
         sample_size (`int`, *optional*, defaults to 32):
             Sample input size.

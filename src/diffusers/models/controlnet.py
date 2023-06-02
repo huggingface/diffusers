@@ -552,7 +552,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         Returns:
             [`~models.controlnet.ControlNetOutput`] **or** `tuple`:
-                If return_dict is True, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
+                If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
         # check channel order

@@ -153,7 +153,13 @@
     - local: api/models/overview
       title: Overview
     - local: api/models/unet
-      title: UNet
+      title: UNet1DModel
+    - local: api/models/unet2d
+      title: UNet2DModel
+    - local: api/models/unet2d-cond
+      title: UNet2DConditionModel
+    - local: api/models/unet3d-cond
+      title: UNet3DConditionModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
