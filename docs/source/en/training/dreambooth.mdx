@@ -524,7 +524,7 @@ Additionally, a few alternative cli flags are needed for IF.
 
 `--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution. 
 
-`--pre_compute_text_embeddings`: IF uses T5 for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
+`--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
 T5.
 
 `--tokenizer_max_length=77`: T5 has a longer default text length, but the default IF encoding procedure uses a smaller number.
