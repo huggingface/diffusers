@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+*<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -127,9 +127,7 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 
 ## A1111 LoRA files
 
-[Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111) is a popular web UI for Stable Diffusion that supports model sharing platforms like [Civitai](https://civitai.com/). Models trained with the Low-Rank Adaptation (LoRA) technique are especially popular because they're fast to train and have a much smaller file size than a fully finetuned model. However, A111 LoRA files are formatted differently from the LoRA file format used by 🤗 Diffusers, which means you'll need to use the [`~LoraLoaderMixin.load_lora_weights`] to load A111 LoRA files.
-
-For example, initialize a [`DiffusionPipeline`] with the [`andite/anything-v4.0`](andite/anything-v4.0) model and replace it's scheduler with the [`UniPCMultistepScheduler`]:
+[Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111) is a popular web UI for Stable Diffusion that supports model sharing platforms like [Civitai](https://civitai.com/). Models trained with the Low-Rank Adaptation (LoRA) technique are especially popular because they're fast to train and have a much smaller file size than a fully finetuned model. 🤗 Diffusers supports loading A1111 LoRA checkpoints with [`~LoraLoaderMixin.load_lora_weights`]:
 
 ```py
 from diffusers import DiffusionPipeline, UniPCMultistepScheduler
