@@ -1597,6 +1597,7 @@ AttentionProcessor = Union[
     AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
     LoRAAttnProcessor2_0,
