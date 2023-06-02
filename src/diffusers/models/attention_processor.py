@@ -1233,7 +1233,7 @@ class LoRAAttnProcessor2_0(nn.Module):
     attention.
 
     Args:
-        hidden_size (`int`, *optional*):
+        hidden_size (`int`):
             The hidden size of the attention layer.
         cross_attention_dim (`int`, *optional*):
             The number of channels in the `encoder_hidden_states`.
