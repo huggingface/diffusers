@@ -266,8 +266,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             # Multistep sampling or Karras sampler
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                # Don't loop over last timestep
-                for i, t in enumerate(timesteps[:-1]):
+                for i, t in enumerate(timesteps):
                     sigma = sigmas[i]
                     sigma_in = sample.new_ones([sample.shape[0]]) * sigma
                     # TODO: check shapes, might need equivalent of s_in in original code

@@ -52,7 +52,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
             num_train_timesteps=40,
             sigma_min=0.002,
             sigma_max=80.0,
-            timesteps=np.array([22, 39]),
+            timesteps=np.array([0, 22]),
         )
 
         components = {
@@ -93,8 +93,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get correct expected_slice
-        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+        expected_slice = np.array([0.3576, 0.6270, 0.4034, 0.3964, 0.4323, 0.5728, 0.5265, 0.4781, 0.5004])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -111,8 +110,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get correct expected_slice
-        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+        expected_slice = np.array([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -129,8 +127,7 @@ class ConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get correct expected_slice
-        expected_slice = np.array([0.7511, 0.3642, 0.4553, 0.6236, 0.5797, 0.5013, 0.4343, 0.5611, 0.4831])
+        expected_slice = np.array([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

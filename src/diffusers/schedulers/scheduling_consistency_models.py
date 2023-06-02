@@ -142,7 +142,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
-        # TODO: timesteps should be increasing rather than decreasing??
+        # Note: timesteps are expected to be increasing rather than decreasing, following original implementation
         if self.timesteps is None:
             timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         else:
@@ -150,7 +150,9 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
-        ramp = timesteps / (self.config.num_train_timesteps - 1)
+        num_train_timesteps = self.config.num_train_timesteps
+        # Append num_train_timesteps - 1 so sigmas[-1] == sigma_min
+        ramp = np.append(timesteps, [num_train_timesteps - 1]) / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
