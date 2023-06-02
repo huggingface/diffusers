@@ -61,6 +61,7 @@ from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     floats_tensor,
+    is_compiled_module,
     nightly,
     require_torch_2,
     slow,
@@ -99,6 +100,11 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         scheduler = DDPMScheduler(num_train_timesteps=10)
 
         ddpm = DDPMPipeline(model, scheduler)
+
+        # previous diffusers versions stripped compilation off
+        # compiled modules
+        assert is_compiled_module(ddpm.unet)
+
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
