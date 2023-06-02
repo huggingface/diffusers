@@ -675,5 +675,6 @@ accelerate launch train_dreambooth.py \
   --tokenizer_max_length=77 \
   --text_encoder_use_attention_mask \
   --validation_images $VALIDATION_IMAGES \
-  --class_labels_conditioning timesteps
+  --class_labels_conditioning timesteps \
+  --push_to_hub
 ```
