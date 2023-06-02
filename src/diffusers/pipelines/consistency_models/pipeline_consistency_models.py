@@ -269,8 +269,9 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 for i, t in enumerate(timesteps):
                     sigma = sigmas[i]
                     sigma_in = sample.new_ones([sample.shape[0]]) * sigma
-                    # TODO: check shapes, might need equivalent of s_in in original code
-                    # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L510
+
+                    # TODO: should we call scale_model_input here?
+                    sample = self.scheduler.scale_model_input(sample, t)
                     model_output, denoised = self.denoise(
                         sample,
                         sigma_in,
