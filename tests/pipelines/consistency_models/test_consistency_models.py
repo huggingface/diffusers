@@ -1,8 +1,8 @@
 import gc
-import pytest
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import (
@@ -16,7 +16,7 @@ from diffusers.utils import slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -207,7 +207,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.5157, 0.5143, 0.4804, 0.5273, 0.4146, 0.5619, 0.4651, 0.4359, 0.4540])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     @pytest.mark.xfail(reason="Heun scheduler does not implement prediction_type 'sample' yet")
     def test_consistency_model_pipeline_k_heun(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
