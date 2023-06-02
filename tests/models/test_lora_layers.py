@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
 import os
 import tempfile
 import unittest
@@ -32,7 +33,7 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, floats_tensor, torch_device
+from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, floats_tensor, torch_device
 
 
 def create_unet_lora_layers(unet: nn.Module):
@@ -57,18 +58,36 @@ def create_unet_lora_layers(unet: nn.Module):
     return lora_attn_procs, unet_lora_layers
 
 
-def create_text_encoder_lora_layers(text_encoder: nn.Module):
+def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
     text_lora_attn_procs = {}
     lora_attn_processor_class = (
         LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
     )
     for name, module in text_encoder.named_modules():
-        if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+        if name.endswith(TEXT_ENCODER_ATTN_MODULE):
             text_lora_attn_procs[name] = lora_attn_processor_class(
-                hidden_size=module.out_features, cross_attention_dim=None
+                hidden_size=module.out_proj.out_features, cross_attention_dim=None
             )
+    return text_lora_attn_procs
+
+
+def create_text_encoder_lora_layers(text_encoder: nn.Module):
+    text_lora_attn_procs = create_text_encoder_lora_attn_procs(text_encoder)
     text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
     return text_encoder_lora_layers
+
+
+def set_lora_up_weights(text_lora_attn_procs, randn_weight=False):
+    for _, attn_proc in text_lora_attn_procs.items():
+        # set up.weights
+        for layer_name, layer_module in attn_proc.named_modules():
+            if layer_name.endswith("_lora"):
+                weight = (
+                    torch.randn_like(layer_module.up.weight)
+                    if randn_weight
+                    else torch.zeros_like(layer_module.up.weight)
+                )
+                layer_module.up.weight = torch.nn.Parameter(weight)
 
 
 class LoraLoaderMixinTests(unittest.TestCase):
@@ -231,6 +250,64 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
+
+    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+    def get_dummy_tokens(self):
+        max_seq_length = 77
+
+        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
+
+        prepared_inputs = {}
+        prepared_inputs["input_ids"] = inputs
+        return prepared_inputs
+
+    def test_text_encoder_lora_monkey_patch(self):
+        pipeline_components, _ = self.get_dummy_components()
+        pipe = StableDiffusionPipeline(**pipeline_components)
+
+        dummy_tokens = self.get_dummy_tokens()
+
+        # inference without lora
+        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora.shape == (1, 77, 32)
+
+        # create lora_attn_procs with zeroed out up.weights
+        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
+        set_lora_up_weights(text_attn_procs, randn_weight=False)
+
+        # monkey patch
+        pipe._modify_text_encoder(text_attn_procs)
+
+        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
+        del text_attn_procs
+        gc.collect()
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs"
+
+        # create lora_attn_procs with randn up.weights
+        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
+        set_lora_up_weights(text_attn_procs, randn_weight=True)
+
+        # monkey patch
+        pipe._modify_text_encoder(text_attn_procs)
+
+        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
+        del text_attn_procs
+        gc.collect()
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert not torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
 
     def create_lora_weight_file(self, tmpdirname):
         _, lora_components = self.get_dummy_components()

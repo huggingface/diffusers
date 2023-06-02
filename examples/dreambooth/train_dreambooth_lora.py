@@ -59,8 +59,9 @@ from diffusers.models.attention_processor import (
     SlicedAttnAddedKVProcessor,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
+from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -425,6 +426,19 @@ def parse_args(input_args=None):
         action="store_true",
         required=False,
         help="Whether to use attention mask for the text encoder",
+    )
+    parser.add_argument(
+        "--validation_images",
+        required=False,
+        default=None,
+        nargs="+",
+        help="Optional set of images to use for validation. Used when the target pipeline takes an initial image as input such as when training image variation or superresolution.",
+    )
+    parser.add_argument(
+        "--class_labels_conditioning",
+        required=False,
+        default=None,
+        help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
     )
 
     if input_args is not None:
@@ -849,9 +863,9 @@ def main(args):
     if args.train_text_encoder:
         text_lora_attn_procs = {}
         for name, module in text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
                 text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_features, cross_attention_dim=None
+                    hidden_size=module.out_proj.out_features, cross_attention_dim=None
                 )
         text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
         temp_pipeline = DiffusionPipeline.from_pretrained(
@@ -1123,7 +1137,7 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
-                bsz = model_input.shape[0]
+                bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
@@ -1145,8 +1159,24 @@ def main(args):
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                     )
 
+                if unet.config.in_channels > channels:
+                    needed_additional_channels = unet.config.in_channels - channels
+                    additional_latents = randn_tensor(
+                        (bsz, needed_additional_channels, height, width),
+                        device=noisy_model_input.device,
+                        dtype=noisy_model_input.dtype,
+                    )
+                    noisy_model_input = torch.cat([additional_latents, noisy_model_input], dim=1)
+
+                if args.class_labels_conditioning == "timesteps":
+                    class_labels = timesteps
+                else:
+                    class_labels = None
+
                 # Predict the noise residual
-                model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
+                model_pred = unet(
+                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
+                ).sample
 
                 # if model predicts variance, throw away the prediction. we will only train on the
                 # simplified training objective. This means that all schedulers using the fine tuned
@@ -1250,9 +1280,18 @@ def main(args):
                     }
                 else:
                     pipeline_args = {"prompt": args.validation_prompt}
-                images = [
-                    pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)
-                ]
+
+                if args.validation_images is None:
+                    images = [
+                        pipeline(**pipeline_args, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
+                else:
+                    images = []
+                    for image in args.validation_images:
+                        image = Image.open(image)
+                        image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                        images.append(image)
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
