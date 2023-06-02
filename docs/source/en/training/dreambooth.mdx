@@ -544,6 +544,22 @@ For finegrained detail like faces, we find that lower learning rates work best.
 
 For stage II, we find that lower learning rates are also needed.
 
+### Stage II additional validation images
+
+The stage II validation requires images to upscale, we can download a downsized version of the training set:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog_downsized"
+snapshot_download(
+    "diffusers/dog-example-downsized",
+    local_dir=local_dir,
+    repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
 ### IF stage I LoRA Dreambooth
 This training configuration requires ~28 GB VRAM.
 
@@ -586,7 +602,7 @@ accelerate launch train_dreambooth_lora.py \
 export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="dreambooth_dog_upscale"
-export VALIDATION_IMAGES="image_1.png image_2.png image_3.png image_4.png"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
 
 python train_dreambooth_lora.py \
     --report_to wandb \
@@ -656,7 +672,7 @@ accelerate launch train_dreambooth.py \
 export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="dreambooth_dog_upscale"
-export VALIDATION_IMAGES="image_1.png image_2.png image_3.png image_4.png"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
 
 accelerate launch train_dreambooth.py \
   --report_to wandb \
