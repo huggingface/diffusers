@@ -2,10 +2,10 @@ from typing import Optional, Union, List
 import torch
 from torch import nn
 from torch.nn import functional as F
-from einops import rearrange
 import inspect
 import safetensors
 from accelerate.utils import set_module_tensor_to_device
+from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionPix2PixZeroPipeline, StableDiffusionPipeline
 
 
 class SVDiffModule(nn.Module):
@@ -39,9 +39,10 @@ class SVDiffModule(nn.Module):
         if self.weight_type is not None:
             if self.weight_type == "conv":
                 if not reverse:
-                    return rearrange(updated_weight, 'co cin h w -> co (cin h w)')
+                    shape = updated_weight.shape
+                    return torch.reshape(updated_weight, (shape[0], shape[1:].numel()))
                 else:
-                    return rearrange(updated_weight, 'co (cin h w) -> co cin h w', cin=original_weight.size(1), h=original_weight.size(2), w=original_weight.size(3))
+                    return torch.reshape(updated_weight, original_weight.shape)
             elif self.weight_type == "1d":
                 if not reverse:
                     return updated_weight.unsqueeze(0)
@@ -105,83 +106,28 @@ def slerp_tensor(val, low, high):
     return res.reshape(shape)
 
 
-if __name__ == '__main__':
-    import os
-    from transformers import CLIPTokenizer, CLIPTextModel
-    from diffusers import UNet2DConditionModel, StableDiffusionPipeline
-    # load pre-trained model
-    model_id = "CompVis/stable-diffusion-v1-4"
-    unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
-    text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-    tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
-    unet.requires_grad_(False)
-    text_encoder.requires_grad_(False)
-    # set spectral shifts 
-    unet, svdiff_modules = set_spectral_shifts(unet)
-    text_encoder, svdiff_modules_te = set_spectral_shifts(text_encoder)
-    # put spectral shifts into optimizer
-    params_to_optimize = []
-    for m in svdiff_modules.values():
-        for p in m.parameters():
-            params_to_optimize.append(p)
-    for m in svdiff_modules_te.values():
-        for p in m.parameters():
-            params_to_optimize.append(p)
-    total_params = sum(p.numel() for p in params_to_optimize)
-    print(f"{total_params * 1.e-6:.2f} M trainable params") # 0.28M
-    optimizer = torch.optim.AdamW(params_to_optimize, lr=1e-3)
-
-    # dummy forward
-    unet.train()
-    text_encoder.train()
-    for step in range(2):
-        bsz = 2
-        latents = torch.randn(bsz, 4, 32, 32)
-        noisy_latents = torch.randn_like(latents)
-        timesteps = torch.randint(0, 1000, (bsz,), device=latents.device)
-        timesteps = timesteps.long()
-        input_ids = tokenizer("", padding="max_length", truncation=True, max_length=tokenizer.model_max_length, return_tensors="pt").input_ids
-        input_ids = input_ids.expand(bsz, -1)
-        encoder_hidden_states = text_encoder(input_ids)[0]
-        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-        loss = torch.nn.functional.mse_loss(model_pred.float(), noisy_latents.float(), reduction="mean")
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-
-    # check!
-    origin = unet.conv_in.weight
-    module = svdiff_modules['conv_in.delta']
-    weight = unet.conv_in.parametrizations.weight.original
-    updated_weight = module.U @ torch.diag(F.relu(module.S + module.scale * module.delta)) @ module.Vh
-    updated_weight = module._reshape_weight_for_svd(updated_weight, weight, reverse=True)
-    print(torch.equal(updated_weight, origin)) # True
-    print(svdiff_modules["conv_in.delta"].delta) # not zero
-    print(svdiff_modules_te["text_model.embeddings.position_embedding.delta"].delta) # not zero
-
-    # save weights
-    ckpt_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "checkpoint-x")
-    os.makedirs(ckpt_dir, exist_ok=True)
-    state_dict = {}
-    for name, module in svdiff_modules.items():
-        state_dict[name] = module.delta
-    safetensors.torch.save_file(state_dict, os.path.join(ckpt_dir, "spectral_shifts.safetensors"))
-    state_dict = {}
-    for name, module in svdiff_modules_te.items():
-        state_dict[name] = module.delta
-    safetensors.torch.save_file(state_dict, os.path.join(ckpt_dir, "spectral_shifts_te.safetensors"))
-
-    # inference 
-    del unet, text_encoder, svdiff_modules, svdiff_modules_te
-    ckpt_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "checkpoint-x")
-    unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
-    text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-    unet, _ = set_spectral_shifts(unet, spectral_shifts_ckpt=os.path.join(ckpt_dir, "spectral_shifts.safetensors"))
-    text_encoder, _ = set_spectral_shifts(text_encoder, spectral_shifts_ckpt=os.path.join(ckpt_dir, "spectral_shifts_te.safetensors"))
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        unet=unet,
-        text_encoder=text_encoder,
+def ddim_invert(pipe, prompt=None, image=None, num_inference_steps=50, guidance_scale=1.0, **kwargs):
+    assert isinstance(pipe, StableDiffusionPipeline), f"{pipe.__class__.__name__} is not supported!"
+    # use only DDIMInversion part
+    pipe = StableDiffusionPix2PixZeroPipeline(
+        vae=pipe.vae, 
+        text_encoder=pipe.text_encoder, 
+        tokenizer=pipe.tokenizer,
+        unet=pipe.unet,
+        scheduler=DDIMScheduler.from_config(pipe.scheduler.config),
+        inverse_scheduler=DDIMInverseScheduler.from_config(pipe.scheduler.config),
+        feature_extractor=pipe.feature_extractor,
+        safety_checker=pipe.safety_checker,
+        caption_generator=None,
+        caption_processor=None,
     )
-    images = pipe("test", num_inference_steps=1).images
-
+    # in SVDiff, they use guidance scale=1 in ddim inversion
+    inv_latents = pipe.invert(
+        prompt=prompt, 
+        image=image, 
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        num_reg_steps=0, # disabled 
+        **kwargs
+    ).latents
+    return inv_latents

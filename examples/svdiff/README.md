@@ -138,8 +138,7 @@ import torch
 from transformers import CLIPTextModel
 from diffusers import UNet2DConditionModel, DDIMScheduler
 
-from modeling_svdiff import set_spectral_shifts
-from pipeline_stable_diffusion_ddim_inversion import StableDiffusionPipelineWithDDIMInversion
+from modeling_svdiff import set_spectral_shifts, ddim_invert
 
 pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
 spectral_shifts_ckpt_dir = "ckpt-dir-path"
@@ -167,7 +166,7 @@ pipe.to(device)
 image = Image.open(image).convert("RGB").resize((512, 512))
 # in SVDiff, they use guidance scale=1 in ddim inversion
 # They use target_prompt in DDIM inversion for better results. See below for comparison between source_prompt and target_prompt.
-inv_latents = pipe.invert(target_prompt, image=image, guidance_scale=1.0).latents
+inv_latents = ddim_invert(pipe, prompt=target_prompt, image=image, guidance_scale=1.0)
 
 # They use a small cfg scale in Single Image Editing 
 image = pipe(target_prompt, latents=inv_latents, guidance_scale=3, eta=0.5).images[0]
@@ -178,7 +177,7 @@ To use slerp to add more stochasticity,
 from modeling_svdiff import slerp_tensor
 
 # prev steps omitted
-inv_latents = pipe.invert(target_prompt, image=image, guidance_scale=1.0).latents
+inv_latents = ddim_invert(pipe, prompt=target_prompt, image=image, guidance_scale=1.0)
 noise_latents = pipe.prepare_latents(inv_latents.shape[0], inv_latents.shape[1], 512, 512, dtype=inv_latents.dtype, device=pipe.device, generator=torch.Generator("cuda").manual_seed(0))
 inv_latents =  slerp_tensor(0.5, inv_latents, noise_latents)
 image = pipe(target_prompt, latents=inv_latents).images[0]
