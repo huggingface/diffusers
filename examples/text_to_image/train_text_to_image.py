@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import dataclasses
 import logging
 import math
 import os
@@ -110,6 +111,18 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
     del pipeline
     torch.cuda.empty_cache()
+
+
+@dataclasses.dataclass
+class TrainingState:
+    global_step: int = 0
+
+    def load_state_dict(self, state_dict):
+        for k, v in state_dict.items():
+            setattr(self, k, v)
+
+    def state_dict(self):
+        return dataclasses.asdict(self)
 
 
 def parse_args():
@@ -407,6 +420,24 @@ def parse_args():
     return args
 
 
+def get_save_iteration(output_dir):
+    checkpoints_dir = os.path.join(output_dir, "checkpoints")
+
+    if not os.path.isdir(checkpoints_dir):
+        return 0
+
+    dirs = os.listdir(checkpoints_dir)
+    dirs = [d for d in dirs if d.startswith("checkpoint")]
+
+    save_iterations = [int(d.split("_")[1]) for d in dirs]
+    save_iterations.sort()
+
+    save_iteration = save_iterations[-1]
+    save_iteration += 1
+
+    return save_iteration
+
+
 def main():
     args = parse_args()
 
@@ -421,7 +452,14 @@ def main():
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    save_iteration = get_save_iteration(args.output_dir)
+
+    accelerator_project_config = ProjectConfiguration(
+        total_limit=args.checkpoints_total_limit,
+        automatic_checkpoint_naming=True,
+        project_dir=args.output_dir,
+        iteration=save_iteration,
+    )
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -497,6 +535,8 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
+
+    training_state = TrainingState()
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -737,6 +777,8 @@ def main():
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    accelerator.register_for_checkpointing(training_state)
+
     if args.use_ema:
         ema_unet.to(accelerator.device)
 
@@ -776,7 +818,6 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
-    global_step = 0
     first_epoch = 0
 
     # Potentially load in the weights and states from a previous save
@@ -785,9 +826,9 @@ def main():
             path = os.path.basename(args.resume_from_checkpoint)
         else:
             # Get the most recent checkpoint
-            dirs = os.listdir(args.output_dir)
+            dirs = os.listdir(os.path.join(args.output_dir, "checkpoints"))
             dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
+            dirs = sorted(dirs, key=lambda x: int(x.split("_")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
 
         if path is None:
@@ -797,15 +838,16 @@ def main():
             args.resume_from_checkpoint = None
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.output_dir, path))
-            global_step = int(path.split("-")[1])
+            accelerator.load_state(os.path.join(args.output_dir, "checkpoints", path))
 
-            resume_global_step = global_step * args.gradient_accumulation_steps
-            first_epoch = global_step // num_update_steps_per_epoch
+            resume_global_step = training_state.global_step * args.gradient_accumulation_steps
+            first_epoch = training_state.global_step // num_update_steps_per_epoch
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(
+        range(training_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process
+    )
     progress_bar.set_description("Steps")
 
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -892,20 +934,19 @@ def main():
                 if args.use_ema:
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
-                global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                training_state.global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=training_state.global_step)
                 train_loss = 0.0
 
-                if global_step % args.checkpointing_steps == 0:
+                if training_state.global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        accelerator.save_state()
+                        logger.info("Saved state")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
-            if global_step >= args.max_train_steps:
+            if training_state.global_step >= args.max_train_steps:
                 break
 
         if accelerator.is_main_process:
@@ -922,7 +963,7 @@ def main():
                     args,
                     accelerator,
                     weight_dtype,
-                    global_step,
+                    training_state.global_step,
                 )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
