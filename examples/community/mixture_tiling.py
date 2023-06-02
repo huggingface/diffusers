@@ -218,11 +218,9 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             raise ValueError(f"`seed_tiles_mode` has to be a string or list of lists but is {type(prompt)}")
         if isinstance(seed_tiles_mode, str):
             seed_tiles_mode = [[seed_tiles_mode for _ in range(len(row))] for row in prompt]
-        if any(
-            mode not in (modes := [mode.value for mode in self.SeedTilesMode])
-            for row in seed_tiles_mode
-            for mode in row
-        ):
+
+        modes = [mode.value for mode in self.SeedTilesMode]
+        if any(mode not in modes for row in seed_tiles_mode for mode in row):
             raise ValueError(f"Seed tiles mode must be one of {modes}")
         if seed_reroll_regions is None:
             seed_reroll_regions = []
