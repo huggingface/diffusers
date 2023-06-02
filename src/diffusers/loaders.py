@@ -917,11 +917,11 @@ class LoraLoaderMixin:
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
-            logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
+                logger.info(f"Loading {self.text_encoder_name}.")
                 attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
                 self._modify_text_encoder(attn_procs_text_encoder)
 
