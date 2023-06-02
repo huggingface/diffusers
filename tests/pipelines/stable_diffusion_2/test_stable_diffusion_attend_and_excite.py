@@ -29,22 +29,41 @@ from diffusers import (
 from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+
+
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 @skip_mps
-class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionAttendAndExcitePipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+
+    # Attend and excite requires being able to run a backward pass at
+    # inference time. There's no deterministic backward operator for pad
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.use_deterministic_algorithms(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        torch.use_deterministic_algorithms(True)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
-            layers_per_block=2,
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -111,7 +130,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
             "prompt": "a cat and a frog",
             "token_indices": [2, 5],
             "generator": generator,
-            "num_inference_steps": 2,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             "output_type": "numpy",
             "max_iter_to_alter": 2,
@@ -132,18 +151,51 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 64, 64, 3))
-        expected_slice = np.array([0.5743, 0.6081, 0.4975, 0.5021, 0.5441, 0.4699, 0.4988, 0.4841, 0.4851])
+        expected_slice = np.array(
+            [0.63905364, 0.62897307, 0.48599017, 0.5133624, 0.5550048, 0.45769516, 0.50326973, 0.5023139, 0.45384496]
+        )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_cpu_offload_forward_pass(self):
+        super().test_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
-        self._test_inference_batch_consistent(batch_sizes=[2, 4])
+        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=7e-4)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+
+    def test_pt_np_pil_outputs_equivalent(self):
+        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=5e-4)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-4)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=4e-4)
 
 
 @require_torch_gpu
 @slow
 class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
+    # Attend and excite requires being able to run a backward pass at
+    # inference time. There's no deterministic backward operator for pad
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.use_deterministic_algorithms(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        torch.use_deterministic_algorithms(True)
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

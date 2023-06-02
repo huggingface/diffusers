@@ -26,6 +26,7 @@ from .import_utils import (
     is_opencv_available,
     is_torch_available,
     is_torch_version,
+    is_torchsde_available,
 )
 from .logging import get_logger
 
@@ -216,6 +217,13 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
+def require_torchsde(test_case):
+    """
+    Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
+    """
+    return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+
+
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
         # local_path = "/home/patrick_huggingface_co/"
@@ -277,6 +285,16 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def preprocess_image(image: PIL.Image, batch_size: int):
+    w, h = image.size
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = np.array(image).astype(np.float32) / 255.0
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
+    image = torch.from_numpy(image)
+    return 2.0 * image - 1.0
 
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:

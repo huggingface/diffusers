@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -22,7 +23,8 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...loaders import TextualInversionLoaderMixin
+from ...image_processor import VaeImageProcessor
+from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -41,17 +43,17 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)
 
 
-def preprocess_image(image):
+def preprocess_image(image, batch_size):
     w, h = image.size
     w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
-    image = image[None].transpose(0, 3, 1, 2)
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask, scale_factor=8):
+def preprocess_mask(mask, batch_size, scale_factor=8):
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
@@ -59,7 +61,7 @@ def preprocess_mask(mask, scale_factor=8):
         mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
-        mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+        mask = np.vstack([mask[None]] * batch_size)
         mask = 1 - mask  # repaint white, keep black
         mask = torch.from_numpy(mask)
         return mask
@@ -82,12 +84,22 @@ def preprocess_mask(mask, scale_factor=8):
         return mask
 
 
-class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionInpaintPipelineLegacy(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    In addition the pipeline inherits the following loading methods:
+        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+        - *Ckpt*: [`loaders.FromCkptMixin.from_ckpt`]
+
+    as well as the following saving methods:
+        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -199,6 +211,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
@@ -366,7 +379,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -424,19 +437,28 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        else:
-            has_nsfw_concept = None
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -507,18 +529,18 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+    def prepare_latents(self, image, timestep, num_images_per_prompt, dtype, device, generator):
         image = image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = self.vae.config.scaling_factor * init_latents
 
         # Expand init_latents for batch_size and num_images_per_prompt
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
@@ -649,9 +671,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
 
         # 4. Preprocess image and mask
         if not isinstance(image, torch.FloatTensor):
-            image = preprocess_image(image)
+            image = preprocess_image(image, batch_size)
 
-        mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        mask_image = preprocess_mask(mask_image, batch_size, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -661,12 +683,12 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig, noise = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            image, latent_timestep, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
 
         # 7. Prepare mask latent
         mask = mask_image.to(device=self.device, dtype=latents.dtype)
-        mask = torch.cat([mask] * batch_size * num_images_per_prompt)
+        mask = torch.cat([mask] * num_images_per_prompt)
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -680,7 +702,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds, return_dict=False)[
+                    0
+                ]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -688,7 +712,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 # masking
                 if add_predicted_noise:
                     init_latents_proper = self.scheduler.add_noise(
@@ -708,15 +732,19 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLo
         # use original latents corresponding to unmasked portions of the image
         latents = (init_latents_orig * mask) + (latents * (1 - mask))
 
-        # 10. Post-processing
-        image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
 
-        # 11. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        # 12. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

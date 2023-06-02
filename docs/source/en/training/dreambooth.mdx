@@ -50,6 +50,22 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+Finally, download a [few images of a dog](https://huggingface.co/datasets/diffusers/dog-example) to DreamBooth with:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir,
+    repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
+
 ## Finetuning
 
 <Tip warning={true}>
@@ -60,11 +76,13 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 
 <frameworkcontent>
 <pt>
-Let's try DreamBooth with a [few images of a dog](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ); download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+Set the `INSTANCE_DIR` environment variable to the path of the directory containing the dog images.
+
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`] argument. The `instance_prompt` argument is a text prompt that contains a unique identifier, such as `sks`, and the class the image belongs to, which in this example is `a photo of a sks dog`.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export OUTPUT_DIR="path_to_saved_model"
 ```
 
@@ -82,7 +100,8 @@ accelerate launch train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=400
+  --max_train_steps=400 \
+  --push_to_hub
 ```
 </pt>
 <jax>
@@ -94,11 +113,13 @@ Before running the script, make sure you have the requirements installed:
 pip install -U -r requirements.txt
 ```
 
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`] argument. The `instance_prompt` argument is a text prompt that contains a unique identifier, such as `sks`, and the class the image belongs to, which in this example is `a photo of a sks dog`.
+
 Now you can launch the training script with the following command:
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export OUTPUT_DIR="path-to-save-model"
 
 python train_dreambooth_flax.py \
@@ -124,7 +145,7 @@ The authors recommend generating `num_epochs * num_samples` images for prior pre
 <pt>
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -143,13 +164,14 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 </pt>
 <jax>
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -186,7 +208,7 @@ Pass the `--train_text_encoder` argument to the training script to enable finetu
 <pt>
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -207,13 +229,14 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 </pt>
 <jax>
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -349,7 +372,7 @@ Then pass the `--use_8bit_adam` option to the training script:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -369,7 +392,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### 12GB GPU
@@ -378,7 +402,7 @@ To run DreamBooth on a 12GB GPU, you'll need to enable gradient checkpointing, t
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -400,7 +424,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### 8 GB GPU
@@ -425,7 +450,7 @@ Launch training with the following command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -446,7 +471,8 @@ accelerate launch train_dreambooth.py \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
   --max_train_steps=800 \
-  --mixed_precision=fp16
+  --mixed_precision=fp16 \
+  --push_to_hub
 ```
 
 ## Inference
@@ -470,3 +496,67 @@ image.save("dog-bucket.png")
 ```
 
 You may also run inference from any of the [saved training checkpoints](#inference-from-a-saved-checkpoint).
+
+## IF
+
+You can use the lora and full dreambooth scripts to also train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0). A few alternative cli flags are needed due to the model size, the expected input resolution, and the text encoder conventions.
+
+### LoRA Dreambooth
+This training configuration requires ~28 GB VRAM.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_lora"
+
+accelerate launch train_dreambooth_lora.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --scale_lr \
+  --max_train_steps=1200 \
+  --validation_prompt="a sks dog" \
+  --validation_epochs=25 \
+  --checkpointing_steps=100 \
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --tokenizer_max_length=77 \ # IF expects an override of the max token length
+  --text_encoder_use_attention_mask # IF expects attention mask for text embeddings
+```
+
+### Full Dreambooth
+Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+Using 8bit adam and the rest of the following config, the model can be trained in ~48 GB VRAM.
+
+For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_if"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-7 \
+  --max_train_steps=150 \
+  --validation_prompt "a photo of sks dog" \
+  --validation_steps 25 \
+  --text_encoder_use_attention_mask \ # IF expects attention mask for text embeddings
+  --tokenizer_max_length 77 \ # IF expects an override of the max token length
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --use_8bit_adam \ # 
+  --set_grads_to_none \
+  --skip_save_text_encoder # do not save the full T5 text encoder with the model
+```

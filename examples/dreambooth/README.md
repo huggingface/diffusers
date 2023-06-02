@@ -43,17 +43,32 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+
 ### Dog toy example
 
-Now let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
+Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
 
-And launch the training using
+Let's first download it locally:
+
+```python
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir, repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+And launch the training using:
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
@@ -67,7 +82,8 @@ accelerate launch train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=400
+  --max_train_steps=400 \
+  --push_to_hub
 ```
 
 ### Training with prior-preservation loss
@@ -77,7 +93,7 @@ According to the paper, it's recommended to generate `num_epochs * num_samples` 
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -96,7 +112,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -108,7 +125,7 @@ To install `bitandbytes` please refer to this [readme](https://github.com/TimDet
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -128,7 +145,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -141,7 +159,7 @@ It is possible to run dreambooth on a 12GB GPU by using the following optimizati
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -163,7 +181,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -185,7 +204,7 @@ does not seem to be compatible with DeepSpeed at the moment.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -205,7 +224,8 @@ accelerate launch --mixed_precision="fp16" train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### Fine-tune text encoder with the UNet.
@@ -217,7 +237,7 @@ ___Note: Training text encoder requires more memory, with this option the traini
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -238,7 +258,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### Using DreamBooth for pipelines other than Stable Diffusion
@@ -300,7 +321,7 @@ Now, you can launch the training. Here we will use [Stable Diffusion 1-5](https:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 ```
 
@@ -342,6 +363,12 @@ The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora_dr
 The training results are summarized [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
 
+Optionally, we can also train additional LoRA layers for the text encoder. Specify the `--train_text_encoder` argument above for that. If you're interested to know more about how we
+enable this support, check out this [PR](https://github.com/huggingface/diffusers/pull/2918). 
+
+With the default hyperparameters from the above, the training seems to go in a positive direction. Check out [this panel](https://wandb.ai/sayakpaul/dreambooth-lora/reports/test-23-04-17-17-00-13---Vmlldzo0MDkwNjMy). The trained LoRA layers are available [here](https://huggingface.co/sayakpaul/dreambooth).
+
+
 ### Inference
 
 After training, LoRA weights can be loaded very easily into the original pipeline. First, you need to 
@@ -368,6 +395,50 @@ Finally, we can run the model in inference.
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
 ```
 
+If you are loading the LoRA parameters from the Hub and if the Hub repository has
+a `base_model` tag (such as [this](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example/blob/main/README.md?code=true#L4)), then
+you can do: 
+
+```py 
+from huggingface_hub.repocard import RepoCard
+
+lora_model_id = "patrickvonplaten/lora_dreambooth_dog_example"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+...
+```
+
+If you used `--train_text_encoder` during training, then use `pipe.load_lora_weights()` to load the LoRA
+weights. For example:
+
+```python
+from huggingface_hub.repocard import RepoCard
+from diffusers import StableDiffusionPipeline
+import torch 
+
+lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+pipe.load_lora_weights(lora_model_id)
+image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+```
+
+Note that the use of [`LoraLoaderMixin.load_lora_weights`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights) is preferred to [`UNet2DConditionLoadersMixin.load_attn_procs`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs) for loading LoRA parameters. This is because
+`LoraLoaderMixin.load_lora_weights` can handle the following situations:
+
+* LoRA parameters that don't have separate identifiers for the UNet and the text encoder (such as [`"patrickvonplaten/lora_dreambooth_dog_example"`](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example)). So, you can just do:
+
+  ```py 
+  pipe.load_lora_weights(lora_model_path)
+  ```
+
+* LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
+
 ## Training with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
@@ -386,7 +457,7 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 
 python train_dreambooth_flax.py \
@@ -405,7 +476,7 @@ python train_dreambooth_flax.py \
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -429,7 +500,7 @@ python train_dreambooth_flax.py \
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -462,3 +533,67 @@ More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_
 
 ### Experimental results
 You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 
+
+## IF
+
+You can use the lora and full dreambooth scripts to also train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0). A few alternative cli flags are needed due to the model size, the expected input resolution, and the text encoder conventions.
+
+### LoRA Dreambooth
+This training configuration requires ~28 GB VRAM.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_lora"
+
+accelerate launch train_dreambooth_lora.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --scale_lr \
+  --max_train_steps=1200 \
+  --validation_prompt="a sks dog" \
+  --validation_epochs=25 \
+  --checkpointing_steps=100 \
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --tokenizer_max_length=77 \ # IF expects an override of the max token length
+  --text_encoder_use_attention_mask # IF expects attention mask for text embeddings
+```
+
+### Full Dreambooth
+Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+Using 8bit adam and the rest of the following config, the model can be trained in ~48 GB VRAM.
+
+For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_if"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=64 \ # The input resolution of the IF unet is 64x64
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-7 \
+  --max_train_steps=150 \
+  --validation_prompt "a photo of sks dog" \
+  --validation_steps 25 \
+  --text_encoder_use_attention_mask \ # IF expects attention mask for text embeddings
+  --tokenizer_max_length 77 \ # IF expects an override of the max token length
+  --pre_compute_text_embeddings \ # Pre compute text embeddings to that T5 doesn't have to be kept in memory
+  --use_8bit_adam \ # 
+  --set_grads_to_none \
+  --skip_save_text_encoder # do not save the full T5 text encoder with the model
+```

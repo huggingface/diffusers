@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, randn_tensor
+from ..utils import BaseOutput, is_torch_version, randn_tensor
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
@@ -117,11 +117,20 @@ class Encoder(nn.Module):
                 return custom_forward
 
             # down
-            for down_block in self.down_blocks:
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
-
-            # middle
-            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            if is_torch_version(">=", "1.11.0"):
+                for down_block in self.down_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(down_block), sample, use_reentrant=False
+                    )
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, use_reentrant=False
+                )
+            else:
+                for down_block in self.down_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
 
         else:
             # down
@@ -212,6 +221,7 @@ class Decoder(nn.Module):
         sample = z
         sample = self.conv_in(sample)
 
+        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         if self.training and self.gradient_checkpointing:
 
             def create_custom_forward(module):
@@ -220,15 +230,30 @@ class Decoder(nn.Module):
 
                 return custom_forward
 
-            # middle
-            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            if is_torch_version(">=", "1.11.0"):
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, use_reentrant=False
+                )
+                sample = sample.to(upscale_dtype)
 
-            # up
-            for up_block in self.up_blocks:
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, use_reentrant=False
+                    )
+            else:
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+                sample = sample.to(upscale_dtype)
+
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
         else:
             # middle
             sample = self.mid_block(sample)
+            sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:

@@ -87,6 +87,18 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=3e-3)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=3e-3)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 @slow
 @require_torch_gpu

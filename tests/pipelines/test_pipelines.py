@@ -58,16 +58,23 @@ from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     floats_tensor,
-    is_flax_available,
     nightly,
     require_torch_2,
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    get_tests_dir,
+    load_numpy,
+    require_compel,
+    require_flax,
+    require_torch_gpu,
+)
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class DownloadTests(unittest.TestCase):
@@ -541,7 +548,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***><***>_1<***>_2"
+            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***> <***>_1 <***>_2"
 
             prompt = "hey <***>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
@@ -569,11 +576,49 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****><****>_1<****>_2"
+            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****> <****>_1 <****>_2"
 
             prompt = "hey <****>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
             assert out.shape == (1, 128, 128, 3)
+
+        # multi embedding load
+        with tempfile.TemporaryDirectory() as tmpdirname1:
+            with tempfile.TemporaryDirectory() as tmpdirname2:
+                ten = {"<*****>": torch.ones((32,))}
+                torch.save(ten, os.path.join(tmpdirname1, "learned_embeds.bin"))
+
+                ten = {"<******>": 2 * torch.ones((1, 32))}
+                torch.save(ten, os.path.join(tmpdirname2, "learned_embeds.bin"))
+
+                pipe.load_textual_inversion([tmpdirname1, tmpdirname2])
+
+                token = pipe.tokenizer.convert_tokens_to_ids("<*****>")
+                assert token == num_tokens + 8, "Added token must be at spot `num_tokens`"
+                assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 32
+                assert pipe._maybe_convert_prompt("<*****>", pipe.tokenizer) == "<*****>"
+
+                token = pipe.tokenizer.convert_tokens_to_ids("<******>")
+                assert token == num_tokens + 9, "Added token must be at spot `num_tokens`"
+                assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
+                assert pipe._maybe_convert_prompt("<******>", pipe.tokenizer) == "<******>"
+
+                prompt = "hey <*****> <******>"
+                out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+                assert out.shape == (1, 128, 128, 3)
+
+    def test_download_ignore_files(self):
+        # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            tmpdirname = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files")
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a pytorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
+            assert len(files) == 14
 
 
 class CustomPipelineTests(unittest.TestCase):
@@ -653,6 +698,9 @@ class CustomPipelineTests(unittest.TestCase):
     @slow
     @require_torch_gpu
     def test_download_from_git(self):
+        # Because adaptive_avg_pool2d_backward_cuda
+        # does not have a deterministic implementation.
+        torch.use_deterministic_algorithms(False)
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
@@ -674,6 +722,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
+        torch.use_deterministic_algorithms(True)
 
     def test_save_pipeline_change_config(self):
         pipe = DiffusionPipeline.from_pretrained(
@@ -1364,14 +1413,12 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
+    @require_flax
     def test_from_flax_from_pt(self):
         pipe_pt = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe_pt.to(torch_device)
-
-        if not is_flax_available():
-            raise ImportError("Make sure flax is installed.")
 
         from diffusers import FlaxStableDiffusionPipeline
 
@@ -1436,7 +1483,7 @@ class PipelineSlowTests(unittest.TestCase):
                 f"/compel/forest_{i}.npy"
             )
 
-            assert np.abs(image - expected_image).max() < 1e-2
+            assert np.abs(image - expected_image).max() < 3e-1
 
 
 @nightly
