@@ -55,6 +55,7 @@ from diffusers.models.attention_processor import (
     AttnAddedKVProcessor2_0,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     SlicedAttnAddedKVProcessor,
 )
 from diffusers.optimization import get_scheduler
@@ -831,7 +832,9 @@ def main(args):
         if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
             lora_attn_processor_class = LoRAAttnAddedKVProcessor
         else:
-            lora_attn_processor_class = LoRAAttnProcessor
+            lora_attn_processor_class = (
+                LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+            )
 
         unet_lora_attn_procs[name] = lora_attn_processor_class(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim

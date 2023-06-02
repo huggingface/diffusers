@@ -166,7 +166,8 @@ class Attention(nn.Module):
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ):
         is_lora = hasattr(self, "processor") and isinstance(
-            self.processor, (LoRAAttnProcessor, LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor)
+            self.processor,
+            (LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor),
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)
@@ -202,11 +203,9 @@ class Attention(nn.Module):
                 )
             elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
                 warnings.warn(
-                    "You have specified using flash attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "We will default to PyTorch's native efficient flash attention implementation (`F.scaled_dot_product_attention`) "
-                    "introduced in PyTorch 2.0. In case you are using LoRA or Custom Diffusion, we will fall "
-                    "back to their respective attention processors i.e., we will NOT use the PyTorch 2.0 "
-                    "native efficient flash attention."
+                    "You have specified using efficient attention using xFormers but you have PyTorch 2.0 already installed. "
+                    "We will default to PyTorch's native efficient attention implementation (`F.scaled_dot_product_attention`) "
+                    "introduced in PyTorch 2.0."
                 )
             else:
                 try:
@@ -220,6 +219,8 @@ class Attention(nn.Module):
                     raise e
 
             if is_lora:
+                # TODO (sayakpaul): should we throw a warning if someone wants to use the xformers
+                # variant when using PT 2.0 now that we have LoRAAttnProcessor2_0?
                 processor = LoRAXFormersAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
@@ -252,7 +253,10 @@ class Attention(nn.Module):
                 processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
             if is_lora:
-                processor = LoRAAttnProcessor(
+                attn_processor_class = (
+                    LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                )
+                processor = attn_processor_class(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
                     rank=self.processor.rank,

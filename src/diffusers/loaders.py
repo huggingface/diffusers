@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
@@ -27,6 +28,7 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
     XFormersAttnProcessor,
@@ -284,7 +286,9 @@ class UNet2DConditionLoadersMixin:
                     if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
                         attn_processor_class = LoRAXFormersAttnProcessor
                     else:
-                        attn_processor_class = LoRAAttnProcessor
+                        attn_processor_class = (
+                            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                        )
 
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank

@@ -18,6 +18,7 @@ import unittest
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
@@ -27,6 +28,7 @@ from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
@@ -45,16 +47,26 @@ def create_unet_lora_layers(unet: nn.Module):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_processor_class = (
+            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+        )
+        lora_attn_procs[name] = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
     unet_lora_layers = AttnProcsLayers(lora_attn_procs)
     return lora_attn_procs, unet_lora_layers
 
 
 def create_text_encoder_lora_layers(text_encoder: nn.Module):
     text_lora_attn_procs = {}
+    lora_attn_processor_class = (
+        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+    )
     for name, module in text_encoder.named_modules():
         if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-            text_lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=module.out_features, cross_attention_dim=None)
+            text_lora_attn_procs[name] = lora_attn_processor_class(
+                hidden_size=module.out_features, cross_attention_dim=None
+            )
     text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
     return text_encoder_lora_layers
 
@@ -249,7 +261,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    self.assertIsInstance(module.processor, LoRAAttnProcessor)
+                    attn_proc_class = (
+                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                    )
+                    self.assertIsInstance(module.processor, attn_proc_class)
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_lora_unet_attn_processors_with_xformers(self):
