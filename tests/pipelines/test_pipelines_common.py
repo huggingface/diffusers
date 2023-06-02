@@ -650,7 +650,7 @@ class PipelineTesterMixin:
                     if key in self.batch_params:
                         inputs[key] = batch_size * [inputs[key]]
 
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
 
