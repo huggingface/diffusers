@@ -1605,13 +1605,12 @@ pipe_images = mixing_pipeline(
 This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
     
 ```python
-from diffusers import LMSDiscreteScheduler
-from mixdiff import StableDiffusionTilingPipeline
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
 
 # Creater scheduler and model (similar to StableDiffusionPipeline)
 scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
-pipeline = StableDiffusionTilingPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
-pipeline.to("cuda:0")
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler, custom_pipeline="mixture_tiling")
+pipeline.to("cuda")
 
 # Mixture of Diffusers generation
 image = pipeline(
@@ -1629,3 +1628,5 @@ image = pipeline(
     num_inference_steps=50,
 )["images"][0]
 ```
+![mixture_tiling_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/mixture_tiling.png)
+
