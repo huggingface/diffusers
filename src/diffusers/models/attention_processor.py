@@ -201,12 +201,6 @@ class Attention(nn.Module):
                     "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is"
                     " only available for GPU "
                 )
-            elif hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
-                warnings.warn(
-                    "You have specified using efficient attention using xFormers but you have PyTorch 2.0 already installed. "
-                    "We will default to PyTorch's native efficient attention implementation (`F.scaled_dot_product_attention`) "
-                    "introduced in PyTorch 2.0."
-                )
             else:
                 try:
                     # Make sure we can run the memory efficient attention
