@@ -48,6 +48,7 @@ else:
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
+        AudioLDMControlNetPipeline,
     )
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
