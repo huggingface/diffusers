@@ -954,6 +954,15 @@ class LoraLoaderMixin:
             return self._text_encoder_lora_attn_procs
         return
 
+    def _remove_text_encoder_monkey_patch(self):
+        for name, _ in self.text_encoder.named_modules():
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+                module = self.text_encoder.get_submodule(name)
+                if hasattr(module, "old_forward"):
+                    # restore original `forward` to remove monkey-patch
+                    module.forward = module.old_forward
+                    delattr(module, "old_forward")
+
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
@@ -962,6 +971,10 @@ class LoraLoaderMixin:
             attn_processors: Dict[str, `LoRAAttnProcessor`]:
                 A dictionary mapping the module names and their corresponding [`~LoRAAttnProcessor`].
         """
+
+        # First, remove any monkey-patch that might have been applied before
+        self._remove_text_encoder_monkey_patch()
+
         # Loop over the original attention modules.
         for name, _ in self.text_encoder.named_modules():
             if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
@@ -971,7 +984,9 @@ class LoraLoaderMixin:
                 # this forward pass.
                 attn_processor_name = ".".join(name.split(".")[:-1])
                 lora_layer = getattr(attn_processors[attn_processor_name], self._get_lora_layer_attribute(name))
-                old_forward = module.forward
+
+                # save old_forward to module that can be used to remove monkey-patch
+                old_forward = module.old_forward = module.forward
 
                 # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
                 # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
