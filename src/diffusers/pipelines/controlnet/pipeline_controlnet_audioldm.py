@@ -46,7 +46,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # !pip install transformers accelerate
+        >>> # !pip install transformers accelerate pretty-midi
         >>> from diffusers import AudioLDMControlNetPipeline, ControlNetModel
         >>> from pretty_midi import PrettyMIDI
         >>> import torch
@@ -502,6 +502,7 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         midi: Union[PrettyMIDI, List[PrettyMIDI]] = None,
+        piano_roll: Optional[torch.FloatTensor] = None,
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 2.5,
@@ -654,18 +655,19 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare piano roll
-        piano_roll = self.prepare_piano_roll(
-            midi=midi,
-            audio_length_in_s=audio_length_in_s,
-            batch_size=batch_size * num_waveforms_per_prompt,
-            num_waveforms_per_prompt=num_waveforms_per_prompt,
-            device=device,
-            dtype=self.controlnet.dtype,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            guess_mode=guess_mode,
-            include_drums=include_drums,
-            fix_len=fix_len,
-        )
+        if not piano_roll:
+            piano_roll = self.prepare_piano_roll(
+                midi=midi,
+                audio_length_in_s=audio_length_in_s,
+                batch_size=batch_size * num_waveforms_per_prompt,
+                num_waveforms_per_prompt=num_waveforms_per_prompt,
+                device=device,
+                dtype=self.controlnet.dtype,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
+                include_drums=include_drums,
+                fix_len=fix_len,
+            )
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
