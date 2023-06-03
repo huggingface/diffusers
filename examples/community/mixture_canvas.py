@@ -36,54 +36,6 @@ class RerollRegion(CanvasRegion):
 
     reroll_mode: RerollModes = RerollModes.RESET.value
 
-
-@dataclass
-class Text2ImageRegion(DiffusionRegion):
-    """Class defining a region where a text guided diffusion process is acting"""
-
-    prompt: str = ""  # Text prompt guiding the diffuser in this region
-    guidance_scale: float = 7.5  # Guidance scale of the diffuser in this region. If None, randomize
-    mask_type: MaskModes = MaskModes.GAUSSIAN.value  # Kind of weight mask applied to this region
-    mask_weight: float = 1.0  # Global weights multiplier of the mask
-    tokenized_prompt = None  # Tokenized prompt
-    encoded_prompt = None  # Encoded prompt
-
-    def __post_init__(self):
-        super().__post_init__()
-        # Mask weight cannot be negative
-        if self.mask_weight < 0:
-            raise ValueError(
-                f"A Text2ImageRegion must be defined with non-negative mask weight, found {self.mask_weight}"
-            )
-        # Mask type must be an actual known mask
-        if self.mask_type not in [e.value for e in MaskModes]:
-            raise ValueError(
-                f"A Text2ImageRegion was defined with mask {self.mask_type}, which is not an accepted mask ({[e.value for e in MaskModes]})"
-            )
-        # Randomize arguments if given as None
-        if self.guidance_scale is None:
-            self.guidance_scale = np.random.randint(5, 30)
-        # Clean prompt
-        self.prompt = re.sub(" +", " ", self.prompt).replace("\n", " ")
-
-    def tokenize_prompt(self, tokenizer):
-        """Tokenizes the prompt for this diffusion region using a given tokenizer"""
-        self.tokenized_prompt = tokenizer(
-            self.prompt,
-            padding="max_length",
-            max_length=tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-
-    def encode_prompt(self, text_encoder, device):
-        """Encodes the previously tokenized prompt for this diffusion region using a given encoder"""
-        assert self.tokenized_prompt is not None, ValueError(
-            "Prompt in diffusion region must be tokenized before encoding"
-        )
-        self.encoded_prompt = text_encoder(self.tokenized_prompt.input_ids.to(device))[0]
-
-
 @dataclass
 class MaskWeightsBuilder:
     """Auxiliary class to compute a tensor of weights for a given diffusion region"""
