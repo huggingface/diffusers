@@ -1,13 +1,12 @@
 import re
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Union
 
 import numpy as np
 import torch
 from numpy import exp, pi, sqrt
-from torchvision.transforms.functional import resize
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -15,83 +14,19 @@ from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-
-
-class MaskModes(Enum):
-    """Modes in which the influence of diffuser is masked"""
-
-    CONSTANT = "constant"
-    GAUSSIAN = "gaussian"
-    QUARTIC = "quartic"  # See https://en.wikipedia.org/wiki/Kernel_(statistics)
-
+from diffusers.pipelines.pipeline_utils import (
+    CanvasRegion,
+    DiffusionRegion,
+    MaskModes,
+    Text2ImageRegion,
+    Image2ImageRegion,
+)
 
 class RerollModes(Enum):
     """Modes in which the reroll regions operate"""
 
     RESET = "reset"  # Completely reset the random noise in the region
     EPSILON = "epsilon"  # Alter slightly the latents in the region
-
-
-@dataclass
-class CanvasRegion:
-    """Class defining a rectangular region in the canvas"""
-
-    row_init: int  # Region starting row in pixel space (included)
-    row_end: int  # Region end row in pixel space (not included)
-    col_init: int  # Region starting column in pixel space (included)
-    col_end: int  # Region end column in pixel space (not included)
-    region_seed: int = None  # Seed for random operations in this region
-    noise_eps: float = 0.0  # Deviation of a zero-mean gaussian noise to be applied over the latents in this region. Useful for slightly "rerolling" latents
-
-    def __post_init__(self):
-        # Initialize arguments if not specified
-        if self.region_seed is None:
-            self.region_seed = np.random.randint(9999999999)
-        # Check coordinates are non-negative
-        for coord in [self.row_init, self.row_end, self.col_init, self.col_end]:
-            if coord < 0:
-                raise ValueError(
-                    f"A CanvasRegion must be defined with non-negative indices, found ({self.row_init}, {self.row_end}, {self.col_init}, {self.col_end})"
-                )
-        # Check coordinates are divisible by 8, else we end up with nasty rounding error when mapping to latent space
-        for coord in [self.row_init, self.row_end, self.col_init, self.col_end]:
-            if coord // 8 != coord / 8:
-                raise ValueError(
-                    f"A CanvasRegion must be defined with locations divisible by 8, found ({self.row_init}-{self.row_end}, {self.col_init}-{self.col_end})"
-                )
-        # Check noise eps is non-negative
-        if self.noise_eps < 0:
-            raise ValueError(f"A CanvasRegion must be defined noises eps non-negative, found {self.noise_eps}")
-        # Compute coordinates for this region in latent space
-        self.latent_row_init = self.row_init // 8
-        self.latent_row_end = self.row_end // 8
-        self.latent_col_init = self.col_init // 8
-        self.latent_col_end = self.col_end // 8
-
-    @property
-    def width(self):
-        return self.col_end - self.col_init
-
-    @property
-    def height(self):
-        return self.row_end - self.row_init
-
-    def get_region_generator(self, device="cpu"):
-        """Creates a torch.Generator based on the random seed of this region"""
-        # Initialize region generator
-        return torch.Generator(device).manual_seed(self.region_seed)
-
-    @property
-    def __dict__(self):
-        return asdict(self)
-
-
-@dataclass
-class DiffusionRegion(CanvasRegion):
-    """Abstract class defining a region where some class of diffusion process is acting"""
-
-    pass
-
 
 @dataclass
 class RerollRegion(CanvasRegion):
@@ -145,44 +80,6 @@ class Text2ImageRegion(DiffusionRegion):
             "Prompt in diffusion region must be tokenized before encoding"
         )
         self.encoded_prompt = text_encoder(self.tokenized_prompt.input_ids.to(device))[0]
-
-
-@dataclass
-class Image2ImageRegion(DiffusionRegion):
-    """Class defining a region where an image guided diffusion process is acting"""
-
-    reference_image: torch.FloatTensor = None
-    strength: float = 0.8  # Strength of the image
-
-    def __post_init__(self):
-        super().__post_init__()
-        if self.reference_image is None:
-            raise ValueError("Must provide a reference image when creating an Image2ImageRegion")
-        if self.strength < 0 or self.strength > 1:
-            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {self.strength}")
-        # Rescale image to region shape
-        self.reference_image = resize(self.reference_image, size=[self.height, self.width])
-
-    def encode_reference_image(self, encoder, device, generator, cpu_vae=False):
-        """Encodes the reference image for this Image2Image region into the latent space"""
-        # Place encoder in CPU or not following the parameter cpu_vae
-        if cpu_vae:
-            # Note here we use mean instead of sample, to avoid moving also generator to CPU, which is troublesome
-            self.reference_latents = encoder.cpu().encode(self.reference_image).latent_dist.mean.to(device)
-        else:
-            self.reference_latents = encoder.encode(self.reference_image.to(device)).latent_dist.sample(
-                generator=generator
-            )
-        self.reference_latents = 0.18215 * self.reference_latents
-
-    @property
-    def __dict__(self):
-        # This class requires special casting to dict because of the reference_image tensor. Otherwise it cannot be casted to JSON
-
-        # Get all basic fields from parent class
-        super_fields = {key: getattr(self, key) for key in DiffusionRegion.__dataclass_fields__.keys()}
-        # Pack other fields
-        return {**super_fields, "reference_image": self.reference_image.cpu().tolist(), "strength": self.strength}
 
 
 @dataclass
