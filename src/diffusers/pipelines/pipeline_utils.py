@@ -1700,7 +1700,8 @@ def preprocess_image(image):
 
     """Preprocess an input image
 
-    Same as https://github.com/huggingface/diffusers/blob/1138d63b519e37f0ce04e027b9f4a3261d27c628/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L44
+    Same as
+    https://github.com/huggingface/diffusers/blob/1138d63b519e37f0ce04e027b9f4a3261d27c628/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L44
     """
     w, h = image.size
     w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32

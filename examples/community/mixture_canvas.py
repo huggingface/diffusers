@@ -1,4 +1,3 @@
-import re
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -35,6 +34,7 @@ class RerollRegion(CanvasRegion):
     """Class defining a rectangular canvas region in which initial latent noise will be rerolled"""
 
     reroll_mode: RerollModes = RerollModes.RESET.value
+
 
 @dataclass
 class MaskWeightsBuilder:
