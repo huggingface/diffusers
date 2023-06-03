@@ -12,21 +12,23 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.pipelines.pipeline_utils import (
     CanvasRegion,
     DiffusionRegion,
+    Image2ImageRegion,
     MaskModes,
     Text2ImageRegion,
-    Image2ImageRegion,
 )
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+
 
 class RerollModes(Enum):
     """Modes in which the reroll regions operate"""
 
     RESET = "reset"  # Completely reset the random noise in the region
     EPSILON = "epsilon"  # Alter slightly the latents in the region
+
 
 @dataclass
 class RerollRegion(CanvasRegion):
