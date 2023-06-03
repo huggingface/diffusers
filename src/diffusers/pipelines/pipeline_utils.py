@@ -487,17 +487,19 @@ class DiffusionPipeline(ConfigMixin):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the original module, not the dynamo compiled one
+                # register the config from the original module, not the dynamo compiled one
                 if is_compiled_module(module):
-                    module = module._orig_mod
+                    not_compiled_module = module._orig_mod
+                else:
+                    not_compiled_module = module
 
-                library = module.__module__.split(".")[0]
+                library = not_compiled_module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
-                module_path_items = module.__module__.split(".")
+                module_path_items = not_compiled_module.__module__.split(".")
                 pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
 
-                path = module.__module__.split(".")
+                path = not_compiled_module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in LOADABLE_CLASSES, then it is a custom module.
@@ -506,10 +508,10 @@ class DiffusionPipeline(ConfigMixin):
                 if is_pipeline_module:
                     library = pipeline_dir
                 elif library not in LOADABLE_CLASSES:
-                    library = module.__module__
+                    library = not_compiled_module.__module__
 
                 # retrieve class_name
-                class_name = module.__class__.__name__
+                class_name = not_compiled_module.__class__.__name__
 
                 register_dict = {name: (library, class_name)}
 
