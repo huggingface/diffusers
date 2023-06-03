@@ -1418,23 +1418,25 @@ class FromCkptMixin:
 
         # TODO: For now we only support stable diffusion
         stable_unclip = None
+        model_type = None
         controlnet = False
 
         if pipeline_name == "StableDiffusionControlNetPipeline":
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
             controlnet = True
         elif "StableDiffusion" in pipeline_name:
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
+            pass
         elif pipeline_name == "StableUnCLIPPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "txt2img"
         elif pipeline_name == "StableUnCLIPImg2ImgPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "img2img"
         elif pipeline_name == "PaintByExamplePipeline":
-            model_type == "PaintByExample"
+            model_type = "PaintByExample"
         elif pipeline_name == "LDMTextToImagePipeline":
-            model_type == "LDMTextToImage"
+            model_type = "LDMTextToImage"
         else:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 
