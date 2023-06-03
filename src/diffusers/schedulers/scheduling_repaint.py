@@ -72,6 +72,40 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
+def rescale_zero_terminal_snr(alphas_cumprod):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.FloatTensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
+
+
 class RePaintScheduler(SchedulerMixin, ConfigMixin):
     """
     RePaint is a schedule for DDPM inpainting inside a given mask.
@@ -100,7 +134,10 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-
+        rescale_betas_zero_snr (`bool`, default `False`):
+            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
+            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
+            medium brightness.
     """
 
     order = 1
@@ -115,6 +152,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         trained_betas: Optional[np.ndarray] = None,
         clip_sample: bool = True,
+        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -140,6 +178,10 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         self.one = torch.tensor(1.0)
 
         self.final_alpha_cumprod = torch.tensor(1.0)
+
+        # Rescale for zero SNR
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.alphas_cumprod)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
