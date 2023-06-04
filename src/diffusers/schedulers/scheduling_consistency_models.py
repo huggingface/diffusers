@@ -146,7 +146,12 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         if self.timesteps is None:
             timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         else:
-            timesteps = self.timesteps.astype(np.float32)
+            if isinstance(self.timesteps, list):
+                timesteps = np.array(self.timesteps, dtype=np.float32)
+            elif isinstance(self.timesteps, np.ndarray):
+                timesteps = self.timesteps.astype(np.float32)
+            else:
+                timesteps = self.timesteps.numpy().astype(np.float32)
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675

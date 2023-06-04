@@ -24,6 +24,19 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     params = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
     batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
 
+    # Override required_optional_params to remove num_images_per_prompt
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "output_type",
+            "return_dict",
+            "callback",
+            "callback_steps",
+        ]
+    )
+
     @property
     def dummy_uncond_unet(self):
         unet = UNet2DModel.from_pretrained(
@@ -57,7 +70,6 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = {
             "unet": unet,
             "scheduler": scheduler,
-            "distillation": True,
         }
 
         return components
@@ -69,6 +81,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
 
         inputs = {
+            "batch_size": 1,
             "num_inference_steps": 2,
             "clip_denoised": True,
             "sigma_min": 0.002,
@@ -115,8 +128,8 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_consistency_model_pipeline_multistep_edm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        components["distillation"] = False
         pipe = ConsistencyModelPipeline(**components)
+        pipe.set_edm()
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -166,8 +179,8 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_consistency_model_pipeline_onestep_edm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        components["distillation"] = False
         pipe = ConsistencyModelPipeline(**components)
+        pipe.set_edm()
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -192,7 +205,8 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prediction_type="sample",
             use_karras_sigmas=True,
         )
-        pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler, distillation=False)
+        pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
+        pipe.set_edm()
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -217,7 +231,8 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prediction_type="sample",
             use_karras_sigmas=True,
         )
-        pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler, distillation=False)
+        pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
+        pipe.set_edm()
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
