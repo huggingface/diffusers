@@ -36,13 +36,13 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         self.distillation = True
         self.safety_checker = None
-    
+
     def set_consistency(self):
         self.distillation = True
-    
+
     def set_edm(self):
         self.distillation = False
-    
+
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     # Modified to only offload self.unet
     def enable_sequential_cpu_offload(self, gpu_id=0):
@@ -99,7 +99,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-    
+
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
