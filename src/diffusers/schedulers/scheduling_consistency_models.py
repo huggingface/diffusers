@@ -177,58 +177,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    # TODO: add_noise meant to be called during training (forward diffusion process)
-    # TODO: need to check if this corresponds to noise added during training
-    # TODO: may want multiple add_noise-type methods for CD, CT
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.add_noise
-    def add_noise(
-        self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
-    ) -> torch.FloatTensor:
-        # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
-            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
-            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
-        else:
-            schedule_timesteps = self.timesteps.to(original_samples.device)
-            timesteps = timesteps.to(original_samples.device)
-
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
-
-        sigma = sigmas[step_indices].flatten()
-        while len(sigma.shape) < len(original_samples.shape):
-            sigma = sigma.unsqueeze(-1)
-
-        noisy_samples = original_samples + noise * sigma
-        return noisy_samples
-
-    def add_noise_to_input(
-        self,
-        sample: torch.FloatTensor,
-        sigma: float,
-        generator: Optional[torch.Generator] = None,
-    ) -> Tuple[torch.FloatTensor, float]:
-        """
-        Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
-        higher noise level sigma_hat = sigma_i + gamma_i*sigma_i. TODO Args:
-        """
-        sigma_min = self.config.sigma_min
-        sigma_max = self.config.sigma_max
-        step_idx = (self.sigmas == sigma).nonzero().item()
-        sigma_hat = self.sigmas[step_idx + 1].clamp(min=sigma_min, max=sigma_max)
-
-        # sample z ~ N(0, s_noise^2 * I)
-        z = self.config.s_noise * randn_tensor(sample.shape, generator=generator, device=sample.device)
-
-        # tau = sigma_hat, eps = sigma_min
-        sample_hat = sample + ((sigma_hat**2 - sigma_min**2) ** 0.5 * z)
-
-        return sample_hat, sigma_hat
-
     def step(
         self,
         model_output: torch.FloatTensor,
