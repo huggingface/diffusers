@@ -111,7 +111,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_multistep_edm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -162,7 +162,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     def test_consistency_model_pipeline_onestep_edm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -238,7 +238,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-    
+
     def get_inputs(self, seed=0):
         generator = torch.manual_seed(seed)
 
@@ -254,11 +254,9 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         }
 
         return inputs
-    
+
     def test_consistency_model_cd_multistep(self):
-        unet = UNet2DModel.from_pretrained(
-            "ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2"
-        )
+        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -277,11 +275,9 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.2645, 0.3386, 0.1928, 0.1284, 0.1215, 0.0285, 0.0800, 0.1213, 0.3331])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 3e-3
-    
+
     def test_consistency_model_cd_onestep(self):
-        unet = UNet2DModel.from_pretrained(
-            "ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2"
-        )
+        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,

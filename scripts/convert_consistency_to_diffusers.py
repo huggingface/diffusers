@@ -228,7 +228,7 @@ if __name__ == "__main__":
         unet_config = TEST_UNET_CONFIG
     else:
         raise ValueError(f"Checkpoint type {args.checkpoint_name} is not currently supported.")
-    
+
     if not args.class_cond:
         unet_config["num_class_embeds"] = None
 
