@@ -58,6 +58,7 @@ EXAMPLE_DOC_STRING = """
 class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
     r"""
     Pipeline for text-to-image and 3d generation using LDM3D.
+    LDM3D: Latent Diffusion Model for 3D: https://arxiv.org/abs/2305.10853
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
