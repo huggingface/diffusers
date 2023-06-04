@@ -254,6 +254,13 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     @staticmethod
     def rgblike_to_depthmap(image):
+        """
+        Args:
+            image: RGB-like depth image
+
+        Returns: depth map
+
+        """
         return image[:, :, 1] * 2 ** 8 + image[:, :, 2]
 
     def numpy_to_depth(self, images):
@@ -286,9 +293,9 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
 
-        # if output_type == "latent":
-        #     return image
-
+        if output_type == "latent":
+            raise Exception(f"This type {output_type} is not supported")
+        
         if do_denormalize is None:
             do_denormalize = [self.config.do_normalize] * image.shape[0]
 
@@ -296,13 +303,14 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
         )
 
-        # if output_type == "pt":
-        #     return image
+        if output_type == "pt":
+            raise Exception(f"This type {output_type} is not supported")
 
         image = self.pt_to_numpy(image)
 
-        # if output_type == "np":
-        #     return image
+        if output_type == "np":
+            raise Exception(f"This type {output_type} is not supported")
+
 
         if output_type == "pil":
             return self.numpy_to_pil(image), self.numpy_to_depth(image)
