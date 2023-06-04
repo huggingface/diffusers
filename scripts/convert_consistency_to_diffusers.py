@@ -24,7 +24,7 @@ TEST_UNET_CONFIG = {
     "resnet_time_scale_shift": "scale_shift",
 }
 
-UNET_CONFIG = {
+IMAGENET_64_UNET_CONFIG = {
     "sample_size": 64,
     "in_channels": 3,
     "out_channels": 3,
@@ -46,6 +46,20 @@ UNET_CONFIG = {
     ],
     "resnet_time_scale_shift": "scale_shift",
 }
+
+
+def str2bool(v):
+    """
+    https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("boolean value expected")
 
 
 def convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=False):
@@ -203,18 +217,20 @@ if __name__ == "__main__":
         "--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model."
     )
     parser.add_argument("--checkpoint_name", default="cd_imagenet64_l2", type=str, help="Checkpoint to convert.")
+    parser.add_argument("--class_cond", default=True, type=str, help="Whether the model is class-conditional.")
 
     args = parser.parse_args()
+    args.class_cond = str2bool(args.class_cond)
 
-    if args.checkpoint_name == "cd_imagenet64_l2":
-        unet_config = UNET_CONFIG
-    elif args.checkpoint_name == "test":
-        unet_config = TEST_UNET_CONFIG
-        unet_config["num_class_embeds"] = None
-    elif args.checkpoint_name == "test_class_cond":
+    if "imagenet64" in args.checkpoint_name:
+        unet_config = IMAGENET_64_UNET_CONFIG
+    elif "test" in args.checkpoint_name:
         unet_config = TEST_UNET_CONFIG
     else:
         raise ValueError(f"Checkpoint type {args.checkpoint_name} is not currently supported.")
+    
+    if not args.class_cond:
+        unet_config["num_class_embeds"] = None
 
     converted_unet_ckpt = con_pt_to_diffuser(args.unet_path, unet_config)
 
