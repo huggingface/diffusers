@@ -22,7 +22,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     Sampling pipeline for consistency models.
     """
 
-    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers, distillation: bool = False) -> None:
+    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers, distillation: bool = True) -> None:
         super().__init__()
 
         self.register_modules(
@@ -31,7 +31,6 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         )
 
         self.distillation = distillation
-        self.num_classes = unet.config.num_class_embeds
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     # Additionally prepare sigma_min, sigma_max kwargs for CM multistep scheduler
@@ -219,7 +218,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         )
 
         # 3. Handle class_labels for class-conditional models
-        if self.num_classes is not None:
+        if self.unet.config.num_class_embeds is not None:
             if isinstance(class_labels, list):
                 class_labels = torch.tensor(class_labels, dtype=torch.int)
             elif isinstance(class_labels, int):
@@ -227,8 +226,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 class_labels = torch.tensor([class_labels], dtype=torch.int)
             elif class_labels is None:
                 # Randomly generate batch_size class labels
-                class_labels = torch.randint(0, self.num_classes, size=(batch_size,))
-            class_labels.to(device)
+                class_labels = torch.randint(0, self.unet.config.num_class_embeds, size=(batch_size,))
+            class_labels = class_labels.to(device)
 
         # 4. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
