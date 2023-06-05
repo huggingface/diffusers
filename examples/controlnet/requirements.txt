@@ -4,3 +4,6 @@ transformers>=4.25.1
 ftfy
 tensorboard
 datasets
+matplotlib
+opencv-python
+protobuf>=3.19.6,<4
