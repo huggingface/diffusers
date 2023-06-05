@@ -38,6 +38,13 @@ from .unet_3d_blocks import (
     get_up_block,
 )
 
+from ..pipelines.tune_a_video.custom_unet_3d_blocks import (
+    UNetMidBlockInflated3DCrossAttn,
+    UpBlockInflated3D,
+    DownBlockInflated3D,
+    CrossAttnUpBlockInflated3D,
+    CrossAttnDownBlocknInflated3D,
+)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
