@@ -39,7 +39,7 @@ from .unet_3d_blocks import (
     get_mid_block
 )
 
-from ..pipelines.tune_a_video.custom_unet_3d_blocks import (
+from .unet_3d_blocks import (
     UNetMidBlockInflated3DCrossAttn,
     UpBlockInflated3D,
     DownBlockInflated3D,
