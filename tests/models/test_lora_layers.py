@@ -163,6 +163,15 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         return noise, input_ids, pipeline_inputs
 
+    def create_lora_weight_file(self, tmpdirname):
+        _, lora_components = self.get_dummy_components()
+        LoraLoaderMixin.save_lora_weights(
+            save_directory=tmpdirname,
+            unet_lora_layers=lora_components["unet_lora_layers"],
+            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+        )
+        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+
     def test_lora_save_load(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
@@ -338,15 +347,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         assert torch.allclose(
             outputs_without_lora, outputs_without_lora_removed
         ), "remove lora monkey patch should restore the original outputs"
-
-    def create_lora_weight_file(self, tmpdirname):
-        _, lora_components = self.get_dummy_components()
-        LoraLoaderMixin.save_lora_weights(
-            save_directory=tmpdirname,
-            unet_lora_layers=lora_components["unet_lora_layers"],
-            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
-        )
-        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
 
     def test_lora_unet_attn_processors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
