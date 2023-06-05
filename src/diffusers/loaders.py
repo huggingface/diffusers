@@ -34,7 +34,7 @@ from .models.attention_processor import (
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
-    TEXT_ENCODER_TARGET_MODULES,
+    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -955,13 +955,17 @@ class LoraLoaderMixin:
         return
 
     def _remove_text_encoder_monkey_patch(self):
-        for name, _ in self.text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                module = self.text_encoder.get_submodule(name)
-                if hasattr(module, "old_forward"):
-                    # restore original `forward` to remove monkey-patch
-                    module.forward = module.old_forward
-                    delattr(module, "old_forward")
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for _, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    if hasattr(module, "old_forward"):
+                        # restore original `forward` to remove monkey-patch
+                        module.forward = module.old_forward
+                        delattr(module, "old_forward")
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -975,39 +979,37 @@ class LoraLoaderMixin:
         # First, remove any monkey-patch that might have been applied before
         self._remove_text_encoder_monkey_patch()
 
-        # Loop over the original attention modules.
-        for name, _ in self.text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                # Retrieve the module and its corresponding LoRA processor.
-                module = self.text_encoder.get_submodule(name)
-                # Construct a new function that performs the LoRA merging. We will monkey patch
-                # this forward pass.
-                attn_processor_name = ".".join(name.split(".")[:-1])
-                lora_layer = getattr(attn_processors[attn_processor_name], self._get_lora_layer_attribute(name))
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for attn_proc_attr, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention and its corresponding LoRA layer.
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    lora_layer = attn_processors[name].get_submodule(attn_proc_attr)
 
-                # save old_forward to module that can be used to remove monkey-patch
-                old_forward = module.old_forward = module.forward
+                    # save old_forward to module that can be used to remove monkey-patch
+                    old_forward = module.old_forward = module.forward
 
-                # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
-                # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
-                def make_new_forward(old_forward, lora_layer):
-                    def new_forward(x):
-                        return old_forward(x) + lora_layer(x)
+                    # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
+                    # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
+                    def make_new_forward(old_forward, lora_layer):
+                        def new_forward(x):
+                            return old_forward(x) + lora_layer(x)
 
-                    return new_forward
+                        return new_forward
 
-                # Monkey-patch.
-                module.forward = make_new_forward(old_forward, lora_layer)
+                    # Monkey-patch.
+                    module.forward = make_new_forward(old_forward, lora_layer)
 
-    def _get_lora_layer_attribute(self, name: str) -> str:
-        if "q_proj" in name:
-            return "to_q_lora"
-        elif "v_proj" in name:
-            return "to_v_lora"
-        elif "k_proj" in name:
-            return "to_k_lora"
-        else:
-            return "to_out_lora"
+    @property
+    def _lora_attn_processor_attr_to_text_encoder_attr(self):
+        return {
+            "to_q_lora": "q_proj",
+            "to_k_lora": "k_proj",
+            "to_v_lora": "v_proj",
+            "to_out_lora": "out_proj",
+        }
 
     def _load_text_encoder_attn_procs(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
