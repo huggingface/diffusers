@@ -860,7 +860,7 @@ class AttnDownsampleBlock2D(nn.Module):
                         non_linearity=resnet_act_fn,
                         output_scale_factor=output_scale_factor,
                         pre_norm=resnet_pre_norm,
-                        down=True
+                        down=True,
                     )
                 ]
             )
@@ -882,7 +882,6 @@ class AttnDownsampleBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         return hidden_states, output_states
-
 
 
 class CrossAttnDownBlock2D(nn.Module):

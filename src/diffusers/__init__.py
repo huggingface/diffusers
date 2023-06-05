@@ -58,6 +58,7 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
@@ -72,6 +73,7 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        CMStochasticIterativeScheduler,
         DDIMInverseScheduler,
         DDIMScheduler,
         DDPMScheduler,
