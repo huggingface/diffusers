@@ -849,7 +849,7 @@ class LoraLoaderMixin:
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         # set lora scale to a reasonable default
-        self._scale = 1
+        self._lora_scale = 1
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -954,7 +954,7 @@ class LoraLoaderMixin:
 
     @property
     def lora_scale(self):
-        return self._scale
+        return self._lora_scale
 
     @property
     def text_encoder_lora_attn_procs(self):
