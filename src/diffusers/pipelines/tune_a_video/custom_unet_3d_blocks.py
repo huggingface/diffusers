@@ -180,9 +180,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
 
-        num_attention_heads = attn_num_head_channels
-        attention_head_dim = out_channels // attn_num_head_channels
-
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
@@ -204,8 +201,8 @@ class CrossAttnUpBlockInflated3D(nn.Module):
 
             attentions.append(
                 Transformer3DModel(
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=attention_head_dim,
+                    num_attention_heads=attn_num_head_channels,
+                    attention_head_dim=out_channels // attn_num_head_channels,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -306,13 +303,10 @@ class CrossAttnDownBlocknInflated3D(nn.Module):
                 )
             )
 
-            num_attention_heads = attn_num_head_channels
-            attention_head_dim = out_channels // attn_num_head_channels
-
             attentions.append(
                 Transformer3DModel(
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=attention_head_dim,
+                    num_attention_heads=attn_num_head_channels,
+                    attention_head_dim=out_channels // attn_num_head_channels,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -412,14 +406,11 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
 
         attentions = []
 
-        num_attention_heads = attn_num_head_channels
-        attention_head_dim = in_channels // attn_num_head_channels
-
         for _ in range(num_layers):
             attentions.append(
                 Transformer3DModel(
-                    num_attention_heads,
-                    attention_head_dim,
+                    attn_num_head_channels,
+                    in_channels // attn_num_head_channels,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
