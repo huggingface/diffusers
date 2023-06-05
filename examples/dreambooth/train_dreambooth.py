@@ -1211,7 +1211,7 @@ def main(args):
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                     )
 
-                if unet.config.in_channels == channels * 2:
+                if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
                     noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
 
                 if args.class_labels_conditioning == "timesteps":
