@@ -34,7 +34,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
-from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
+from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -217,6 +217,55 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_inpaint_legacy_batched(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        init_images_tens = preprocess_image(init_image, batch_size=2)
+        init_masks_tens = init_images_tens + 4
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionInpaintPipelineLegacy(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=device).manual_seed(0)
+        images = sd_pipe(
+            [prompt] * 2,
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            image=init_images_tens,
+            mask_image=init_masks_tens,
+        ).images
+
+        assert images.shape == (2, 32, 32, 3)
+
+        image_slice_0 = images[0, -3:, -3:, -1].flatten()
+        image_slice_1 = images[1, -3:, -3:, -1].flatten()
+
+        expected_slice_0 = np.array([0.4697, 0.3770, 0.4096, 0.4653, 0.4497, 0.4183, 0.3950, 0.4668, 0.4672])
+        expected_slice_1 = np.array([0.4105, 0.4987, 0.5771, 0.4921, 0.4237, 0.5684, 0.5496, 0.4645, 0.5272])
+
+        assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-2
+        assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-2
+
     def test_stable_diffusion_inpaint_legacy_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
@@ -349,7 +398,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+    def get_inputs(self, generator_device="cpu", seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -379,7 +428,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
@@ -387,6 +436,40 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.5665, 0.6117, 0.6430, 0.4057, 0.4594, 0.5658, 0.1596, 0.3106, 0.4305])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
+
+    def test_stable_diffusion_inpaint_legacy_batched(self):
+        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = preprocess_image(inputs["image"], batch_size=2)
+
+        mask = inputs["mask_image"].convert("L")
+        mask = np.array(mask).astype(np.float32) / 255.0
+        mask = torch.from_numpy(1 - mask)
+        masks = torch.vstack([mask[None][None]] * 2)
+        inputs["mask_image"] = masks
+
+        image = pipe(**inputs).images
+        assert image.shape == (2, 512, 512, 3)
+
+        image_slice_0 = image[0, 253:256, 253:256, -1].flatten()
+        image_slice_1 = image[1, 253:256, 253:256, -1].flatten()
+
+        expected_slice_0 = np.array(
+            [0.52093095, 0.4176447, 0.32752383, 0.6175223, 0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123]
+        )
+        expected_slice_1 = np.array(
+            [0.3592432, 0.4233033, 0.3914635, 0.31014425, 0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092]
+        )
+
+        assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
+        assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_k_lms(self):
         pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
@@ -397,7 +480,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
@@ -437,7 +520,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        inputs = self.get_inputs()
         pipe(**inputs, callback=callback_fn, callback_steps=1)
         assert callback_fn.has_been_called
         assert number_of_steps == 2

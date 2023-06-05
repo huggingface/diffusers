@@ -30,7 +30,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 
-from ..test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)

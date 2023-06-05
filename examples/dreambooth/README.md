@@ -45,15 +45,28 @@ write_basic_config()
 
 ### Dog toy example
 
-Now let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
+Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
 
-And launch the training using
+Let's first download it locally:
+
+```python
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir, repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+And launch the training using:
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
@@ -77,7 +90,7 @@ According to the paper, it's recommended to generate `num_epochs * num_samples` 
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -108,7 +121,7 @@ To install `bitandbytes` please refer to this [readme](https://github.com/TimDet
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -141,7 +154,7 @@ It is possible to run dreambooth on a 12GB GPU by using the following optimizati
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -185,7 +198,7 @@ does not seem to be compatible with DeepSpeed at the moment.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -217,7 +230,7 @@ ___Note: Training text encoder requires more memory, with this option the traini
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -300,7 +313,7 @@ Now, you can launch the training. Here we will use [Stable Diffusion 1-5](https:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 ```
 
@@ -341,6 +354,12 @@ The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora_dr
 
 The training results are summarized [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
+
+Optionally, we can also train additional LoRA layers for the text encoder. Specify the `train_text_encoder` argument above for that. If you're interested to know more about how we
+enable this support, check out this [PR](https://github.com/huggingface/diffusers/pull/2918). 
+
+With the default hyperparameters from the above, the training seems to go in a positive direction. Check out [this panel](https://wandb.ai/sayakpaul/dreambooth-lora/reports/test-23-04-17-17-00-13---Vmlldzo0MDkwNjMy). The trained LoRA layers are available [here](https://huggingface.co/sayakpaul/dreambooth).
+
 
 ### Inference
 
@@ -386,7 +405,7 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 
 python train_dreambooth_flax.py \
@@ -405,7 +424,7 @@ python train_dreambooth_flax.py \
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -429,7 +448,7 @@ python train_dreambooth_flax.py \
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 

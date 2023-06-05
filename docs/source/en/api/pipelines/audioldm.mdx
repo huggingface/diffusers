@@ -25,14 +25,14 @@ This pipeline was contributed by [sanchit-gandhi](https://huggingface.co/sanchit
 
 ## Text-to-Audio
 
-The [`AudioLDMPipeline`] can be used to load pre-trained weights from [cvssp/audioldm](https://huggingface.co/cvssp/audioldm) and generate text-conditional audio outputs:
+The [`AudioLDMPipeline`] can be used to load pre-trained weights from [cvssp/audioldm-s-full-v2](https://huggingface.co/cvssp/audioldm-s-full-v2) and generate text-conditional audio outputs:
 
 ```python
 from diffusers import AudioLDMPipeline
 import torch
 import scipy
 
-repo_id = "cvssp/audioldm"
+repo_id = "cvssp/audioldm-s-full-v2"
 pipe = AudioLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
@@ -56,7 +56,7 @@ Inference:
 ### How to load and use different schedulers
 
 The AudioLDM pipeline uses [`DDIMScheduler`] scheduler by default. But `diffusers` provides many other schedulers
-that can be used with the AudioLDM pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], 
+that can be used with the AudioLDM pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
 [`EulerAncestralDiscreteScheduler`] etc. We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest
 scheduler there is.
 
@@ -68,12 +68,14 @@ method, or pass the `scheduler` argument to the `from_pretrained` method of the 
 >>> from diffusers import AudioLDMPipeline, DPMSolverMultistepScheduler
 >>> import torch
 
->>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
+>>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm-s-full-v2", torch_dtype=torch.float16)
 >>> pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
 >>> # or
->>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained("cvssp/audioldm", subfolder="scheduler")
->>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm", scheduler=dpm_scheduler, torch_dtype=torch.float16)
+>>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained("cvssp/audioldm-s-full-v2", subfolder="scheduler")
+>>> pipeline = AudioLDMPipeline.from_pretrained(
+...     "cvssp/audioldm-s-full-v2", scheduler=dpm_scheduler, torch_dtype=torch.float16
+... )
 ```
 
 ## AudioLDMPipeline

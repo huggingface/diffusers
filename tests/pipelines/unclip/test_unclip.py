@@ -25,8 +25,8 @@ from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -293,16 +293,16 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prior_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
-        shape = (batch_size, decoder.in_channels, decoder.sample_size, decoder.sample_size)
+        shape = (batch_size, decoder.config.in_channels, decoder.config.sample_size, decoder.config.sample_size)
         decoder_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
 
         shape = (
             batch_size,
-            super_res_first.in_channels // 2,
-            super_res_first.sample_size,
-            super_res_first.sample_size,
+            super_res_first.config.in_channels // 2,
+            super_res_first.config.sample_size,
+            super_res_first.config.sample_size,
         )
         super_res_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
@@ -358,7 +358,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
-        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
+        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference, expected_max_diff=0.01)
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.

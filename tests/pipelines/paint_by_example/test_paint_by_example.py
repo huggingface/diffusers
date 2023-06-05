@@ -27,8 +27,8 @@ from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...pipeline_params import IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

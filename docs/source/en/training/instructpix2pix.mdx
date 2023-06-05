@@ -74,8 +74,7 @@ write_basic_config()
 As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
 is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
 
-Configure environment variables such as the dataset identifier and the Stable Diffusion
-checkpoint:
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to specify the dataset name in `DATASET_ID`:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -125,6 +124,27 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
  [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
 
  ***Note: In the original paper, the authors observed that even when the model is trained with an image resolution of 256x256, it generalizes well to bigger resolutions such as 512x512. This is likely because of the larger dataset they used during training.***
+
+ ## Training with multiple GPUs
+
+`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
+for running distributed training with `accelerate`. Here is an example command:
+
+```bash 
+accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
+ --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
+ --dataset_name=sayakpaul/instructpix2pix-1000-samples \
+ --use_ema \
+ --enable_xformers_memory_efficient_attention \
+ --resolution=512 --random_flip \
+ --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
+ --max_train_steps=15000 \
+ --checkpointing_steps=5000 --checkpoints_total_limit=1 \
+ --learning_rate=5e-05 --lr_warmup_steps=0 \
+ --conditioning_dropout_prob=0.05 \
+ --mixed_precision=fp16 \
+ --seed=42 
+```
 
  ## Inference
 

@@ -22,7 +22,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
@@ -138,12 +138,19 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    In addition the pipeline inherits the following loading methods:
+        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+
+    as well as the following saving methods:
+        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):
