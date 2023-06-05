@@ -93,7 +93,6 @@ def rescale_zero_terminal_snr(betas):
     alphas_cumprod = torch.cumprod(alphas, dim=0)
     alphas_bar_sqrt = alphas_cumprod.sqrt()
 
-
     # Store old values.
     alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
     alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
@@ -306,7 +305,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             timesteps += self.config.steps_offset
         elif self.config.timestep_type == "trailing":
-            timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -self.config.num_train_timesteps/num_inference_steps)).astype(np.int64).copy()
+            timesteps = (
+                np.round(
+                    np.arange(
+                        self.config.num_train_timesteps, 0, -self.config.num_train_timesteps / num_inference_steps
+                    )
+                )
+                .astype(np.int64)
+                .copy()
+            )
             timesteps -= 1
 
         self.timesteps = torch.from_numpy(timesteps).to(device)

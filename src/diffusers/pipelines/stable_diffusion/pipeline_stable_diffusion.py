@@ -54,10 +54,11 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def rescale_noise_pred(noise_pred, noise_pred_text, guidance_rescale=0.0):
     """
-    Rescale `noise_pred` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
-    See Section 3.4
+    Rescale `noise_pred` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
+    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
     # std_text = torch.std(noise_pred_text)
     # std_pred = torch.std(noise_pred)
@@ -66,11 +67,8 @@ def rescale_noise_pred(noise_pred, noise_pred_text, guidance_rescale=0.0):
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_pred * (std_text / std_pred)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_pred = (
-        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_pred
-    )
+    noise_pred = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_pred
     return noise_pred
-
 
 
 class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
@@ -735,9 +733,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     noise_pred = rescale_noise_pred(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
