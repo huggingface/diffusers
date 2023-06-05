@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # BaseOutputs
 
-All models have outputs that are subclass instances of [`~utils.BaseOutput`]. Those are
+All models have outputs that are subclasses of [`~utils.BaseOutput`]. Those are
 data structures containing all the information returned by the model, but they can also be used as tuples or
 dictionaries.
 
@@ -40,6 +40,12 @@ For instance, retrieving an image by indexing into it returns the tuple `(output
 ```python
 outputs[:1]
 ```
+
+<Tip>
+
+To check a specific pipeline or model output, refer to its corresponding API documentation.
+
+</Tip>
 
 ## BaseOutput
 

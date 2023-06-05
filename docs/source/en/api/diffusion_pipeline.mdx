@@ -22,12 +22,12 @@ components (for example, [`UNetModel`] and [`UNetConditionModel`]) of diffusion 
 </Tip>
 
 The pipeline type (for example [`StableDiffusionPipeline`]) of any diffusion pipeline loaded with [`~DiffusionPipeline.from_pretrained`] is automatically 
-detected and consequently loads each component of the 
-pipeline and passes them into the `__init__` function of the pipeline.
+detected and pipeline components are loaded and passed to the `__init__` function of the pipeline.
 
 Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrained`].
 
 ## DiffusionPipeline
+
 [[autodoc]] DiffusionPipeline
 	- all
 	- __call__
