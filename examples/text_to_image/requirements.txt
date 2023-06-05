@@ -5,3 +5,5 @@ datasets
 ftfy
 tensorboard
 Jinja2
+matplotlib
+opencv-python
