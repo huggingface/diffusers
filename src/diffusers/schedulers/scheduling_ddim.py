@@ -300,21 +300,18 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        #
+
+        # "leading" and "trailing" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_type == "leading":
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             timesteps += self.config.steps_offset
         elif self.config.timestep_type == "trailing":
-            timesteps = (
-                np.round(
-                    np.arange(
-                        self.config.num_train_timesteps, 0, -self.config.num_train_timesteps / num_inference_steps
-                    )
-                )
-                .astype(np.int64)
-                .copy()
-            )
+            timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64).copy()
             timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_type} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
+            )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
