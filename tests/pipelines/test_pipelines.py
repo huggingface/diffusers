@@ -722,6 +722,18 @@ class DownloadTests(unittest.TestCase):
         out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
         assert out.shape == (1, 128, 128, 3)
 
+        # multiple references to multi embedding
+        ten = {"<cat>": torch.ones(3, 32)}
+        pipe.load_textual_inversion(ten)
+
+        assert (
+            pipe._maybe_convert_prompt("<cat> <cat>", pipe.tokenizer) == "<cat> <cat>_1 <cat>_2 <cat> <cat>_1 <cat>_2"
+        )
+
+        prompt = "hey <cat> <cat>"
+        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        assert out.shape == (1, 128, 128, 3)
+
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
         with tempfile.TemporaryDirectory() as tmpdirname:

@@ -462,7 +462,8 @@ class TextualInversionLoaderMixin:
             `str`: The converted prompt
         """
         tokens = tokenizer.tokenize(prompt)
-        for token in tokens:
+        unique_tokens = set(tokens)
+        for token in unique_tokens:
             if token in tokenizer.added_tokens_encoder:
                 replacement = token
                 i = 1
