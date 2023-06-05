@@ -76,10 +76,9 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     return torch.tensor(betas, dtype=torch.float32)
 
 
-def rescale_zero_terminal_snr(alphas_cumprod):
+def rescale_zero_terminal_snr(betas):
     """
-    Rescales betas to have zero terminal SNR (signal-to-noise-ratio) Based on https://arxiv.org/pdf/2305.08891.pdf
-    (Algorithm 1)
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
 
 
     Args:
@@ -90,7 +89,10 @@ def rescale_zero_terminal_snr(alphas_cumprod):
         `torch.FloatTensor`: rescaled betas with zero terminal SNR
     """
     # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
     alphas_bar_sqrt = alphas_cumprod.sqrt()
+
 
     # Store old values.
     alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
@@ -182,6 +184,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
+        timestep_type: str = "leading",
         rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
@@ -199,6 +202,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        # Rescale for zero SNR
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
@@ -207,10 +214,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-
-        # Rescale for zero SNR
-        if rescale_betas_zero_snr:
-            self.betas = rescale_zero_terminal_snr(self.alphas_cumprod)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -298,9 +301,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+        #
+        if self.config.timestep_type == "leading":
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_type == "trailing":
+            timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -self.config.num_train_timesteps/num_inference_steps)).astype(np.int64).copy()
+            timesteps -= 1
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps += self.config.steps_offset
 
     def step(
         self,

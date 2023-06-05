@@ -54,37 +54,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-def rescale_zero_terminal_snr(alphas_bar_sqrt):
-    """
-    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
-
-
-    Args:
-        betas (`torch.FloatTensor`):
-            the betas that the scheduler is being initialized with.
-
-    Returns:
-        `torch.FloatTensor`: rescaled betas with zero terminal SNR
-    """
-    # Store old values.
-    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
-    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
-
-    # Shift so the last timestep is zero.
-    alphas_bar_sqrt -= alphas_bar_sqrt_T
-
-    # Scale so the first timestep is back to the old value.
-    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
-
-    # Convert alphas_bar_sqrt to betas
-    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
-    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
-    alphas = torch.cat([alphas_bar[0:1], alphas])
-    betas = 1 - alphas
-
-    return betas
-
-
 class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     UniPC is a training-free framework designed for the fast sampling of diffusion models, which consists of a
@@ -148,10 +117,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             by disable the corrector at the first few steps (e.g., disable_corrector=[0])
         solver_p (`SchedulerMixin`, default `None`):
             can be any other scheduler. If specified, the algorithm will become solver_p + UniC.
-        rescale_betas_zero_snr (`bool`, default `False`):
-            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
-            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -175,7 +140,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         disable_corrector: List[int] = [],
         solver_p: SchedulerMixin = None,
-        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -198,10 +162,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
-
-        # Rescale for zero SNR
-        if rescale_betas_zero_snr:
-            self.betas = rescale_zero_terminal_snr(self.alpha_t)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0

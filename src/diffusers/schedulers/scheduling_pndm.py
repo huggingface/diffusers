@@ -54,41 +54,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-def rescale_zero_terminal_snr(alphas_cumprod):
-    """
-    Rescales betas to have zero terminal SNR (signal-to-noise-ratio) Based on https://arxiv.org/pdf/2305.08891.pdf
-    (Algorithm 1)
-
-
-    Args:
-        betas (`torch.FloatTensor`):
-            the betas that the scheduler is being initialized with.
-
-    Returns:
-        `torch.FloatTensor`: rescaled betas with zero terminal SNR
-    """
-    # Convert betas to alphas_bar_sqrt
-    alphas_bar_sqrt = alphas_cumprod.sqrt()
-
-    # Store old values.
-    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
-    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
-
-    # Shift so the last timestep is zero.
-    alphas_bar_sqrt -= alphas_bar_sqrt_T
-
-    # Scale so the first timestep is back to the old value.
-    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
-
-    # Convert alphas_bar_sqrt to betas
-    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
-    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
-    alphas = torch.cat([alphas_bar[0:1], alphas])
-    betas = 1 - alphas
-
-    return betas
-
-
 class PNDMScheduler(SchedulerMixin, ConfigMixin):
     """
     Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
@@ -124,10 +89,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
-        rescale_betas_zero_snr (`bool`, default `False`):
-            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
-            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness.
+
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -145,7 +107,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = False,
         prediction_type: str = "epsilon",
         steps_offset: int = 0,
-        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -166,10 +127,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-
-        # Rescale for zero SNR
-        if rescale_betas_zero_snr:
-            self.betas = rescale_zero_terminal_snr(self.alphas_cumprod)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0

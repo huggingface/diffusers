@@ -73,40 +73,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-def rescale_zero_terminal_snr(alphas_cumprod):
-    """
-    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
-
-
-    Args:
-        betas (`torch.FloatTensor`):
-            the betas that the scheduler is being initialized with.
-
-    Returns:
-        `torch.FloatTensor`: rescaled betas with zero terminal SNR
-    """
-    # Convert betas to alphas_bar_sqrt
-    alphas_bar_sqrt = alphas_cumprod.sqrt()
-
-    # Store old values.
-    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
-    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
-
-    # Shift so the last timestep is zero.
-    alphas_bar_sqrt -= alphas_bar_sqrt_T
-
-    # Scale so the first timestep is back to the old value.
-    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
-
-    # Convert alphas_bar_sqrt to betas
-    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
-    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
-    alphas = torch.cat([alphas_bar[0:1], alphas])
-    betas = 1 - alphas
-
-    return betas
-
-
 class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
     """
     NOTE: do not use this scheduler. The DDPM scheduler has been updated to support the changes made here. This
@@ -134,10 +100,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process)
             or `sample` (directly predicting the noisy sample`)
-        rescale_betas_zero_snr (`bool`, default `False`):
-            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
-            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness.
     """
 
     @register_to_config
@@ -149,7 +111,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         clip_sample_range: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
         beta_schedule: str = "squaredcos_cap_v2",
-        rescale_betas_zero_snr: bool = False,
     ):
         if beta_schedule != "squaredcos_cap_v2":
             raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
@@ -159,10 +120,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.one = torch.tensor(1.0)
-
-        # Rescale for zero SNR
-        if rescale_betas_zero_snr:
-            self.betas = rescale_zero_terminal_snr(self.alphas_cumprod)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
