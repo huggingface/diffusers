@@ -868,8 +868,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             # if pure noise then scale the initial latents by the  Scheduler's init sigma
             latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
         else:
-            latents = latents.to(device)
-            latents = latents * self.scheduler.init_noise_sigma
+            noise = latents.to(device)
+            latents = noise * self.scheduler.init_noise_sigma
 
         outputs = (latents,)
 

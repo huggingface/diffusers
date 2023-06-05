@@ -667,6 +667,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None,
         )
 
         # 4. Prepare timesteps
