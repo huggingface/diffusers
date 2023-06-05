@@ -639,7 +639,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_img_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 2e-1
 
-        expected_text_prefix = "a living room"
+        expected_text_prefix = "A living room"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
     def test_unidiffuser_default_text2img_v1_fp16(self):
