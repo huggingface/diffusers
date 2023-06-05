@@ -116,7 +116,6 @@ def get_down_block(
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
-
 def get_up_block(
     up_block_type,
     num_layers,
@@ -207,6 +206,51 @@ def get_up_block(
 
     raise ValueError(f"{up_block_type} does not exist.")
 
+def get_mid_block(
+    mid_block_type,
+    in_channels,
+    temb_channels,
+    resnet_eps,
+    resnet_act_fn,
+    resnet_groups,
+    attn_num_head_channels,
+    output_scale_factor,
+    cross_attention_dim,
+    dual_cross_attention=False,
+    use_linear_projection=True,
+    upcast_attention=False,
+    resnet_time_scale_shift = "default",
+):
+    if mid_block_type == "UNetMidBlock3DCrossAttn":
+        return UNetMidBlock3DCrossAttn(
+            in_channels=in_channels,
+            temb_channels=temb_channels,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            output_scale_factor=output_scale_factor,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attn_num_head_channels,
+            resnet_groups=resnet_groups,
+            dual_cross_attention=dual_cross_attention,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift
+        )
+    elif mid_block_type == "UNetMidBlockInflated3DCrossAttn":
+        return UNetMidBlockInflated3DCrossAttn(
+            in_channels=in_channels,
+            temb_channels=temb_channels,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            output_scale_factor=output_scale_factor,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attn_num_head_channels,
+            resnet_groups=resnet_groups,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift
+        )
+    raise ValueError(f"{mid_block_type} does not exist.")
 
 class UNetMidBlock3DCrossAttn(nn.Module):
     def __init__(
@@ -334,7 +378,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
         return hidden_states
-
 
 class CrossAttnDownBlock3D(nn.Module):
     def __init__(
