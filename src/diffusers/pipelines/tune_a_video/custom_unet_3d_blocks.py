@@ -257,7 +257,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         return hidden_states
 
 
-class CrossAttnDownBlocknInflated3D(nn.Module):
+class CrossAttnDownBlockInflated3D(nn.Module):
     def __init__(
         self,
         in_channels: int,

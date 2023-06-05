@@ -24,9 +24,8 @@ from ..pipelines.tune_a_video.custom_unet_3d_blocks import (
     UpBlockInflated3D,
     DownBlockInflated3D,
     CrossAttnUpBlockInflated3D,
-    CrossAttnDownBlocknInflated3D,
+    CrossAttnDownBlockInflated3D,
 )
-
 
 def get_down_block(
     down_block_type,
@@ -41,6 +40,7 @@ def get_down_block(
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
+    dual_cross_attention=False,
     use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
@@ -74,15 +74,46 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "DownBlockInflated3D":
-        pass
+        return DownBlockInflated3D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            downsample_padding=downsample_padding,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+        )
     elif down_block_type == "CrossAttnDownBlockInflated3D":
-        pass
+        if cross_attention_dim is None:
+            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockInflated3D")
+        return CrossAttnDownBlockInflated3D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            downsample_padding=downsample_padding,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
+            use_linear_projection=use_linear_projection,
+            only_cross_attention=only_cross_attention,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+        )
     raise ValueError(f"{down_block_type} does not exist.")
 
 
@@ -99,6 +130,7 @@ def get_up_block(
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
+    dual_cross_attention=False,
     use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
@@ -116,8 +148,6 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
@@ -134,74 +164,48 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=use_temporal_transformer,  # True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif up_block_type == "UpBlockInflated3D":
-        pass
+        return UpBlockInflated3D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
+            temb_channels=temb_channels,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+        )
     elif up_block_type == "CrossAttnUpBlockInflated3D":
-        pass
+        if cross_attention_dim is None:
+            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockInflated3D")
+        return CrossAttnUpBlockInflated3D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
+            temb_channels=temb_channels,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
+            use_linear_projection=use_linear_projection,
+            only_cross_attention=only_cross_attention,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+        )
+
     raise ValueError(f"{up_block_type} does not exist.")
-
-
-def get_mid_block(
-    mid_block_type,
-    in_channels,
-    temb_channels,
-    dropout,
-    num_layers,
-    resnet_eps,
-    resnet_act_fn,
-    resnet_groups,
-    resnet_pre_norm: bool = True,
-    attn_num_head_channels=1,
-    output_scale_factor=1.0,
-    cross_attention_dim=1280,
-    use_linear_projection=True,
-    upcast_attention=False,
-    resnet_time_scale_shift = "default",
-):
-    if mid_block_type == "UNetMidBlock3DCrossAttn":
-        return UNetMidBlock3DCrossAttn(
-            in_channels=in_channels,
-            temb_channels=temb_channels,
-            dropout=dropout,
-            num_layers=num_layers,
-            resnet_eps=resnet_eps,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
-            resnet_pre_norm=resnet_pre_norm,
-            attn_num_head_channels=attn_num_head_channels,
-            output_scale_factor=output_scale_factor,
-            cross_attention_dim=cross_attention_dim,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-        )
-    elif mid_block_type == "UNetMidBlockInflated3DCrossAttn":
-        return UNetMidBlockInflated3DCrossAttn(
-            in_channels=in_channels,
-            temb_channels=temb_channels,
-            dropout=dropout,
-            num_layers=num_layers,
-            resnet_eps=resnet_eps,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
-            resnet_pre_norm=resnet_pre_norm,
-            attn_num_head_channels=attn_num_head_channels,
-            output_scale_factor=output_scale_factor,
-            cross_attention_dim=cross_attention_dim,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-        )
-    raise ValueError(f"{mid_block_type} does not exist.")
-
 
 
 class UNetMidBlock3DCrossAttn(nn.Module):
@@ -219,6 +223,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
+        dual_cross_attention=False,
         use_linear_projection=True,
         upcast_attention=False,
     ):
@@ -243,7 +248,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 pre_norm=resnet_pre_norm,
             )
         ]
-
         temp_convs = [
             TemporalConvLayer(
                 in_channels,
@@ -267,7 +271,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-
             temp_attentions.append(
                 TransformerTemporalModel(
                     in_channels // attn_num_head_channels,
@@ -292,7 +295,6 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-
             temp_convs.append(
                 TemporalConvLayer(
                     in_channels,
@@ -316,9 +318,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         cross_attention_kwargs=None,
     ):
         hidden_states = self.resnets[0](hidden_states, temb)
-        if self.temp_convs:
-            hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
-
+        hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
         for attn, temp_attn, resnet, temp_conv in zip(
             self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
         ):
@@ -354,6 +354,7 @@ class CrossAttnDownBlock3D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
@@ -383,7 +384,6 @@ class CrossAttnDownBlock3D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-
             temp_convs.append(
                 TemporalConvLayer(
                     out_channels,
@@ -391,11 +391,10 @@ class CrossAttnDownBlock3D(nn.Module):
                     dropout=0.1,
                 )
             )
-
             attentions.append(
                 Transformer2DModel(
-                    num_attention_heads=out_channels // attn_num_head_channels,
-                    attention_head_dim=attn_num_head_channels,
+                    out_channels // attn_num_head_channels,
+                    attn_num_head_channels,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -405,7 +404,6 @@ class CrossAttnDownBlock3D(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-
             temp_attentions.append(
                 TransformerTemporalModel(
                     out_channels // attn_num_head_channels,
@@ -416,7 +414,6 @@ class CrossAttnDownBlock3D(nn.Module):
                     norm_num_groups=resnet_groups,
                 )
             )
-
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
@@ -509,7 +506,6 @@ class DownBlock3D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-
             temp_convs.append(
                 TemporalConvLayer(
                     out_channels,
@@ -570,6 +566,7 @@ class CrossAttnUpBlock3D(nn.Module):
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
+        dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
@@ -601,7 +598,6 @@ class CrossAttnUpBlock3D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-
             temp_convs.append(
                 TemporalConvLayer(
                     out_channels,
@@ -609,11 +605,10 @@ class CrossAttnUpBlock3D(nn.Module):
                     dropout=0.1,
                 )
             )
-
             attentions.append(
                 Transformer2DModel(
-                    num_attention_heads=out_channels // attn_num_head_channels,
-                    attention_head_dim=attn_num_head_channels,
+                    out_channels // attn_num_head_channels,
+                    attn_num_head_channels,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -623,7 +618,6 @@ class CrossAttnUpBlock3D(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-
             temp_attentions.append(
                 TransformerTemporalModel(
                     out_channels // attn_num_head_channels,
@@ -634,7 +628,6 @@ class CrossAttnUpBlock3D(nn.Module):
                     norm_num_groups=resnet_groups,
                 )
             )
-
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
@@ -659,7 +652,6 @@ class CrossAttnUpBlock3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
-
         for resnet, temp_conv, attn, temp_attn in zip(
             self.resnets, self.temp_convs, self.attentions, self.temp_attentions
         ):
@@ -670,7 +662,6 @@ class CrossAttnUpBlock3D(nn.Module):
 
             hidden_states = resnet(hidden_states, temb)
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
-
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
@@ -726,7 +717,6 @@ class UpBlock3D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-
             temp_convs.append(
                 TemporalConvLayer(
                     out_channels,
@@ -760,3 +750,42 @@ class UpBlock3D(nn.Module):
                 hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
+    
+    # TODO: Check if to retain this or remove.
+    @classmethod
+    def from_pretrained_2d(cls, pretrained_model_path, subfolder=None):
+        if subfolder is not None:
+            pretrained_model_path = os.path.join(pretrained_model_path, subfolder)
+
+        config_file = os.path.join(pretrained_model_path, "config.json")
+        if not os.path.isfile(config_file):
+            raise RuntimeError(f"{config_file} does not exist")
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        config["_class_name"] = cls.__name__
+        config["down_block_types"] = [
+            "CrossAttnDownBlock3D",
+            "CrossAttnDownBlock3D",
+            "CrossAttnDownBlock3D",
+            "DownBlock3D",
+        ]
+        config["up_block_types"] = ["UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"]
+        config["upcast_attention"] = False
+        config["use_linear_projection"] = False
+        config["use_temporal_transformer"] = False
+        config["use_temporal_conv"] = False
+        config["sub_blocks_type"] = "3d"
+
+        from diffusers.utils import WEIGHTS_NAME
+
+        model = cls.from_config(config)
+        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
+        if not os.path.isfile(model_file):
+            raise RuntimeError(f"{model_file} does not exist")
+        state_dict = torch.load(model_file, map_location="cpu")
+        for k, v in model.state_dict().items():
+            if "_temp." in k:
+                state_dict.update({k: v})
+        model.load_state_dict(state_dict)
+
+        return model
