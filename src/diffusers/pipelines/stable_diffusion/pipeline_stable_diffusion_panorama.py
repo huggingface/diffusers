@@ -454,8 +454,8 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         # if panorama's height/width < window_size, num_blocks of height/width should return 1
         panorama_height /= 8
         panorama_width /= 8
-        num_blocks_height = (panorama_height - window_size) // stride + 1 if panorama_height < window_size else 1
-        num_blocks_width = (panorama_width - window_size) // stride + 1 if panorama_height < window_size else 1
+        num_blocks_height = (panorama_height - window_size) // stride + 1 if panorama_height > window_size else 1
+        num_blocks_width = (panorama_width - window_size) // stride + 1 if panorama_height > window_size else 1
         total_num_blocks = int(num_blocks_height * num_blocks_width)
         views = []
         for i in range(total_num_blocks):
