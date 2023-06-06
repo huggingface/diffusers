@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
@@ -27,6 +28,7 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
     XFormersAttnProcessor,
@@ -287,7 +289,9 @@ class UNet2DConditionLoadersMixin:
                     if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
                         attn_processor_class = LoRAXFormersAttnProcessor
                     else:
-                        attn_processor_class = LoRAAttnProcessor
+                        attn_processor_class = (
+                            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                        )
 
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size,
@@ -927,11 +931,11 @@ class LoraLoaderMixin:
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
-            logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
+                logger.info(f"Loading {self.text_encoder_name}.")
                 attn_procs_text_encoder = self._load_text_encoder_attn_procs(
                     text_encoder_lora_state_dict, network_alpha=network_alpha
                 )
