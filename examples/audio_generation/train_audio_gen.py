@@ -358,6 +358,21 @@ def parse_args():
         required=False,
         help="decide whether to pass in the attention mask to the unet cross attention",
     )
+        
+    parser.add_argument(
+        "--text_encoder_max_length",
+        type=int,
+        default=512,
+        help="max token length for the text encoder",
+    )
+    
+    parser.add_argument(
+        "--bal_sampling",
+        action="store_true",
+        default=False,
+        required=False,
+        help="use balanced sampler or not",
+    )
     
     parser.add_argument(
         "--log_level",
@@ -477,12 +492,12 @@ def main():
         # tokenizer = AutoTokenizer.from_pretrained( args.pretrained_model_name_or_path, subfolder="tokenizer")
         # text_encoder = ClapAudioModelWithProjection.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", )
         
-        tokenizer = AutoTokenizer.from_pretrained("cvssp/audioldm-m-full", model_max_length=512,  subfolder="tokenizer")
+        tokenizer = AutoTokenizer.from_pretrained("cvssp/audioldm-m-full", model_max_length=args.text_encoder_max_length,  subfolder="tokenizer")
         text_encoder = T5EncoderModel.from_pretrained("cvssp/audioldm-m-full", subfolder="text_encoder")
     
     elif ("journey" in args.pretrained_model_name_or_path):
         logger.warning("Using T5 text encoder and tokenizer")
-        tokenizer = AutoTokenizer.from_pretrained("t5-large", model_max_length=512)
+        tokenizer = AutoTokenizer.from_pretrained("t5-large", model_max_length=args.text_encoder_max_length)
         text_encoder = T5EncoderModel.from_pretrained("t5-large")
     else:
         tokenizer = CLIPTokenizer.from_pretrained(
@@ -762,12 +777,18 @@ def main():
         elif accelerator.mixed_precision == "bf16":
             weight_dtype = torch.bfloat16
                     
-
-        sampler=None
-
-        train_dataloader = torch.utils.data.DataLoader( 
+        if args.bal_sampling:
+            samples_weight = np.loadtxt('/u/li19/data_folder/AudioTaggingDoneRight/egs/audioset/data/datafiles/alpaca_bal_unbal_weight.csv', delimiter=',')
+            sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
+            train_dataloader = torch.utils.data.DataLoader( 
                 AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1),
-                batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers, shuffle=True)
+                batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
+        else:
+            sampler=None
+
+            train_dataloader = torch.utils.data.DataLoader( 
+                    AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1),
+                    batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers, shuffle=True)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
