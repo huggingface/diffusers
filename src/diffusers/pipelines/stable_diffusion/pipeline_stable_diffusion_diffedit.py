@@ -1015,6 +1015,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
+        (cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None,)
         target_prompt_embeds = self._encode_prompt(
             target_prompt,
             device,
@@ -1466,6 +1467,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None,
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -1474,6 +1478,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Preprocess mask

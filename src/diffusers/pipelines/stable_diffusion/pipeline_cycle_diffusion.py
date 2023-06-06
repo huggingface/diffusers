@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -637,6 +637,7 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -693,6 +694,10 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -713,12 +718,16 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None,
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
             do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
         source_prompt_embeds = self._encode_prompt(
             source_prompt, device, num_images_per_prompt, do_classifier_free_guidance, None
@@ -772,7 +781,10 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
                     dim=0,
                 )
                 concat_noise_pred = self.unet(
-                    concat_latent_model_input, t, encoder_hidden_states=concat_prompt_embeds
+                    concat_latent_model_input,
+                    t,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_hidden_states=concat_prompt_embeds,
                 ).sample
 
                 # perform guidance

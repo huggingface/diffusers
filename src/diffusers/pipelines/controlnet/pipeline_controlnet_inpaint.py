@@ -1139,6 +1139,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         guess_mode = guess_mode or global_pool_conditions
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None,
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -1147,6 +1150,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Prepare image
