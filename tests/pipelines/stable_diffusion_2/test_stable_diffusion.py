@@ -211,7 +211,9 @@ class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
     def test_stable_diffusion_unflawed(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        components["scheduler"] = DDIMScheduler.from_config(components["scheduler"].config, timestep_spacing="trailing")
+        components["scheduler"] = DDIMScheduler.from_config(
+            components["scheduler"].config, timestep_spacing="trailing"
+        )
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
