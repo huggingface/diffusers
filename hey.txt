@@ -1,5 +1,0 @@
-src/diffusers/pipelines/stable_diffusion/pipeline_cycle_diffusion.py
-src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_depth2img.py
-src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint_legacy.py
-src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_upscale.py
-
