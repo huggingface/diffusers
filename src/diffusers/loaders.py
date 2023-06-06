@@ -957,10 +957,10 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @property
-    def lora_scale(self):
+    def lora_scale(self) -> float:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
-        return self._lora_scale if hasattr(self, "_lora_scale") else 1
+        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     @property
     def text_encoder_lora_attn_procs(self):
