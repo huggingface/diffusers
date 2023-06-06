@@ -173,6 +173,15 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         return noise, input_ids, pipeline_inputs
 
+    def create_lora_weight_file(self, tmpdirname):
+        _, lora_components = self.get_dummy_components()
+        LoraLoaderMixin.save_lora_weights(
+            save_directory=tmpdirname,
+            unet_lora_layers=lora_components["unet_lora_layers"],
+            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+        )
+        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+
     def test_lora_save_load(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
@@ -309,14 +318,45 @@ class LoraLoaderMixinTests(unittest.TestCase):
             outputs_without_lora, outputs_with_lora
         ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
 
-    def create_lora_weight_file(self, tmpdirname):
-        _, lora_components = self.get_dummy_components()
-        LoraLoaderMixin.save_lora_weights(
-            save_directory=tmpdirname,
-            unet_lora_layers=lora_components["unet_lora_layers"],
-            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
-        )
-        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+    def test_text_encoder_lora_remove_monkey_patch(self):
+        pipeline_components, _ = self.get_dummy_components()
+        pipe = StableDiffusionPipeline(**pipeline_components)
+
+        dummy_tokens = self.get_dummy_tokens()
+
+        # inference without lora
+        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora.shape == (1, 77, 32)
+
+        # create lora_attn_procs with randn up.weights
+        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
+        set_lora_up_weights(text_attn_procs, randn_weight=True)
+
+        # monkey patch
+        pipe._modify_text_encoder(text_attn_procs)
+
+        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
+        del text_attn_procs
+        gc.collect()
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert not torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora outputs should be different to without lora outputs"
+
+        # remove monkey patch
+        pipe._remove_text_encoder_monkey_patch()
+
+        # inference with removed lora
+        outputs_without_lora_removed = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora_removed.shape == (1, 77, 32)
+
+        assert torch.allclose(
+            outputs_without_lora, outputs_without_lora_removed
+        ), "remove lora monkey patch should restore the original outputs"
 
     def test_lora_unet_attn_processors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
