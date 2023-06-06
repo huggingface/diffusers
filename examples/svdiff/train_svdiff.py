@@ -81,12 +81,12 @@ tags:
 - text-to-image
 - diffusers
 - svdiff
-inference: true
 ---
     """
     model_card = f"""
 # SVDiff - {repo_id}
-These are SVDiff weights for {base_model}. The weights were trained on {prompt}.
+These are SVDiff weights for {base_model}. The weights were trained on {prompt}. 
+For details on how to perform inference, refer to [this link](https://github.com/huggingface/diffusers/tree/main/examples/svdiff).
 {suffix}
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
