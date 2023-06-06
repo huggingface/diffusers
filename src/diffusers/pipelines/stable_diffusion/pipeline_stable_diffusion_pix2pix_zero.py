@@ -177,6 +177,11 @@ EXAMPLE_INVERT_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
+    warnings.warn(
+        "The preprocess method is deprecated and will be removed in a future version. Please"
+        " use VaeImageProcessor.preprocess instead",
+        FutureWarning,
+    )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -629,7 +634,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        image,
         source_embeds,
         target_embeds,
         callback_steps,
@@ -727,19 +731,25 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         image = image.to(device=device, dtype=dtype)
 
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+        if image.shape[1] == 4:
+            latents = image
 
-        if isinstance(generator, list):
-            latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)]
-            latents = torch.cat(latents, dim=0)
         else:
-            latents = self.vae.encode(image).latent_dist.sample(generator)
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        latents = self.vae.config.scaling_factor * latents
+            if isinstance(generator, list):
+                latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
+                latents = torch.cat(latents, dim=0)
+            else:
+                latents = self.vae.encode(image).latent_dist.sample(generator)
+
+            latents = self.vae.config.scaling_factor * latents
 
         if batch_size != latents.shape[0]:
             if batch_size % latents.shape[0] == 0:
@@ -804,7 +814,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
         height: Optional[int] = None,
@@ -905,7 +914,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            image,
             source_embeds,
             target_embeds,
             callback_steps,
@@ -1085,7 +1093,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def invert(
         self,
         prompt: Optional[str] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -1109,8 +1124,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`, *optional*):
-                `Image`, or tensor representing an image batch which will be used for conditioning.
+            image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, or tensor representing an image batch which will be used for conditioning. Can also accpet
+                image latents as `image`, if passing latents directly, it will not be encoded again.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1179,7 +1195,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 4. Prepare latent variables
         latents = self.prepare_image_latents(image, batch_size, self.vae.dtype, device, generator)
@@ -1267,15 +1283,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         inverted_latents = latents.detach().clone()
 
         # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
-
-        # 9. Convert to PIL.
-        if output_type == "pil":
-            image = self.image_processor.numpy_to_pil(image)
 
         if not return_dict:
             return (inverted_latents, image)
