@@ -1468,7 +1468,7 @@ The following code compares the performance of the original stable diffusion pip
 ```python
 import torch
 import intel_extension_for_pytorch as ipex
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DiffusionPipeline
 import time
 
 prompt = "sailing ship in storm by Rembrandt"
