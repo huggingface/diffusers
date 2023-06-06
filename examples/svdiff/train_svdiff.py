@@ -858,12 +858,12 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        unet, text_encoder, svdiff_modules_unet, svdiff_modules_te, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, text_encoder, svdiff_modules_unet, svdiff_modules_te, optimizer, train_dataloader, lr_scheduler
         )
     else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
+        unet, svdiff_modules_unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, svdiff_modules_unet, optimizer, train_dataloader, lr_scheduler
         )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
