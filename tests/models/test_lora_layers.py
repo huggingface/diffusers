@@ -19,6 +19,7 @@ import unittest
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
@@ -28,6 +29,7 @@ from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
@@ -46,16 +48,24 @@ def create_unet_lora_layers(unet: nn.Module):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_processor_class = (
+            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+        )
+        lora_attn_procs[name] = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
     unet_lora_layers = AttnProcsLayers(lora_attn_procs)
     return lora_attn_procs, unet_lora_layers
 
 
 def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
     text_lora_attn_procs = {}
+    lora_attn_processor_class = (
+        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+    )
     for name, module in text_encoder.named_modules():
         if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-            text_lora_attn_procs[name] = LoRAAttnProcessor(
+            text_lora_attn_procs[name] = lora_attn_processor_class(
                 hidden_size=module.out_proj.out_features, cross_attention_dim=None
             )
     return text_lora_attn_procs
@@ -163,13 +173,33 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         return noise, input_ids, pipeline_inputs
 
+        # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+
+    def get_dummy_tokens(self):
+        max_seq_length = 77
+
+        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
+
+        prepared_inputs = {}
+        prepared_inputs["input_ids"] = inputs
+        return prepared_inputs
+
+    def create_lora_weight_file(self, tmpdirname):
+        _, lora_components = self.get_dummy_components()
+        LoraLoaderMixin.save_lora_weights(
+            save_directory=tmpdirname,
+            unet_lora_layers=lora_components["unet_lora_layers"],
+            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+        )
+        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+
     def test_lora_save_load(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -195,7 +225,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -223,7 +253,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -240,16 +270,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
-
-    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-    def get_dummy_tokens(self):
-        max_seq_length = 77
-
-        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
-
-        prepared_inputs = {}
-        prepared_inputs["input_ids"] = inputs
-        return prepared_inputs
 
     def test_text_encoder_lora_monkey_patch(self):
         pipeline_components, _ = self.get_dummy_components()
@@ -271,6 +291,9 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
         del text_attn_procs
         gc.collect()
+
+        # set `_lora_scale` explicitly as we're not using `load_lora_weights()` here.
+        pipe._lora_scale = 1.0
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -299,14 +322,76 @@ class LoraLoaderMixinTests(unittest.TestCase):
             outputs_without_lora, outputs_with_lora
         ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
 
-    def create_lora_weight_file(self, tmpdirname):
-        _, lora_components = self.get_dummy_components()
-        LoraLoaderMixin.save_lora_weights(
-            save_directory=tmpdirname,
-            unet_lora_layers=lora_components["unet_lora_layers"],
-            text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+    def test_text_encoder_lora_remove_monkey_patch(self):
+        pipeline_components, _ = self.get_dummy_components()
+        pipe = StableDiffusionPipeline(**pipeline_components)
+
+        dummy_tokens = self.get_dummy_tokens()
+
+        # inference without lora
+        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora.shape == (1, 77, 32)
+
+        # create lora_attn_procs with randn up.weights
+        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
+        set_lora_up_weights(text_attn_procs, randn_weight=True)
+
+        # monkey patch
+        pipe._modify_text_encoder(text_attn_procs)
+
+        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
+        del text_attn_procs
+        gc.collect()
+
+        # set `_lora_scale` explicitly as we're not using `load_lora_weights()` here.
+        pipe._lora_scale = 1.0
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert not torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora outputs should be different to without lora outputs"
+
+        # remove monkey patch
+        pipe._remove_text_encoder_monkey_patch()
+
+        # inference with removed lora
+        outputs_without_lora_removed = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora_removed.shape == (1, 77, 32)
+
+        assert torch.allclose(
+            outputs_without_lora, outputs_without_lora_removed
+        ), "remove lora monkey patch should restore the original outputs"
+
+    def test_text_encoder_lora_scale(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            LoraLoaderMixin.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        lora_images = sd_pipe(**pipeline_inputs).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        lora_images_with_scale = sd_pipe(**pipeline_inputs, cross_attention_kwargs={"scale": 0.5}).images
+        lora_image_with_scale_slice = lora_images_with_scale[0, -3:, -3:, -1]
+
+        # Outputs shouldn't match.
+        self.assertFalse(
+            torch.allclose(torch.from_numpy(lora_image_slice), torch.from_numpy(lora_image_with_scale_slice))
         )
-        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
 
     def test_lora_unet_attn_processors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -328,7 +413,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    self.assertIsInstance(module.processor, LoRAAttnProcessor)
+                    attn_proc_class = (
+                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                    )
+                    self.assertIsInstance(module.processor, attn_proc_class)
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_lora_unet_attn_processors_with_xformers(self):
@@ -363,7 +451,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         # enable XFormers
         sd_pipe.enable_xformers_memory_efficient_attention()
