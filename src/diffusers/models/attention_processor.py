@@ -545,6 +545,8 @@ class LoRAAttnProcessor(nn.Module):
             The number of channels in the `encoder_hidden_states`.
         rank (`int`, defaults to 4):
             The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
     """
 
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
@@ -840,6 +842,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
             The number of channels in the `encoder_hidden_states`.
         rank (`int`, defaults to 4):
             The dimension of the LoRA update matrices.
+
     """
 
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
@@ -1159,6 +1162,9 @@ class LoRAXFormersAttnProcessor(nn.Module):
             [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
             use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
             operator.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+
     """
 
     def __init__(
@@ -1245,9 +1251,11 @@ class LoRAAttnProcessor2_0(nn.Module):
             The number of channels in the `encoder_hidden_states`.
         rank (`int`, defaults to 4):
             The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
         super().__init__()
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -1256,10 +1264,10 @@ class LoRAAttnProcessor2_0(nn.Module):
         self.cross_attention_dim = cross_attention_dim
         self.rank = rank
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
