@@ -31,7 +31,6 @@ from .constants import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     TEXT_ENCODER_ATTN_MODULE,
-    TEXT_ENCODER_TARGET_MODULES,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
