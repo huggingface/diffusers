@@ -5,3 +5,4 @@ safetensors
 ftfy
 tensorboard
 Jinja2
+wandb
