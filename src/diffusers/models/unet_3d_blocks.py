@@ -790,45 +790,6 @@ class UpBlock3D(nn.Module):
 
         return hidden_states
 
-    # TODO: Check if to retain this or remove.
-    @classmethod
-    def from_pretrained_2d(cls, pretrained_model_path, subfolder=None):
-        if subfolder is not None:
-            pretrained_model_path = os.path.join(pretrained_model_path, subfolder)
-
-        config_file = os.path.join(pretrained_model_path, "config.json")
-        if not os.path.isfile(config_file):
-            raise RuntimeError(f"{config_file} does not exist")
-        with open(config_file, "r") as f:
-            config = json.load(f)
-        config["_class_name"] = cls.__name__
-        config["down_block_types"] = [
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "DownBlock3D",
-        ]
-        config["up_block_types"] = ["UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"]
-        config["upcast_attention"] = False
-        config["use_linear_projection"] = False
-        config["use_temporal_transformer"] = False
-        config["use_temporal_conv"] = False
-        config["sub_blocks_type"] = "3d"
-
-        from diffusers.utils import WEIGHTS_NAME
-
-        model = cls.from_config(config)
-        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
-        if not os.path.isfile(model_file):
-            raise RuntimeError(f"{model_file} does not exist")
-        state_dict = torch.load(model_file, map_location="cpu")
-        for k, v in model.state_dict().items():
-            if "_temp." in k:
-                state_dict.update({k: v})
-        model.load_state_dict(state_dict)
-
-        return model
-
 
 class UpBlockInflated3D(nn.Module):
     def __init__(
