@@ -292,10 +292,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         del text_attn_procs
         gc.collect()
 
-        # set `_lora_scale` explicitly as we're not directly calling the
-        # pipeline here.
-        pipe._lora_scale = 1.0
-
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
         assert outputs_with_lora.shape == (1, 77, 32)
@@ -343,10 +339,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
         del text_attn_procs
         gc.collect()
-
-        # set `_lora_scale` explicitly as we're not directly calling the
-        # pipeline here.
-        pipe._lora_scale = 1.0
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
