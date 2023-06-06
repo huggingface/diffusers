@@ -158,7 +158,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
         sample_max_value (`float`, default `1.0`):
             the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
-        timestep_scaling (`str`, default `"leading"`):
+        timestep_spacing (`str`, default `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
             Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
         rescale_betas_zero_snr (`bool`, default `False`):
@@ -186,7 +186,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
-        timestep_scaling: str = "leading",
+        timestep_spacing: str = "leading",
         rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
@@ -300,20 +300,23 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.num_inference_steps = num_inference_steps
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-        # creates integer timesteps by multiplying by ratio
-        # casting to int to avoid issues when num_inference_step is power of 3
 
         # "leading" and "trailing" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
-        if self.config.timestep_scaling == "leading":
+        if self.config.timestep_spacing == "leading":
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             timesteps += self.config.steps_offset
-        elif self.config.timestep_scaling == "trailing":
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
             timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64).copy()
             timesteps -= 1
         else:
             raise ValueError(
-                f"{self.config.timestep_scaling} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
             )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
