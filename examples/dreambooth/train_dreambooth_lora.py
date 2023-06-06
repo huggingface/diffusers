@@ -870,6 +870,9 @@ def main(args):
         temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, text_encoder=text_encoder
         )
+        # Setting the `_lora_scale` explicitly because we are not using
+        # `load_lora_weights()`.
+        temp_pipeline._lora_scale = 1.0
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
         text_encoder = temp_pipeline.text_encoder
         del temp_pipeline

@@ -292,7 +292,8 @@ class LoraLoaderMixinTests(unittest.TestCase):
         del text_attn_procs
         gc.collect()
 
-        # set `_lora_scale` explicitly as we're not using `load_lora_weights()` here.
+        # set `_lora_scale` explicitly as we're not directly calling the
+        # pipeline here.
         pipe._lora_scale = 1.0
 
         # inference with lora
@@ -343,7 +344,8 @@ class LoraLoaderMixinTests(unittest.TestCase):
         del text_attn_procs
         gc.collect()
 
-        # set `_lora_scale` explicitly as we're not using `load_lora_weights()` here.
+        # set `_lora_scale` explicitly as we're not directly calling the
+        # pipeline here.
         pipe._lora_scale = 1.0
 
         # inference with lora
