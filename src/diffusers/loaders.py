@@ -1177,7 +1177,10 @@ class LoraLoaderMixin:
                 cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRAAttnProcessor(
+                attn_processor_class = (
+                    LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                )
+                attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size,
                     cross_attention_dim=cross_attention_dim,
                     rank=rank,
