@@ -77,6 +77,7 @@ accelerate launch train_svdiff.py \
 
 ### Inference
 
+After training, SVDiff weights can be loaded in a `set_spectral_shifts` function and you just pass the output models into the original pipeline:
 ```python
 import torch
 from transformers import CLIPTextModel
@@ -131,21 +132,16 @@ accelerate launch train_svdiff.py \
 ```
 
 ### Inference
-
+After training, you can load the original pipeline via `set_spectral_shifts` as [Single-Subject Generation](#inference).
 ```python
-from PIL import Image
 import torch
 from transformers import CLIPTextModel
 from diffusers import UNet2DConditionModel, DDIMScheduler
 
-from modeling_svdiff import set_spectral_shifts, ddim_invert
+from modeling_svdiff import set_spectral_shifts
 
 pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
 spectral_shifts_ckpt_dir = "ckpt-dir-path"
-image = "path-to-image"
-source_prompt = "prompt-for-image"
-target_prompt = "prompt-you-want-to-generate"
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 unet = UNet2DConditionModel.from_pretrained(pretrained_model_name_or_path, subfolder="unet").to(device)
 text_encoder = CLIPTextModel.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder").to(device)
@@ -158,18 +154,28 @@ pipe = StableDiffusionPipeline.from_pretrained(
     unet=unet,
     text_encoder=text_encoder,
 )
-pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 pipe.to(device)
+```
 
-# (optional) ddim inversion
-# if you don't do it, inv_latents = None
-image = Image.open(image).convert("RGB").resize((512, 512))
-# in SVDiff, they use guidance scale=1 in ddim inversion
-# They use target_prompt in DDIM inversion for better results. See below for comparison between source_prompt and target_prompt.
-inv_latents = ddim_invert(pipe, prompt=target_prompt, image=image, guidance_scale=1.0)
+For Single Image Editing, you can optionally perform DDIM Inversion by using the `ddim_invert` function.
+```python
+from PIL import Image
+from modeling_svdiff import set_spectral_shifts, ddim_invert
+
+image = "path-to-image"
+prompt = "prompt-you-want-to-generate"
+
+if image:
+  # (optional) ddim inversion
+  image = Image.open(image).convert("RGB").resize((512, 512))
+  # in SVDiff, they use guidance scale=1 in ddim inversion
+  # They use the target prompt rather than source prompt in DDIM inversion for better results 
+  inv_latents = ddim_invert(pipe, prompt=prompt, image=image, guidance_scale=1.0)
+else:
+  inv_latents = None
 
 # They use a small cfg scale in Single Image Editing 
-image = pipe(target_prompt, latents=inv_latents, guidance_scale=3, eta=0.5).images[0]
+image = pipe(prompt, latents=inv_latents, guidance_scale=3, eta=0.5).images[0]
 ```
 
 To use slerp to add more stochasticity,
