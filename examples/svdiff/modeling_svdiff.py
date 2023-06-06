@@ -73,6 +73,19 @@ class SVDiffModule(nn.Module):
 
 
 def set_spectral_shifts(model: nn.Module, spectral_shifts_ckpt: str = None, **kwargs):
+    """
+    Perform SVD and register parametrization to model 
+
+    Args:
+        model ([`torch.nn.Module`]):
+            The model to perform SVD
+        spectral_shifts_ckpt (`str` *optional*):
+            The checkpoint path of spectral shifts 
+
+    Return:
+        `torch.nn.Module` for a model added the spectral shifts 
+        `Dict[str, torch.nn.Module]` as a collection of svdiff modules 
+    """
     # key to module
     svdiff_modules = {}
     for name, module in model.named_modules():
