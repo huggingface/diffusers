@@ -320,7 +320,7 @@ def parse_args(input_args=None):
         "--learning_rate_1d",
         type=float,
         default=1e-6,
-        help="Initial learning rate (after the potential warmup period) to use for 1D-weights.",
+        help="Initial learning rate (after the potential warmup period) to use for 1D-weights (eg. LayerNorm, GroupNorm).",
     )
     parser.add_argument(
         "--scale_lr",
