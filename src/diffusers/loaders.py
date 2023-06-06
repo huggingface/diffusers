@@ -853,7 +853,7 @@ class LoraLoaderMixin:
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         # set lora scale to a reasonable default
-        self._lora_scale = 1
+        self._lora_scale = 1.0
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1009,7 +1009,8 @@ class LoraLoaderMixin:
                     # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
                     def make_new_forward(old_forward, lora_layer):
                         def new_forward(x):
-                            return old_forward(x) + self.lora_scale * lora_layer(x)
+                            result = old_forward(x) + self.lora_scale * lora_layer(x)
+                            return result
 
                         return new_forward
 
