@@ -124,3 +124,68 @@ placeholder_token = "<my-funny-cat-token>"
 prompt = f"two {placeholder_token} getting married, photorealistic, high quality"
 image = pipeline(prompt, num_inference_steps=50).images[0]
 ```
+
+## A1111 LoRA files
+
+[Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111) is a popular web UI for Stable Diffusion that supports model sharing platforms like [Civitai](https://civitai.com/). Models trained with the Low-Rank Adaptation (LoRA) technique are especially popular because they're fast to train and have a much smaller file size than a fully finetuned model. 🤗 Diffusers supports loading A1111 LoRA checkpoints with [`~loaders.LoraLoaderMixin.load_lora_weights`]:
+
+```py
+from diffusers import DiffusionPipeline, UniPCMultistepScheduler
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "andite/anything-v4.0", torch_dtype=torch.float16, safety_checker=None
+).to("cuda")
+pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+```
+
+Download a LoRA checkpoint from Civitai; this example uses the [Howls Moving Castle,Interior/Scenery LoRA (Ghibli Stlye)](https://civitai.com/models/14605?modelVersionId=19998) checkpoint, but feel free to try out any LoRA checkpoint!
+
+```bash
+!wget https://civitai.com/api/download/models/19998 -O howls_moving_castle.safetensors
+```
+
+Load the LoRA checkpoint into the pipeline with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method:
+
+```py
+pipeline.load_lora_weights(".", weight_name="howls_moving_castle.safetensors")
+```
+
+Now you can use the pipeline to generate images:
+
+```py
+prompt = "masterpiece, illustration, ultra-detailed, cityscape, san francisco, golden gate bridge, california, bay area, in the snow, beautiful detailed starry sky"
+negative_prompt = "lowres, cropped, worst quality, low quality, normal quality, artifacts, signature, watermark, username, blurry, more than one bridge, bad architecture"
+
+images = pipeline(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=512,
+    num_inference_steps=25,
+    num_images_per_prompt=4,
+    generator=torch.manual_seed(0),
+).images
+```
+
+Finally, create a helper function to display the images:
+
+```py
+from PIL import Image
+
+
+def image_grid(imgs, rows=2, cols=2):
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
+image_grid(images)
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/a1111-lora-sf.png"/>
+</div>

@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import maybe_allow_in_graph
+from .activations import get_activation
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 
@@ -345,15 +346,11 @@ class AdaGroupNorm(nn.Module):
         super().__init__()
         self.num_groups = num_groups
         self.eps = eps
-        self.act = None
-        if act_fn == "swish":
-            self.act = lambda x: F.silu(x)
-        elif act_fn == "mish":
-            self.act = nn.Mish()
-        elif act_fn == "silu":
-            self.act = nn.SiLU()
-        elif act_fn == "gelu":
-            self.act = nn.GELU()
+
+        if act_fn is None:
+            self.act = None
+        else:
+            self.act = get_activation(act_fn)
 
         self.linear = nn.Linear(embedding_dim, out_dim * 2)
 
