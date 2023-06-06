@@ -173,6 +173,17 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         return noise, input_ids, pipeline_inputs
 
+        # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+
+    def get_dummy_tokens(self):
+        max_seq_length = 77
+
+        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
+
+        prepared_inputs = {}
+        prepared_inputs["input_ids"] = inputs
+        return prepared_inputs
+
     def create_lora_weight_file(self, tmpdirname):
         _, lora_components = self.get_dummy_components()
         LoraLoaderMixin.save_lora_weights(
@@ -188,7 +199,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -214,7 +225,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -242,7 +253,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         original_images = sd_pipe(**pipeline_inputs).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -259,16 +270,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
-
-    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-    def get_dummy_tokens(self):
-        max_seq_length = 77
-
-        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
-
-        prepared_inputs = {}
-        prepared_inputs["input_ids"] = inputs
-        return prepared_inputs
 
     def test_text_encoder_lora_monkey_patch(self):
         pipeline_components, _ = self.get_dummy_components()
@@ -358,6 +359,34 @@ class LoraLoaderMixinTests(unittest.TestCase):
             outputs_without_lora, outputs_without_lora_removed
         ), "remove lora monkey patch should restore the original outputs"
 
+    def test_text_encoder_lora_scale(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            LoraLoaderMixin.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        lora_images = sd_pipe(**pipeline_inputs).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        lora_images_with_scale = sd_pipe(**pipeline_inputs, cross_attention_kwargs={"scale": 0.5}).images
+        lora_image_with_scale_slice = lora_images_with_scale[0, -3:, -3:, -1]
+
+        # Outputs shouldn't match.
+        self.assertFalse(
+            torch.allclose(torch.from_numpy(lora_image_slice), torch.from_numpy(lora_image_with_scale_slice))
+        )
+
     def test_lora_unet_attn_processors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.create_lora_weight_file(tmpdirname)
@@ -416,7 +445,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        noise, input_ids, pipeline_inputs = self.get_dummy_inputs()
+        _, _, pipeline_inputs = self.get_dummy_inputs()
 
         # enable XFormers
         sd_pipe.enable_xformers_memory_efficient_attention()

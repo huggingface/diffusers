@@ -260,6 +260,14 @@ pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
 ```
 
+<Tip>
+
+If your LoRA parameters involve the UNet as well as the Text Encoder, then passing
+`cross_attention_kwargs={"scale": 0.5}` will apply the `scale` value to both the UNet 
+and the Text Encoder. 
+
+</Tip>
+
 Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is preferred to [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`] for loading LoRA parameters. This is because
 [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] can handle the following situations:
 
