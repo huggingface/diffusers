@@ -177,7 +177,12 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
             unet=unet,
             scheduler=scheduler,
         )
-        self.unet.set_attn_processor(TuneAVideoAttnProcessor())
+        attn_processor_dict = self.unet.attn_processors
+        for key in attn_processor_dict.keys():
+            #Only the Transformer3DModels attn1 attn processor is TuneAVideoAttnProcessor.
+            if 'attn1' in key:
+                attn_processor_dict[key] = TuneAVideoAttnProcessor()
+        self.unet.set_attn_processor(attn_processor_dict)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
