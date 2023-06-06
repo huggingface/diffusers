@@ -20,6 +20,7 @@ from .transformer_2d import Transformer2DModel
 from .transformer_3d import Transformer3DModel
 from .transformer_temporal import TransformerTemporalModel
 
+
 def get_down_block(
     down_block_type,
     num_layers,
@@ -107,6 +108,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{down_block_type} does not exist.")
+
 
 def get_up_block(
     up_block_type,
@@ -197,6 +199,7 @@ def get_up_block(
 
     raise ValueError(f"{up_block_type} does not exist.")
 
+
 def get_mid_block(
     mid_block_type,
     in_channels,
@@ -210,7 +213,7 @@ def get_mid_block(
     dual_cross_attention=False,
     use_linear_projection=True,
     upcast_attention=False,
-    resnet_time_scale_shift = "default",
+    resnet_time_scale_shift="default",
 ):
     if mid_block_type == "UNetMidBlock3DCrossAttn":
         return UNetMidBlock3DCrossAttn(
@@ -225,7 +228,7 @@ def get_mid_block(
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
-            resnet_time_scale_shift=resnet_time_scale_shift
+            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif mid_block_type == "UNetMidBlockInflated3DCrossAttn":
         return UNetMidBlockInflated3DCrossAttn(
@@ -239,9 +242,10 @@ def get_mid_block(
             resnet_groups=resnet_groups,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
-            resnet_time_scale_shift=resnet_time_scale_shift
+            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{mid_block_type} does not exist.")
+
 
 class UNetMidBlock3DCrossAttn(nn.Module):
     def __init__(
@@ -369,6 +373,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
         return hidden_states
+
 
 class CrossAttnDownBlock3D(nn.Module):
     def __init__(
@@ -784,7 +789,7 @@ class UpBlock3D(nn.Module):
                 hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
-    
+
     # TODO: Check if to retain this or remove.
     @classmethod
     def from_pretrained_2d(cls, pretrained_model_path, subfolder=None):
@@ -823,8 +828,8 @@ class UpBlock3D(nn.Module):
         model.load_state_dict(state_dict)
 
         return model
-    
-#----------------->
+
+
 class UpBlockInflated3D(nn.Module):
     def __init__(
         self,

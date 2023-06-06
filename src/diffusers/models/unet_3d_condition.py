@@ -30,22 +30,18 @@ from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
+    CrossAttnDownBlockInflated3D,
     CrossAttnUpBlock3D,
+    CrossAttnUpBlockInflated3D,
     DownBlock3D,
-    UNetMidBlock3DCrossAttn,
+    DownBlockInflated3D,
     UpBlock3D,
+    UpBlockInflated3D,
     get_down_block,
+    get_mid_block,
     get_up_block,
-    get_mid_block
 )
 
-from .unet_3d_blocks import (
-    UNetMidBlockInflated3DCrossAttn,
-    UpBlockInflated3D,
-    DownBlockInflated3D,
-    CrossAttnUpBlockInflated3D,
-    CrossAttnDownBlockInflated3D,
-)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -417,7 +413,19 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.set_attn_processor(AttnProcessor())
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
+        if isinstance(
+            module,
+            (
+                CrossAttnDownBlock3D,
+                DownBlock3D,
+                CrossAttnUpBlock3D,
+                UpBlock3D,
+                CrossAttnDownBlockInflated3D,
+                DownBlockInflated3D,
+                CrossAttnUpBlockInflated3D,
+                UpBlockInflated3D,
+            ),
+        ):
             module.gradient_checkpointing = value
 
     def forward(
@@ -642,12 +650,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "DownBlockInflated3D",
         ]
         config["mid_block_type"] = "UNetMidBlockInflated3DCrossAttn"
-        config["up_block_types"] = ["UpBlockInflated3D", "CrossAttnUpBlockInflated3D", "CrossAttnUpBlockInflated3D", "CrossAttnUpBlockInflated3D"]
+        config["up_block_types"] = [
+            "UpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+        ]
         config["upcast_attention"] = False
         config["use_linear_projection"] = False
         config["use_temporal_transformer"] = False
-        config["use_temporal_conv"] = False
-        config["sub_blocks_type"] = "3d"
 
         from diffusers.utils import WEIGHTS_NAME
 
