@@ -738,7 +738,7 @@ def main(args):
     text_encoder.requires_grad_(False)
     # set spectral shifts after moving to device to avoid reconst error
     unet.to(accelerator.device)
-    unet, svdiff_modules = set_spectral_shifts(unet)
+    unet, svdiff_modules_unet = set_spectral_shifts(unet)
     if args.train_text_encoder:
         text_encoder.to(accelerator.device)
         text_encoder, svdiff_modules_te = set_spectral_shifts(text_encoder)
@@ -803,7 +803,7 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = []
-    for m in svdiff_modules.values():
+    for m in svdiff_modules_unet.values():
         for p in m.parameters():
             params_to_optimize.append(p)
     if args.train_text_encoder:
