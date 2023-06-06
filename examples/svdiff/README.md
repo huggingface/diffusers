@@ -188,7 +188,8 @@ image = pipe(target_prompt, latents=inv_latents).images[0]
 
 ### Spectral Shift Scaling
 
-You can adjust the strength of the weights.
+You can adjust the strength of the weights. The larger the scale, the closer the generated image is to your input concept.
+On the other hand, decreasing that value generates images that follow the text prompt more.
 
 ![scale](https://github.com/mkshing/svdiff-pytorch/raw/main/assets/scale.png)
 
