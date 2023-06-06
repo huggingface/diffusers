@@ -512,7 +512,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 usually at the expense of lower image quality.
             view_batch_size (`int`, *optional*, defaults to 1):
                 The batch size to denoise splited views. For some GPUs with high performance, higher view batch size
-                can speedup the generation.
+                can speedup the generation and increase the VRAM usage.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
