@@ -738,7 +738,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             self.vae.decoder.mid_block.to(latents.dtype)
         else:
             latents = latents.float()
-        
+
         # post-processing
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -746,7 +746,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         else:
             image = latents
             has_nsfw_concept = None
-        
+
         if has_nsfw_concept is None:
             do_denormalize = [True] * image.shape[0]
         else:
@@ -754,7 +754,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-            # 11. Apply watermark
+        # 11. Apply watermark
         if output_type == "pil" and self.watermarker is not None:
             image = self.watermarker.apply_watermark(image)
 
