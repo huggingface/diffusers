@@ -852,6 +852,9 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
+        # set lora scale to a reasonable default
+        self._lora_scale = 1.0
+
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
                 "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
@@ -954,6 +957,12 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @property
+    def lora_scale(self) -> float:
+        # property function that returns the lora scale which can be set at run time by the pipeline.
+        # if _lora_scale has not been set, return 1
+        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    @property
     def text_encoder_lora_attn_procs(self):
         if hasattr(self, "_text_encoder_lora_attn_procs"):
             return self._text_encoder_lora_attn_procs
@@ -1000,7 +1009,8 @@ class LoraLoaderMixin:
                     # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
                     def make_new_forward(old_forward, lora_layer):
                         def new_forward(x):
-                            return old_forward(x) + lora_layer(x)
+                            result = old_forward(x) + self.lora_scale * lora_layer(x)
+                            return result
 
                         return new_forward
 
