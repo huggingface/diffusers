@@ -58,6 +58,49 @@ class UNet2DConditionOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
+class PaellaUNet2dConditionalModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+    _supports_gradient_checkpointing = True
+
+    @register_to_config
+    def __init__(
+        self,
+        c_in=256,
+        c_out=256,
+        num_labels=8192,
+        c_r=64,
+        patch_size=2,
+        c_cond=1024,
+        c_hidden=[640, 1280, 1280],
+        nhead=[-1, 16, 16],
+        blocks=[6, 16, 6],
+        level_config=["CT", "CTA", "CTA"],
+        clip_embd=1024,
+        byt5_embd=1536,
+        clip_seq_len=4,
+        kernel_size=3,
+        dropout=0.1,
+        self_attn=True,
+    ):
+        super().__init__()
+        if not isinstance(dropout, list):
+            dropout = [dropout] * len(c_hidden)
+
+        # CONDITIONING
+        self.byt5_mapper = nn.Linear(byt5_embd, c_cond)
+        self.clip_mapper = nn.Linear(clip_embd, c_cond * clip_seq_len)
+        self.clip_image_mapper = nn.Linear(clip_embd, c_cond * clip_seq_len)
+        self.seq_norm = nn.LayerNorm(c_cond, elementwise_affine=False, eps=1e-6)
+
+        self.in_mapper = nn.Sequential(
+            nn.Embedding(num_labels, c_in), nn.LayerNorm(c_in, elementwise_affine=False, eps=1e-6)
+        )
+        self.embedding = nn.Sequential(
+            nn.PixelUnshuffle(patch_size),
+            nn.Conv2d(c_in * (patch_size**2), c_hidden[0], kernel_size=1),
+            LayerNorm2d(c_hidden[0], elementwise_affine=False, eps=1e-6),
+        )
+
+
 class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     UNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep

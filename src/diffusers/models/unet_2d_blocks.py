@@ -390,6 +390,17 @@ def get_up_block(
     raise ValueError(f"{up_block_type} does not exist.")
 
 
+def get_paella_block(block_type, c_hidden, nhead, c_cond, c_r, kernel_size=3, c_skip=0, dropout=0, self_attn=True):
+    if block_type == "C":
+        return ResBlock(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
+    elif block_type == "A":
+        return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
+    elif block_type == "T":
+        return TimestepBlock(c_hidden, c_r)
+    else:
+        raise ValueError(f"'Block type {block_type} not supported.")
+
+
 class UNetMidBlock2D(nn.Module):
     def __init__(
         self,

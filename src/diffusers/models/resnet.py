@@ -673,6 +673,86 @@ class Conv1dBlock(nn.Module):
         return x
 
 
+class GlobalResponseNorm(nn.Module):
+    "Taken from https://github.com/facebookresearch/ConvNeXt-V2/blob/3608f67cc1dae164790c5d0aead7bf2d73d9719b/models/utils.py#L105"
+
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
+        self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
+
+    def forward(self, inputs):
+        Gx = torch.norm(inputs, p=2, dim=(1, 2), keepdim=True)
+        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (inputs * Nx) + self.beta + inputs
+
+
+class GlobalResponseResidualBlock(nn.Module):
+    def __init__(self, inp_channels, channel_skip=None, kernel_size=3, dropout=0.0) -> None:
+        super().__init__()
+
+        # depthwise
+        self.depthwise = nn.Conv2d(
+            inp_channels + channel_skip,
+            inp_channels,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            groups=inp_channels,
+        )
+        self.norm = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
+
+        # channelwise
+        self.channelwise = nn.Sequential(
+            nn.Linear(inp_channels, inp_channels * 4),
+            nn.GELU(),
+            GlobalResponseNorm(inp_channels * 4),
+            nn.Dropout(dropout),
+            nn.Linear(inp_channels * 4, inp_channels),
+        )
+
+    def _norm(self, x, norm):
+        return norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
+    def forward(self, inputs, inputs_skip=None):
+        inputs_res = inputs
+        if inputs_skip is not None:
+            inputs = torch.cat([inputs, inputs_skip], dim=1)
+        inputs = self._norm(self.depthwise(inputs), self.norm).permute(0, 2, 3, 1)
+        inputs = self.channelwise(inputs).permute(0, 3, 1, 2)
+        return inputs + inputs_res
+
+
+class MixingResidualBlock(nn.Module):
+    def __init__(self, inp_channels, c_hidden):
+        super().__init__()
+        # depthwise
+        self.norm1 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
+        self.depthwise = nn.Sequential(
+            nn.ReplicationPad2d(1), nn.Conv2d(inp_channels, inp_channels, kernel_size=3, groups=inp_channels)
+        )
+
+        # channelwise
+        self.norm2 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
+        self.channelwise = nn.Sequential(
+            nn.Linear(inp_channels, c_hidden),
+            nn.GELU(),
+            nn.Linear(c_hidden, inp_channels),
+        )
+
+        self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
+
+    def _norm(self, x, norm):
+        return norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
+    def forward(self, x):
+        mods = self.gammas
+        x_temp = self._norm(x, self.norm1) * (1 + mods[0]) + mods[1]
+        x = x + self.depthwise(x_temp) * mods[2]
+        x_temp = self._norm(x, self.norm2) * (1 + mods[3]) + mods[4]
+        x = x + self.channelwise(x_temp.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * mods[5]
+        return x
+
+
 # unet_rl.py
 class ResidualTemporalBlock1D(nn.Module):
     def __init__(self, inp_channels, out_channels, embed_dim, kernel_size=5):
