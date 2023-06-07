@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
 
@@ -558,14 +559,7 @@ class ResnetBlock2D(nn.Module):
         conv_2d_out_channels = conv_2d_out_channels or out_channels
         self.conv2 = torch.nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-        elif non_linearity == "gelu":
-            self.nonlinearity = nn.GELU()
+        self.nonlinearity = get_activation(non_linearity)
 
         self.upsample = self.downsample = None
         if self.up:

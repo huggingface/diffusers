@@ -41,13 +41,13 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import KandinskyPipeline, KandinskyPriorPipeline
         >>> import torch
 
-        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/Kandinsky-prior")
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/Kandinsky-2-1-prior")
         >>> pipe_prior.to("cuda")
 
         >>> prompt = "red cat, 4k photo"
         >>> out = pipe_prior(prompt)
-        >>> image_emb = out.images
-        >>> zero_image_emb = out.zero_embeds
+        >>> image_emb = out.image_embeds
+        >>> negative_image_emb = out.negative_image_embeds
 
         >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1")
         >>> pipe.to("cuda")
@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(
         ...     prompt,
         ...     image_embeds=image_emb,
-        ...     negative_image_embeds=zero_image_emb,
+        ...     negative_image_embeds=negative_image_emb,
         ...     height=768,
         ...     width=768,
         ...     num_inference_steps=100,
@@ -304,12 +304,12 @@ class KandinskyPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
         negative_image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -325,6 +325,9 @@ class KandinskyPipeline(DiffusionPipeline):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -340,9 +343,6 @@ class KandinskyPipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -418,7 +418,8 @@ class KandinskyPipeline(DiffusionPipeline):
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 added_cond_kwargs=added_cond_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
 
             if do_classifier_free_guidance:
                 noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)

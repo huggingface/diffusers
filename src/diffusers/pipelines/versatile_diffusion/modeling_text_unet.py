@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
+from ...models.activations import get_activation
 from ...models.attention import Attention
 from ...models.attention_processor import (
     AttentionProcessor,
@@ -364,6 +365,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
+            self.register_to_config(encoder_hid_dim_type=encoder_hid_dim_type)
             logger.info("encoder_hid_dim_type defaults to 'text_proj' as `encoder_hid_dim` is defined.")
 
         if encoder_hid_dim is None and encoder_hid_dim_type is not None:
@@ -440,16 +442,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if time_embedding_act_fn is None:
             self.time_embed_act = None
-        elif time_embedding_act_fn == "swish":
-            self.time_embed_act = lambda x: F.silu(x)
-        elif time_embedding_act_fn == "mish":
-            self.time_embed_act = nn.Mish()
-        elif time_embedding_act_fn == "silu":
-            self.time_embed_act = nn.SiLU()
-        elif time_embedding_act_fn == "gelu":
-            self.time_embed_act = nn.GELU()
         else:
-            raise ValueError(f"Unsupported activation function: {time_embedding_act_fn}")
+            self.time_embed_act = get_activation(time_embedding_act_fn)
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
@@ -603,16 +597,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
 
-            if act_fn == "swish":
-                self.conv_act = lambda x: F.silu(x)
-            elif act_fn == "mish":
-                self.conv_act = nn.Mish()
-            elif act_fn == "silu":
-                self.conv_act = nn.SiLU()
-            elif act_fn == "gelu":
-                self.conv_act = nn.GELU()
-            else:
-                raise ValueError(f"Unsupported activation function: {act_fn}")
+            self.conv_act = get_activation(act_fn)
 
         else:
             self.conv_norm_out = None

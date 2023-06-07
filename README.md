@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="./docs/source/en/imgs/diffusers_library.jpg" width="400"/>
+    <img src="https://github.com/huggingface/diffusers/blob/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
@@ -30,7 +30,7 @@ We recommend installing 🤗 Diffusers in a virtual environment from PyPi or Con
 ### PyTorch
 
 With `pip` (official package):
-    
+
 ```bash
 pip install --upgrade diffusers[torch]
 ```
@@ -107,7 +107,7 @@ Check out the [Quickstart](https://huggingface.co/docs/diffusers/quicktour) to l
 | [Training](https://huggingface.co/docs/diffusers/training/overview) | Guides for how to train a diffusion model for different tasks with different training techniques.                                                                                               |
 ## Contribution
 
-We ❤️  contributions from the open-source community! 
+We ❤️  contributions from the open-source community!
 If you want to contribute to this library, please check out our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md).
 You can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library.
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
@@ -128,70 +128,70 @@ just hang out ☕.
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Unconditional Image Generation</td>
-    <td><a href="./api/pipelines/ddpm"> DDPM </a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/ddpm"> DDPM </a></td>
     <td><a href="https://huggingface.co/google/ddpm-ema-church-256"> google/ddpm-ema-church-256 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/text2img">Stable Diffusion Text-to-Image</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/text2img">Stable Diffusion Text-to-Image</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/unclip">unclip</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/unclip">unclip</a></td>
       <td><a href="https://huggingface.co/kakaobrain/karlo-v1-alpha"> kakaobrain/karlo-v1-alpha </a></td>
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="./api/pipelines/if">if</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
       <td><a href="https://huggingface.co/lllyasviel/sd-controlnet-canny"> lllyasviel/sd-controlnet-canny </a></td>
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="./api/pipelines/stable_diffusion/img2img">Stable Diffusion Image-to-Image</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/img2img">Stable Diffusion Image-to-Image</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image Inpainting</td>
-    <td><a href="./api/pipelines/stable_diffusion/inpaint">Stable Diffusion Inpaint</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/inpaint">Stable Diffusion Inpaint</a></td>
       <td><a href="https://huggingface.co/runwayml/stable-diffusion-inpainting"> runwayml/stable-diffusion-inpainting </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Image Variation</td>
-    <td><a href="./stable_diffusion/image_variation">Stable Diffusion Image Variation</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/image_variation">Stable Diffusion Image Variation</a></td>
       <td><a href="https://huggingface.co/lambdalabs/sd-image-variations-diffusers"> lambdalabs/sd-image-variations-diffusers </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Super Resolution</td>
-    <td><a href="./stable_diffusion/stable_diffusion/upscale">Stable Diffusion Upscale</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/upscale">Stable Diffusion Upscale</a></td>
       <td><a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler"> stabilityai/stable-diffusion-x4-upscaler </a></td>
   </tr>
   <tr>
     <td>Super Resolution</td>
-    <td><a href="./stable_diffusion/latent_upscale">Stable Diffusion Latent Upscale</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/latent_upscale">Stable Diffusion Latent Upscale</a></td>
       <td><a href="https://huggingface.co/stabilityai/sd-x2-latent-upscaler"> stabilityai/sd-x2-latent-upscaler </a></td>
   </tr>
 </table>
 
 ## Popular libraries using 🧨 Diffusers
 
-- https://github.com/microsoft/TaskMatrix 
-- https://github.com/invoke-ai/InvokeAI 
-- https://github.com/apple/ml-stable-diffusion   
-- https://github.com/Sanster/lama-cleaner 
+- https://github.com/microsoft/TaskMatrix
+- https://github.com/invoke-ai/InvokeAI
+- https://github.com/apple/ml-stable-diffusion
+- https://github.com/Sanster/lama-cleaner
 - https://github.com/IDEA-Research/Grounded-Segment-Anything
-- https://github.com/ashawkey/stable-dreamfusion 
-- https://github.com/deep-floyd/IF  
+- https://github.com/ashawkey/stable-dreamfusion
+- https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
 - +3000 other amazing GitHub repositories 💪
