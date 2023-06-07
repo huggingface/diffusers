@@ -1113,7 +1113,7 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
                         if args.backup_to_drive and (args.drive_folder_for_backup != "" or args.drive_folder_for_backup is not None):
-                            clean_up_drive(args.drive_folder_to_checkpoint)
+                            clean_up_drive(args.drive_folder_for_backup)
                             upload_to_drive(save_path, args.drive_folder_for_backup)
 
 
