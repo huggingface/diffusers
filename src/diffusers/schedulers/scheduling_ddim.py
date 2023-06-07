@@ -164,7 +164,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         rescale_betas_zero_snr (`bool`, default `False`):
             whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
             This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness.
+            medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
