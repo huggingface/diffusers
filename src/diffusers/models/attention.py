@@ -18,8 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import maybe_allow_in_graph
-from ..utils.import_utils import is_xformers_available
-from .attention_processor import Attention, TuneAVideoAttnProcessor
+from .attention_processor import Attention
 from .cross_attention import CrossAttention
 from .embeddings import CombinedTimestepLabelEmbeddings
 
@@ -372,6 +371,27 @@ class AdaGroupNorm(nn.Module):
 
 
 class BasicSparseTransformerBlock(nn.Module):
+    r"""
+    A modified basic Transformer block designed for use with Text to Video models. Currently only used by Tune A Video
+    pipeline with attn1 processor set to the TuneAVideoAttnProcessor.
+
+    Parameters:
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
+        double_self_attention (`bool`, *optional*):
+            Whether to use two self-attention layers. In this case no cross attention layers are used.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        num_embeds_ada_norm (:
+            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer3DModel`.
+        attention_bias (:
+            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -398,7 +418,6 @@ class BasicSparseTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-            processor=TuneAVideoAttnProcessor(),
         )
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
@@ -436,33 +455,6 @@ class BasicSparseTransformerBlock(nn.Module):
         )
         nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
         self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        if not is_xformers_available():
-            raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
-                name="xformers",
-            )
-        elif not torch.cuda.is_available():
-            raise ValueError(
-                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
-                " available for GPU "
-            )
-        else:
-            try:
-                # Make sure we can run the memory efficient attention
-                _ = xformers.ops.memory_efficient_attention(
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                )
-            except Exception as e:
-                raise e
-            self.attn1.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-            if self.attn2 is not None:
-                self.attn2.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-            # self.attn_temp._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None

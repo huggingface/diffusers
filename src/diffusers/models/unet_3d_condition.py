@@ -30,11 +30,15 @@ from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
+    CrossAttnDownBlockInflated3D,
     CrossAttnUpBlock3D,
+    CrossAttnUpBlockInflated3D,
     DownBlock3D,
-    UNetMidBlock3DCrossAttn,
+    DownBlockInflated3D,
     UpBlock3D,
+    UpBlockInflated3D,
     get_down_block,
+    get_mid_block,
     get_up_block,
 )
 
@@ -107,17 +111,16 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
+        mid_block_type: str = "UNetMidBlock3DCrossAttn",
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         use_linear_projection: bool = True,
+        use_temporal_transformer: bool = True,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        use_temporal_transformer: bool = True,
-        use_temporal_conv: bool = True,
-        sub_blocks_type: str = "2d",
     ):
         super().__init__()
 
@@ -202,14 +205,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                use_temporal_conv=use_temporal_conv,
-                use_temporal_transformer=use_temporal_transformer,
-                sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock3DCrossAttn(
+        self.mid_block = get_mid_block(
+            mid_block_type=mid_block_type,
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
             resnet_eps=norm_eps,
@@ -221,9 +222,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             resnet_groups=norm_num_groups,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
-            use_temporal_transformer=use_temporal_transformer,
-            use_temporal_conv=use_temporal_conv,
-            sub_blocks_type=sub_blocks_type,
         )
 
         # count how many layers upsample the videos
@@ -265,9 +263,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                use_temporal_conv=use_temporal_conv,
-                use_temporal_transformer=use_temporal_transformer,
-                sub_blocks_type=sub_blocks_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -418,7 +413,19 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.set_attn_processor(AttnProcessor())
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
+        if isinstance(
+            module,
+            (
+                CrossAttnDownBlock3D,
+                DownBlock3D,
+                CrossAttnUpBlock3D,
+                UpBlock3D,
+                CrossAttnDownBlockInflated3D,
+                DownBlockInflated3D,
+                CrossAttnUpBlockInflated3D,
+                UpBlockInflated3D,
+            ),
+        ):
             module.gradient_checkpointing = value
 
     def forward(
@@ -637,17 +644,21 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             config = json.load(f)
         config["_class_name"] = cls.__name__
         config["down_block_types"] = [
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "DownBlock3D",
+            "CrossAttnDownBlockInflated3D",
+            "CrossAttnDownBlockInflated3D",
+            "CrossAttnDownBlockInflated3D",
+            "DownBlockInflated3D",
         ]
-        config["up_block_types"] = ["UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"]
+        config["mid_block_type"] = "UNetMidBlockInflated3DCrossAttn"
+        config["up_block_types"] = [
+            "UpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+            "CrossAttnUpBlockInflated3D",
+        ]
         config["upcast_attention"] = False
         config["use_linear_projection"] = False
         config["use_temporal_transformer"] = False
-        config["use_temporal_conv"] = False
-        config["sub_blocks_type"] = "3d"
 
         from diffusers.utils import WEIGHTS_NAME
 
