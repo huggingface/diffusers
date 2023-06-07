@@ -76,11 +76,13 @@ def clean_up_drive(drive_folder, n_keep=3):
     if len(folders) <= n_keep:
         return
     
-    # sort the folders by global step number
-    folders = sorted(folders, key=lambda x: int(os.path.basename(x).split("-")[1]), reverse=False)
-    # keep the last n_keep folders
-    folders = folders[:-(n_keep)]
+    if n_keep > 0:
+        # sort the folders by global step number
+        folders = sorted(folders, key=lambda x: int(os.path.basename(x).split("-")[1]), reverse=False)
+        # keep the last n_keep folders
+        folders = folders[:-(n_keep)]
 
+    # delete the folders
     for folder in folders:
         print(f"deleting {folder}")
         shutil.rmtree(folder)
