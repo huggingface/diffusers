@@ -160,7 +160,7 @@ class ConfigMixin:
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
         r"""
-        Instantiate a Python class from a config dictionary
+        Instantiate a Python class from a config dictionary.
 
         Parameters:
             config (`Dict[str, Any]`):
@@ -170,9 +170,13 @@ class ConfigMixin:
                 Whether kwargs that are not consumed by the Python class should be returned or not.
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to update the configuration object (after it being loaded) and initiate the Python class.
-                `**kwargs` will be directly passed to the underlying scheduler/model's `__init__` method and eventually
-                overwrite same named arguments of `config`.
+                Can be used to update the configuration object (after it is loaded) and initiate the Python class.
+                `**kwargs` are directly passed to the underlying scheduler/model's `__init__` method and eventually
+                overwrite same named arguments in `config`.
+
+        Returns:
+            [`ModelMixin`] or [`SchedulerMixin`]:
+                A model or scheduler object instantiated from a config dictionary.
 
         Examples:
 
@@ -258,59 +262,57 @@ class ConfigMixin:
         **kwargs,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         r"""
-        Instantiate a Python class from a config dictionary
+        Load a model or scheduler configuration.
 
         Parameters:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
-                    - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
-                      organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`], e.g.,
-                      `./my_model_directory/`.
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing model weights saved with
+                      [`~ConfigMixin.save_config`].
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory in which a downloaded pretrained model configuration should be cached if the
-                standard cache should not be used.
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
             resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
-                file exists.
+                Whether or not to resume downloading the model weights and configuration files. If set to False, any
+                incompletely downloaded files are deleted.
             proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
-                Whether or not to only look at local files (i.e., do not try to download the model).
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won’t be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-                when running `transformers-cli login` (stored in `~/.huggingface`).
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
-                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
-                identifier allowed by git.
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
-                In case the relevant files are located inside a subfolder of the model repo (either remote in
-                huggingface.co or downloaded locally), you can specify the folder name here.
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_unused_kwargs (`bool`, *optional*, defaults to `False):
-                Whether unused keyword arguments of the config shall be returned.
+                Whether unused keyword arguments of the config are returned.
             return_commit_hash (`bool`, *optional*, defaults to `False):
-                Whether the commit_hash of the loaded configuration shall be returned.
+                Whether the `commit_hash` of the loaded configuration are returned.
+
+        Returns:
+            `dict`:
+                A dictionary of all the parameters stored in a JSON configuration file.
 
         <Tip>
 
-         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-        </Tip>
-
-        <Tip>
-
-        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
-        use this method in a firewalled environment.
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
+        `huggingface-cli login`. You can also activate the special
+        ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to use this method in a
+        firewalled environment.
 
         </Tip>
         """

@@ -261,12 +261,14 @@ def load_pt(url: str):
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
-    Args:
     Loads `image` to a PIL Image.
+
+    Args:
         image (`str` or `PIL.Image.Image`):
             The image to convert to the PIL Image format.
     Returns:
-        `PIL.Image.Image`: A PIL Image.
+        `PIL.Image.Image`:
+            A PIL Image.
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):

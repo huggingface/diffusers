@@ -40,6 +40,7 @@ from diffusers.utils.testing_utils import enable_full_determinism, require_torch
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -51,7 +52,8 @@ class ControlNetInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
+    image_params = frozenset({"control_image"})  # skip `image` and `mask` for now, only test for control_image
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
