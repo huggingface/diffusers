@@ -79,9 +79,12 @@ def clean_up_drive(drive_folder, n_keep=3):
     # sort the folders by global step number
     folders = sorted(folders, key=lambda x: int(os.path.basename(x).split("-")[1]), reverse=False)
     # keep the last n_keep folders
-    folders = folders[:-(n_keep-1)]
+    folders = folders[:-(n_keep)]
+
     for folder in folders:
+        print(f"deleting {folder}")
         shutil.rmtree(folder)
+    print(f"drive cleaned up. {len(folders)} folders deleted.")
 
 def upload_to_drive(source, dest):
     """
@@ -97,7 +100,8 @@ def upload_to_drive(source, dest):
     drive_folder = pathlib.Path(dest)
     drive_folder.mkdir(parents=True, exist_ok=True)
 
-    # upload the folder
+    # upload the folder 
+    print(f"uploading {source} to {dest}") 
     shutil.copytree(source, str(drive_folder), dirs_exist_ok=True)
     
 
