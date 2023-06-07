@@ -757,6 +757,10 @@ def collate_fn(examples):
 
 
 def main(args):
+    print(f"# -------------------")
+    print("args: ", args)
+    print(f"#---------------------")
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
