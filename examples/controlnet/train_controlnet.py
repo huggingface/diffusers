@@ -596,6 +596,13 @@ def parse_args(input_args=None):
         help="The folder in google drive where the checkpoints will be backed up"
     )
 
+    parser.add_argument(
+        "--drive_n_keep",
+        type=int,
+        default=3,
+        help="The number of checkpoints to keep in the drive folder. each checkpoint is a folder and quite large."
+    )
+
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1126,7 +1133,7 @@ def main(args):
                             # launch a seprate thread to upload the checkpoint to drive
                             # so that the training is not blocked
                             
-                            clean_up_drive(args.drive_folder_for_backup)
+                            clean_up_drive(args.drive_folder_for_backup, args.drive_n_keep)
                             upload_to_drive(save_path, args.drive_folder_for_backup)
 
 
