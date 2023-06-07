@@ -38,6 +38,7 @@ else:
         AutoencoderKL,
         ControlNetModel,
         ModelMixin,
+        PaellaVQModel,
         PriorTransformer,
         T5FilmDecoder,
         Transformer2DModel,
