@@ -36,6 +36,8 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+import pathlib 
+import shutil 
 
 import diffusers
 from diffusers import (
@@ -59,6 +61,33 @@ check_min_version("0.17.0.dev0")
 
 logger = get_logger(__name__)
 
+def clean_up_drive(drive_folder, n_keep=3):
+    """
+    checkup the drive folder for backup. deletes the folder that are not needed anymore.
+    """
+    if not os.path.exists(drive_folder):
+        return 
+    
+    # get the folders in the drive folder
+    folders = [str(x) for x in pathlib.Path(drive_folder).glob("checkpoint*")]
+    # sort the folders by global step number
+    folders = sorted(folders, key=lambda x: int(x.name.split("-")[1]), reverse=False)
+    # keep the last n_keep folders
+    folders = folders[:-(n_keep-1)]
+    for folder in folders:
+        shutil.rmtree(folder)
+
+def upload_to_drive(source, dest):
+    """
+    upload the folder to google drive
+    """
+    # create the folder
+    drive_folder = pathlib.Path(dest)
+    drive_folder.mkdir(parents=True, exist_ok=True)
+
+    # upload the folder
+    shutil.copytree(source, str(drive_folder), dirs_exist_ok=True)
+    
 
 def image_grid(imgs, rows, cols):
     assert len(imgs) == rows * cols
@@ -541,6 +570,20 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+
+    parser.add_argument(
+        "--backup_to_drive", 
+        action="store_true",
+        help="Whether or not to backup the checkpoints to google drive"
+    )
+
+    parser.add_argument(
+        "--drive_folder_for_backup", 
+        type=str,
+        default=None,
+        help="The folder in google drive where the checkpoints will be backed up"
+    )
+
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1062,6 +1105,10 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+                        if args.backup_to_drive and (args.drive_folder_for_backup != "" or args.drive_folder_for_backup is not None):
+                            clean_up_drive(args.drive_folder_to_checkpoint)
+                            upload_to_drive(save_path, args.drive_folder_for_backup)
+
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
