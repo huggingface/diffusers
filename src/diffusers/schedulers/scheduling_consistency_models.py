@@ -54,13 +54,12 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
 
 class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     """
-    Multistep and onestep sampling for consistency models from Song et al. 2023 [1]. This implements Algorithm 1 in
-    the paper [1].
+    Multistep and onestep sampling for consistency models from Song et al. 2023 [1]. This implements Algorithm 1 in the
+    paper [1].
 
     [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
-    https://arxiv.org/pdf/2303.01469
-    [2] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364
+    https://arxiv.org/pdf/2303.01469 [2] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based
+    Generative Models." https://arxiv.org/abs/2206.00364
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -77,17 +76,16 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution, following the EDM paper [2]. This was set to 0.5 in the
             original implementation, which is also the original value suggested in the EDM paper.
         s_noise (`float`):
-            The amount of additional noise to counteract loss of detail during sampling. A reasonable range is
-            [1.000, 1.011]. This was set to 1.0 in the original implementation.
+            The amount of additional noise to counteract loss of detail during sampling. A reasonable range is [1.000,
+            1.011]. This was set to 1.0 in the original implementation.
         rho (`float`):
-            The rho parameter used for calculating the Karras sigma schedule, introduced in the EDM paper [2]. This
-            was set to 7.0 in the original implementation, which is also the original value suggested in the EDM
-            paper.
+            The rho parameter used for calculating the Karras sigma schedule, introduced in the EDM paper [2]. This was
+            set to 7.0 in the original implementation, which is also the original value suggested in the EDM paper.
         clip_denoised (`bool`):
             Whether to clip the denoised outputs to `(-1, 1)`. Defaults to `True`.
         timesteps (`List` or `np.ndarray` or `torch.Tensor`, *optional*):
             Optionally, an explicit timestep schedule can be specified. The timesteps are expected to be in increasing
-            order. 
+            order.
     """
 
     order = 1
@@ -211,7 +209,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
-    
+
     def get_scalings(self, sigma):
         sigma_data = self.config.sigma_data
 
@@ -324,7 +322,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = denoised + z * (sigma_hat**2 - sigma_min**2) ** 0.5
 
         if not return_dict:
-            return (prev_sample)
+            return (prev_sample,)
 
         return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
 
