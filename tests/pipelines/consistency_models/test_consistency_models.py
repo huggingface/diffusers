@@ -2,14 +2,11 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 
 from diffusers import (
     CMStochasticIterativeScheduler,
     ConsistencyModelPipeline,
-    EulerDiscreteScheduler,
-    HeunDiscreteScheduler,
     UNet2DModel,
 )
 from diffusers.utils import slow, torch_device

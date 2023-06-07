@@ -148,7 +148,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     def prepare_class_labels(self, batch_size, device, class_labels=None):
         if self.unet.config.num_class_embeds is not None:
             if isinstance(class_labels, list):
@@ -171,7 +171,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 f"The scheduler's timestep schedule: {self.scheduler.timesteps} is shorter than num_inference_steps:"
                 " {num_inference_steps}, but is expected to be at least as long."
             )
-        
+
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
             if latents.shape != expected_shape:

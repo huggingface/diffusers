@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -124,7 +124,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
         return indices.item()
-    
+
     def get_scalings(self, sigma):
         sigma_data = self.config.sigma_data
 
@@ -168,7 +168,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         self.is_scale_input_called = True
         return sample
-    
+
     def scale_timestep(self, sigma):
         return 1000 * 0.25 * torch.log(sigma + 1e-44)
 
@@ -194,7 +194,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 timesteps = self.timesteps.astype(np.float32)
             else:
                 timesteps = self.timesteps.numpy().astype(np.float32)
-            timesteps = timesteps[:self.num_inference_steps]
+            timesteps = timesteps[: self.num_inference_steps]
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
