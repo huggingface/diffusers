@@ -574,9 +574,12 @@ upscaler to remove the new token from the instance prompt. I.e. if your stage I 
 For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than 
 LoRA finetuning stage II.
 
-For finegrained detail like faces, we find that lower learning rates work best.
+For finegrained detail like faces, we find that lower learning rates along with larger batch sizes work best.
 
 For stage II, we find that lower learning rates are also needed.
+
+We found experimentally that the DDPM scheduler with the default larger number of denoising steps to sometimes work better than the DPM Solver scheduler
+used in the training scripts.
 
 ### Stage II additional validation images
 
@@ -665,7 +668,8 @@ with a T5 loaded from the original model.
 
 `use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
 
-`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade.
+`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
+likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
 
@@ -690,7 +694,7 @@ accelerate launch train_dreambooth.py \
   --text_encoder_use_attention_mask \
   --tokenizer_max_length 77 \
   --pre_compute_text_embeddings \
-  --use_8bit_adam \ # 
+  --use_8bit_adam \
   --set_grads_to_none \
   --skip_save_text_encoder \
   --push_to_hub
@@ -698,9 +702,13 @@ accelerate launch train_dreambooth.py \
 
 ### IF Stage II Full Dreambooth
 
-`--learning_rate=1e-8`: Even lower learning rate.
+`--learning_rate=5e-6`: With a smaller effective batch size of 4, we found that we required learning rates as low as
+1e-8.
 
 `--resolution=256`: The upscaler expects higher resolution inputs
+
+`--train_batch_size=2` and `--gradient_accumulation_steps=6`: We found that full training of stage II particularly with
+faces required large effective batch sizes.
 
 ```sh
 export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
@@ -716,8 +724,8 @@ accelerate launch train_dreambooth.py \
   --instance_prompt="a sks dog" \
   --resolution=256 \
   --train_batch_size=2 \
-  --gradient_accumulation_steps=2 \
-  --learning_rate=1e-8 \
+  --gradient_accumulation_steps=6 \
+  --learning_rate=5e-6 \
   --max_train_steps=2000 \
   --validation_prompt="a sks dog" \
   --validation_steps=150 \
