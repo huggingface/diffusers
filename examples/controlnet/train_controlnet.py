@@ -70,6 +70,9 @@ def clean_up_drive(drive_folder, n_keep=3):
     
     # get the folders in the drive folder
     folders = [str(x) for x in pathlib.Path(drive_folder).glob("checkpoint*")]
+    if len(folders) <= n_keep:
+        return
+    
     # sort the folders by global step number
     folders = sorted(folders, key=lambda x: int(x.name.split("-")[1]), reverse=False)
     # keep the last n_keep folders
@@ -1126,7 +1129,8 @@ def main(args):
                             weight_dtype,
                             global_step,
                         )
-                        upload_to_drive(os.path.join(args.output_dir, "logs"), args.drive_folder_for_backup)
+                        if args.backup_to_drive and (args.drive_folder_for_backup != "" or args.drive_folder_for_backup is not None):
+                            upload_to_drive(os.path.join(args.output_dir, "logs"), args.drive_folder_for_backup)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
