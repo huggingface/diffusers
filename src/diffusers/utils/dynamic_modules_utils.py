@@ -21,12 +21,12 @@ import os
 import re
 import shutil
 import sys
-from distutils.version import StrictVersion
 from pathlib import Path
 from typing import Dict, Optional, Union
 from urllib import request
 
 from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
+from packaging import version
 
 from .. import __version__
 from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
@@ -43,7 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def get_diffusers_versions():
     url = "https://pypi.org/pypi/diffusers/json"
     releases = json.loads(request.urlopen(url).read())["releases"].keys()
-    return sorted(releases, key=StrictVersion)
+    return sorted(releases, key=lambda x: version.Version(x))
 
 
 def init_hf_modules():
