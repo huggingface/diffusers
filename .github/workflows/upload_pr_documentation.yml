@@ -12,5 +12,5 @@ jobs:
     with:
       package_name: diffusers
     secrets:
-      hf_token: ${{ secrets.HF_DOC_BUILD_PUSH }}
+      hf_token: ${{ secrets.HF_DOC_PUSH }}
       comment_bot_token: ${{ secrets.COMMENT_BOT_TOKEN }}
