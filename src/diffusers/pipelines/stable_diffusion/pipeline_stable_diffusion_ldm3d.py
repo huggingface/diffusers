@@ -46,11 +46,11 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> rgb_image, depth_image = pipe_ldm3d(prompt).images
         ```
 """
 
@@ -456,7 +456,7 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
                 images, has_nsfw_concepts = self.safety_checker(
                     images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
                 )
-            return image, has_nsfw_concept
+        return image, has_nsfw_concept
 
     def decode_latents(self, latents):
         warnings.warn(

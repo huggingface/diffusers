@@ -44,11 +44,7 @@ class VaeImageProcessor(ConfigMixin):
 
     @register_to_config
     def __init__(
-        self,
-        do_resize: bool = True,
-        vae_scale_factor: int = 8,
-        resample: str = "lanczos",
-        do_normalize: bool = True,
+        self, do_resize: bool = True, vae_scale_factor: int = 8, resample: str = "lanczos", do_normalize: bool = True,
     ):
         super().__init__()
 
@@ -110,10 +106,7 @@ class VaeImageProcessor(ConfigMixin):
         images = images.resize((w, h), resample=PIL_INTERPOLATION[self.config.resample])
         return images
 
-    def preprocess(
-        self,
-        image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
-    ) -> torch.Tensor:
+    def preprocess(self, image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],) -> torch.Tensor:
         """
         Preprocess the image input, accepted formats are PIL images, numpy arrays or pytorch tensors"
         """
@@ -171,10 +164,7 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
     def postprocess(
-        self,
-        image: torch.FloatTensor,
-        output_type: str = "pil",
-        do_denormalize: Optional[List[bool]] = None,
+        self, image: torch.FloatTensor, output_type: str = "pil", do_denormalize: Optional[List[bool]] = None,
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
@@ -293,9 +283,9 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
 
-        if output_type == "latent":
-            raise Exception(f"This type {output_type} is not supported")
-        
+        # if output_type == "latent":
+        #     return image
+
         if do_denormalize is None:
             do_denormalize = [self.config.do_normalize] * image.shape[0]
 
@@ -303,14 +293,13 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
         )
 
-        if output_type == "pt":
-            raise Exception(f"This type {output_type} is not supported")
+        # if output_type == "pt":
+        #     return image
 
         image = self.pt_to_numpy(image)
 
         if output_type == "np":
-            raise Exception(f"This type {output_type} is not supported")
-
+            return image[:, :, :, :3], np.stack([self.rgblike_to_depthmap(im[:, :, 3:]) for im in images], axis=0)
 
         if output_type == "pil":
             return self.numpy_to_pil(image), self.numpy_to_depth(image)
