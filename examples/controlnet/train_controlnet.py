@@ -1122,6 +1122,7 @@ def main(args):
                             weight_dtype,
                             global_step,
                         )
+                        upload_to_drive(os.path.join(args.output_dir, "logs"), args.drive_folder_for_backup)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
