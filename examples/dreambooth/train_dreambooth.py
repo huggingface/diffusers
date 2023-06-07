@@ -52,6 +52,7 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.t5_lora import t5_encoder_add_lora_weights
 
 
 if is_wandb_available():
@@ -903,8 +904,18 @@ def main(args):
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
         for model in models:
-            sub_dir = "unet" if isinstance(model, type(accelerator.unwrap_model(unet))) else "text_encoder"
-            model.save_pretrained(os.path.join(output_dir, sub_dir))
+            if isinstance(model, type(accelerator.unwrap_model(unet))):
+                model.save_pretrained(os.path.join(output_dir, "unet"))
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_state_dict = model.state_dict()
+                text_encoder_lora_layers_state_dict = {}
+                for key in text_encoder_lora_parameters_keys:
+                    text_encoder_lora_layers_state_dict[key] = text_encoder_state_dict[key]
+                    torch.save(
+                        text_encoder_lora_layers_state_dict, os.path.join(output_dir, "text_encoder_lora_layers.bin")
+                    )
+            else:
+                assert False
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
@@ -993,9 +1004,14 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
+    if args.train_text_encoder:
+        text_encoder_lora_parameters, text_encoder_lora_parameters_keys = t5_encoder_add_lora_weights(text_encoder)
+
     # Optimizer creation
     params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+        itertools.chain(unet.parameters(), text_encoder_lora_parameters)
+        if args.train_text_encoder
+        else unet.parameters()
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -1255,7 +1271,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
+                        itertools.chain(unet.parameters(), text_encoder_lora_parameters)
                         if args.train_text_encoder
                         else unet.parameters()
                     )
@@ -1300,19 +1316,19 @@ def main(args):
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        pipeline_args = {}
+        # pipeline_args = {}
 
-        if text_encoder is not None:
-            pipeline_args["text_encoder"] = accelerator.unwrap_model(text_encoder)
+        # if text_encoder is not None:
+        #     pipeline_args["text_encoder"] = accelerator.unwrap_model(text_encoder)
 
-        if args.skip_save_text_encoder:
-            pipeline_args["text_encoder"] = None
+        # if args.skip_save_text_encoder:
+        #     pipeline_args["text_encoder"] = None
 
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
             revision=args.revision,
-            **pipeline_args,
+            text_encoder=None,
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
@@ -1329,6 +1345,14 @@ def main(args):
         pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
         pipeline.save_pretrained(args.output_dir)
+
+        text_encoder_state_dict = accelerator.unwrap_model(text_encoder).state_dict()
+        text_encoder_lora_layers_state_dict = {}
+        for key in text_encoder_lora_parameters_keys:
+            text_encoder_lora_layers_state_dict[key] = text_encoder_state_dict[key]
+            torch.save(
+                text_encoder_lora_layers_state_dict, os.path.join(args.output_dir, "text_encoder_lora_layers.bin")
+            )
 
         if args.push_to_hub:
             save_model_card(

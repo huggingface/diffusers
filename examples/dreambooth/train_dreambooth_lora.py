@@ -38,14 +38,13 @@ from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoTokenizer, PretrainedConfig, T5EncoderModel
 
 import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DiffusionPipeline,
-    DPMSolverMultistepScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
@@ -61,6 +60,7 @@ from diffusers.models.attention_processor import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.t5_lora import t5_encoder_add_lora_weights
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -588,6 +588,9 @@ def collate_fn(examples, with_prior_preservation=False):
 
     input_ids = torch.cat(input_ids, dim=0)
 
+    if has_attention_mask:
+        attention_mask = torch.cat(attention_mask)
+
     batch = {
         "input_ids": input_ids,
         "pixel_values": pixel_values,
@@ -859,55 +862,50 @@ def main(args):
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
     # we first load a dummy pipeline with the text encoder and then do the monkey-patching.
-    text_encoder_lora_layers = None
+    # text_encoder_lora_layers = None
     if args.train_text_encoder:
-        text_lora_attn_procs = {}
-        for name, module in text_encoder.named_modules():
-            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-                text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_proj.out_features, cross_attention_dim=None
-                )
-        text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, text_encoder=text_encoder
-        )
-        temp_pipeline._modify_text_encoder(text_lora_attn_procs)
-        text_encoder = temp_pipeline.text_encoder
-        del temp_pipeline
+        if not isinstance(text_encoder, T5EncoderModel):
+            text_lora_attn_procs = {}
+            for name, module in text_encoder.named_modules():
+                if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                    text_lora_attn_procs[name] = LoRAAttnProcessor(
+                        hidden_size=module.out_proj.out_features, cross_attention_dim=None
+                    )
+            AttnProcsLayers(text_lora_attn_procs)
+            temp_pipeline = DiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path, text_encoder=text_encoder
+            )
+            temp_pipeline._modify_text_encoder(text_lora_attn_procs)
+            text_encoder = temp_pipeline.text_encoder
+            del temp_pipeline
+        else:
+            text_encoder_lora_parameters, text_encoder_lora_parameters_keys = t5_encoder_add_lora_weights(text_encoder)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
         # there are only two options here. Either are just the unet attn processor layers
         # or there are the unet and text encoder atten layers
-        unet_lora_layers_to_save = None
-        text_encoder_lora_layers_to_save = None
-
-        if args.train_text_encoder:
-            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
         unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
 
         for model in models:
             state_dict = model.state_dict()
 
-            if (
-                text_encoder_lora_layers is not None
-                and text_encoder_keys is not None
-                and state_dict.keys() == text_encoder_keys
-            ):
-                # text encoder
-                text_encoder_lora_layers_to_save = state_dict
-            elif state_dict.keys() == unet_keys:
-                # unet
-                unet_lora_layers_to_save = state_dict
+            if state_dict.keys() == unet_keys:
+                LoraLoaderMixin.save_lora_weights(
+                    output_dir,
+                    unet_lora_layers=state_dict,
+                    text_encoder_lora_layers=None,
+                )
+            elif text_encoder is not None and isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_lora_layers_state_dict = {}
+                for key in text_encoder_lora_parameters_keys:
+                    text_encoder_lora_layers_state_dict[key] = state_dict[key]
+                    torch.save(
+                        text_encoder_lora_layers_state_dict, os.path.join(output_dir, "text_encoder_lora_layers.bin")
+                    )
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
-
-        LoraLoaderMixin.save_lora_weights(
-            output_dir,
-            unet_lora_layers=unet_lora_layers_to_save,
-            text_encoder_lora_layers=text_encoder_lora_layers_to_save,
-        )
 
     def load_model_hook(models, input_dir):
         # Note we DON'T pass the unet and text encoder here an purpose
@@ -925,7 +923,9 @@ def main(args):
         # load lora weights into models
         models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
         if len(models) > 1:
-            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
+            # models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
+            text_encoder_lora_layers_state_dict = torch.load(os.path.join(input_dir, "text_encoder_lora_layers.bin"))
+            models[1].load_state_dict(text_encoder_lora_layers_state_dict, strict=False)
 
         # delete temporary pipeline and pop models
         del temp_pipeline
@@ -960,7 +960,7 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = (
-        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_parameters)
         if args.train_text_encoder
         else unet_lora_layers.parameters()
     )
@@ -1051,8 +1051,8 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler
+        unet_lora_layers, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet_lora_layers, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
         unet_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
@@ -1160,10 +1160,17 @@ def main(args):
                     )
 
                 if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
-                    noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
+                    less_noise = torch.randn_like(model_input)
+                    less_noise_timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps // 4, (bsz,), device=model_input.device
+                    )
+                    less_noise_timesteps = less_noise_timesteps.long()
+                    less_noisy_model_input = noise_scheduler.add_noise(model_input, less_noise, less_noise_timesteps)
+
+                    noisy_model_input = torch.cat([noisy_model_input, less_noisy_model_input], dim=1)
 
                 if args.class_labels_conditioning == "timesteps":
-                    class_labels = timesteps
+                    class_labels = less_noise_timesteps
                 else:
                     class_labels = None
 
@@ -1205,7 +1212,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+                        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_parameters)
                         if args.train_text_encoder
                         else unet_lora_layers.parameters()
                     )
@@ -1258,7 +1265,7 @@ def main(args):
 
                     scheduler_args["variance_type"] = variance_type
 
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                pipeline.scheduler = pipeline.scheduler.__class__.from_config(
                     pipeline.scheduler.config, **scheduler_args
                 )
 
@@ -1312,13 +1319,21 @@ def main(args):
 
         if text_encoder is not None:
             text_encoder = text_encoder.to(torch.float32)
-            text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
+            # text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
 
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
-            text_encoder_lora_layers=text_encoder_lora_layers,
+            text_encoder_lora_layers=None,
         )
+
+        text_encoder_state_dict = text_encoder.state_dict()
+        text_encoder_lora_layers_state_dict = {}
+        for key in text_encoder_lora_parameters_keys:
+            text_encoder_lora_layers_state_dict[key] = text_encoder_state_dict[key]
+            torch.save(
+                text_encoder_lora_layers_state_dict, os.path.join(args.output_dir, "text_encoder_lora_layers.bin")
+            )
 
         # Final inference
         # Load previous pipeline
@@ -1337,7 +1352,7 @@ def main(args):
 
             scheduler_args["variance_type"] = variance_type
 
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+        pipeline.scheduler = pipeline.scheduler.__class__.from_config(pipeline.scheduler.config, **scheduler_args)
 
         pipeline = pipeline.to(accelerator.device)
 
