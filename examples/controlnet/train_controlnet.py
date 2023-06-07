@@ -84,6 +84,12 @@ def upload_to_drive(source, dest):
     """
     upload the folder to google drive
     """
+    # find the source folder base name 
+    source_folder_name = pathlib.Path(source).name
+    
+    # add to the dest folder
+    dest = os.path.join(dest, source_folder_name)
+
     # create the folder
     drive_folder = pathlib.Path(dest)
     drive_folder.mkdir(parents=True, exist_ok=True)
