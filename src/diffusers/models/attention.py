@@ -18,7 +18,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import maybe_allow_in_graph
-from ..utils.import_utils import is_xformers_available
 from .attention_processor import Attention
 from .cross_attention import CrossAttention
 from .embeddings import CombinedTimestepLabelEmbeddings
@@ -437,33 +436,6 @@ class BasicSparseTransformerBlock(nn.Module):
         )
         nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
         self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        if not is_xformers_available():
-            raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
-                name="xformers",
-            )
-        elif not torch.cuda.is_available():
-            raise ValueError(
-                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
-                " available for GPU "
-            )
-        else:
-            try:
-                # Make sure we can run the memory efficient attention
-                _ = xformers.ops.memory_efficient_attention(
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                )
-            except Exception as e:
-                raise e
-            self.attn1.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-            if self.attn2 is not None:
-                self.attn2.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-            # self.attn_temp._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
