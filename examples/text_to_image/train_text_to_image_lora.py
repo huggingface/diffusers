@@ -835,7 +835,9 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                generator = torch.Generator(device=accelerator.device)
+                if args.seed is not None:
+                    generator = generator.manual_seed(args.seed)
                 images = []
                 for _ in range(args.num_validation_images):
                     images.append(
@@ -891,7 +893,9 @@ def main():
     pipeline.unet.load_attn_procs(args.output_dir)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    generator = torch.Generator(device=accelerator.device)
+    if args.seed is not None:
+        generator = generator.manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
         images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
