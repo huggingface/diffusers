@@ -71,6 +71,8 @@ def clean_up_drive(drive_folder, n_keep=3):
     
     # get the folders in the drive folder
     folders = [str(x) for x in pathlib.Path(drive_folder).glob("checkpoint*")]
+    # filter out only the directories. 
+    folders = [x for x in folders if os.path.isdir(x)]
     if len(folders) <= n_keep:
         return
     
