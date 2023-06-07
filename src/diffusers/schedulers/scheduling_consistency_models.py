@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import numpy as np
 import torch
@@ -28,6 +28,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def append_zero(x):
     return torch.cat([x, x.new_zeros([1])])
+
+
+def append_dims(x, target_dims):
+    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
+    dims_to_append = target_dims - x.ndim
+    if dims_to_append < 0:
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
+    return x[(...,) + (None,) * dims_to_append]
 
 
 @dataclass
@@ -47,8 +55,7 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.FloatTensor
-    # derivative: torch.FloatTensor
-    # pred_original_sample: Optional[torch.FloatTensor] = None
+    sigma_next: torch.FloatTensor
 
 
 class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
@@ -100,7 +107,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: float = 80.0,
         sigma_data: float = 0.5,
         rho: float = 7.0,
-        timesteps: Optional[np.ndarray] = None,
+        clip_denoised: bool = True,
+        timesteps: Optional[Union[List, np.ndarray, torch.Tensor]] = None,
     ):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
@@ -116,19 +124,53 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
         return indices.item()
+    
+    def get_scalings(self, sigma):
+        sigma_data = self.config.sigma_data
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
+        c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
+        return c_skip, c_out, c_in
+
+    def get_scalings_for_boundary_condition(self, sigma):
+        # sigma_min should be in original sigma space, not in karras sigma space
+        # (e.g. not exponentiated by 1 / rho)
+        sigma_min = self.config.sigma_min
+        sigma_data = self.config.sigma_data
+
+        c_skip = sigma_data**2 / ((sigma - sigma_min) ** 2 + sigma_data**2)
+        c_out = (sigma - sigma_min) * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
+        return c_skip, c_out, c_in
+
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+    ) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
             sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
+        # Get sigma corresponding to timestep
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        step_idx = self.index_for_timestep(timestep)
+        sigma = self.sigmas[step_idx]
+
+        c_skip, c_out, c_in = self.get_scalings_for_boundary_condition(sigma)
+        sample = c_in * sample
+
+        self.is_scale_input_called = True
         return sample
+    
+    def scale_timestep(self, sigma):
+        return 1000 * 0.25 * torch.log(sigma + 1e-44)
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -152,6 +194,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 timesteps = self.timesteps.astype(np.float32)
             else:
                 timesteps = self.timesteps.numpy().astype(np.float32)
+            timesteps = timesteps[:self.num_inference_steps]
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
@@ -160,7 +203,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         ramp = np.append(timesteps, [num_train_timesteps - 1]) / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
 
-        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        # sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigmas = sigmas.astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         if str(device).startswith("mps"):
             # mps does not support float64
@@ -188,6 +232,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
         s_noise: float = 1.0,
+        use_noise: bool = True,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
@@ -240,24 +285,36 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         step_index = self.index_for_timestep(timestep)
 
         # sigma_next corresponds to next_t in original implementation
+        sigma = self.sigmas[step_index]
         sigma_next = self.sigmas[step_index + 1]
 
-        # 1. Sample z ~ N(0, s_noise^2 * I)
-        noise = randn_tensor(
-            model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
-        )
+        # Get scalings for boundary conditions
+        c_skip, c_out, c_in = self.get_scalings_for_boundary_condition(sigma)
+
+        # 1. Denoise model output using boundary conditions
+        denoised = c_out * model_output + c_skip * sample
+        if self.config.clip_denoised:
+            denoised = denoised.clamp(-1, 1)
+
+        # 2. Sample z ~ N(0, s_noise^2 * I)
+        if use_noise:
+            noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+            )
+        else:
+            noise = torch.zeros_like(model_output)
         z = noise * s_noise
 
         sigma_hat = sigma_next.clamp(min=sigma_min, max=sigma_max)
 
-        # 2. Return noisy sample
+        # 3. Return noisy sample
         # tau = sigma_hat, eps = sigma_min
-        prev_sample = model_output + z * (sigma_hat**2 - sigma_min**2) ** 0.5
+        prev_sample = denoised + z * (sigma_hat**2 - sigma_min**2) ** 0.5
 
         if not return_dict:
-            return (prev_sample,)
+            return (prev_sample, sigma_next)
 
-        return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
+        return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample, sigma_next=sigma_next)
 
     def __len__(self):
         return self.config.num_train_timesteps
