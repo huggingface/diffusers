@@ -266,6 +266,6 @@ image_grid(images)
 
 In this tutorial, you learned how to optimize a [`DiffusionPipeline`] for computational and memory efficiency as well as improving the quality of generated outputs. If you're interested in making your pipeline even faster, take a look at the following resources:
 
-- Enable [xFormers](./optimization/xformers) memory efficient attention mechanism for faster speed and reduced memory consumption.
-- Learn how in [PyTorch 2.0](./optimization/torch2.0), [`torch.compile`](https://pytorch.org/docs/stable/generated/torch.compile.html) can yield 2-9% faster inference speed.
-- Many optimization techniques for inference are also included in this memory and speed [guide](./optimization/fp16), such as memory offloading.
+- Learn how [PyTorch 2.0](./optimization/torch2.0) and [`torch.compile`](https://pytorch.org/docs/stable/generated/torch.compile.html) can yield 5 - 300% faster inference speed. On an A100 GPU, inference can be up to 50% faster!
+- If you can't use PyTorch 2, we recommend you install [xFormers](./optimization/xformers). Its memory-efficient attention mechanism works great with PyTorch 1.13.1 for faster speed and reduced memory consumption.
+- Other optimization techniques, such as model offloading, are covered in [this guide](./optimization/fp16).

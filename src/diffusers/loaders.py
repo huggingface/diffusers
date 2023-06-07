@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
@@ -27,12 +28,15 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
+    XFormersAttnProcessor,
 )
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
-    TEXT_ENCODER_TARGET_MODULES,
+    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -70,8 +74,8 @@ class AttnProcsLayers(torch.nn.Module):
         self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
-        # .processor for unet, .k_proj, ".q_proj", ".v_proj", and ".out_proj" for text encoder
-        self.split_keys = [".processor", ".k_proj", ".q_proj", ".v_proj", ".out_proj"]
+        # .processor for unet, .self_attn for text encoder
+        self.split_keys = [".processor", ".self_attn"]
 
         # we add a hook to state_dict() and load_state_dict() so that the
         # naming fits with `unet.attn_processors`
@@ -180,6 +184,9 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
+        # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
+        network_alpha = kwargs.pop("network_alpha", None)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -279,10 +286,18 @@ class UNet2DConditionLoadersMixin:
                     attn_processor_class = LoRAAttnAddedKVProcessor
                 else:
                     cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
-                    attn_processor_class = LoRAAttnProcessor
+                    if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
+                        attn_processor_class = LoRAXFormersAttnProcessor
+                    else:
+                        attn_processor_class = (
+                            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                        )
 
                 attn_processors[key] = attn_processor_class(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    rank=rank,
+                    network_alpha=network_alpha,
                 )
                 attn_processors[key].load_state_dict(value_dict)
         elif is_custom_diffusion:
@@ -451,7 +466,8 @@ class TextualInversionLoaderMixin:
             `str`: The converted prompt
         """
         tokens = tokenizer.tokenize(prompt)
-        for token in tokens:
+        unique_tokens = set(tokens)
+        for token in unique_tokens:
             if token in tokenizer.added_tokens_encoder:
                 replacement = token
                 i = 1
@@ -465,7 +481,7 @@ class TextualInversionLoaderMixin:
 
     def load_textual_inversion(
         self,
-        pretrained_model_name_or_path: Union[str, List[str]],
+        pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
         token: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ):
@@ -480,7 +496,7 @@ class TextualInversionLoaderMixin:
         </Tip>
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike` or `List[str or os.PathLike]`):
+            pretrained_model_name_or_path (`str` or `os.PathLike` or `List[str or os.PathLike]` or `Dict` or `List[Dict]`):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
@@ -489,6 +505,8 @@ class TextualInversionLoaderMixin:
                     - A path to a *directory* containing textual inversion weights, e.g.
                       `./my_text_inversion_directory/`.
                     - A path to a *file* containing textual inversion weights, e.g. `./my_text_inversions.pt`.
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
                 Or a list of those elements.
             token (`str` or `List[str]`, *optional*):
@@ -613,7 +631,7 @@ class TextualInversionLoaderMixin:
             "framework": "pytorch",
         }
 
-        if isinstance(pretrained_model_name_or_path, str):
+        if not isinstance(pretrained_model_name_or_path, list):
             pretrained_model_name_or_paths = [pretrained_model_name_or_path]
         else:
             pretrained_model_name_or_paths = pretrained_model_name_or_path
@@ -638,16 +656,38 @@ class TextualInversionLoaderMixin:
         token_ids_and_embeddings = []
 
         for pretrained_model_name_or_path, token in zip(pretrained_model_name_or_paths, tokens):
-            # 1. Load textual inversion file
-            model_file = None
-            # Let's first try to load .safetensors weights
-            if (use_safetensors and weight_name is None) or (
-                weight_name is not None and weight_name.endswith(".safetensors")
-            ):
-                try:
+            if not isinstance(pretrained_model_name_or_path, dict):
+                # 1. Load textual inversion file
+                model_file = None
+                # Let's first try to load .safetensors weights
+                if (use_safetensors and weight_name is None) or (
+                    weight_name is not None and weight_name.endswith(".safetensors")
+                ):
+                    try:
+                        model_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            resume_download=resume_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            use_auth_token=use_auth_token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                        )
+                        state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                    except Exception as e:
+                        if not allow_pickle:
+                            raise e
+
+                        model_file = None
+
+                if model_file is None:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
+                        weights_name=weight_name or TEXT_INVERSION_NAME,
                         cache_dir=cache_dir,
                         force_download=force_download,
                         resume_download=resume_download,
@@ -658,30 +698,12 @@ class TextualInversionLoaderMixin:
                         subfolder=subfolder,
                         user_agent=user_agent,
                     )
-                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except Exception as e:
-                    if not allow_pickle:
-                        raise e
-
-                    model_file = None
-
-            if model_file is None:
-                model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=weight_name or TEXT_INVERSION_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                )
-                state_dict = torch.load(model_file, map_location="cpu")
+                    state_dict = torch.load(model_file, map_location="cpu")
+            else:
+                state_dict = pretrained_model_name_or_path
 
             # 2. Load token and embedding correcly from file
+            loaded_token = None
             if isinstance(state_dict, torch.Tensor):
                 if token is None:
                     raise ValueError(
@@ -763,6 +785,8 @@ class LoraLoaderMixin:
 
         <Tip warning={true}>
 
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+
         This function is experimental and might change in the future.
 
         </Tip>
@@ -828,6 +852,9 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
+        # set lora scale to a reasonable default
+        self._lora_scale = 1.0
+
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
                 "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
@@ -887,6 +914,11 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
+        # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
+        network_alpha = None
+        if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
+            state_dict, network_alpha = self._convert_kohya_lora_to_diffusers(state_dict)
+
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
@@ -898,16 +930,18 @@ class LoraLoaderMixin:
             unet_lora_state_dict = {
                 k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
             }
-            self.unet.load_attn_procs(unet_lora_state_dict)
+            self.unet.load_attn_procs(unet_lora_state_dict, network_alpha=network_alpha)
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
-            logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
+                logger.info(f"Loading {self.text_encoder_name}.")
+                attn_procs_text_encoder = self._load_text_encoder_attn_procs(
+                    text_encoder_lora_state_dict, network_alpha=network_alpha
+                )
                 self._modify_text_encoder(attn_procs_text_encoder)
 
                 # save lora attn procs of text encoder so that it can be easily retrieved
@@ -923,10 +957,29 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @property
+    def lora_scale(self) -> float:
+        # property function that returns the lora scale which can be set at run time by the pipeline.
+        # if _lora_scale has not been set, return 1
+        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    @property
     def text_encoder_lora_attn_procs(self):
         if hasattr(self, "_text_encoder_lora_attn_procs"):
             return self._text_encoder_lora_attn_procs
         return
+
+    def _remove_text_encoder_monkey_patch(self):
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for _, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    if hasattr(module, "old_forward"):
+                        # restore original `forward` to remove monkey-patch
+                        module.forward = module.old_forward
+                        delattr(module, "old_forward")
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -936,31 +989,42 @@ class LoraLoaderMixin:
             attn_processors: Dict[str, `LoRAAttnProcessor`]:
                 A dictionary mapping the module names and their corresponding [`~LoRAAttnProcessor`].
         """
-        # Loop over the original attention modules.
-        for name, _ in self.text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                # Retrieve the module and its corresponding LoRA processor.
-                module = self.text_encoder.get_submodule(name)
-                # Construct a new function that performs the LoRA merging. We will monkey patch
-                # this forward pass.
-                lora_layer = getattr(attn_processors[name], self._get_lora_layer_attribute(name))
-                old_forward = module.forward
 
-                def new_forward(x):
-                    return old_forward(x) + lora_layer(x)
+        # First, remove any monkey-patch that might have been applied before
+        self._remove_text_encoder_monkey_patch()
 
-                # Monkey-patch.
-                module.forward = new_forward
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for attn_proc_attr, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention and its corresponding LoRA layer.
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    lora_layer = attn_processors[name].get_submodule(attn_proc_attr)
 
-    def _get_lora_layer_attribute(self, name: str) -> str:
-        if "q_proj" in name:
-            return "to_q_lora"
-        elif "v_proj" in name:
-            return "to_v_lora"
-        elif "k_proj" in name:
-            return "to_k_lora"
-        else:
-            return "to_out_lora"
+                    # save old_forward to module that can be used to remove monkey-patch
+                    old_forward = module.old_forward = module.forward
+
+                    # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
+                    # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
+                    def make_new_forward(old_forward, lora_layer):
+                        def new_forward(x):
+                            result = old_forward(x) + self.lora_scale * lora_layer(x)
+                            return result
+
+                        return new_forward
+
+                    # Monkey-patch.
+                    module.forward = make_new_forward(old_forward, lora_layer)
+
+    @property
+    def _lora_attn_processor_attr_to_text_encoder_attr(self):
+        return {
+            "to_q_lora": "q_proj",
+            "to_k_lora": "k_proj",
+            "to_v_lora": "v_proj",
+            "to_out_lora": "out_proj",
+        }
 
     def _load_text_encoder_attn_procs(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
@@ -1037,6 +1101,7 @@ class LoraLoaderMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        network_alpha = kwargs.pop("network_alpha", None)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1113,8 +1178,14 @@ class LoraLoaderMixin:
                 cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRAAttnProcessor(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
+                attn_processor_class = (
+                    LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                )
+                attn_processors[key] = attn_processor_class(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    rank=rank,
+                    network_alpha=network_alpha,
                 )
                 attn_processors[key].load_state_dict(value_dict)
 
@@ -1207,6 +1278,56 @@ class LoraLoaderMixin:
 
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+
+    def _convert_kohya_lora_to_diffusers(self, state_dict):
+        unet_state_dict = {}
+        te_state_dict = {}
+        network_alpha = None
+
+        for key, value in state_dict.items():
+            if "lora_down" in key:
+                lora_name = key.split(".")[0]
+                lora_name_up = lora_name + ".lora_up.weight"
+                lora_name_alpha = lora_name + ".alpha"
+                if lora_name_alpha in state_dict:
+                    alpha = state_dict[lora_name_alpha].item()
+                    if network_alpha is None:
+                        network_alpha = alpha
+                    elif network_alpha != alpha:
+                        raise ValueError("Network alpha is not consistent")
+
+                if lora_name.startswith("lora_unet_"):
+                    diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
+                    diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+                    diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+                    diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+                    diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
+                    diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
+                    diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
+                    diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
+                    diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+                    if "transformer_blocks" in diffusers_name:
+                        if "attn1" in diffusers_name or "attn2" in diffusers_name:
+                            diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
+                            diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+                            unet_state_dict[diffusers_name] = value
+                            unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                elif lora_name.startswith("lora_te_"):
+                    diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+                    diffusers_name = diffusers_name.replace("text.model", "text_model")
+                    diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+                    diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+                    diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+                    diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+                    diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+                    if "self_attn" in diffusers_name:
+                        te_state_dict[diffusers_name] = value
+                        te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+
+        unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
+        te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
+        new_state_dict = {**unet_state_dict, **te_state_dict}
+        return new_state_dict, network_alpha
 
 
 class FromCkptMixin:
@@ -1326,28 +1447,30 @@ class FromCkptMixin:
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
-        if from_safetensors and use_safetensors is True:
+        if from_safetensors and use_safetensors is False:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
         # TODO: For now we only support stable diffusion
         stable_unclip = None
+        model_type = None
         controlnet = False
 
         if pipeline_name == "StableDiffusionControlNetPipeline":
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
             controlnet = True
         elif "StableDiffusion" in pipeline_name:
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
+            pass
         elif pipeline_name == "StableUnCLIPPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "txt2img"
         elif pipeline_name == "StableUnCLIPImg2ImgPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "img2img"
         elif pipeline_name == "PaintByExamplePipeline":
-            model_type == "PaintByExample"
+            model_type = "PaintByExample"
         elif pipeline_name == "LDMTextToImagePipeline":
-            model_type == "LDMTextToImage"
+            model_type = "LDMTextToImage"
         else:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 
@@ -1360,8 +1483,8 @@ class FromCkptMixin:
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = str(Path().joinpath(*ckpt_path.parts[:2]))
-            file_path = str(Path().joinpath(*ckpt_path.parts[2:]))
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
 
             if file_path.startswith("blob/"):
                 file_path = file_path[len("blob/") :]

@@ -43,6 +43,8 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+
 ### Dog toy example
 
 Now let's get our dataset. For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
@@ -531,3 +533,207 @@ More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_
 
 ### Experimental results
 You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 
+
+## IF
+
+You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler 
+[IF model](https://huggingface.co/DeepFloyd/IF-II-L-v1.0).
+
+Note that IF has a predicted variance, and our finetuning scripts only train the models predicted error, so for finetuned IF models we switch to a fixed
+variance schedule. The full finetuning scripts will update the scheduler config for the full saved model. However, when loading saved LoRA weights, you
+must also update the pipeline's scheduler config.
+
+```py
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0")
+
+pipe.load_lora_weights("<lora weights path>")
+
+# Update scheduler config to fixed variance schedule
+pipe.scheduler = pipe.scheduler.__class__.from_config(pipe.scheduler.config, variance_type="fixed_small")
+```
+
+Additionally, a few alternative cli flags are needed for IF.
+
+`--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution. 
+
+`--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
+T5.
+
+`--tokenizer_max_length=77`: T5 has a longer default text length, but the default IF encoding procedure uses a smaller number.
+
+`--text_encoder_use_attention_mask`: T5 passes the attention mask to the text encoder.
+
+### Tips and Tricks
+We find LoRA to be sufficient for finetuning the stage I model as the low resolution of the model makes representing finegrained detail hard regardless.
+
+For common and/or not-visually complex object concepts, you can get away with not-finetuning the upscaler. Just be sure to adjust the prompt passed to the
+upscaler to remove the new token from the instance prompt. I.e. if your stage I prompt is "a sks dog", use "a dog" for your stage II prompt.
+
+For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than 
+LoRA finetuning stage II.
+
+For finegrained detail like faces, we find that lower learning rates along with larger batch sizes work best.
+
+For stage II, we find that lower learning rates are also needed.
+
+We found experimentally that the DDPM scheduler with the default larger number of denoising steps to sometimes work better than the DPM Solver scheduler
+used in the training scripts.
+
+### Stage II additional validation images
+
+The stage II validation requires images to upscale, we can download a downsized version of the training set:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog_downsized"
+snapshot_download(
+    "diffusers/dog-example-downsized",
+    local_dir=local_dir,
+    repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+### IF stage I LoRA Dreambooth
+This training configuration requires ~28 GB VRAM.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_lora"
+
+accelerate launch train_dreambooth_lora.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=64 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --scale_lr \
+  --max_train_steps=1200 \
+  --validation_prompt="a sks dog" \
+  --validation_epochs=25 \
+  --checkpointing_steps=100 \
+  --pre_compute_text_embeddings \
+  --tokenizer_max_length=77 \
+  --text_encoder_use_attention_mask
+```
+
+### IF stage II LoRA Dreambooth
+
+`--validation_images`: These images are upscaled during validation steps.
+
+`--class_labels_conditioning=timesteps`: Pass additional conditioning to the UNet needed for stage II.
+
+`--learning_rate=1e-6`: Lower learning rate than stage I.
+
+`--resolution=256`: The upscaler expects higher resolution inputs
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_upscale"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
+
+python train_dreambooth_lora.py \
+    --report_to wandb \
+    --pretrained_model_name_or_path=$MODEL_NAME \
+    --instance_data_dir=$INSTANCE_DIR \
+    --output_dir=$OUTPUT_DIR \
+    --instance_prompt="a sks dog" \
+    --resolution=256 \
+    --train_batch_size=4 \
+    --gradient_accumulation_steps=1 \
+    --learning_rate=1e-6 \ 
+    --max_train_steps=2000 \
+    --validation_prompt="a sks dog" \
+    --validation_epochs=100 \
+    --checkpointing_steps=500 \
+    --pre_compute_text_embeddings \
+    --tokenizer_max_length=77 \
+    --text_encoder_use_attention_mask \
+    --validation_images $VALIDATION_IMAGES \
+    --class_labels_conditioning=timesteps
+```
+
+### IF Stage I Full Dreambooth
+`--skip_save_text_encoder`: When training the full model, this will skip saving the entire T5 with the finetuned model. You can still load the pipeline
+with a T5 loaded from the original model.
+
+`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+
+`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
+likely the learning rate can be increased with larger batch sizes.
+
+Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_if"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=64 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-7 \
+  --max_train_steps=150 \
+  --validation_prompt "a photo of sks dog" \
+  --validation_steps 25 \
+  --text_encoder_use_attention_mask \
+  --tokenizer_max_length 77 \
+  --pre_compute_text_embeddings \
+  --use_8bit_adam \
+  --set_grads_to_none \
+  --skip_save_text_encoder \
+  --push_to_hub
+```
+
+### IF Stage II Full Dreambooth
+
+`--learning_rate=5e-6`: With a smaller effective batch size of 4, we found that we required learning rates as low as
+1e-8.
+
+`--resolution=256`: The upscaler expects higher resolution inputs
+
+`--train_batch_size=2` and `--gradient_accumulation_steps=6`: We found that full training of stage II particularly with
+faces required large effective batch sizes.
+
+```sh
+export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_upscale"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
+
+accelerate launch train_dreambooth.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=256 \
+  --train_batch_size=2 \
+  --gradient_accumulation_steps=6 \
+  --learning_rate=5e-6 \
+  --max_train_steps=2000 \
+  --validation_prompt="a sks dog" \
+  --validation_steps=150 \
+  --checkpointing_steps=500 \
+  --pre_compute_text_embeddings \
+  --tokenizer_max_length=77 \
+  --text_encoder_use_attention_mask \
+  --validation_images $VALIDATION_IMAGES \
+  --class_labels_conditioning timesteps \
+  --push_to_hub
+```
