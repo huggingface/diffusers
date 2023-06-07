@@ -138,6 +138,8 @@
       title: Outputs
     - local: api/loaders
       title: Loaders
+    - local: api/image_processor
+      title: VAE Image Processor
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
