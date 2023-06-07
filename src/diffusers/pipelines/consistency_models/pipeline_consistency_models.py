@@ -13,17 +13,22 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
-    return x[(...,) + (None,) * dims_to_append]
-
-
 class ConsistencyModelPipeline(DiffusionPipeline):
     r"""
-    Sampling pipeline for consistency models.
+    Pipeline for consistency models for unconditional or class-conditional image generation, as introduced in [1].
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
+    https://arxiv.org/pdf/2303.01469
+
+    Args:
+        unet ([`UNet2DModel`]):
+            Unconditional or class-conditional U-Net architecture to denoise image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the image latents. Currently only compatible
+            with [`CMStochasticIterativeScheduler`].
     """
 
     def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
@@ -143,7 +148,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -266,20 +271,18 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # 6. Denoising loop
         # Multistep sampling: implements Algorithm 1 in the paper
-        sigma = torch.tensor([self.scheduler.init_noise_sigma], dtype=torch.float, device=device)
+        # Onestep sampling does not use random noise
+        use_noise = False if num_inference_steps == 1 else True
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # Onestep sampling does not use random noise
-                use_noise = False if num_inference_steps == 1 else True
+                scaled_sample = self.scheduler.scale_model_input(sample, t)
+                scaled_t = self.scheduler.scale_timestep(t)
+                model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
 
-                rescaled_sample = self.scheduler.scale_model_input(sample, t)
-                rescaled_t = self.scheduler.scale_timestep(sigma)
-                model_output = self.unet(rescaled_sample, rescaled_t, class_labels=class_labels).sample
-
-                sample, sigma = self.scheduler.step(
-                    model_output, t, sample, use_noise=use_noise, return_dict=False, **extra_step_kwargs
-                )
+                sample = self.scheduler.step(
+                    model_output, t, sample, use_noise=use_noise, **extra_step_kwargs
+                ).prev_sample
 
                 # Note: differs from callback support in original code
                 # See e.g. https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L459

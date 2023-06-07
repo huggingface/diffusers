@@ -47,54 +47,47 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Derivative of predicted original image sample (x_0).
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
-            `pred_original_sample` can be used to preview progress or for guidance.
     """
 
     prev_sample: torch.FloatTensor
-    sigma_next: torch.FloatTensor
 
 
 class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     """
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
-    the VE column of Table 1 from [1] for reference.
+    Multistep and onestep sampling for consistency models from Song et al. 2023 [1]. This implements Algorithm 1 in
+    the paper [1].
 
     [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
     https://arxiv.org/pdf/2303.01469
+    [2] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
+    https://arxiv.org/abs/2206.00364
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
     [`~SchedulerMixin.from_pretrained`] functions.
 
-    For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-    Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
-    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
-
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear` or `scaled_linear`.
-        trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        prediction_type (`str`, default `"epsilon"`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
-        interpolation_type (`str`, default `"linear"`, optional):
-            interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be one of
-            [`"linear"`, `"log_linear"`].
-        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
-             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
-             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
-             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        sigma_min (`float`):
+            Minimum noise magnitude in the sigma schedule. This was set to 0.002 in the original implementation.
+        sigma_max (`float`):
+            Maximum noise magnitude in the sigma schedule. This was set to 80.0 in the original implementation.
+        sigma_data (`float`):
+            The standard deviation of the data distribution, following the EDM paper [2]. This was set to 0.5 in the
+            original implementation, which is also the original value suggested in the EDM paper.
+        s_noise (`float`):
+            The amount of additional noise to counteract loss of detail during sampling. A reasonable range is
+            [1.000, 1.011]. This was set to 1.0 in the original implementation.
+        rho (`float`):
+            The rho parameter used for calculating the Karras sigma schedule, introduced in the EDM paper [2]. This
+            was set to 7.0 in the original implementation, which is also the original value suggested in the EDM
+            paper.
+        clip_denoised (`bool`):
+            Whether to clip the denoised outputs to `(-1, 1)`. Defaults to `True`.
+        timesteps (`List` or `np.ndarray` or `torch.Tensor`, *optional*):
+            Optionally, an explicit timestep schedule can be specified. The timesteps are expected to be in increasing
+            order. 
     """
 
     order = 1
@@ -106,6 +99,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigma_min: float = 0.002,
         sigma_max: float = 80.0,
         sigma_data: float = 0.5,
+        s_noise: float = 1.0,
         rho: float = 7.0,
         clip_denoised: bool = True,
         timesteps: Optional[Union[List, np.ndarray, torch.Tensor]] = None,
@@ -125,31 +119,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         indices = (schedule_timesteps == timestep).nonzero()
         return indices.item()
 
-    def get_scalings(self, sigma):
-        sigma_data = self.config.sigma_data
-
-        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
-        c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
-        c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
-        return c_skip, c_out, c_in
-
-    def get_scalings_for_boundary_condition(self, sigma):
-        # sigma_min should be in original sigma space, not in karras sigma space
-        # (e.g. not exponentiated by 1 / rho)
-        sigma_min = self.config.sigma_min
-        sigma_data = self.config.sigma_data
-
-        c_skip = sigma_data**2 / ((sigma - sigma_min) ** 2 + sigma_data**2)
-        c_out = (sigma - sigma_min) * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
-        c_in = 1 / (sigma**2 + sigma_data**2) ** 0.5
-        return c_skip, c_out, c_in
-
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
-        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
-        current timestep.
+        Scales the consistency model input by `(sigma**2 + sigma_data**2) ** 0.5`, following the EDM model.
 
         Args:
             sample (`torch.FloatTensor`): input sample
@@ -163,13 +137,26 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         step_idx = self.index_for_timestep(timestep)
         sigma = self.sigmas[step_idx]
 
-        c_skip, c_out, c_in = self.get_scalings_for_boundary_condition(sigma)
-        sample = c_in * sample
+        sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
 
         self.is_scale_input_called = True
         return sample
 
-    def scale_timestep(self, sigma):
+    def scale_timestep(self, timestep: Union[float, torch.FloatTensor]):
+        """
+        Scales the timestep based on the associated Karras sigma, for input to the consistency model.
+
+        Args:
+            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+        Returns:
+            `torch.FloatTensor`: scaled input timestep
+        """
+        # Get sigma corresponding to timestep
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        step_idx = self.index_for_timestep(timestep)
+        sigma = self.sigmas[step_idx]
+
         return 1000 * 0.25 * torch.log(sigma + 1e-44)
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
@@ -203,7 +190,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         ramp = np.append(timesteps, [num_train_timesteps - 1]) / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
 
-        # sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = sigmas.astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         if str(device).startswith("mps"):
@@ -225,13 +211,41 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
+    
+    def get_scalings(self, sigma):
+        sigma_data = self.config.sigma_data
+
+        c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
+        c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        return c_skip, c_out
+
+    def get_scalings_for_boundary_condition(self, sigma):
+        """
+        Gets the scalings used in the consistency model parameterization, following Appendix C of the original paper.
+        This enforces the consistency model boundary condition.
+
+        Note that `epsilon` in the equations for c_skip and c_out is set to sigma_min.
+
+        Args:
+            sigma (`torch.FloatTensor`):
+                The current sigma in the Karras sigma schedule.
+        Returns:
+            `tuple`:
+                A two-element tuple where c_skip (which weights the current sample) is the first element and c_out
+                (which weights the consistency model output) is the second element.
+        """
+        sigma_min = self.config.sigma_min
+        sigma_data = self.config.sigma_data
+
+        c_skip = sigma_data**2 / ((sigma - sigma_min) ** 2 + sigma_data**2)
+        c_out = (sigma - sigma_min) * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
+        return c_skip, c_out
 
     def step(
         self,
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        s_noise: float = 1.0,
         use_noise: bool = True,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
@@ -245,11 +259,9 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            s_churn (`float`)
-            s_tmin  (`float`)
-            s_tmax  (`float`)
-            s_noise (`float`)
-            generator (`torch.Generator`, optional): Random number generator.
+            use_noise: (`bool`, *optional*, defaults to `True`):
+                Whether to inject noise during the step. Noise is not used for onestep sampling.
+            generator (`torch.Generator`, *optional*): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerDiscreteSchedulerOutput class
         Returns:
             [`~schedulers.scheduling_utils.CMStochasticIterativeSchedulerOutput`] or `tuple`:
@@ -289,7 +301,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigma_next = self.sigmas[step_index + 1]
 
         # Get scalings for boundary conditions
-        c_skip, c_out, c_in = self.get_scalings_for_boundary_condition(sigma)
+        c_skip, c_out = self.get_scalings_for_boundary_condition(sigma)
 
         # 1. Denoise model output using boundary conditions
         denoised = c_out * model_output + c_skip * sample
@@ -303,7 +315,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             )
         else:
             noise = torch.zeros_like(model_output)
-        z = noise * s_noise
+        z = noise * self.config.s_noise
 
         sigma_hat = sigma_next.clamp(min=sigma_min, max=sigma_max)
 
@@ -312,9 +324,9 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = denoised + z * (sigma_hat**2 - sigma_min**2) ** 0.5
 
         if not return_dict:
-            return (prev_sample, sigma_next)
+            return (prev_sample)
 
-        return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample, sigma_next=sigma_next)
+        return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
 
     def __len__(self):
         return self.config.num_train_timesteps
