@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import threading 
 import logging
 import math
 import os
@@ -74,7 +75,7 @@ def clean_up_drive(drive_folder, n_keep=3):
         return
     
     # sort the folders by global step number
-    folders = sorted(folders, key=lambda x: int(x.name.split("-")[1]), reverse=False)
+    folders = sorted(folders, key=lambda x: int(os.path.basename(x).split("-")[1]), reverse=False)
     # keep the last n_keep folders
     folders = folders[:-(n_keep-1)]
     for folder in folders:
@@ -1119,6 +1120,10 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
                         if args.backup_to_drive and (args.drive_folder_for_backup != "" or args.drive_folder_for_backup is not None):
+
+                            # launch a seprate thread to upload the checkpoint to drive
+                            # so that the training is not blocked
+                            
                             clean_up_drive(args.drive_folder_for_backup)
                             upload_to_drive(save_path, args.drive_folder_for_backup)
 
