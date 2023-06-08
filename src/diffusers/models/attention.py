@@ -21,6 +21,7 @@ from ..utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
+from .lora import LinearWithLoRA
 
 
 @maybe_allow_in_graph
@@ -222,7 +223,7 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(nn.Linear(inner_dim, dim_out))
+        self.net.append(LinearWithLoRA(inner_dim, dim_out))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
@@ -266,7 +267,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = LinearWithLoRA(dim_in, dim_out * 2)
 
     def gelu(self, gate):
         if gate.device.type != "mps":
