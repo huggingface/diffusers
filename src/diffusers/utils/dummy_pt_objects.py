@@ -92,6 +92,21 @@ class Transformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class Transformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class UNet1DModel(metaclass=DummyObject):
     _backends = ["torch"]
 

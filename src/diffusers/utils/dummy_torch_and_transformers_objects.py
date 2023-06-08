@@ -602,7 +602,7 @@ class TextToVideoSDPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class TuneAVideoPipeline(metaclass=DummyObject):
+class TextToVideoZeroPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -617,7 +617,7 @@ class TuneAVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class TextToVideoZeroPipeline(metaclass=DummyObject):
+class TuneAVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
