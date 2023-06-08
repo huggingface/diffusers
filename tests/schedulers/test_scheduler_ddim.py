@@ -69,6 +69,14 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
+    def test_timestep_spacing(self):
+        for timestep_spacing in ["trailing", "leading"]:
+            self.check_over_configs(timestep_spacing=timestep_spacing)
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_thresholding(self):
         self.check_over_configs(thresholding=False)
         for threshold in [0.5, 1.0, 2.0]:

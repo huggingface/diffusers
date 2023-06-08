@@ -261,7 +261,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 5e-4
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -295,7 +295,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 3e-4
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4

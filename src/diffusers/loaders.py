@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
 from .models.attention_processor import (
@@ -27,6 +28,7 @@ from .models.attention_processor import (
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
     XFormersAttnProcessor,
@@ -34,7 +36,7 @@ from .models.attention_processor import (
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
-    TEXT_ENCODER_TARGET_MODULES,
+    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -287,7 +289,9 @@ class UNet2DConditionLoadersMixin:
                     if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
                         attn_processor_class = LoRAXFormersAttnProcessor
                     else:
-                        attn_processor_class = LoRAAttnProcessor
+                        attn_processor_class = (
+                            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                        )
 
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size,
@@ -848,6 +852,9 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
+        # set lora scale to a reasonable default
+        self._lora_scale = 1.0
+
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
                 "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
@@ -927,11 +934,11 @@ class LoraLoaderMixin:
 
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
-            logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
+                logger.info(f"Loading {self.text_encoder_name}.")
                 attn_procs_text_encoder = self._load_text_encoder_attn_procs(
                     text_encoder_lora_state_dict, network_alpha=network_alpha
                 )
@@ -950,10 +957,29 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @property
+    def lora_scale(self) -> float:
+        # property function that returns the lora scale which can be set at run time by the pipeline.
+        # if _lora_scale has not been set, return 1
+        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    @property
     def text_encoder_lora_attn_procs(self):
         if hasattr(self, "_text_encoder_lora_attn_procs"):
             return self._text_encoder_lora_attn_procs
         return
+
+    def _remove_text_encoder_monkey_patch(self):
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for _, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    if hasattr(module, "old_forward"):
+                        # restore original `forward` to remove monkey-patch
+                        module.forward = module.old_forward
+                        delattr(module, "old_forward")
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -963,37 +989,42 @@ class LoraLoaderMixin:
             attn_processors: Dict[str, `LoRAAttnProcessor`]:
                 A dictionary mapping the module names and their corresponding [`~LoRAAttnProcessor`].
         """
-        # Loop over the original attention modules.
-        for name, _ in self.text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
-                # Retrieve the module and its corresponding LoRA processor.
-                module = self.text_encoder.get_submodule(name)
-                # Construct a new function that performs the LoRA merging. We will monkey patch
-                # this forward pass.
-                attn_processor_name = ".".join(name.split(".")[:-1])
-                lora_layer = getattr(attn_processors[attn_processor_name], self._get_lora_layer_attribute(name))
-                old_forward = module.forward
 
-                # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
-                # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
-                def make_new_forward(old_forward, lora_layer):
-                    def new_forward(x):
-                        return old_forward(x) + lora_layer(x)
+        # First, remove any monkey-patch that might have been applied before
+        self._remove_text_encoder_monkey_patch()
 
-                    return new_forward
+        # Loop over the CLIPAttention module of text_encoder
+        for name, attn_module in self.text_encoder.named_modules():
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
+                # Loop over the LoRA layers
+                for attn_proc_attr, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
+                    # Retrieve the q/k/v/out projection of CLIPAttention and its corresponding LoRA layer.
+                    module = attn_module.get_submodule(text_encoder_attr)
+                    lora_layer = attn_processors[name].get_submodule(attn_proc_attr)
 
-                # Monkey-patch.
-                module.forward = make_new_forward(old_forward, lora_layer)
+                    # save old_forward to module that can be used to remove monkey-patch
+                    old_forward = module.old_forward = module.forward
 
-    def _get_lora_layer_attribute(self, name: str) -> str:
-        if "q_proj" in name:
-            return "to_q_lora"
-        elif "v_proj" in name:
-            return "to_v_lora"
-        elif "k_proj" in name:
-            return "to_k_lora"
-        else:
-            return "to_out_lora"
+                    # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
+                    # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
+                    def make_new_forward(old_forward, lora_layer):
+                        def new_forward(x):
+                            result = old_forward(x) + self.lora_scale * lora_layer(x)
+                            return result
+
+                        return new_forward
+
+                    # Monkey-patch.
+                    module.forward = make_new_forward(old_forward, lora_layer)
+
+    @property
+    def _lora_attn_processor_attr_to_text_encoder_attr(self):
+        return {
+            "to_q_lora": "q_proj",
+            "to_k_lora": "k_proj",
+            "to_v_lora": "v_proj",
+            "to_out_lora": "out_proj",
+        }
 
     def _load_text_encoder_attn_procs(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
@@ -1147,7 +1178,10 @@ class LoraLoaderMixin:
                 cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRAAttnProcessor(
+                attn_processor_class = (
+                    LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                )
+                attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size,
                     cross_attention_dim=cross_attention_dim,
                     rank=rank,
@@ -1418,23 +1452,25 @@ class FromCkptMixin:
 
         # TODO: For now we only support stable diffusion
         stable_unclip = None
+        model_type = None
         controlnet = False
 
         if pipeline_name == "StableDiffusionControlNetPipeline":
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
             controlnet = True
         elif "StableDiffusion" in pipeline_name:
-            model_type = "FrozenCLIPEmbedder"
+            # Model type will be inferred from the checkpoint.
+            pass
         elif pipeline_name == "StableUnCLIPPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "txt2img"
         elif pipeline_name == "StableUnCLIPImg2ImgPipeline":
-            model_type == "FrozenOpenCLIPEmbedder"
+            model_type = "FrozenOpenCLIPEmbedder"
             stable_unclip = "img2img"
         elif pipeline_name == "PaintByExamplePipeline":
-            model_type == "PaintByExample"
+            model_type = "PaintByExample"
         elif pipeline_name == "LDMTextToImagePipeline":
-            model_type == "LDMTextToImage"
+            model_type = "LDMTextToImage"
         else:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 

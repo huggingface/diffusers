@@ -71,6 +71,64 @@ image = pipe(prompt, guidance_scale=9, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
+#### Experimental: "Common Diffusion Noise Schedules and Sample Steps are Flawed": 
+
+The paper **[Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/abs/2305.08891)** 
+claims that a mismatch between the training and inference settings leads to suboptimal inference generation results for Stable Diffusion.
+
+The abstract reads as follows:
+
+*We discover that common diffusion noise schedules do not enforce the last timestep to have zero signal-to-noise ratio (SNR),
+and some implementations of diffusion samplers do not start from the last timestep.
+Such designs are flawed and do not reflect the fact that the model is given pure Gaussian noise at inference, creating a discrepancy between training and inference.
+We show that the flawed design causes real problems in existing implementations. 
+In Stable Diffusion, it severely limits the model to only generate images with medium brightness and 
+prevents it from generating very bright and dark samples. We propose a few simple fixes: 
+- (1) rescale the noise schedule to enforce zero terminal SNR; 
+- (2) train the model with v prediction; 
+- (3) change the sampler to always start from the last timestep; 
+- (4) rescale classifier-free guidance to prevent over-exposure. 
+These simple changes ensure the diffusion process is congruent between training and inference and 
+allow the model to generate samples more faithful to the original data distribution.*
+
+You can apply all of these changes in `diffusers` when using [`DDIMScheduler`]:
+- (1) rescale the noise schedule to enforce zero terminal SNR; 
+```py
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, rescale_betas_zero_snr=True)
+```
+- (2) train the model with v prediction; 
+Continue fine-tuning a checkpoint with [`train_text_to_image.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) or [`train_text_to_image_lora.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)
+and `--prediction_type="v_prediction"`.
+- (3) change the sampler to always start from the last timestep; 
+```py
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, timestep_scaling="trailing")
+```
+- (4) rescale classifier-free guidance to prevent over-exposure. 
+```py
+pipe(..., guidance_rescale=0.7)
+```
+
+An example is to use [this checkpoint](https://huggingface.co/ptx0/pseudo-journey-v2) 
+which has been fine-tuned using the `"v_prediction"`.
+
+The checkpoint can then be run in inference as follows:
+
+```py
+from diffusers import DiffusionPipeline, DDIMScheduler
+
+pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", torch_dtype=torch.float16)
+pipe.scheduler = DDIMScheduler.from_config(
+    pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_scaling="trailing"
+)
+pipe.to("cuda")
+
+prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
+image = pipeline(prompt, guidance_rescale=0.7).images[0]
+```
+
+## DDIMScheduler
+[[autodoc]] DDIMScheduler
+
 ### Image Inpainting
 
 - *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
