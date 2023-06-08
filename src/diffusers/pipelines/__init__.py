@@ -79,6 +79,7 @@ else:
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
+        StableDiffusionParadigmsPipeline,
         StableDiffusionPipeline,
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
