@@ -18,33 +18,26 @@ import unittest
 
 import numpy as np
 import torch
-from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    DDPMScheduler,
     DDIMScheduler,
     StableDiffusionParadigmsPipeline,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
-from diffusers.utils import load_numpy, nightly, slow, torch_device
+from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import (
-    CaptureLogger,
     enable_full_determinism,
-    require_torch_2,
     require_torch_gpu,
-    run_test_in_subprocess,
-    skip_mps,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
+
 enable_full_determinism()
+
 
 class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionParadigmsPipeline
@@ -170,8 +163,9 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.4771, 0.5420, 0.4683, 0.4918, 0.5636, 0.4725, 0.5230, 0.4923, 0.5015])
-        
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
 
 @slow
 @require_torch_gpu
@@ -209,7 +203,7 @@ class StableDiffusionParadigmsPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         expected_slice = np.array(
-            [               
+            [
                 0.96222240,
                 0.96028924,
                 0.97488534,

@@ -252,11 +252,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance
-    
+
     def _batch_get_variance(self, t, prev_t):
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[ torch.clip(prev_t, min=0) ]
-        alpha_prod_t_prev[ prev_t < 0 ] = torch.tensor(1.0)
+        alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
+        alpha_prod_t_prev[prev_t < 0] = torch.tensor(1.0)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -500,8 +500,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-        
-        assert( eta == 0.0 )
+
+        assert eta == 0.0
 
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
@@ -518,8 +518,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         t = timesteps
         prev_t = t - self.config.num_train_timesteps // self.num_inference_steps
 
-        t = t.view(-1, *([1]*(model_output.ndim - 1)))
-        prev_t = prev_t.view(-1, *([1]*(model_output.ndim - 1)))
+        t = t.view(-1, *([1] * (model_output.ndim - 1)))
+        prev_t = prev_t.view(-1, *([1] * (model_output.ndim - 1)))
 
         # if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
         #     model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
@@ -530,8 +530,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = self.alphas_cumprod.to(model_output.device)
         self.final_alpha_cumprod = self.final_alpha_cumprod.to(model_output.device)
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[ torch.clip(prev_t, min=0) ]
-        alpha_prod_t_prev[ prev_t < 0 ] = torch.tensor(1.0)
+        alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
+        alpha_prod_t_prev[prev_t < 0] = torch.tensor(1.0)
 
         beta_prod_t = 1 - alpha_prod_t
 
