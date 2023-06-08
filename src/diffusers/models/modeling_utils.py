@@ -639,7 +639,9 @@ class ModelMixin(torch.nn.Module):
                             unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
                     if len(unexpected_keys) > 0:
-                        logger.warn(f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}")
+                        logger.warn(
+                            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+                        )
 
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map

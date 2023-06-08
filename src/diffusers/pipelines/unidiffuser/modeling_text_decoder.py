@@ -60,6 +60,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             Whether to scale keys (K) prior to computing attention (dot-product) and upcast attention
             dot-product/softmax to float() when training with mixed precision.
     """
+
     _keys_to_ignore_on_load_unexpected = [r"h\.\d+\.attn\.bias", r"h\.\d+\.attn\.masked_bias"]
 
     @register_to_config
