@@ -125,7 +125,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         output = ldm3d_pipe(**inputs)
-        rgb, depth = output.images
+        rgb, depth = output.rgb, output.depth
 
         image_slice_rgb = rgb[0, -3:, -3:, -1]
         image_slice_depth = depth[0, -3:, -1]
@@ -135,7 +135,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 
         expected_slice_rgb = np.array(
             [0.37301102, 0.7023895, 0.7418312, 0.5163375, 0.5825485, 0.60929704, 0.4188174, 0.48407027, 0.46555096])
-        expected_slice_depth = np.array([103.458336, 85.78423, 87.87271])
+        expected_slice_depth = np.array([103.4673 ,  85.81202,  87.84926])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
@@ -151,7 +151,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 
         # forward
         output = ldm3d_pipe(**inputs)
-        rgb_slice_1, depth_slice_1 = output.images
+        rgb_slice_1, depth_slice_1 = output.rgb, output.depth
         rgb_slice_1 = rgb_slice_1[0, -3:, -3:, -1]
         depth_slice_1 = depth_slice_1[0, -3:, -1]
 
@@ -173,7 +173,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 
         # forward
         output = ldm3d_pipe(**inputs)
-        rgb_slice_2, depth_slice_2 = output.images
+        rgb_slice_2, depth_slice_2 = output.rgb, output.depth
         rgb_slice_2 = rgb_slice_2[0, -3:, -3:, -1]
         depth_slice_2 = depth_slice_2[0, -3:, -1]
 
@@ -192,7 +192,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         negative_prompt = "french fries"
         output = ldm3d_pipe(**inputs, negative_prompt=negative_prompt)
 
-        rgb, depth = output.images
+        rgb, depth = output.rgb, output.depth
         rgb_slice = rgb[0, -3:, -3:, -1]
         depth_slice = depth[0, -3:, -1]
 
@@ -201,7 +201,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 
         expected_slice_rgb = np.array(
             [0.37044, 0.71811503, 0.7223251, 0.48603675, 0.5638391, 0.6364948, 0.42833704, 0.4901315, 0.47926217])
-        expected_slice_depth = np.array([107.8984, 84.64019, 89.985176])
+        expected_slice_depth = np.array([107.84738 ,  84.62802 ,  89.962135])
         assert np.abs(rgb_slice.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(depth_slice.flatten() - expected_slice_depth).max() < 1e-2
 
@@ -234,7 +234,8 @@ class StableDiffusionLDM3DPipelineSlowTests(unittest.TestCase):
         ldm3d_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        rgb, depth = ldm3d_pipe(**inputs).images
+        output = ldm3d_pipe(**inputs)
+        rgb, depth = output.rgb, output.depth
         rgb_slice = rgb[0, -3:, -3:, -1].flatten()
         depth_slice = rgb[0, -3:, -1].flatten()
 
@@ -274,7 +275,8 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         ldm3d_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        rgb, depth = ldm3d_pipe(**inputs).images
+        output = ldm3d_pipe(**inputs)
+        rgb, depth = output.rgb, output.depth
 
         expected_rgb_mean = 0.54461557
         expected_rgb_std = 0.2806707

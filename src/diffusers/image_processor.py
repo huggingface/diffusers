@@ -351,7 +351,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         image = self.pt_to_numpy(image)
 
         if output_type == "np":
-            return image[:, :, :, :3], np.stack([self.rgblike_to_depthmap(im[:, :, 3:]) for im in images], axis=0)
+            return image[:, :, :, :3], np.stack([self.rgblike_to_depthmap(im[:, :, 3:]) for im in image], axis=0)
 
         if output_type == "pil":
             return self.numpy_to_pil(image), self.numpy_to_depth(image)

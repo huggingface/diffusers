@@ -34,7 +34,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from . import LDM3DPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -50,7 +50,8 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> rgb_image, depth_image = pipe_ldm3d(prompt).images
+        >>> output = pipe_ldm3d(prompt)
+        >>> rgb_image, depth_image = output.rgb, output.depth
         ```
 """
 
@@ -692,13 +693,13 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        rgb, depth = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return ((rgb, depth), has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return LDM3DPipelineOutput(rgb=rgb, depth=depth, nsfw_content_detected=has_nsfw_concept)

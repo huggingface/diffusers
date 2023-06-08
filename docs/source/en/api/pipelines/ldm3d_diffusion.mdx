@@ -44,7 +44,8 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 >>> pipeline = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
 
 prompt ="A picture of some lemons on a table"
-rgb_image, depth_image = pipe_ldm3d(prompt).images
+output = pipe_ldm3d(prompt)
+rgb_image, depth_image = output.rgb, output.depth
 
 ```
 
