@@ -419,19 +419,19 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
         prev_t = t - self.config.num_train_timesteps // num_inference_steps
 
-        t = t.view(-1, *([1]*(model_output.ndim - 1)))
-        prev_t = prev_t.view(-1, *([1]*(model_output.ndim - 1)))
+        t = t.view(-1, *([1] * (model_output.ndim - 1)))
+        prev_t = prev_t.view(-1, *([1] * (model_output.ndim - 1)))
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
-            predicted_variance = None
+            pass
 
         # 1. compute alphas, betas
         self.alphas_cumprod = self.alphas_cumprod.to(model_output.device)
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[ torch.clip(prev_t, min=0) ]
-        alpha_prod_t_prev[ prev_t < 0 ] = torch.tensor(1.0)
+        alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
+        alpha_prod_t_prev[prev_t < 0] = torch.tensor(1.0)
 
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev

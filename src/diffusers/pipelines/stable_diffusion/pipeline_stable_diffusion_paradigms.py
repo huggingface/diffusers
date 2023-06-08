@@ -49,14 +49,16 @@ EXAMPLE_DOC_STRING = """
 
         >>> scheduler = DDPMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
-        >>> pipe = StableDiffusionParadigmsPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionParadigmsPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> ngpu, batch_per_device = torch.cuda.device_count(), 5
         >>> pipe.wrapped_unet = torch.nn.DataParallel(pipe.unet, device_ids=[d for d in range(ngpu)])
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, parallel=ngpu*batch_per_device).images[0]
+        >>> image = pipe(prompt, parallel=ngpu * batch_per_device).images[0]
         ```
 """
 
@@ -711,18 +713,22 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
 
         begin_idx = 0
         end_idx = parallel
-        latents_time_evolution_buffer = torch.stack([latents] * (len(scheduler.timesteps)+1))
+        latents_time_evolution_buffer = torch.stack([latents] * (len(scheduler.timesteps) + 1))
 
         noise_array = torch.zeros_like(latents_time_evolution_buffer)
         for j in range(len(scheduler.timesteps)):
-            base_noise = randn_tensor(shape=latents.shape, generator=generator, device=latents.device, dtype=prompt_embeds.dtype)
+            base_noise = randn_tensor(
+                shape=latents.shape, generator=generator, device=latents.device, dtype=prompt_embeds.dtype
+            )
             noise = (self.scheduler._get_variance(scheduler.timesteps[j]) ** 0.5) * base_noise
             noise_array[j] = noise.clone()
-        inverse_variance_norm = 1. / torch.tensor([scheduler._get_variance(scheduler.timesteps[j]) for j in range(len(scheduler.timesteps))] + [0]).to(noise_array.device)
+        inverse_variance_norm = 1.0 / torch.tensor(
+            [scheduler._get_variance(scheduler.timesteps[j]) for j in range(len(scheduler.timesteps))] + [0]
+        ).to(noise_array.device)
         latent_dim = noise_array[0, 0].numel()
         inverse_variance_norm = inverse_variance_norm[:, None] / latent_dim
 
-        scaled_tolerance = (tolerance**2)
+        scaled_tolerance = tolerance**2
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             steps = 0
@@ -735,60 +741,76 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 block_latents = latents_time_evolution_buffer[begin_idx:end_idx]
                 block_t = scheduler.timesteps[begin_idx:end_idx, None].repeat(1, batch_size * num_images_per_prompt)
                 t_vec = block_t
-                if do_classifier_free_guidance: t_vec = t_vec.repeat(1, 2)
+                if do_classifier_free_guidance:
+                    t_vec = t_vec.repeat(1, 2)
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([block_latents] * 2, dim=1) if do_classifier_free_guidance else block_latents
+                latent_model_input = (
+                    torch.cat([block_latents] * 2, dim=1) if do_classifier_free_guidance else block_latents
+                )
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t_vec)
 
                 net = self.wrapped_unet if parallel_len > 3 else self.unet
                 # predict the noise residual, shape is now [parallel_len * 2 * batch_size * num_images_per_prompt, ...]
                 model_output = net(
-                    latent_model_input.flatten(0,1),
-                    t_vec.flatten(0,1),
-                    encoder_hidden_states=block_prompt_embeds.flatten(0,1),
+                    latent_model_input.flatten(0, 1),
+                    t_vec.flatten(0, 1),
+                    encoder_hidden_states=block_prompt_embeds.flatten(0, 1),
                     cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
-                
+
                 per_latent_shape = model_output.shape[1:]
                 if do_classifier_free_guidance:
-                    model_output = model_output.reshape(parallel_len, 2, batch_size * num_images_per_prompt, *per_latent_shape)
-                    noise_pred_uncond, noise_pred_text = model_output[:,0], model_output[:,1]
+                    model_output = model_output.reshape(
+                        parallel_len, 2, batch_size * num_images_per_prompt, *per_latent_shape
+                    )
+                    noise_pred_uncond, noise_pred_text = model_output[:, 0], model_output[:, 1]
                     model_output = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                model_output = model_output.reshape(parallel_len * batch_size * num_images_per_prompt, *per_latent_shape)
+                model_output = model_output.reshape(
+                    parallel_len * batch_size * num_images_per_prompt, *per_latent_shape
+                )
 
                 block_latents_denoise = scheduler.batch_step_no_noise(
                     model_output=model_output,
-                    timesteps=block_t.flatten(0,1),
-                    sample=block_latents.flatten(0,1),
+                    timesteps=block_t.flatten(0, 1),
+                    sample=block_latents.flatten(0, 1),
                     **extra_step_kwargs,
                 ).reshape(block_latents.shape)
-
 
                 # back to shape (parallel_dim, batch_size, ...)
                 delta = block_latents_denoise - block_latents
                 cumulative_delta = self._cumsum(delta, dim=0, debug=debug)
                 cumulative_noise = self._cumsum(noise_array[begin_idx:end_idx], dim=0, debug=debug)
 
-
                 if scheduler._is_ode_scheduler:
                     cumulative_noise = 0
-                
-                block_latents_new = latents_time_evolution_buffer[begin_idx][None,] + cumulative_delta + cumulative_noise
-                cur_error = torch.linalg.norm((block_latents_new - latents_time_evolution_buffer[begin_idx+1:end_idx+1]).reshape(parallel_len, batch_size * num_images_per_prompt, -1), dim=-1).pow(2)
-                error_ratio = cur_error * inverse_variance_norm[begin_idx+1:end_idx+1]
+
+                block_latents_new = (
+                    latents_time_evolution_buffer[begin_idx][None,] + cumulative_delta + cumulative_noise
+                )
+                cur_error = torch.linalg.norm(
+                    (block_latents_new - latents_time_evolution_buffer[begin_idx + 1 : end_idx + 1]).reshape(
+                        parallel_len, batch_size * num_images_per_prompt, -1
+                    ),
+                    dim=-1,
+                ).pow(2)
+                error_ratio = cur_error * inverse_variance_norm[begin_idx + 1 : end_idx + 1]
 
                 # find the first index of the vector error_ratio that is greater than error tolerance
-                error_ratio = torch.nn.functional.pad(error_ratio, (0,0,0,1), value=1e9) # handle the case when everything is below ratio, by padding the end of parallel_len dimension
+                error_ratio = torch.nn.functional.pad(
+                    error_ratio, (0, 0, 0, 1), value=1e9
+                )  # handle the case when everything is below ratio, by padding the end of parallel_len dimension
                 any_error_at_time = torch.max(error_ratio > scaled_tolerance, dim=1).values.int()
-                ind = torch.argmax( any_error_at_time ).item()
+                ind = torch.argmax(any_error_at_time).item()
 
                 new_begin_idx = begin_idx + min(1 + ind, parallel)
                 new_end_idx = min(new_begin_idx + parallel, len(scheduler.timesteps))
 
-                latents_time_evolution_buffer[begin_idx+1:end_idx+1] = block_latents_new
-                latents_time_evolution_buffer[end_idx:new_end_idx+1] = latents_time_evolution_buffer[end_idx][None,] # hopefully better than random initialization
+                latents_time_evolution_buffer[begin_idx + 1 : end_idx + 1] = block_latents_new
+                latents_time_evolution_buffer[end_idx : new_end_idx + 1] = latents_time_evolution_buffer[end_idx][
+                    None,
+                ]  # hopefully better than random initialization
 
                 steps += 1
 
