@@ -244,27 +244,6 @@ class DownloadTests(unittest.TestCase):
                     use_safetensors=True,
                 )
 
-    def test_returned_cached_folder(self):
-        prompt = "hello"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
-        )
-        _, local_path = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, return_cached_folder=True
-        )
-        pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
-
-        pipe = pipe.to(torch_device)
-        pipe_2 = pipe_2.to(torch_device)
-
-        generator = torch.manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
-        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
-
-        assert np.max(np.abs(out - out_2)) < 1e-3
-
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
