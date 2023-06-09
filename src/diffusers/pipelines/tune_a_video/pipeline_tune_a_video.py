@@ -75,9 +75,6 @@ def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
 
 class TuneAVideoAttnProcessor:
     def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        encoder_hidden_states = encoder_hidden_states
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
