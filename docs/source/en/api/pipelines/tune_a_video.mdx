@@ -41,26 +41,28 @@ from PIL import Image
 
 pretrained_model_path = "nitrosocke/mo-di-diffusion"
 
-pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16).to("cuda")
+pipe = TuneAVideoPipeline.from_pretrained(
+    "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+).to("cuda")
 
 prompt = "A princess playing a guitar, modern disney style"
 generator = torch.Generator(device="cuda").manual_seed(42)
 
 video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="np").frames
 
-#Saving to gif.
+# Saving to gif.
 pil_frames = [Image.fromarray(frame) for frame in video_frames]
 duration = len(pil_frames) / 8
 pil_frames[0].save(
-        'animation.gif',
-        save_all=True,
-        append_images=pil_frames[1:], # append rest of the images
-        duration=duration * 1000, # in milliseconds
-        loop=0)
+    "animation.gif",
+    save_all=True,
+    append_images=pil_frames[1:],  # append rest of the images
+    duration=duration * 1000,  # in milliseconds
+    loop=0,
+)
 
-#Saving to video
+# Saving to video
 video_path = export_to_video(video_frames)
-
 ```
 
 Here are some sample outputs: 

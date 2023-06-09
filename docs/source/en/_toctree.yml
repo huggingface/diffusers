@@ -230,7 +230,7 @@
       title: Text-to-Video
     - local: api/pipelines/text_to_video_zero
       title: Text-to-Video Zero
-    - local: api/pipelines/tune_a_video.mdx
+    - local: api/pipelines/tune_a_video
       title: Tune-A-Video
     - local: api/pipelines/unclip
       title: UnCLIP
