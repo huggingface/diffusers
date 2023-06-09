@@ -152,6 +152,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/consistency_models
+      title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
     - local: api/pipelines/cycle_diffusion
@@ -236,6 +238,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/cm_stochastic_iterative
+      title: Consistency Model Multistep Scheduler
     - local: api/schedulers/ddim
       title: DDIM
     - local: api/schedulers/ddim_inverse

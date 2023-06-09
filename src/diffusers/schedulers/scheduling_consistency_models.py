@@ -257,7 +257,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            use_noise: (`bool`, *optional*, defaults to `True`):
+            use_noise (`bool`, *optional*, defaults to `True`):
                 Whether to inject noise during the step. Noise is not used for onestep sampling.
             generator (`torch.Generator`, *optional*): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerDiscreteSchedulerOutput class
