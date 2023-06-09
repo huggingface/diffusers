@@ -12,36 +12,25 @@ specific language governing permissions and limitations under the License.
 
 # Pipelines
 
-The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and to use it in inference.
+The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and use it for inference.
 
 <Tip>
 	
-	One should not use the Diffusion Pipeline class for training or fine-tuning a diffusion model. Individual 
-	components of diffusion pipelines are usually trained individually, so we suggest to directly work 
-	with [`UNetModel`] and [`UNetConditionModel`].
+You shouldn't use the [`DiffusionPipeline`] class for training or finetuning a diffusion model. Individual 
+components (for example, [`UNetModel`] and [`UNetConditionModel`]) of diffusion pipelines are usually trained individually, so we suggest directly working with instead.
 
 </Tip>
 
-Any diffusion pipeline that is loaded with [`~DiffusionPipeline.from_pretrained`] will automatically 
-detect the pipeline type, *e.g.* [`StableDiffusionPipeline`] and consequently load each component of the 
-pipeline and pass them into the `__init__` function of the pipeline, *e.g.* [`~StableDiffusionPipeline.__init__`].
+The pipeline type (for example [`StableDiffusionPipeline`]) of any diffusion pipeline loaded with [`~DiffusionPipeline.from_pretrained`] is automatically 
+detected and pipeline components are loaded and passed to the `__init__` function of the pipeline.
 
 Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrained`].
 
 ## DiffusionPipeline
+
 [[autodoc]] DiffusionPipeline
 	- all
 	- __call__
 	- device
 	- to
 	- components
-
-## ImagePipelineOutput
-By default diffusion pipelines return an object of class
-
-[[autodoc]] pipelines.ImagePipelineOutput
-
-## AudioPipelineOutput
-By default diffusion pipelines return an object of class
-
-[[autodoc]] pipelines.AudioPipelineOutput

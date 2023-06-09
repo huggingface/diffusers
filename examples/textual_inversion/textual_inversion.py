@@ -77,7 +77,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.16.0.dev0")
+check_min_version("0.18.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -176,10 +176,9 @@ def parse_args():
         help="Save learned_embeds.bin every X updates steps.",
     )
     parser.add_argument(
-        "--only_save_embeds",
+        "--save_as_full_pipeline",
         action="store_true",
-        default=True,
-        help="Save only the embeddings for the new concept.",
+        help="Save the complete stable diffusion pipeline.",
     )
     parser.add_argument(
         "--num_vectors",
@@ -285,6 +284,12 @@ def parse_args():
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--lr_num_cycles",
+        type=int,
+        default=1,
+        help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -561,14 +566,13 @@ class TextualInversionDataset(Dataset):
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
-
+    accelerator_project_config = ProjectConfiguration(
+        total_limit=args.checkpoints_total_limit, project_dir=args.output_dir, logging_dir=logging_dir
+    )
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -740,6 +744,7 @@ def main():
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_cycles=args.lr_num_cycles * args.gradient_accumulation_steps,
     )
 
     # Prepare everything with our `accelerator`.
@@ -900,11 +905,11 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        if args.push_to_hub and args.only_save_embeds:
+        if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
         else:
-            save_full_model = not args.only_save_embeds
+            save_full_model = args.save_as_full_pipeline
         if save_full_model:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
