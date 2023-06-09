@@ -60,8 +60,7 @@ returns both the image embeddings corresponding to the prompt and negative/uncon
 embeddings corresponding to an empty string.
 
 ```py
-generator = torch.Generator(device="cuda").manual_seed(12)
-image_embeds, negative_image_embeds = pipe_prior(prompt, generator=generator).to_tuple()
+image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
 ```
 
 <Tip warning={true}>
@@ -78,7 +77,7 @@ of the prior by a factor of 2.
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt, generator=generator).to_tuple()
+image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt, guidance_scale=1.0).to_tuple()
 ```
 
 </Tip>
@@ -89,7 +88,7 @@ in case you are using a customized negative prompt, that you should pass this on
 with `negative_prompt=negative_prompt`:
 
 ```py
-image = t2i_pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds).images[0]
+image = t2i_pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
 image.save("cheeseburger_monster.png")
 ```
 
@@ -160,8 +159,7 @@ pipe.to("cuda")
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
-generator = torch.Generator(device="cuda").manual_seed(30)
-image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt, generator=generator).to_tuple()
+image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt).to_tuple()
 
 out = pipe(
     prompt,
