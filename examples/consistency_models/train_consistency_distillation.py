@@ -75,7 +75,7 @@ def parse_args():
         "--model_config_name_or_path",
         type=str,
         default=None,
-        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
+        help="The config of the UNet model to train, leave as None to use standard Consistency configuration.",
     )
     parser.add_argument(
         "--train_data_dir",
@@ -378,31 +378,31 @@ def main(args):
     # Initialize the model
     if args.model_config_name_or_path is None:
         model = UNet2DModel(
-            sample_size=args.resolution,
-            in_channels=3,
-            out_channels=3,
-            layers_per_block=2,
-            block_out_channels=(128, 128, 256, 256, 512, 512),
-            down_block_types=(
-                "DownBlock2D",
-                "DownBlock2D",
-                "DownBlock2D",
-                "DownBlock2D",
-                "AttnDownBlock2D",
-                "DownBlock2D",
-            ),
-            up_block_types=(
-                "UpBlock2D",
-                "AttnUpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-                "UpBlock2D",
-            ),
-        )
+                sample_size= args.resolution,
+                in_channels=3,
+                out_channels=3,
+                layers_per_block=2,
+                num_class_embeds=1000,
+                block_out_channels= [32, 64],
+                attention_head_dim=8,
+                down_block_types= [
+                    "ResnetDownsampleBlock2D",
+                    "AttnDownsampleBlock2D",
+                ],
+                up_block_types= [
+                    "AttnUpsampleBlock2D",
+                    "ResnetUpsampleBlock2D",
+                ],
+                resnet_time_scale_shift="scale_shift",
+        
+                )
     else:
         config = UNet2DModel.load_config(args.model_config_name_or_path)
         model = UNet2DModel.from_config(config)
+    
+    teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
+    # print(teacher_model)
+
 
     # Create EMA for the model.
     if args.use_ema:
@@ -478,11 +478,11 @@ def main(args):
     )
 
     def transform_images(examples):
-        images = [augmentations(image.convert("RGB")) for image in examples["image"]]
-        return {"input": images}
+        images = [augmentations(image.convert("RGB")) for image in examples["img"]]
+        labels = [torch.tensor(label) for label in examples["label"]]
+        return {"input": images, "labels": labels}
 
     logger.info(f"Dataset size: {len(dataset)}")
-
     dataset.set_transform(transform_images)
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
@@ -497,8 +497,8 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler
+    model, optimizer, train_dataloader, lr_scheduler, teacher_model = accelerator.prepare(
+        model, optimizer, train_dataloader, lr_scheduler, teacher_model
     )
 
     if args.use_ema:
@@ -563,6 +563,7 @@ def main(args):
                 continue
 
             clean_images = batch["input"]
+            labels = batch["labels"]
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
@@ -577,7 +578,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                model_output = model(noisy_images, timesteps).sample
+                model_output = model(noisy_images, timesteps, labels).sample
 
                 if args.prediction_type == "epsilon":
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
