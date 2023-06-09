@@ -42,19 +42,7 @@ def append_dims(x, target_dims):
     return x[(...,) + (None,) * dims_to_append]
 
 
-def heun_solver(samples, t, next_t, x0):
-            dims = samples.ndim
-            x = samples
-            denoiser = teacher_denoise_fn(x, t)
 
-            d = (x - denoiser) / append_dims(t, dims)
-            samples = x + d * append_dims(next_t - t, dims)
-            denoiser = teacher_denoise_fn(samples, next_t)
-
-            next_d = (samples - denoiser) / append_dims(next_t, dims)
-            samples = x + (d + next_d) * append_dims((next_t - t) / 2, dims)
-
-            return samples
 
 
 
@@ -424,9 +412,12 @@ def main(args):
         model = UNet2DModel.from_config(config)
     
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
+    model = model.double()
+    teacher_model = teacher_model.double()
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
     noise_scheduler.set_timesteps(num_scales)
+    timesteps = noise_scheduler.timesteps
     # print(teacher_model)
 
 
@@ -583,20 +574,21 @@ def main(args):
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
-            timesteps = torch.randint(
-                0, noise_scheduler.config.num_train_timesteps-1, (bsz,), device=clean_images.device
+            index = torch.randint(
+                0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
             ).long()
-            timesteps_prev = timesteps + 1
+            timestep = timesteps[index]
+            timestep_prev = timestep + 1
             # TO-DO, we should have an add noise in the scheduler maybe?
-            noised_image = clean_images + noise*append_dims(timesteps, clean_images.ndims)
-            scaled_timesteps = noise_scheduler.scale_timesteps(timesteps)
-            scaled_timesteps_prev = noise_scheduler.scale_timesteps(timesteps_prev) 
+            noised_image = clean_images + noise*append_dims(timestep, clean_images.ndim)
+            scaled_timesteps = noise_scheduler.scale_timestep(timestep)
+            scaled_timesteps_prev = noise_scheduler.scale_timestep(timestep_prev) 
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
                 model_output = model(noised_image, scaled_timesteps, class_labels=labels).sample
                 distiller = noise_scheduler.step(
-                    model_output, timesteps, noised_image, use_noise=False
+                    model_output, timestep, noised_image, use_noise=False
                 ).prev_sample
 
                 # Heun Solver to get previous timestep image
@@ -604,22 +596,22 @@ def main(args):
                 x = samples
                 model_output = teacher_model(x, scaled_timesteps, class_labels=labels).sample
                 teacher_denoiser = noise_scheduler.step(
-                    model_output, timesteps, x, use_noise=False
+                    model_output, timestep, x, use_noise=False
                 ).prev_sample
-                d = (x - teacher_denoiser) / append_dims(scaled_timesteps, x.ndims)
-                samples = x + d * append_dims(scaled_timesteps_prev - scaled_timesteps, x.ndims)
+                d = (x - teacher_denoiser) / append_dims(scaled_timesteps, x.ndim)
+                samples = x + d * append_dims(scaled_timesteps_prev - scaled_timesteps, x.ndim)
                 model_output = teacher_model(samples, scaled_timesteps_prev, class_labels=labels).sample
                 teacher_denoiser = noise_scheduler.step(
-                    model_output, timesteps_prev, samples, use_noise=False
+                    model_output, timestep_prev, samples, use_noise=False
                 ).prev_sample
 
-                next_d = (samples - teacher_denoiser) / append_dims(scaled_timesteps_prev, x.ndims)
-                denoised_image = x + (d + next_d) * append_dims((scaled_timesteps_prev - scaled_timesteps) /2, x.ndims)
+                next_d = (samples - teacher_denoiser) / append_dims(scaled_timesteps_prev, x.ndim)
+                denoised_image = x + (d + next_d) * append_dims((scaled_timesteps_prev - scaled_timesteps) /2, x.ndim)
 
                 # get output from target model
-                model_output = ema_model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
+                model_output = model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
                 distiller_target = noise_scheduler.step(
-                    model_output, timesteps_prev, denoised_image, use_noise=False
+                    model_output, timestep_prev, denoised_image, use_noise=False
                 ).prev_sample
 
                 loss = F.mse_loss(distiller, distiller_target)  # this could have different weights!
