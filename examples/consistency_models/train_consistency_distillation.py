@@ -20,7 +20,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 import diffusers
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, CMStochasticIterativeScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
@@ -33,6 +33,29 @@ from diffusers.utils.import_utils import is_xformers_available
 check_min_version("0.17.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
+
+def append_dims(x, target_dims):
+    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
+    dims_to_append = target_dims - x.ndim
+    if dims_to_append < 0:
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
+    return x[(...,) + (None,) * dims_to_append]
+
+
+def heun_solver(samples, t, next_t, x0):
+            dims = samples.ndim
+            x = samples
+            denoiser = teacher_denoise_fn(x, t)
+
+            d = (x - denoiser) / append_dims(t, dims)
+            samples = x + d * append_dims(next_t - t, dims)
+            denoiser = teacher_denoise_fn(samples, next_t)
+
+            next_d = (samples - denoiser) / append_dims(next_t, dims)
+            samples = x + (d + next_d) * append_dims((next_t - t) / 2, dims)
+
+            return samples
+
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
@@ -401,10 +424,13 @@ def main(args):
         model = UNet2DModel.from_config(config)
     
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
+    noise_scheduler = CMStochasticIterativeScheduler()
+    num_scales = 40
+    noise_scheduler.set_timesteps(num_scales)
     # print(teacher_model)
 
 
-    # Create EMA for the model.
+    # Create EMA for the model, this is the target model in the paper
     if args.use_ema:
         ema_model = EMAModel(
             model.parameters(),
@@ -428,17 +454,6 @@ def main(args):
             model.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    # Initialize the scheduler
-    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
-    if accepts_prediction_type:
-        noise_scheduler = DDPMScheduler(
-            num_train_timesteps=args.ddpm_num_steps,
-            beta_schedule=args.ddpm_beta_schedule,
-            prediction_type=args.prediction_type,
-        )
-    else:
-        noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
@@ -569,30 +584,46 @@ def main(args):
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, noise_scheduler.config.num_train_timesteps, (bsz,), device=clean_images.device
+                0, noise_scheduler.config.num_train_timesteps-1, (bsz,), device=clean_images.device
             ).long()
-
-            # Add noise to the clean images according to the noise magnitude at each timestep
-            # (this is the forward diffusion process)
-            noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
+            timesteps_prev = timesteps + 1
+            # TO-DO, we should have an add noise in the scheduler maybe?
+            noised_image = clean_images + noise*append_dims(timesteps, clean_images.ndims)
+            scaled_timesteps = noise_scheduler.scale_timesteps(timesteps)
+            scaled_timesteps_prev = noise_scheduler.scale_timesteps(timesteps_prev) 
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                model_output = model(noisy_images, timesteps, labels).sample
+                model_output = model(noised_image, scaled_timesteps, class_labels=labels).sample
+                distiller = noise_scheduler.step(
+                    model_output, timesteps, noised_image, use_noise=False
+                ).prev_sample
 
-                if args.prediction_type == "epsilon":
-                    loss = F.mse_loss(model_output, noise)  # this could have different weights!
-                elif args.prediction_type == "sample":
-                    alpha_t = _extract_into_tensor(
-                        noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
-                    )
-                    snr_weights = alpha_t / (1 - alpha_t)
-                    loss = snr_weights * F.mse_loss(
-                        model_output, clean_images, reduction="none"
-                    )  # use SNR weighting from distillation paper
-                    loss = loss.mean()
-                else:
-                    raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
+                # Heun Solver to get previous timestep image
+                samples = noised_image
+                x = samples
+                model_output = teacher_model(x, scaled_timesteps, class_labels=labels).sample
+                teacher_denoiser = noise_scheduler.step(
+                    model_output, timesteps, x, use_noise=False
+                ).prev_sample
+                d = (x - teacher_denoiser) / append_dims(scaled_timesteps, x.ndims)
+                samples = x + d * append_dims(scaled_timesteps_prev - scaled_timesteps, x.ndims)
+                model_output = teacher_model(samples, scaled_timesteps_prev, class_labels=labels).sample
+                teacher_denoiser = noise_scheduler.step(
+                    model_output, timesteps_prev, samples, use_noise=False
+                ).prev_sample
+
+                next_d = (samples - teacher_denoiser) / append_dims(scaled_timesteps_prev, x.ndims)
+                denoised_image = x + (d + next_d) * append_dims((scaled_timesteps_prev - scaled_timesteps) /2, x.ndims)
+
+                # get output from target model
+                model_output = ema_model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
+                distiller_target = noise_scheduler.step(
+                    model_output, timesteps_prev, denoised_image, use_noise=False
+                ).prev_sample
+
+                loss = F.mse_loss(distiller, distiller_target)  # this could have different weights!
+                loss = loss.mean()
 
                 accelerator.backward(loss)
 
