@@ -181,7 +181,7 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             # Only the Transformer3DModels attn1 attn processor is TuneAVideoAttnProcessor.
             if "attn1" in key:
                 attn_processor_dict[key] = TuneAVideoAttnProcessor()
-        self.unet.set_attn_processor(attn_processor_dict)
+        pipe.unet.set_attn_processor(attn_processor_dict)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
