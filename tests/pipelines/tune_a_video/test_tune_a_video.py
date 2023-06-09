@@ -19,33 +19,14 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    TuneAVideoPipeline,
-    UNet3DConditionModel,
-    DiffusionPipeline
-)
-from diffusers.pipelines.tune_a_video.pipeline_tune_a_video import TuneAVideoAttnProcessor
-from diffusers.utils import load_numpy, skip_mps, slow, torch_device
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, TuneAVideoPipeline, UNet3DConditionModel
+from diffusers.utils import load_numpy, skip_mps, slow
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-
-def to_np(tensor):
-    if isinstance(tensor, torch.Tensor):
-        tensor = tensor.detach().cpu().numpy()
-
-    return tensor
-
-def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
-    image = np.asarray(DiffusionPipeline.numpy_to_pil(image)[0], dtype=np.float32)
-    expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
-    avg_diff = np.abs(image - expected_image).mean()
-    assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
 
 @skip_mps
 class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -166,38 +147,6 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
-    
-    # Overriding to check if the unet init is incorrect
-    def _test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        attn_processor_dict = pipe.unet.attn_processors
-        for key in attn_processor_dict.keys():
-            # Only the Transformer3DModels attn1 attn processor is TuneAVideoAttnProcessor.
-            if "attn1" in key:
-                attn_processor_dict[key] = TuneAVideoAttnProcessor()
-        pipe.unet.set_attn_processor(attn_processor_dict)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_without_slicing = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
-        output_with_slicing = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff = np.abs(to_np(output_with_slicing) - to_np(output_without_slicing)).max()
-            self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
-
-        if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")

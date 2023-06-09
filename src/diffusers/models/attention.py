@@ -407,7 +407,7 @@ class BasicSparseTransformerBlock(nn.Module):
         self.use_ada_layer_norm = num_embeds_ada_norm is not None
 
         # Temporal-Attention.
-        self.attn1 = CrossAttention(
+        self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -420,7 +420,7 @@ class BasicSparseTransformerBlock(nn.Module):
 
         # Cross-Attn
         if cross_attention_dim is not None:
-            self.attn2 = CrossAttention(
+            self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
