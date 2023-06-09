@@ -236,16 +236,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--prediction_type",
-        type=str,
-        default="epsilon",
-        choices=["epsilon", "sample"],
-        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
-    )
-    parser.add_argument("--ddpm_num_steps", type=int, default=1000)
-    parser.add_argument("--ddpm_num_inference_steps", type=int, default=1000)
-    parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
-    parser.add_argument(
         "--checkpointing_steps",
         type=int,
         default=500,
@@ -407,12 +397,33 @@ def main(args):
                 resnet_time_scale_shift="scale_shift",
         
                 )
+        target_model = UNet2DModel(
+                sample_size= args.resolution,
+                in_channels=3,
+                out_channels=3,
+                layers_per_block=2,
+                num_class_embeds=1000,
+                block_out_channels= [32, 64],
+                attention_head_dim=8,
+                down_block_types= [
+                    "ResnetDownsampleBlock2D",
+                    "AttnDownsampleBlock2D",
+                ],
+                up_block_types= [
+                    "AttnUpsampleBlock2D",
+                    "ResnetUpsampleBlock2D",
+                ],
+                resnet_time_scale_shift="scale_shift",
+        
+                )
     else:
         config = UNet2DModel.load_config(args.model_config_name_or_path)
         model = UNet2DModel.from_config(config)
+        target_model = UNet2DModel.from_config(config)
     
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
     model = model.double()
+    target_model = target_model.double()
     teacher_model = teacher_model.double()
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
@@ -503,8 +514,8 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, lr_scheduler, teacher_model = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler, teacher_model
+    model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, ema_model = accelerator.prepare(
+        model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, ema_model
     )
 
     if args.use_ema:
@@ -583,6 +594,7 @@ def main(args):
             noised_image = clean_images + noise*append_dims(timestep, clean_images.ndim)
             scaled_timesteps = noise_scheduler.scale_timestep(timestep)
             scaled_timesteps_prev = noise_scheduler.scale_timestep(timestep_prev) 
+            ema_model.copy_to(target_model.parameters())
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
@@ -609,7 +621,7 @@ def main(args):
                 denoised_image = x + (d + next_d) * append_dims((scaled_timesteps_prev - scaled_timesteps) /2, x.ndim)
 
                 # get output from target model
-                model_output = model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
+                model_output = target_model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
                 distiller_target = noise_scheduler.step(
                     model_output, timestep_prev, denoised_image, use_noise=False
                 ).prev_sample
