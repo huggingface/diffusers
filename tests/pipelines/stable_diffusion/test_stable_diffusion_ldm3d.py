@@ -19,23 +19,19 @@ import unittest
 
 import numpy as np
 import torch
-from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionLDM3DPipeline,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu, enable_full_determinism
+from diffusers.utils import nightly, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -134,8 +130,9 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, 64, 64)
 
         expected_slice_rgb = np.array(
-            [0.37301102, 0.7023895, 0.7418312, 0.5163375, 0.5825485, 0.60929704, 0.4188174, 0.48407027, 0.46555096])
-        expected_slice_depth = np.array([103.4673 ,  85.81202,  87.84926])
+            [0.37301102, 0.7023895, 0.7418312, 0.5163375, 0.5825485, 0.60929704, 0.4188174, 0.48407027, 0.46555096]
+        )
+        expected_slice_depth = np.array([103.4673, 85.81202, 87.84926])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
@@ -200,8 +197,9 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, 64, 64)
 
         expected_slice_rgb = np.array(
-            [0.37044, 0.71811503, 0.7223251, 0.48603675, 0.5638391, 0.6364948, 0.42833704, 0.4901315, 0.47926217])
-        expected_slice_depth = np.array([107.84738 ,  84.62802 ,  89.962135])
+            [0.37044, 0.71811503, 0.7223251, 0.48603675, 0.5638391, 0.6364948, 0.42833704, 0.4901315, 0.47926217]
+        )
+        expected_slice_depth = np.array([107.84738, 84.62802, 89.962135])
         assert np.abs(rgb_slice.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(depth_slice.flatten() - expected_slice_depth).max() < 1e-2
 

@@ -253,7 +253,6 @@ class VaeImageProcessor(ConfigMixin):
             return self.numpy_to_pil(image)
 
 
-
 class VaeImageProcessorLDM3D(VaeImageProcessor):
     """
     Image Processor for VAE LDM3D
@@ -274,7 +273,11 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     @register_to_config
     def __init__(
-        self, do_resize: bool = True, vae_scale_factor: int = 8, resample: str = "lanczos", do_normalize: bool = True,
+        self,
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        resample: str = "lanczos",
+        do_normalize: bool = True,
     ):
         super().__init__()
 
@@ -303,7 +306,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         Returns: depth map
 
         """
-        return image[:, :, 1] * 2 ** 8 + image[:, :, 2]
+        return image[:, :, 1] * 2**8 + image[:, :, 2]
 
     def numpy_to_depth(self, images):
         """
@@ -321,7 +324,10 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         return pil_images
 
     def postprocess(
-        self, image: torch.FloatTensor, output_type: str = "pil", do_denormalize: Optional[List[bool]] = None,
+        self,
+        image: torch.FloatTensor,
+        output_type: str = "pil",
+        do_denormalize: Optional[List[bool]] = None,
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
