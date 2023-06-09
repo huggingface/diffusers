@@ -32,62 +32,35 @@ Resources:
 
 ## Usage example 
 
-Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
-
-```python 
-import torch
-from diffusers import DiffusionPipeline
-from diffusers.utils import export_to_video
-
-pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
-pipe = pipe.to("cuda")
-
-prompt = "Spiderman is surfing"
-video_frames = pipe(prompt).frames
-video_path = export_to_video(video_frames)
-video_path
-```
-
-Diffusers supports different optimization techniques to improve the latency
-and memory footprint of a pipeline. Since videos are often more memory-heavy than images,
-we can enable CPU offloading and VAE slicing to keep the memory footprint at bay.
-
-Let's generate a video of 8 seconds (64 frames) on the same GPU using CPU offloading and VAE slicing:
-
 ```python
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, DDIMScheduler
 from diffusers.utils import export_to_video
+from PIL import Image
 
-pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
-pipe.enable_model_cpu_offload()
 
-# memory optimization
-pipe.enable_vae_slicing()
+pretrained_model_path = "nitrosocke/mo-di-diffusion"
 
-prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=64).frames
+pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16).to("cuda")
+
+prompt = "A princess playing a guitar, modern disney style"
+generator = torch.Generator(device="cuda").manual_seed(42)
+
+video_frames = pipe(prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="np").frames
+
+#Saving to gif.
+pil_frames = [Image.fromarray(frame) for frame in video_frames]
+duration = len(pil_frames) / 8
+pil_frames[0].save(
+        'animation.gif',
+        save_all=True,
+        append_images=pil_frames[1:], # append rest of the images
+        duration=duration * 1000, # in milliseconds
+        loop=0)
+
+#Saving to video
 video_path = export_to_video(video_frames)
-video_path
-```
 
-It just takes **7 GBs of GPU memory** to generate the 64 video frames using PyTorch 2.0, "fp16" precision and the techniques mentioned above.
-
-We can also use a different scheduler easily, using the same method we'd use for Stable Diffusion:
-
-```python
-import torch
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
-from diffusers.utils import export_to_video
-
-pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe.enable_model_cpu_offload()
-
-prompt = "Spiderman is surfing"
-video_frames = pipe(prompt, num_inference_steps=25).frames
-video_path = export_to_video(video_frames)
-video_path
 ```
 
 Here are some sample outputs: 
@@ -95,17 +68,10 @@ Here are some sample outputs:
 <table>
     <tr>
         <td><center>
-        An astronaut riding a horse.
+        A princess playing a guitar, modern disney style
         <br>
         <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astr.gif"
-            alt="An astronaut riding a horse."
-            style="width: 300px;" />
-        </center></td>
-        <td ><center>
-        Darth vader surfing in waves.
-        <br>
-        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vader.gif"
-            alt="Darth vader surfing in waves."
+            alt="A princess playing a guitar, modern disney style"
             style="width: 300px;" />
         </center></td>
     </tr>
@@ -113,10 +79,9 @@ Here are some sample outputs:
 
 ## Available checkpoints 
 
-* [damo-vilab/text-to-video-ms-1.7b](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b/)
-* [damo-vilab/text-to-video-ms-1.7b-legacy](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b-legacy)
+* [NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1](https://huggingface.co/NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1)
 
-## TextToVideoSDPipeline
-[[autodoc]] TextToVideoSDPipeline
+## TuneAVideoPipeline
+[[autodoc]] TuneAVideoPipeline
 	- all
 	- __call__
