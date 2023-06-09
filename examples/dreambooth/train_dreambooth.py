@@ -945,6 +945,7 @@ def main(args):
 
     if not args.train_text_encoder:
         text_encoder.requires_grad_(False)
+    text_encoder.requires_grad_(False)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
