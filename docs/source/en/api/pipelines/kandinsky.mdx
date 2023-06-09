@@ -88,7 +88,9 @@ in case you are using a customized negative prompt, that you should pass this on
 with `negative_prompt=negative_prompt`:
 
 ```py
-image = t2i_pipe(prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
+image = t2i_pipe(
+    prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768
+).images[0]
 image.save("cheeseburger_monster.png")
 ```
 
