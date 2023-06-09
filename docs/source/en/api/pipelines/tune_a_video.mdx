@@ -42,7 +42,7 @@ from PIL import Image
 pretrained_model_path = "nitrosocke/mo-di-diffusion"
 
 pipe = TuneAVideoPipeline.from_pretrained(
-    "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+    "Tune-A-Video-library/df-cpt-mo-di-bear-guitar", torch_dtype=torch.float16
 ).to("cuda")
 
 prompt = "A princess playing a guitar, modern disney style"
