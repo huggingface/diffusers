@@ -59,15 +59,13 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=("CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "DownBlock3D"),
-            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
+            down_block_types=("CrossAttnDownBlockInflated3D", "CrossAttnDownBlockInflated3D", "CrossAttnDownBlockInflated3D", "DownBlockInflated3D"),
+            up_block_types=("UpBlockInflated3D", "CrossAttnUpBlockInflated3D", "CrossAttnUpBlockInflated3D", "CrossAttnUpBlockInflated3D"),
+            mid_block_type = "UNetMidBlockInflated3DCrossAttn",
             cross_attention_dim=32,
             attention_head_dim=4,
             use_linear_projection=False,
-            conv_type="inflated_conv_3d",
             use_temporal_transformer=False,
-            use_temporal_conv=False,
-            sub_blocks_type="3d",
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -139,7 +137,7 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = frames[0][-3:, -3:, -1]
 
         assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([166, 184, 167, 118, 102, 123, 108, 93, 114])
+        expected_slice = np.array([145, 150, 171, 177, 126, 115, 122, 122, 129])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
