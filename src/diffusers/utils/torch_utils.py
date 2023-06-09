@@ -25,6 +25,13 @@ if is_torch_available():
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+try:
+    from torch._dynamo import allow_in_graph as maybe_allow_in_graph
+except (ImportError, ModuleNotFoundError):
+
+    def maybe_allow_in_graph(cls):
+        return cls
+
 
 def randn_tensor(
     shape: Union[Tuple, List],
@@ -33,9 +40,9 @@ def randn_tensor(
     dtype: Optional["torch.dtype"] = None,
     layout: Optional["torch.layout"] = None,
 ):
-    """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
-    passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
-    will always be created on CPU.
+    """A helper function to create random tensors on the desired `device` with the desired `dtype`. When
+    passing a list of generators, you can seed each batch size individually. If CPU generators are passed, the tensor
+    is always created on the CPU.
     """
     # device on which tensor is created defaults to device
     rand_device = device

@@ -29,16 +29,16 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
-class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionLatentUpscalePipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
         "height",
@@ -49,6 +49,11 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
     }
     required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
+
     test_cpu_offload = True
 
     @property
@@ -159,8 +164,26 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
+
+    def test_cpu_offload_forward_pass(self):
+        super().test_cpu_offload_forward_pass(expected_max_diff=3e-3)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=False)
+        super().test_inference_batch_single_identical(expected_max_diff=7e-3)
+
+    def test_pt_np_pil_outputs_equivalent(self):
+        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=3e-3)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=3e-3)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=3e-3)
 
 
 @require_torch_gpu
