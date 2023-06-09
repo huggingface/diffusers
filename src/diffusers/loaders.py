@@ -366,7 +366,7 @@ class UNet2DConditionLoadersMixin:
         """
         weight_name = weight_name or deprecate(
             "weights_name",
-            "0.18.0",
+            "0.20.0",
             "`weights_name` is deprecated, please use `weight_name` instead.",
             take_from=kwargs,
         )
