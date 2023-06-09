@@ -181,7 +181,7 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         )
 
         pipe = TuneAVideoPipeline.from_pretrained(
-            "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+            "Tune-A-Video-library/df-cpt-mo-di-bear-guitar", torch_dtype=torch.float16
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
@@ -202,7 +202,7 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         )
 
         pipe = TuneAVideoPipeline.from_pretrained(
-            "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", torch_dtype=torch.float16
+            "Tune-A-Video-library/df-cpt-mo-di-bear-guitar", torch_dtype=torch.float16
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
