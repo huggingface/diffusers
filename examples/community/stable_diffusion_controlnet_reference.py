@@ -1,9 +1,9 @@
 # Inspired by: https://github.com/Mikubill/sd-webui-controlnet/discussions/1236 and https://github.com/Mikubill/sd-webui-controlnet/discussions/1280
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import PIL.Image
 import torch
-import numpy as np
 
 from diffusers import StableDiffusionControlNetPipeline
 from diffusers.models import ControlNetModel
