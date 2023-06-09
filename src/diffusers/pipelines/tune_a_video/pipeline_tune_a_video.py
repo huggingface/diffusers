@@ -521,6 +521,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
     def prepare_latents(
         self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None
     ):
