@@ -491,7 +491,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        video_length: int = 8,
+        video_length: Optional[int] = 8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
