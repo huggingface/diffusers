@@ -99,7 +99,7 @@ result = []
 chunk_ids = np.arange(0, video_length, chunk_size - 1)
 generator = torch.Generator(device="cuda")
 for i in range(len(chunk_ids)):
-    print(f'Processing chunk {i + 1} / {len(chunk_ids)}')
+    print(f"Processing chunk {i + 1} / {len(chunk_ids)}")
     ch_start = chunk_ids[i]
     ch_end = video_length if i == len(chunk_ids) - 1 else chunk_ids[i + 1]
     # Attach the first frame for Cross Frame Attention

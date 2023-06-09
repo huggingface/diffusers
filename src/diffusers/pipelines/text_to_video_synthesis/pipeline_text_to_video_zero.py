@@ -42,8 +42,8 @@ class CrossFrameAttnProcessor:
 
     Args:
         batch_size: The number that represents actual batch size, other than the frames.
-            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be
-            equal to 2, due to classifier-free guidance.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
     """
 
     def __init__(self, batch_size=2):
@@ -98,10 +98,11 @@ class CrossFrameAttnProcessor:
 class CrossFrameAttnProcessor2_0:
     """
     Cross frame attention processor with scaled_dot_product attention of Pytorch 2.0.
+
     Args:
         batch_size: The number that represents actual batch size, other than the frames.
-            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be
-            equal to 2, due to classifier-free guidance.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
     """
 
     def __init__(self, batch_size=2):
@@ -302,7 +303,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
         )
         processor = (
-            CrossFrameAttnProcessor2_0(batch_size=2) if hasattr(F, "scaled_dot_product_attention") else CrossFrameAttnProcessor(batch_size=2)
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
         )
         self.unet.set_attn_processor(processor)
 
