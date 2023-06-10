@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - doc-builder*
+      - v*-release
       - v*-patch
 
 jobs:
