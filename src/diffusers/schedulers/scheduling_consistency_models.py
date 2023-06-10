@@ -107,7 +107,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
-        self.custom_timesteps = False,
+        self.custom_timesteps = False
         self.is_scale_input_called = False
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -174,10 +174,10 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
-        
+
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
-        
+
         # Follow DDPMScheduler custom timesteps logic
         if timesteps is not None:
             for i in range(1, len(timesteps)):
@@ -205,7 +205,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             self.custom_timesteps = False
-        
+
         if str(device).startswith("mps"):
             # mps does not support float64
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)

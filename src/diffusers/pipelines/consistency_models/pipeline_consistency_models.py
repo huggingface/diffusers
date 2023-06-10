@@ -174,10 +174,10 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def check_inputs(self, num_inference_steps, timesteps, latents, batch_size, img_size, callback_steps):
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
-        
+
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
-        
+
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
             if latents.shape != expected_shape:
