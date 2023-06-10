@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, TuneAVideoPipeline, UNet3DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, TuneAVideoPipeline, UNet3DConditionModel
 from diffusers.utils import load_numpy, skip_mps, slow
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -27,6 +27,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
 
 @skip_mps
 class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -144,8 +145,10 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([145, 150, 171, 177, 126, 115, 122, 122, 129])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-    
-    @unittest.skip(reason="SlicedAttnProcessor doesn't work with this pipeline, need to add an equivalent processor for TuneAVideoAttnProcessor")
+
+    @unittest.skip(
+        reason="SlicedAttnProcessor doesn't work with this pipeline, need to add an equivalent processor for TuneAVideoAttnProcessor"
+    )
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
