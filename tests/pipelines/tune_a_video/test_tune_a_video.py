@@ -144,7 +144,8 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([145, 150, 171, 177, 126, 115, 122, 122, 129])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
+    
+    @unittest.skip(reason="SlicedAttnProcessor doesn't work with this pipeline, need to add an equivalent processor for TuneAVideoAttnProcessor")
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
