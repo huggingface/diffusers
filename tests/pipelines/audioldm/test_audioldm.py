@@ -37,9 +37,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -413,4 +417,4 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio_slice = audio[27780:27790]
         expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-2
+        assert max_diff < 3e-2

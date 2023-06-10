@@ -89,7 +89,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         beta_end (`float`): the final `beta` value.
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+            `linear`, `scaled_linear`, `squaredcos_cap_v2` or `sigmoid`.
         eta (`float`):
             The weight of noise for added noise in a diffusion step. Its value is between 0.0 and 1.0 -0.0 is DDIM and
             1.0 is DDPM scheduler respectively.

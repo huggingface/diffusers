@@ -287,6 +287,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bs4_available = False
 
+_torchsde_available = importlib.util.find_spec("torchsde") is not None
+try:
+    _torchsde_version = importlib_metadata.version("torchsde")
+    logger.debug(f"Successfully imported torchsde version {_torchsde_version}")
+except importlib_metadata.PackageNotFoundError:
+    _torchsde_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -370,6 +377,10 @@ def is_ftfy_available():
 
 def is_bs4_available():
     return _bs4_available
+
+
+def is_torchsde_available():
+    return _torchsde_available
 
 
 # docstyle-ignore
@@ -475,6 +486,11 @@ installation section: https://github.com/rspeer/python-ftfy/tree/master#installi
 that match your environment. Please note that you may need to restart your runtime after installation.
 """
 
+# docstyle-ignore
+TORCHSDE_IMPORT_ERROR = """
+{0} requires the torchsde library but it was not found in your environment. You can install it with pip: `pip install torchsde`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -495,6 +511,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
+        ("torchsde", (_torchsde_available, TORCHSDE_IMPORT_ERROR)),
     ]
 )
 

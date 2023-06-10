@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
+from ...loaders import LoraLoaderMixin
 from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -70,7 +71,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class IFSuperResolutionPipeline(DiffusionPipeline):
+class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -664,10 +665,10 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+            image = [np.array(i).astype(np.float32) / 127.5 - 1.0 for i in image]
 
             image = np.stack(image, axis=0)  # to np
-            torch.from_numpy(image.transpose(0, 3, 1, 2))
+            image = torch.from_numpy(image.transpose(0, 3, 1, 2))
         elif isinstance(image[0], np.ndarray):
             image = np.stack(image, axis=0)  # to np
             if image.ndim == 5:
@@ -695,6 +696,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        height: int = None,
+        width: int = None,
         image: Union[PIL.Image.Image, np.ndarray, torch.FloatTensor] = None,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -720,6 +723,10 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            height (`int`, *optional*, defaults to self.unet.config.sample_size):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size):
+                The width in pixels of the generated image.
             image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
                 The image to be upscaled.
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -806,8 +813,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
 
         # 2. Define call parameters
 
-        height = self.unet.config.sample_size
-        width = self.unet.config.sample_size
+        height = height or self.unet.config.sample_size
+        width = width or self.unet.config.sample_size
 
         device = self._execution_device
 
@@ -886,7 +893,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     class_labels=noise_level,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -896,10 +904,13 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
 
+                if self.scheduler.config.variance_type not in ["learned", "learned_range"]:
+                    noise_pred, _ = noise_pred.split(intermediate_images.shape[1], dim=1)
+
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs
-                ).prev_sample
+                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

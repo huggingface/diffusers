@@ -95,8 +95,8 @@ _deps = [
     "Jinja2",
     "k-diffusion>=0.0.12",
     "librosa",
-    "note-seq",
     "numpy",
+    "omegaconf",
     "parameterized",
     "protobuf>=3.20.3,<4",
     "pytest",
@@ -112,6 +112,7 @@ _deps = [
     "torch>=1.4",
     "torchvision",
     "transformers>=4.25.1",
+    "urllib3<=2.0.0",
 ]
 
 # this is a lookup table with items like:
@@ -182,7 +183,7 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
+extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
@@ -191,7 +192,7 @@ extras["test"] = deps_list(
     "Jinja2",
     "k-diffusion",
     "librosa",
-    "note-seq",
+    "omegaconf",
     "parameterized",
     "pytest",
     "pytest-timeout",
@@ -226,7 +227,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.16.1",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.17.0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

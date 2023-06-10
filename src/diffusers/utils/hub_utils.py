@@ -280,7 +280,7 @@ def _get_model_file(
         if (
             revision in DEPRECATED_REVISION_ARGS
             and (weights_name == WEIGHTS_NAME or weights_name == SAFETENSORS_WEIGHTS_NAME)
-            and version.parse(version.parse(__version__).base_version) >= version.parse("0.17.0")
+            and version.parse(version.parse(__version__).base_version) >= version.parse("0.18.0")
         ):
             try:
                 model_file = hf_hub_download(

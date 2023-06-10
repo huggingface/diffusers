@@ -52,7 +52,7 @@ Now you can create a prompt to replace the mask with something else:
 
 ```python
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
 `image`          | `mask_image` | `prompt` | output |

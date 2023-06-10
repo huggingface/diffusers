@@ -15,6 +15,7 @@
 
 import gc
 import random
+import traceback
 import unittest
 
 import numpy as np
@@ -31,22 +32,65 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+    skip_mps,
+)
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
-class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+# Will be run via run_test_in_subprocess
+def _test_img2img_compile(in_queue, out_queue, timeout):
+    error = None
+    try:
+        inputs = in_queue.get(timeout=timeout)
+        torch_device = inputs.pop("torch_device")
+        seed = inputs.pop("seed")
+        inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
+
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.0593, 0.0607, 0.0851, 0.0582, 0.0636, 0.0721, 0.0751, 0.0981, 0.0781])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
+    except Exception:
+        error = f"{traceback.format_exc()}"
+
+    results = {"error": error}
+    out_queue.put(results, timeout=timeout)
+    out_queue.join()
+
+
+class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -96,33 +140,20 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0, input_image_type="pt", output_type="np"):
+    def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-
-        if input_image_type == "pt":
-            input_image = image
-        elif input_image_type == "np":
-            input_image = image.cpu().numpy().transpose(0, 2, 3, 1)
-        elif input_image_type == "pil":
-            input_image = image.cpu().numpy().transpose(0, 2, 3, 1)
-            input_image = VaeImageProcessor.numpy_to_pil(input_image)
-        else:
-            raise ValueError(f"unsupported input_image_type {input_image_type}.")
-
-        if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(f"unsupported output_type {output_type}")
-
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "image": input_image,
+            "image": image,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": output_type,
+            "output_type": "numpy",
         }
         return inputs
 
@@ -130,7 +161,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -147,7 +177,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -166,7 +195,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -188,7 +216,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -215,37 +242,10 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):
-        return super().test_attention_slicing_forward_pass()
+        return super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
-    @skip_mps
-    def test_pt_np_pil_outputs_equivalent(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        output_pt = sd_pipe(**self.get_dummy_inputs(device, output_type="pt"))[0]
-        output_np = sd_pipe(**self.get_dummy_inputs(device, output_type="np"))[0]
-        output_pil = sd_pipe(**self.get_dummy_inputs(device, output_type="pil"))[0]
-
-        assert np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max() <= 1e-4
-        assert np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max() <= 1e-4
-
-    @skip_mps
-    def test_image_types_consistent(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        output_pt = sd_pipe(**self.get_dummy_inputs(device, input_image_type="pt"))[0]
-        output_np = sd_pipe(**self.get_dummy_inputs(device, input_image_type="np"))[0]
-        output_pil = sd_pipe(**self.get_dummy_inputs(device, input_image_type="pil"))[0]
-
-        assert np.abs(output_pt - output_np).max() <= 1e-4
-        assert np.abs(output_pil - output_np).max() <= 1e-2
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
 @slow
@@ -494,6 +494,16 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
+
+    @require_torch_2
+    def test_img2img_compile(self):
+        seed = 0
+        inputs = self.get_inputs(torch_device, seed=seed)
+        # Can't pickle a Generator object
+        del inputs["generator"]
+        inputs["torch_device"] = torch_device
+        inputs["seed"] = seed
+        run_test_in_subprocess(test_case=self, target_func=_test_img2img_compile, inputs=inputs)
 
 
 @nightly

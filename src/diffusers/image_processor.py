@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL
@@ -21,7 +21,7 @@ import torch
 from PIL import Image
 
 from .configuration_utils import ConfigMixin, register_to_config
-from .utils import CONFIG_NAME, PIL_INTERPOLATION
+from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -30,7 +30,8 @@ class VaeImageProcessor(ConfigMixin):
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
-            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
+            `height` and `width` arguments from `preprocess` method
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             VAE scale factor. If `do_resize` is True, the image will be automatically resized to multiples of this
             factor.
@@ -38,6 +39,8 @@ class VaeImageProcessor(ConfigMixin):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1]
+        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to RGB format.
     """
 
     config_name = CONFIG_NAME
@@ -49,11 +52,12 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
         do_normalize: bool = True,
+        do_convert_rgb: bool = False,
     ):
         super().__init__()
 
     @staticmethod
-    def numpy_to_pil(images):
+    def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
@@ -69,7 +73,19 @@ class VaeImageProcessor(ConfigMixin):
         return pil_images
 
     @staticmethod
-    def numpy_to_pt(images):
+    def pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+        """
+        Convert a PIL image or a list of PIL images to numpy arrays.
+        """
+        if not isinstance(images, list):
+            images = [images]
+        images = [np.array(image).astype(np.float32) / 255.0 for image in images]
+        images = np.stack(images, axis=0)
+
+        return images
+
+    @staticmethod
+    def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
         """
         Convert a numpy image to a pytorch tensor
         """
@@ -80,9 +96,9 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def pt_to_numpy(images):
+    def pt_to_numpy(images: torch.FloatTensor) -> np.ndarray:
         """
-        Convert a numpy image to a pytorch tensor
+        Convert a pytorch tensor to a numpy image
         """
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()
         return images
@@ -94,18 +110,46 @@ class VaeImageProcessor(ConfigMixin):
         """
         return 2.0 * images - 1.0
 
-    def resize(self, images: PIL.Image.Image) -> PIL.Image.Image:
+    @staticmethod
+    def denormalize(images):
+        """
+        Denormalize an image array to [0,1]
+        """
+        return (images / 2 + 0.5).clamp(0, 1)
+
+    @staticmethod
+    def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        Converts an image to RGB format.
+        """
+        image = image.convert("RGB")
+        return image
+
+    def resize(
+        self,
+        image: PIL.Image.Image,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+    ) -> PIL.Image.Image:
         """
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
-        w, h = images.size
-        w, h = (x - x % self.config.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
-        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.config.resample])
-        return images
+        if height is None:
+            height = image.height
+        if width is None:
+            width = image.width
+
+        width, height = (
+            x - x % self.config.vae_scale_factor for x in (width, height)
+        )  # resize to integer multiple of vae_scale_factor
+        image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+        return image
 
     def preprocess(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Preprocess the image input, accepted formats are PIL images, numpy arrays or pytorch tensors"
@@ -119,10 +163,11 @@ class VaeImageProcessor(ConfigMixin):
             )
 
         if isinstance(image[0], PIL.Image.Image):
+            if self.config.do_convert_rgb:
+                image = [self.convert_to_rgb(i) for i in image]
             if self.config.do_resize:
-                image = [self.resize(i) for i in image]
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
-            image = np.stack(image, axis=0)  # to np
+                image = [self.resize(i, height, width) for i in image]
+            image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
 
         elif isinstance(image[0], np.ndarray):
@@ -139,7 +184,12 @@ class VaeImageProcessor(ConfigMixin):
 
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
-            _, _, height, width = image.shape
+            _, channel, height, width = image.shape
+
+            # don't need any preprocess if the image is latents
+            if channel == 4:
+                return image
+
             if self.config.do_resize and (
                 height % self.config.vae_scale_factor != 0 or width % self.config.vae_scale_factor != 0
             ):
@@ -165,17 +215,39 @@ class VaeImageProcessor(ConfigMixin):
 
     def postprocess(
         self,
-        image,
+        image: torch.FloatTensor,
         output_type: str = "pil",
+        do_denormalize: Optional[List[bool]] = None,
     ):
-        if isinstance(image, torch.Tensor) and output_type == "pt":
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(
+                f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
+            )
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+
+        if output_type == "latent":
+            return image
+
+        if do_denormalize is None:
+            do_denormalize = [self.config.do_normalize] * image.shape[0]
+
+        image = torch.stack(
+            [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
+        )
+
+        if output_type == "pt":
             return image
 
         image = self.pt_to_numpy(image)
 
         if output_type == "np":
             return image
-        elif output_type == "pil":
+
+        if output_type == "pil":
             return self.numpy_to_pil(image)
-        else:
-            raise ValueError(f"Unsupported output_type {output_type}.")
