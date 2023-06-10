@@ -2,6 +2,7 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
+from torch.backends.cuda import sdp_kernel
 
 from ...models import UNet2DModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -170,13 +171,13 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             class_labels = None
         return class_labels
 
-    def check_inputs(self, num_inference_steps, latents, batch_size, img_size, callback_steps):
-        if self.scheduler.timesteps is not None and len(self.scheduler.timesteps) < num_inference_steps:
-            raise ValueError(
-                f"The scheduler's timestep schedule: {self.scheduler.timesteps} is shorter than num_inference_steps:"
-                " {num_inference_steps}, but is expected to be at least as long."
-            )
-
+    def check_inputs(self, num_inference_steps, timesteps, latents, batch_size, img_size, callback_steps):
+        if num_inference_steps is None and timesteps is None:
+            raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
+        
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
+        
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
             if latents.shape != expected_shape:
@@ -196,6 +197,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         batch_size: int = 1,
         class_labels: Optional[Union[torch.Tensor, List[int], int]] = None,
         num_inference_steps: int = 40,
+        timesteps: List[int] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -214,6 +216,9 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 40):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
+                timesteps are used. Must be in descending order.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -244,7 +249,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 1. Check inputs
-        self.check_inputs(num_inference_steps, latents, batch_size, img_size, callback_steps)
+        self.check_inputs(num_inference_steps, timesteps, latents, batch_size, img_size, callback_steps)
 
         # 2. Prepare image latents
         # Sample image latents x_0 ~ N(0, sigma_0^2 * I)
@@ -262,9 +267,14 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # 3. Handle class_labels for class-conditional models
         class_labels = self.prepare_class_labels(batch_size, device, class_labels=class_labels)
 
-        # 4. Set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-        timesteps = self.scheduler.timesteps
+        # 4. Prepare timesteps
+        if timesteps is not None:
+            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
+            timesteps = self.scheduler.timesteps
+            num_inference_steps = len(timesteps)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps)
+            timesteps = self.scheduler.timesteps
 
         # 5. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -278,7 +288,9 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
                 scaled_t = self.scheduler.scale_timestep(t)
-                model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
+                # model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
+                with sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
+                    model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
 
                 sample = self.scheduler.step(
                     model_output, t, sample, use_noise=use_noise, **extra_step_kwargs

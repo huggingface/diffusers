@@ -61,7 +61,6 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_train_timesteps=40,
             sigma_min=0.002,
             sigma_max=80.0,
-            timesteps=np.array([0, 22]),
         )
 
         components = {
@@ -79,7 +78,8 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = {
             "batch_size": 1,
-            "num_inference_steps": 2,
+            "num_inference_steps": None,
+            "timesteps": [22, 0],
             "generator": generator,
             "output_type": "numpy",
         }
@@ -127,6 +127,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 1
+        inputs["timesteps"] = None
         image = pipe(**inputs).images
         assert image.shape == (1, 32, 32, 3)
 
@@ -144,6 +145,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 1
+        inputs["timesteps"] = None
         image = pipe(**inputs).images
         assert image.shape == (1, 32, 32, 3)
 
@@ -165,7 +167,8 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         generator = torch.manual_seed(seed)
 
         inputs = {
-            "num_inference_steps": 2,
+            "num_inference_steps": None,
+            "timesteps": [22, 0],
             "class_labels": 0,
             "generator": generator,
             "output_type": "numpy",
@@ -179,7 +182,6 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             num_train_timesteps=40,
             sigma_min=0.002,
             sigma_max=80.0,
-            timesteps=np.array([0, 22]),
         )
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe.to(torch_device)
@@ -200,7 +202,6 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             num_train_timesteps=40,
             sigma_min=0.002,
             sigma_max=80.0,
-            timesteps=np.array([0, 22]),
         )
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
         pipe.to(torch_device)
@@ -208,6 +209,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         inputs = self.get_inputs()
         inputs["num_inference_steps"] = 1
+        inputs["timesteps"] = None
         image = pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
