@@ -24,7 +24,7 @@ The output is an "edited" image that reflects the edit instruction applied on th
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
 </p>
 
-The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
+The `train_instruct_pix2pix.py` script (you can find the it [here](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)) shows how to implement the training procedure and adapt it for Stable Diffusion.
 
 ***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
@@ -44,7 +44,12 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Then cd in the example folder
+```bash
+cd examples/instruct_pix2pix
+```
+
+Now run
 ```bash
 pip install -r requirements.txt
 ```
