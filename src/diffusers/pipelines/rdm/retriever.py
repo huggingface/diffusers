@@ -7,8 +7,8 @@ from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
 
 from diffusers.pipelines.rdm.pipeline_rdm import normalize_images, preprocess_images
 
-from ..utils import logging
-
+from ...utils import logging
+import faiss
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -22,6 +22,8 @@ class IndexConfig(PretrainedConfig):
         index_name="embeddings",
         index_path=None,
         dataset_set="train",
+        metric_type=faiss.METRIC_L2,
+        faiss_device=-1,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -31,6 +33,8 @@ class IndexConfig(PretrainedConfig):
         self.index_name = index_name
         self.index_path = index_path
         self.dataset_set = dataset_set
+        self.metric_type = metric_type
+        self.faiss_device = faiss_device
 
 
 class Index:
@@ -53,7 +57,9 @@ class Index:
         if not self.index_initialized:
             if self.index_path and self.index_name:
                 try:
-                    self.dataset.load_faiss_index(self.index_name, self.index_path)
+                    self.dataset.add_faiss_index(
+                        column=self.index_name, metric_type=self.config.metric_type, device=self.config.faiss_device
+                    )
                     self.index_initialized = True
                 except Exception as e:
                     print(e)
@@ -175,12 +181,12 @@ def map_txt_to_clip_feature(clip_model, tokenizer, prompt):
     return text_embeddings[0][0].cpu().detach().numpy()
 
 
-def map_img_to_model_feature(model, feature_extractor, imgs):
+def map_img_to_model_feature(model, feature_extractor, imgs, device):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
             imgs[i] = image.convert("RGB")
     imgs = normalize_images(imgs)
-    retrieved_images = preprocess_images(imgs, feature_extractor).to(model.device)
+    retrieved_images = preprocess_images(imgs, feature_extractor).to(device)
     image_embeddings = model(retrieved_images)
     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
     image_embeddings = image_embeddings[None, ...]
