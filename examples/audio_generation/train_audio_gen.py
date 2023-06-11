@@ -778,7 +778,8 @@ def main():
             weight_dtype = torch.bfloat16
                     
         if args.bal_sampling:
-            samples_weight = np.loadtxt('/u/li19/data_folder/AudioTaggingDoneRight/egs/audioset/data/datafiles/alpaca_bal_unbal_weight.csv', delimiter=',')
+            samples_weight = np.loadtxt(data['weight_path'], delimiter=',')
+            accelerator.print("Using Balanced Sampler, loading weights from: ", data['weight_path'])
             sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
             train_dataloader = torch.utils.data.DataLoader( 
                 AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1),
