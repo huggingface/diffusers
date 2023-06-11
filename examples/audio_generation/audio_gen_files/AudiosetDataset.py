@@ -177,8 +177,10 @@ class AudiosetDataset(Dataset):
         else:
             waveform = torch.Tensor([0])
             sr = 1
-            
-        label = datum["caption"]
+        if "av_caption" in datum.keys():
+            label = datum["av_caption"]
+        else:
+            label = datum["caption"]
         
         if (self.logger):
             self.logger.info(datum['wav'])
