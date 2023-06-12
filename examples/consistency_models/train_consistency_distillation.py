@@ -20,7 +20,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 import diffusers
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, CMStochasticIterativeScheduler
+from diffusers import DDPMPipeline, UNet2DModel, CMStochasticIterativeScheduler, ConsistencyModelPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
@@ -584,7 +584,7 @@ def main(args):
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
-            # Sample a random timestep for each image
+            # Sample a random timestep for each image, TODO - allow different timesteps in a batch
             index = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
             ).long()
@@ -668,7 +668,7 @@ def main(args):
                     ema_model.store(unet.parameters())
                     ema_model.copy_to(unet.parameters())
 
-                pipeline = DDPMPipeline(
+                pipeline = ConsistencyModelPipeline(
                     unet=unet,
                     scheduler=noise_scheduler,
                 )
@@ -678,7 +678,7 @@ def main(args):
                 images = pipeline(
                     generator=generator,
                     batch_size=args.eval_batch_size,
-                    num_inference_steps=args.ddpm_num_inference_steps,
+                    num_inference_steps=1,
                     output_type="numpy",
                 ).images
 
@@ -709,7 +709,7 @@ def main(args):
                     ema_model.store(unet.parameters())
                     ema_model.copy_to(unet.parameters())
 
-                pipeline = DDPMPipeline(
+                pipeline = ConsistencyModelPipeline(
                     unet=unet,
                     scheduler=noise_scheduler,
                 )
