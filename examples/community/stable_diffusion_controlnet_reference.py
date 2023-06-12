@@ -87,7 +87,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             width = (width // 8) * 8  # round down to nearest multiple of 8
 
         return height, width
-    
+
     def prepare_ref_latents(self, refimage, batch_size, dtype, device, generator, do_classifier_free_guidance):
         refimage = refimage.to(device=device, dtype=dtype)
 
