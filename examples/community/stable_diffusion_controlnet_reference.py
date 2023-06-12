@@ -255,8 +255,6 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
         self.check_inputs(
             prompt,
             image,
-            height,
-            width,
             callback_steps,
             negative_prompt,
             prompt_embeds,
