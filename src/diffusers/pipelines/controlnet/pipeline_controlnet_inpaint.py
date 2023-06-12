@@ -718,7 +718,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 raise ValueError("A single batch of multiple conditionings are supported at the moment.")
             elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
-                    "For multiple controlnets: `image` must have the same length as the number of controlnets."
+                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
 
             for image_ in image:

@@ -304,21 +304,6 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             except NotImplementedError:
                 pass
 
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_float16(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_local(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_optional_components(self):
-        ...
-
 
 @slow
 @require_torch_gpu
