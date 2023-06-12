@@ -179,7 +179,7 @@ class MultiControlNetModel(ModelMixin):
 
         if len(controlnets) == 0:
             raise ValueError(
-                "No ControlNets found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
+                f"No ControlNets found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
             )
 
         return cls(controlnets)
