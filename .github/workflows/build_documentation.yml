@@ -1,16 +1,21 @@
-name: Upload PR Documentation
+name: Build documentation
 
 on:
-  workflow_run:
-    workflows: ["Build PR Documentation"]
-    types:
-      - completed
+  push:
+    branches:
+      - main
+      - doc-builder*
+      - v*-release
+      - v*-patch
 
 jobs:
-  build:
-    uses: huggingface/doc-builder/.github/workflows/upload_pr_documentation.yml@main
+   build:
+    uses: huggingface/doc-builder/.github/workflows/build_main_documentation.yml@main
     with:
-      package_name: diffusers
+      commit_sha: ${{ github.sha }}
+      package: diffusers
+      notebook_folder: diffusers_doc
+      languages: en ko zh
     secrets:
+      token: ${{ secrets.HUGGINGFACE_PUSH }}
       hf_token: ${{ secrets.HF_DOC_BUILD_PUSH }}
-      comment_bot_token: ${{ secrets.COMMENT_BOT_TOKEN }}
