@@ -400,14 +400,18 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
-            has_nsfw_concept = None
+            pass
         else:
             if torch.is_tensor(image):
                 feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input_rgb = self.feature_extractor(feature_extractor_input[0], return_tensors="pt").to(device)
-            safety_checker_input_depth = self.feature_extractor(feature_extractor_input[1], return_tensors="pt").to(device)
+            safety_checker_input_rgb = self.feature_extractor(feature_extractor_input[0], return_tensors="pt").to(
+                device
+            )
+            safety_checker_input_depth = self.feature_extractor(feature_extractor_input[1], return_tensors="pt").to(
+                device
+            )
             rgb, has_nsfw_concept_rgb = self.safety_checker(
                 images=image, clip_input=safety_checker_input_rgb.pixel_values.to(dtype)
             )
