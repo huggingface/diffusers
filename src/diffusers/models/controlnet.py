@@ -452,7 +452,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.FloatTensor,
-        conditioning_scale: float = 1.0,
+        conditioning_scale: Union[float, Tuple[float, float]] = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
