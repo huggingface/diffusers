@@ -646,7 +646,7 @@ class Mish(torch.nn.Module):
 
 
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -713,16 +713,8 @@ class Downsample3D(nn.Module):
         stride = 2
         self.name = name
 
-        conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
 
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        if name == "conv":
-            self.Conv2d_0 = conv
-            self.conv = conv
-        elif name == "Conv2d_0":
-            self.conv = conv
-        else:
-            self.conv = conv
 
     def forward(self, hidden_states):
         assert hidden_states.shape[1] == self.channels
