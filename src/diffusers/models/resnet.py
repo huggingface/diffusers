@@ -651,15 +651,8 @@ class Upsample3D(nn.Module):
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.name = name
 
-        conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
-
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        if name == "conv":
-            self.conv = conv
-        else:
-            self.Conv2d_0 = conv
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
     def forward(self, hidden_states, output_size=None):
         assert hidden_states.shape[1] == self.channels
@@ -714,7 +707,6 @@ class Downsample3D(nn.Module):
         self.name = name
 
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-
 
     def forward(self, hidden_states):
         assert hidden_states.shape[1] == self.channels
@@ -855,7 +847,6 @@ class ResnetBlock3D(nn.Module):
         return output_tensor
 
 
-# unet_rl.py
 def rearrange_dims(tensor):
     if len(tensor.shape) == 2:
         return tensor[:, :, None]
