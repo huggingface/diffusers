@@ -646,7 +646,7 @@ class Mish(torch.nn.Module):
 
 
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
