@@ -1306,7 +1306,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:
-                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([t]))
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([noise_timestep]))
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
