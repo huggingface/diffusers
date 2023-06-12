@@ -640,26 +640,14 @@ class ResnetBlock2D(nn.Module):
         return output_tensor
 
 
-class Mish(torch.nn.Module):
-    def forward(self, hidden_states):
-        return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
-
-
 class Upsample3D(nn.Module):
     def __init__(self, channels, use_conv=False, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.name = name
 
-        conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
-
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        if name == "conv":
-            self.conv = conv
-        else:
-            self.Conv2d_0 = conv
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
     def forward(self, hidden_states, output_size=None):
         assert hidden_states.shape[1] == self.channels
@@ -691,10 +679,7 @@ class Upsample3D(nn.Module):
             hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
             hidden_states = hidden_states.flatten(0, 1)
 
-            if self.name == "conv":
-                hidden_states = self.conv(hidden_states)
-            else:
-                hidden_states = self.Conv2d_0(hidden_states)
+            hidden_states = self.conv(hidden_states)
             # Deflate
             # (b f) c h w -> b c f h w (f=video_length)
             hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
@@ -714,7 +699,6 @@ class Downsample3D(nn.Module):
         self.name = name
 
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-
 
     def forward(self, hidden_states):
         assert hidden_states.shape[1] == self.channels
@@ -787,12 +771,7 @@ class ResnetBlock3D(nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
+        self.nonlinearity = get_activation(non_linearity)
 
         self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
 
@@ -855,7 +834,6 @@ class ResnetBlock3D(nn.Module):
         return output_tensor
 
 
-# unet_rl.py
 def rearrange_dims(tensor):
     if len(tensor.shape) == 2:
         return tensor[:, :, None]

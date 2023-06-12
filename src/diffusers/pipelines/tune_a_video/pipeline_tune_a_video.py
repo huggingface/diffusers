@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> pretrained_model_path = "nitrosocke/mo-di-diffusion"
         >>> scheduler = DDIMScheduler.from_pretrained(pretrained_model_path, subfolder="scheduler")
         >>> unet = UNet3DConditionModel.from_pretrained(
-        ...     "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", subfolder="unet", torch_dtype=torch.float16
+        ...     "Tune-A-Video-library/df-cpt-mo-di-bear-guitar", subfolder="unet", torch_dtype=torch.float16
         ... ).to("cuda")
         >>> pipe = TuneAVideoPipeline.from_pretrained(
         ...     pretrained_model_path, unet=unet, scheduler=scheduler, torch_dtype=torch.float16
