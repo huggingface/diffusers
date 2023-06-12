@@ -957,18 +957,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         return image_latents
 
-    # override DiffusionPipeline
-    def save_pretrained(
-        self,
-        save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
-        variant: Optional[str] = None,
-    ):
-        if isinstance(self.controlnet, ControlNetModel):
-            super().save_pretrained(save_directory, safe_serialization, variant)
-        else:
-            raise NotImplementedError("Currently, the `save_pretrained()` is not implemented for Multi-ControlNet.")
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
