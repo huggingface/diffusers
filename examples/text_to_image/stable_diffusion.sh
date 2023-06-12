@@ -2,6 +2,7 @@
 
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 current_dir=$(pwd)
+bs_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 env_name="stable-diffusion"
 
 
@@ -15,7 +16,7 @@ if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ]; then
     echo "installing requirements.."
     cd ../../
     pip install -e .
-    cd ${current_dir}
+    cd ${bs_dir}
     pip install -r requirements.txt
     moreh-switch-model -M 2
     update-moreh --torch 1.10.0 --target 23.5.0
@@ -42,3 +43,4 @@ python train_text_to_image.py \
 echo "training done. deleting env.."
 conda deactivate
 conda env remove -n ${env_name}
+cd ${current_dir}

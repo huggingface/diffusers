@@ -2,6 +2,7 @@
 
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 current_dir=$(pwd)
+bs_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 env_name="controlnet"
 
 
@@ -13,18 +14,18 @@ conda activate ${env_name}
 
 if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ]; then
     echo "installing requirements.."
-    cd ../../
-    pip install -e .
-    cd ${current_dir}
-    pip install -r requirements.txt
     moreh-switch-model -M 2
     update-moreh --torch 1.10.0 --target 23.5.0
+    cd ../../
+    pip install -e .
+    cd ${bs_dir}
+    pip install -r requirements.txt
 else
     echo "The command is NOT running in the correct Conda environment."
     echo "Stop the training process."
     exit 1
 fi
- 
+
 echo "training ${env_name}.."
 python train_controlnet.py \
     --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5  \
@@ -40,3 +41,4 @@ python train_controlnet.py \
 echo "training done. deleting env.."
 conda deactivate
 conda env remove -n ${env_name}
+cd ${current_dir}
