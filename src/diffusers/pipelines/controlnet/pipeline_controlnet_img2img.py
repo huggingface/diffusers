@@ -14,7 +14,6 @@
 
 
 import inspect
-import os
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -586,7 +585,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
                 raise ValueError("A single batch of multiple conditionings are supported at the moment.")
             elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
-                    "For multiple controlnets: `image` must have the same length as the number of controlnets."
+                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
 
             for image_ in image:
@@ -638,7 +637,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             and not image_is_np_list
         ):
             raise TypeError(
-                "image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors"
+                f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image)}"
             )
 
         if image_is_pil:
@@ -756,18 +755,6 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
         latents = init_latents
 
         return latents
-
-    # override DiffusionPipeline
-    def save_pretrained(
-        self,
-        save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
-        variant: Optional[str] = None,
-    ):
-        if isinstance(self.controlnet, ControlNetModel):
-            super().save_pretrained(save_directory, safe_serialization, variant)
-        else:
-            raise NotImplementedError("Currently, the `save_pretrained()` is not implemented for Multi-ControlNet.")
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
