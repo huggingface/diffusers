@@ -15,9 +15,22 @@ from encodec import EncodecModel
 import csv
 import torchvision.transforms as transforms
 from PIL import Image
+import pandas as pd
 
 print("Modules Imported")
 
+def gen_caption(classes):
+    # Generate a caption
+    caption = "generate sound of a"
+
+    for i, c in enumerate(classes):
+        if i == 0:
+            caption += f" {c}"
+        elif i == len(classes) - 1:
+            caption += f", and a {c}."
+        else:
+            caption += f", a {c}"
+    return caption
 
 def get_pipe_aud(device):
     pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm-l-full", torch_dtype=torch.float16)
@@ -64,14 +77,19 @@ def generate_audio_aud(chunk, prompts, device, folder="/u/li19/data_folder/audio
             image = tensor_to_pil(gen)
             image.save(out_path)
 
+            
+def gen_set(nk, target):
+    logging.disable_progress_bar()
+    
+    target_file = target
+    os.mkdir(target_file)
+    # os.mkdir(target_file)
+    print("Reading Data")
 
-if __name__ == "__main__":
-    target_file = "/u/li19/data_folder/eval_sets/aud_ldm_eval_gen"
     csv_path = "/u/li19/diffusers_with_dataloader/notebooks/notebook_data/audio_caps_test.csv"
     n_generate = None
-    captions = []
+    prompts = []
 
-    # skip = 1773
 
     with open(csv_path, 'r') as file:
         # Create a CSV reader object
@@ -81,21 +99,32 @@ if __name__ == "__main__":
         # Iterate over each row in the CSV file
         for row in reader:
             # Access the data in each row
-            captions.append(row[-1])
+            prompts.append(row[-1])
 
-
-    # captions = captions[skip:]
-
-    if (n_generate is None):
-        n_generate = len(captions)
-
-    captions = captions[:n_generate]
-
-    ids = torch.arange(n_generate)
-
+    offset = 0
+    
     n_gpu = torch.cuda.device_count()
+    ids = torch.arange(len(prompts)).chunk(n_gpu)
 
-    generate_audio_aud(ids, captions, "cuda", folder=target_file)
+    
+    print("Creating Threads")
+    threads = [threading.Thread(target=generate_audio_aud, args=(ids[i], prompts, i, target_file)) for i in range(n_gpu)]
+    print("Starting Threads")
+    for thread in threads:
+        thread.start()
+        
+    for thread in threads:
+        thread.join()
+        
 
-    print("Done!")
-            
+if __name__ == "__main__":
+    targs = ["/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_40k",
+            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_60k",
+            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_80k",
+            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_100k"]
+    
+    
+    for targ in targs:
+        print(f'STARTING {targ}')
+        
+        gen_set(20_000, targ)
