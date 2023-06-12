@@ -1303,7 +1303,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents[:1]
-                    mask[:1]
+                    init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
