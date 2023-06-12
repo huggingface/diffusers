@@ -1483,8 +1483,8 @@ class FromCkptMixin:
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = "/".join(ckpt_path.parts[:2])
-            file_path = "/".join(ckpt_path.parts[2:])
+            repo_id = os.path.join(*ckpt_path.parts[:2])
+            file_path = os.path.join(*ckpt_path.parts[2:])
 
             if file_path.startswith("blob/"):
                 file_path = file_path[len("blob/") :]
