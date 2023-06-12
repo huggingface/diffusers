@@ -715,14 +715,6 @@ class Downsample3D(nn.Module):
 
         conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
 
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        if name == "conv":
-            self.Conv2d_0 = conv
-            self.conv = conv
-        elif name == "Conv2d_0":
-            self.conv = conv
-        else:
-            self.conv = conv
 
     def forward(self, hidden_states):
         assert hidden_states.shape[1] == self.channels
