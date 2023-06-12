@@ -119,6 +119,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         projection_class_embeddings_input_dim: Optional[int] = None,
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
+        conditioning_channels: int = 3,
         global_pool_conditions: bool = False,
     ):
         super().__init__()
@@ -185,6 +186,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
             conditioning_embedding_channels=block_out_channels[0],
             block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         self.down_blocks = nn.ModuleList([])
