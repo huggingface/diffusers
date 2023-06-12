@@ -255,7 +255,7 @@ class VaeImageProcessor(ConfigMixin):
 
 class VaeImageProcessorLDM3D(VaeImageProcessor):
     """
-    Image Processor for VAE LDM3D
+    Image Processor for VAE LDM3D.
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
@@ -341,18 +341,12 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
 
-        # if output_type == "latent":
-        #     return image
-
         if do_denormalize is None:
             do_denormalize = [self.config.do_normalize] * image.shape[0]
 
         image = torch.stack(
             [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
         )
-
-        # if output_type == "pt":
-        #     return image
 
         image = self.pt_to_numpy(image)
 
