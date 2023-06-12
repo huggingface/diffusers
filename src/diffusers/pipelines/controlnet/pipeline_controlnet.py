@@ -573,8 +573,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
+            if not (isinstance(controlnet_conditioning_scale, float) or isinstance(controlnet_conditioning_scale, tuple)):
+                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float` or a `Tuple[float, float]`.")
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
@@ -707,7 +707,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        controlnet_conditioning_scale: Union[float, List[float], Tuple[float, float], List[Tuple[float, float]]] = 1.0,
         guess_mode: bool = False,
     ):
         r"""
@@ -777,10 +777,13 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+            controlnet_conditioning_scale (`float` or `List[float]` or `Tuple[float, float]` or `List[Tuple[float, float]]`, *optional*, defaults to 1.0):
                 The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original unet. If multiple ControlNets are specified in init, you can set the
                 corresponding scale as a list.
+                For a given controlnet a scale could be a single float, or a tuple of two floats.
+                If a single float is provided, it will be used for each step of the diffusion.
+                If a tuple of two floats is provided, the scale will be linearly interpolated between the two values.
             guess_mode (`bool`, *optional*, defaults to `False`):
                 In this mode, the ControlNet encoder will try best to recognize the content of the input image even if
                 you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
@@ -823,6 +826,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+        elif (isinstance(controlnet, MultiControlNetModel)
+              and isinstance(controlnet_conditioning_scale, tuple)
+              and len(controlnet_conditioning_scale) == 2):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
         global_pool_conditions = (
@@ -906,8 +913,27 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
+
+        def get_current_scale(scale: Union[float, tuple], t: int) -> list[float]:
+            controlnet_scale = []
+            if isinstance(scale, float):
+                controlnet_scale.append(scale)
+            elif isinstance(scale, tuple):
+                controlnet_scale.append(scale[0] + (scale[1] - scale[0]) * (t - num_warmup_steps) / (
+                    num_inference_steps * self.scheduler.order
+                ))
+            return controlnet_scale
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if isinstance(controlnet_conditioning_scale, list):
+                    controlnet_scale = []
+                    for scale in controlnet_conditioning_scale:
+                        controlnet_scale.append(get_current_scale(scale, t))
+                else:
+                    controlnet_scale = get_current_scale(controlnet_conditioning_scale, t)
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -927,7 +953,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
-                    conditioning_scale=controlnet_conditioning_scale,
+                    conditioning_scale=controlnet_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
