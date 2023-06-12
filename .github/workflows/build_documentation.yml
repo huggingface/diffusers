@@ -15,7 +15,7 @@ jobs:
       commit_sha: ${{ github.sha }}
       package: diffusers
       notebook_folder: diffusers_doc
-      languages: en ko zh
+      languages: en ko
     secrets:
       token: ${{ secrets.HUGGINGFACE_PUSH }}
       hf_token: ${{ secrets.HF_DOC_BUILD_PUSH }}
