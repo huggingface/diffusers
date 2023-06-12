@@ -17,6 +17,7 @@
 import inspect
 import itertools
 import os
+import re
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -162,6 +163,7 @@ class ModelMixin(torch.nn.Module):
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
+    _keys_to_ignore_on_load_unexpected = None
 
     def __init__(self):
         super().__init__()
@@ -608,12 +610,17 @@ class ModelMixin(torch.nn.Module):
                             " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
+                    unexpected_keys = []
 
                     empty_state_dict = model.state_dict()
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
                         )
+
+                        if param_name not in empty_state_dict:
+                            unexpected_keys.append(param_name)
+                            continue
 
                         if empty_state_dict[param_name].shape != param.shape:
                             raise ValueError(
@@ -626,6 +633,16 @@ class ModelMixin(torch.nn.Module):
                             )
                         else:
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
+
+                    if cls._keys_to_ignore_on_load_unexpected is not None:
+                        for pat in cls._keys_to_ignore_on_load_unexpected:
+                            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+                    if len(unexpected_keys) > 0:
+                        logger.warn(
+                            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+                        )
+
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
