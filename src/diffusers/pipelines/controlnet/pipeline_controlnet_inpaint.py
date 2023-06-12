@@ -770,7 +770,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             and not image_is_np_list
         ):
             raise TypeError(
-                "image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors"
+                f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image)}"
             )
 
         if image_is_pil:
@@ -1306,7 +1306,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:
-                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([t]))
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
