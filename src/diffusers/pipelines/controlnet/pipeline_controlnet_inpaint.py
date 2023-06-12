@@ -15,7 +15,6 @@
 # This model implementation is heavily inspired by https://github.com/haofanwang/ControlNet-for-Diffusers/
 
 import inspect
-import os
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
