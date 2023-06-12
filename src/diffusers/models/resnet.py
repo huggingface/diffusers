@@ -713,7 +713,7 @@ class Downsample3D(nn.Module):
         stride = 2
         self.name = name
 
-        conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
 
 
     def forward(self, hidden_states):
