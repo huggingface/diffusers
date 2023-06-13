@@ -35,7 +35,7 @@ For example, let's use the [`ptx0/pseudo-journey-v2`](https://huggingface.co/ptx
 Next, configure the following parameters in the [`DDIMScheduler`]:
 
 1. `rescale_betas_zero_snr=True`, rescales the noise schedule to zero terminal signal-to-noise ratio (SNR)
-2. `timestep_scaling="trailing"`, starts sampling from the last timestep
+2. `timestep_spacing="trailing"`, starts sampling from the last timestep
 
 ```py
 >>> from diffusers import DiffusionPipeline, DDIMScheduler
@@ -44,7 +44,7 @@ Next, configure the following parameters in the [`DDIMScheduler`]:
 # switch the scheduler in the pipeline to use the DDIMScheduler
 
 >>> pipeline.scheduler = DDIMScheduler.from_config(
-...     pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_scaling="trailing"
+...     pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
 ... )
 >>> pipeline.to("cuda")
 ```
