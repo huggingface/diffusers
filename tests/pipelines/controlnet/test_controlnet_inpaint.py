@@ -35,24 +35,25 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class ControlNetInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
+    image_params = frozenset({"control_image"})  # skip `image` and `mask` for now, only test for control_image
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -162,6 +163,78 @@ class ControlNetInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+
+class ControlNetSimpleInpaintPipelineFastTests(ControlNetInpaintPipelineFastTests):
+    pipeline_class = StableDiffusionControlNetInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        torch.manual_seed(0)
+        controlnet = ControlNetModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            in_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            cross_attention_dim=32,
+            conditioning_embedding_out_channels=(16, 32),
+        )
+        torch.manual_seed(0)
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "controlnet": controlnet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
 
 
 class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -309,21 +382,6 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             except NotImplementedError:
                 pass
 
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_float16(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_local(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_optional_components(self):
-        ...
-
 
 @slow
 @require_torch_gpu
@@ -374,6 +432,63 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/inpaint.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 9e-2
+
+    def test_inpaint(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint")
+
+        pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(33)
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy.png"
+        )
+        init_image = init_image.resize((512, 512))
+
+        mask_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
+        )
+        mask_image = mask_image.resize((512, 512))
+
+        prompt = "a handsome man with ray-ban sunglasses"
+
+        def make_inpaint_condition(image, image_mask):
+            image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
+            image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
+
+            assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
+            image[image_mask > 0.5] = -1.0  # set as masked pixel
+            image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
+            image = torch.from_numpy(image)
+            return image
+
+        control_image = make_inpaint_condition(init_image, mask_image)
+
+        output = pipe(
+            prompt,
+            image=init_image,
+            mask_image=mask_image,
+            control_image=control_image,
+            guidance_scale=9.0,
+            eta=1.0,
+            generator=generator,
+            num_inference_steps=20,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/boy_ray_ban.npy"
         )
 
         assert np.abs(expected_image - image).max() < 9e-2

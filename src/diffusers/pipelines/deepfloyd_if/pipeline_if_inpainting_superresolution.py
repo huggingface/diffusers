@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
+from ...loaders import LoraLoaderMixin
 from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -114,7 +115,7 @@ EXAMPLE_DOC_STRING = """
     """
 
 
-class IFInpaintingSuperResolutionPipeline(DiffusionPipeline):
+class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -795,7 +796,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline):
             image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+            image = [np.array(i).astype(np.float32) / 127.5 - 1.0 for i in image]
 
             image = np.stack(image, axis=0)  # to np
             image = torch.from_numpy(image.transpose(0, 3, 1, 2))
@@ -1153,6 +1154,9 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline):
                     noise_pred_text, predicted_variance = noise_pred_text.split(model_input.shape[1] // 2, dim=1)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
+
+                if self.scheduler.config.variance_type not in ["learned", "learned_range"]:
+                    noise_pred, _ = noise_pred.split(intermediate_images.shape[1], dim=1)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 prev_intermediate_images = intermediate_images

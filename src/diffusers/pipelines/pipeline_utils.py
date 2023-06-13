@@ -30,6 +30,7 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
+from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
@@ -354,6 +355,9 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
+    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
+    offload_folder: Optional[Union[str, os.PathLike]],
+    offload_state_dict: bool,
     model_variants: Dict[str, str],
     name: str,
     from_flax: bool,
@@ -416,6 +420,9 @@ def load_sub_model(
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
         loading_kwargs["device_map"] = device_map
+        loading_kwargs["max_memory"] = max_memory
+        loading_kwargs["offload_folder"] = offload_folder
+        loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
         if from_flax:
             loading_kwargs["from_flax"] = True
@@ -478,25 +485,31 @@ class DiffusionPipeline(ConfigMixin):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the original module, not the dynamo compiled one
+                # register the config from the original module, not the dynamo compiled one
                 if is_compiled_module(module):
-                    module = module._orig_mod
+                    not_compiled_module = module._orig_mod
+                else:
+                    not_compiled_module = module
 
-                library = module.__module__.split(".")[0]
+                library = not_compiled_module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
-                path = module.__module__.split(".")
+                module_path_items = not_compiled_module.__module__.split(".")
+                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+                path = not_compiled_module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
                 # if library is not in LOADABLE_CLASSES, then it is a custom module.
                 # Or if it's a pipeline module, then the module is inside the pipeline
                 # folder so we set the library to module name.
-                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                if is_pipeline_module:
                     library = pipeline_dir
+                elif library not in LOADABLE_CLASSES:
+                    library = not_compiled_module.__module__
 
                 # retrieve class_name
-                class_name = module.__class__.__name__
+                class_name = not_compiled_module.__class__.__name__
 
                 register_dict = {name: (library, class_name)}
 
@@ -808,6 +821,15 @@ class DiffusionPipeline(ConfigMixin):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier to maximum memory. Will default to the maximum memory available for each
+                GPU and the available CPU RAM if unset.
+            offload_folder (`str` or `os.PathLike`, *optional*):
+                If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
+            offload_state_dict (`bool`, *optional*):
+                If `True`, will temporarily offload the CPU state dict to the hard drive to avoid getting out of CPU
+                RAM if the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to
+                `True` when there is some disk offload.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
@@ -873,6 +895,9 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
@@ -1021,7 +1046,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
-            importable_classes = ALL_IMPORTABLE_CLASSES if is_pipeline_module else LOADABLE_CLASSES[library_name]
+            importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
             # 6.3 Use passed sub model or load class_name from library_name
@@ -1046,6 +1071,9 @@ class DiffusionPipeline(ConfigMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=device_map,
+                    max_memory=max_memory,
+                    offload_folder=offload_folder,
+                    offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
                     name=name,
                     from_flax=from_flax,
@@ -1071,107 +1099,83 @@ class DiffusionPipeline(ConfigMixin):
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
-
-        return_cached_folder = kwargs.pop("return_cached_folder", False)
-        if return_cached_folder:
-            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.18.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
-            deprecate("return_cached_folder", "0.18.0", message)
-            return model, cached_folder
-
         return model
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
         r"""
-        Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
+        Download and cache a PyTorch diffusion pipeline from pretrained pipeline weights.
 
         Parameters:
             pretrained_model_name (`str` or `os.PathLike`, *optional*):
-                Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
-                https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
-                `CompVis/ldm-text2im-large-256`.
+                A string, the repository id (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
+                hosted on the Hub.
             custom_pipeline (`str`, *optional*):
+                Can be either:
+
+                    - A string, the repository id (for example `CompVis/ldm-text2im-large-256`) of a pretrained
+                      pipeline hosted on the Hub. The repository must contain a file called `pipeline.py` that defines
+                      the custom pipeline.
+
+                    - A string, the *file name* of a community pipeline hosted on GitHub under
+                      [Community](https://github.com/huggingface/diffusers/tree/main/examples/community). Valid file
+                      names must match the file name and not the pipeline script (`clip_guided_stable_diffusion`
+                      instead of `clip_guided_stable_diffusion.py`). Community pipelines are always loaded from the
+                      current `main` branch of GitHub.
+
+                    - A path to a *directory* (`./my_pipeline_directory/`) containing a custom pipeline. The directory
+                      must contain a file called `pipeline.py` that defines the custom pipeline.
 
                 <Tip warning={true}>
 
-                    This is an experimental feature and is likely to change in the future.
+                🧪 This is an experimental feature and may change in the future.
 
                 </Tip>
 
-                Can be either:
-
-                    - A string, the *repo id* of a custom pipeline hosted inside a model repo on
-                      https://huggingface.co/. Valid repo ids have to be located under a user or organization name,
-                      like `hf-internal-testing/diffusers-dummy-pipeline`.
-
-                        <Tip>
-
-                         It is required that the model repo has a file, called `pipeline.py` that defines the custom
-                         pipeline.
-
-                        </Tip>
-
-                    - A string, the *file name* of a community pipeline hosted on GitHub under
-                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have to
-                      match exactly the file name without `.py` located under the above link, *e.g.*
-                      `clip_guided_stable_diffusion`.
-
-                        <Tip>
-
-                         Community pipelines are always loaded from the current `main` branch of GitHub.
-
-                        </Tip>
-
-                    - A path to a *directory* containing a custom pipeline, e.g., `./my_pipeline_directory/`.
-
-                        <Tip>
-
-                         It is required that the directory has a file, called `pipeline.py` that defines the custom
-                         pipeline.
-
-                        </Tip>
-
-                For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Adding Custom
-                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
+                For more information on how to load and create custom pipelines, take a look at [How to contribute a
+                community pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/contribute_pipeline).
 
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
             resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
-                file exists.
+                Whether or not to resume downloading the model weights and configuration files. If set to False, any
+                incompletely downloaded files are deleted.
             proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
-                Whether or not to only look at local files (i.e., do not try to download the model).
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won’t be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-                when running `huggingface-cli login` (stored in `~/.huggingface`).
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
-                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
-                identifier allowed by git.
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
             custom_revision (`str`, *optional*, defaults to `"main"` when loading from the Hub and to local version of
             `diffusers` when loading from GitHub):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
                 `revision` when loading a custom pipeline from the Hub. It can be a diffusers version when loading a
                 custom pipeline from GitHub.
             mirror (`str`, *optional*):
-                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
-                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
-                Please refer to the mirror site for more information. specify the folder name here.
+                Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
+                guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
+                information.
             variant (`str`, *optional*):
-                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
-                ignored when using `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
+                loading `from_flax`.
+
+        Returns:
+            `os.PathLike`:
+                A path to the downloaded pipeline.
 
         <Tip>
 
-         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models)
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
+        `huggingface-cli login`.
 
         </Tip>
 
@@ -1204,6 +1208,17 @@ class DiffusionPipeline(ConfigMixin):
         ignore_patterns = None
 
         if not local_files_only:
+            try:
+                info = model_info(
+                    pretrained_model_name,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+            except HTTPError as e:
+                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                local_files_only = True
+
+        if not local_files_only:
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1213,11 +1228,6 @@ class DiffusionPipeline(ConfigMixin):
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
-            )
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
             )
 
             config_dict = cls._dict_from_json_file(config_file)
@@ -1237,7 +1247,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.18.0"):
+            ) >= version.parse("0.20.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )

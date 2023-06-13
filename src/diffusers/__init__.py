@@ -1,4 +1,4 @@
-__version__ = "0.17.0.dev0"
+__version__ = "0.18.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -129,6 +129,11 @@ else:
         IFInpaintingSuperResolutionPipeline,
         IFPipeline,
         IFSuperResolutionPipeline,
+        ImageTextPipelineOutput,
+        KandinskyImg2ImgPipeline,
+        KandinskyInpaintPipeline,
+        KandinskyPipeline,
+        KandinskyPriorPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
@@ -157,6 +162,9 @@ else:
         TextToVideoZeroPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
+        UniDiffuserModel,
+        UniDiffuserPipeline,
+        UniDiffuserTextDecoder,
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,

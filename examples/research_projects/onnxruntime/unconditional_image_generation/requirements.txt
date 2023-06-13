@@ -1,3 +1,4 @@
 accelerate>=0.16.0
 torchvision
 datasets
+tensorboard

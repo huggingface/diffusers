@@ -100,7 +100,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
     --mixed_precision=fp16 \
-    --seed=42 
+    --seed=42 \
+    --push_to_hub
 ```
 
 Additionally, we support performing validation inference to monitor training progress
@@ -121,7 +122,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
     --validation_prompt="make the mountains snowy" \
     --seed=42 \
-    --report_to=wandb 
+    --report_to=wandb \
+    --push_to_hub
  ```
 
  We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
@@ -148,7 +150,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  --learning_rate=5e-05 --lr_warmup_steps=0 \
  --conditioning_dropout_prob=0.05 \
  --mixed_precision=fp16 \
- --seed=42 
+ --seed=42 \
+ --push_to_hub
 ```
 
  ## Inference
@@ -204,3 +207,5 @@ speed and quality during performance:
 
 Particularly, `image_guidance_scale` and `guidance_scale` can have a profound impact
 on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
+
+If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
