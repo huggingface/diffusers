@@ -10,7 +10,6 @@ log_dir=${5:-"${current_dir}/logs/${model_name}.json"}
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 source ${base_env}/etc/profile.d/conda.sh
 conda activate ${env_name}
-moreh-switch-model -M 2
 
 # Run training script
 echo "# ========================================================= #"
