@@ -919,7 +919,7 @@ def main(args):
                 state_dict = accelerator.unwrap_model(text_encoder, keep_fp32_wrapper=True).state_dict()
                 state_dict = {k.split(".parametrizations")[0] + ".delta": state_dict[k] for k in state_dict_keys_te}
                 save_file(state_dict, os.path.join(save_path, "spectral_shifts_te.safetensors"))
-            print(f"[*] Weights saved at {save_path}")
+            logger.info(f"[*] Weights saved at {save_path}")
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
