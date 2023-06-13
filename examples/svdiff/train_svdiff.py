@@ -30,8 +30,10 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from modeling_svdiff import set_spectral_shifts
 from packaging import version
 from PIL import Image
+from safetensors.torch import save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -48,8 +50,6 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from safetensors.torch import save_file
-from modeling_svdiff import set_spectral_shifts
 
 
 if is_wandb_available():
@@ -59,7 +59,6 @@ if is_wandb_available():
 check_min_version("0.16.0.dev0")
 
 logger = get_logger(__name__)
-
 
 
 def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_folder=None):
@@ -732,7 +731,9 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision)
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+    )
     unet.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -858,7 +859,15 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet, text_encoder, svdiff_modules_unet, svdiff_modules_te, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        (
+            unet,
+            text_encoder,
+            svdiff_modules_unet,
+            svdiff_modules_te,
+            optimizer,
+            train_dataloader,
+            lr_scheduler,
+        ) = accelerator.prepare(
             unet, text_encoder, svdiff_modules_unet, svdiff_modules_te, optimizer, train_dataloader, lr_scheduler
         )
     else:
@@ -903,11 +912,11 @@ def main(args):
             os.makedirs(save_path, exist_ok=True)
             state_dict = {}
             state_dict = accelerator.unwrap_model(unet, keep_fp32_wrapper=True).state_dict()
-            state_dict = {k.split(".parametrizations")[0]+".delta": state_dict[k] for k in state_dict_keys}
+            state_dict = {k.split(".parametrizations")[0] + ".delta": state_dict[k] for k in state_dict_keys}
             save_file(state_dict, os.path.join(save_path, "spectral_shifts.safetensors"))
             if args.train_text_encoder:
                 state_dict = accelerator.unwrap_model(text_encoder, keep_fp32_wrapper=True).state_dict()
-                state_dict = {k.split(".parametrizations")[0]+".delta": state_dict[k] for k in state_dict_keys_te}
+                state_dict = {k.split(".parametrizations")[0] + ".delta": state_dict[k] for k in state_dict_keys_te}
                 save_file(state_dict, os.path.join(save_path, "spectral_shifts_te.safetensors"))
             print(f"[*] Weights saved at {save_path}")
 
@@ -1051,7 +1060,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
     # put the last checkpoint to output-dir
-    save_weights(global_step, save_path=args.output_dir)    
+    save_weights(global_step, save_path=args.output_dir)
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1063,7 +1072,7 @@ def main(args):
                 args.pretrained_model_name_or_path,
                 unet=unet,
                 text_encoder=text_encoder,
-                revision=args.revision, 
+                revision=args.revision,
                 torch_dtype=weight_dtype,
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)

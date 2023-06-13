@@ -1,5 +1,8 @@
 # SVDiff
+
 This is an implementation of [SVDiff: Compact Parameter Space for Diffusion Fine-Tuning](https://arxiv.org/abs/2303.11305) by with 🧨 diffusers. To quickly get started we recommend using this [Colab Notebook](https://colab.research.google.com/gist/mkshing/8a2c025c4f20bf84b7d271e832b6f5f8/svdiff_pytorch.ipynb). 
+
+This training example was contributed by [`mkshing`](https://github.com/mkshing) in [this PR](https://github.com/huggingface/diffusers/pull/3107). 
 
 ## Running locally with PyTorch
 
@@ -37,6 +40,7 @@ Or if your environment doesn't support an interactive shell e.g. a notebook
 
 ```python
 from accelerate.utils import write_basic_config
+
 write_basic_config()
 ```
 
@@ -52,7 +56,8 @@ from huggingface_hub import snapshot_download
 local_dir = "./dog"
 snapshot_download(
     "diffusers/dog-example",
-    local_dir=local_dir, repo_type="dataset",
+    local_dir=local_dir,
+    repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
 ```
@@ -106,25 +111,17 @@ pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
 spectral_shifts_ckpt_dir = "ckpt-dir-path"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-unet = UNet2DConditionModel.from_pretrained(
-    pretrained_model_name_or_path, subfolder="unet"
-).to(device)
-text_encoder = CLIPTextModel.from_pretrained(
-    pretrained_model_name_or_path, subfolder="text_encoder"
-).to(device)
+unet = UNet2DConditionModel.from_pretrained(pretrained_model_name_or_path, subfolder="unet").to(device)
+text_encoder = CLIPTextModel.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder").to(device)
 
 # make sure to move models to device before
 unet, _ = set_spectral_shifts(
     unet,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt_dir, "spectral_shifts.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt_dir, "spectral_shifts.safetensors"),
 )
 text_encoder, _ = set_spectral_shifts(
     text_encoder,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt_dir, "spectral_shifts_te.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt_dir, "spectral_shifts_te.safetensors"),
 )
 
 # load pipeline
@@ -189,25 +186,17 @@ pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
 spectral_shifts_ckpt_dir = "ckpt-dir-path"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-unet = UNet2DConditionModel.from_pretrained(
-    pretrained_model_name_or_path, subfolder="unet"
-).to(device)
-text_encoder = CLIPTextModel.from_pretrained(
-    pretrained_model_name_or_path, subfolder="text_encoder"
-).to(device)
+unet = UNet2DConditionModel.from_pretrained(pretrained_model_name_or_path, subfolder="unet").to(device)
+text_encoder = CLIPTextModel.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder").to(device)
 
 # make sure to move models to device before
 unet, _ = set_spectral_shifts(
     unet,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt_dir, "spectral_shifts.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt_dir, "spectral_shifts.safetensors"),
 )
 text_encoder, _ = set_spectral_shifts(
     text_encoder,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt_dir, "spectral_shifts_te.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt_dir, "spectral_shifts_te.safetensors"),
 )
 
 # load pipeline
@@ -221,7 +210,7 @@ pipe.to(device)
 
 
 image = pipe("photo of a blue chair with black legs", num_inference_steps=25).images[0]
-image.save("image.png") 
+image.save("image.png")
 ```
 
 For Single Image Editing, you can optionally perform DDIM Inversion by using the `ddim_invert()` function.
@@ -283,16 +272,12 @@ scale = 1.2
 
 unet, _ = set_spectral_shifts(
     unet,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt, "spectral_shifts.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt, "spectral_shifts.safetensors"),
     scale=scale,
 )
 text_encoder, _ = set_spectral_shifts(
     text_encoder,
-    spectral_shifts_ckpt=os.path.join(
-        spectral_shifts_ckpt, "spectral_shifts_te.safetensors"
-    ),
+    spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt, "spectral_shifts_te.safetensors"),
     scale=scale,
 )
 ```
