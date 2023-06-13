@@ -23,20 +23,14 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Colab | Demo
 |---|---|:---:|:---:|
 | [pipeline_stable_diffusion_ldm3d.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_ldm3d.py) | *Text-to-Image Generation* | - | -
-| [pipeline_stable_diffusion_ldm3d_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_ldm3dn_img2img.py) | *Image-to-Image Text-Guided Generation* | - |-
 
 ## Tips
 
-- LDM3D diffusion is conceptually exactly the same as [Stable Diffusion](./stable_diffusion/overview).
+- LDM3D generates both an image and a depth map from a given text prompt, compared to the existing txt-to-img diffusion models such as [Stable Diffusion](./stable_diffusion/overview) that generates only an image.
+- With almost the same number of parameters LDM3D achieves to create a latent space that compressed both the RGB image and the depth. 
 
-- *Run LDM3D*
 
-LDM3D can be tested very easily with the [`StableDiffusionLDM3DPipeline`]
-
-- *How to load and use different schedulers.*
-
-The LDM3D diffusion pipeline uses [`DDIMScheduler`] scheduler by default.
-To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+- *Run LDM3D*: LDM3D can be tested very easily with the [`StableDiffusionLDM3DPipeline`]
 
 ```python
 >>> from diffusers import StableDiffusionLDM3DPipeline
@@ -45,15 +39,17 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 prompt ="A picture of some lemons on a table"
 output = pipe_ldm3d(prompt)
 rgb_image, depth_image = output.rgb, output.depth
+rgb_image[0].save("lemons_ldm3d_rgb.jpg")
+depth_image[0].save("lemons_ldm3d_depth.png")
 ```
 
 
-## AltDiffusionPipelineOutput
+## StableDiffusionPipelineOutput
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
 	- all
 	- __call__
 
-## AltDiffusionPipeline
+## StableDiffusionLDM3DPipeline
 [[autodoc]] StableDiffusionLDM3DPipeline
 	- all
 	- __call__
