@@ -126,10 +126,7 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
     def resize(
-        self,
-        image: PIL.Image.Image,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        self, image: PIL.Image.Image, height: Optional[int] = None, width: Optional[int] = None,
     ) -> PIL.Image.Image:
         """
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
@@ -214,10 +211,7 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
     def postprocess(
-        self,
-        image: torch.FloatTensor,
-        output_type: str = "pil",
-        do_denormalize: Optional[List[bool]] = None,
+        self, image: torch.FloatTensor, output_type: str = "pil", do_denormalize: Optional[List[bool]] = None,
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
@@ -273,11 +267,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     @register_to_config
     def __init__(
-        self,
-        do_resize: bool = True,
-        vae_scale_factor: int = 8,
-        resample: str = "lanczos",
-        do_normalize: bool = True,
+        self, do_resize: bool = True, vae_scale_factor: int = 8, resample: str = "lanczos", do_normalize: bool = True,
     ):
         super().__init__()
 
@@ -306,7 +296,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         Returns: depth map
 
         """
-        return image[:, :, 1] * 2**8 + image[:, :, 2]
+        return image[:, :, 1] * 2 ** 8 + image[:, :, 2]
 
     def numpy_to_depth(self, images):
         """
@@ -324,10 +314,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         return pil_images
 
     def postprocess(
-        self,
-        image: torch.FloatTensor,
-        output_type: str = "pil",
-        do_denormalize: Optional[List[bool]] = None,
+        self, image: torch.FloatTensor, output_type: str = "pil", do_denormalize: Optional[List[bool]] = None,
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
