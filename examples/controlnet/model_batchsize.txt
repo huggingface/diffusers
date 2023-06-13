@@ -1,0 +1,4 @@
+runwayml/stable-diffusion-v1-5 5
+CompVis/stable-diffusion-v1-4 5
+stabilityai/stable-diffusion-2-1 5
+#### end list ####

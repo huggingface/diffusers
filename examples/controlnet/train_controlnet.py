@@ -17,6 +17,7 @@ import argparse
 import logging
 import math
 import os
+import time
 import random
 from pathlib import Path
 
@@ -264,6 +265,12 @@ def parse_args(input_args=None):
         type=str,
         default="controlnet-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument(
         "--cache_dir",
@@ -693,7 +700,6 @@ def make_train_dataset(args, tokenizer, accelerator):
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
-
     return train_dataset
 
 
@@ -992,6 +998,8 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    loss_dict = {}
+    start_time = time.time()
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
@@ -1084,6 +1092,7 @@ def main(args):
                 break
 
     # Create the pipeline using using the trained modules and save it.
+    loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
@@ -1102,7 +1111,15 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-
+    elapsed_time = time.time() - start_time
+    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+    output_dict = {"throughput": throughput,
+                   "loss": loss_dict}
+    
+    import json
+    with open(args.log_dir, "w") as f:
+        json.dump(output_dict, f)
+    logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 
