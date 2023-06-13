@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -193,7 +193,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         self.wrapped_unet = self.unet
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding.
@@ -202,14 +202,14 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding.
@@ -218,14 +218,14 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
         """
         self.vae.enable_tiling()
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -250,7 +250,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
 
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -280,6 +280,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         self.final_offload_hook = hook
 
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -296,7 +297,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
