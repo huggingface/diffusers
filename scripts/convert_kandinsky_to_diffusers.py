@@ -9,6 +9,7 @@ from diffusers import UNet2DConditionModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.models.vq_model import VQModel
 
+
 """
 Example - From the diffusers root directory:
 
@@ -226,7 +227,7 @@ UNET_CONFIG = {
     "addition_embed_type": "text_image",
     "addition_embed_type_num_heads": 64,
     "attention_head_dim": 64,
-    "block_out_channels": [384,768,1152,1536],
+    "block_out_channels": [384, 768, 1152, 1536],
     "center_input_sample": False,
     "class_embed_type": None,
     "class_embeddings_concat": False,
@@ -238,7 +239,7 @@ UNET_CONFIG = {
         "ResnetDownsampleBlock2D",
         "SimpleCrossAttnDownBlock2D",
         "SimpleCrossAttnDownBlock2D",
-        "SimpleCrossAttnDownBlock2D"
+        "SimpleCrossAttnDownBlock2D",
     ],
     "downsample_padding": 1,
     "dual_cross_attention": False,
@@ -270,10 +271,10 @@ UNET_CONFIG = {
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
-        "ResnetUpsampleBlock2D"
+        "ResnetUpsampleBlock2D",
     ],
     "upcast_attention": False,
-    "use_linear_projection": False
+    "use_linear_projection": False,
 }
 
 
@@ -292,7 +293,6 @@ def unet_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     diffusers_checkpoint.update(unet_conv_in(checkpoint))
     diffusers_checkpoint.update(unet_add_embedding(checkpoint))
     diffusers_checkpoint.update(unet_encoder_hid_proj(checkpoint))
-
 
     # <original>.input_blocks -> <diffusers>.down_blocks
 
@@ -358,12 +358,7 @@ INPAINT_UNET_CONFIG = {
     "addition_embed_type": "text_image",
     "addition_embed_type_num_heads": 64,
     "attention_head_dim": 64,
-    "block_out_channels": [
-        384,
-        768,
-        1152,
-        1536
-    ],
+    "block_out_channels": [384, 768, 1152, 1536],
     "center_input_sample": False,
     "class_embed_type": None,
     "class_embeddings_concat": None,
@@ -375,7 +370,7 @@ INPAINT_UNET_CONFIG = {
         "ResnetDownsampleBlock2D",
         "SimpleCrossAttnDownBlock2D",
         "SimpleCrossAttnDownBlock2D",
-        "SimpleCrossAttnDownBlock2D"
+        "SimpleCrossAttnDownBlock2D",
     ],
     "downsample_padding": 1,
     "dual_cross_attention": False,
@@ -407,10 +402,10 @@ INPAINT_UNET_CONFIG = {
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
-        "ResnetUpsampleBlock2D"
+        "ResnetUpsampleBlock2D",
     ],
     "upcast_attention": False,
-    "use_linear_projection": False
+    "use_linear_projection": False,
 }
 
 
@@ -517,9 +512,9 @@ def unet_conv_in(checkpoint):
 
     return diffusers_checkpoint
 
+
 def unet_add_embedding(checkpoint):
     diffusers_checkpoint = {}
-
 
     diffusers_checkpoint.update(
         {
@@ -528,15 +523,15 @@ def unet_add_embedding(checkpoint):
             "add_embedding.text_proj.weight": checkpoint["proj_n.weight"],
             "add_embedding.text_proj.bias": checkpoint["proj_n.bias"],
             "add_embedding.image_proj.weight": checkpoint["img_layer.weight"],
-            "add_embedding.image_proj.bias": checkpoint["img_layer.bias"]
+            "add_embedding.image_proj.bias": checkpoint["img_layer.bias"],
         }
     )
 
     return diffusers_checkpoint
 
+
 def unet_encoder_hid_proj(checkpoint):
     diffusers_checkpoint = {}
-
 
     diffusers_checkpoint.update(
         {
@@ -548,7 +543,6 @@ def unet_encoder_hid_proj(checkpoint):
     )
 
     return diffusers_checkpoint
-
 
 
 # <original>.out.0 -> <diffusers>.conv_norm_out
@@ -923,7 +917,6 @@ def inpaint_text2img(*, args, checkpoint_map_location):
     inpaint_unet_diffusers_checkpoint = inpaint_unet_original_checkpoint_to_diffusers_checkpoint(
         inpaint_unet_model, inpaint_text2img_checkpoint
     )
-
 
     del inpaint_text2img_checkpoint
 
@@ -1409,9 +1402,7 @@ if __name__ == "__main__":
         unet_model = text2img(args=args, checkpoint_map_location=checkpoint_map_location)
         unet_model.save_pretrained(f"{args.dump_path}/unet")
     elif args.debug == "inpaint_text2img":
-        inpaint_unet_model = inpaint_text2img(
-            args=args, checkpoint_map_location=checkpoint_map_location
-        )
+        inpaint_unet_model = inpaint_text2img(args=args, checkpoint_map_location=checkpoint_map_location)
         inpaint_unet_model.save_pretrained(f"{args.dump_path}/inpaint_unet")
     elif args.debug == "decoder":
         decoder = movq(args=args, checkpoint_map_location=checkpoint_map_location)
