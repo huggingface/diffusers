@@ -400,7 +400,7 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
-            pass
+            has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
                 feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
@@ -418,7 +418,8 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             depth, has_nsfw_concept_depth = self.safety_checker(
                 images=image, clip_input=safety_checker_input_depth.pixel_values.to(dtype)
             )
-        return image, [has_nsfw_concept_rgb[0] and has_nsfw_concept_depth[0]]
+            has_nsfw_concept =  [has_nsfw_concept_rgb[0] and has_nsfw_concept_depth[0]]
+        return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
