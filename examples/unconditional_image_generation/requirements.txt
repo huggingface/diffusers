@@ -1,7 +1,7 @@
 accelerate==0.19.0
 torchvision
 datasets
-protobuf<4,>=3.8.0
+protobuf<4,>=3.19.6
 tensorboard
 matplotlib
 opencv-python

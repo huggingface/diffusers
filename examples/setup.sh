@@ -22,8 +22,8 @@ if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ] && [ "$install_requirements" == "1" 
     echo "installing requirements in conda env ${env_name}.."
     cd ..
     pip install -e .
-    cd ${current_dir}
+    cd ${current_dir}/${task}
     pip install -r requirements.txt
     moreh-switch-model -M 2
-    update-moreh --torch 1.10.0 --target 23.6.0 --force
+    echo -e "\\n" | update-moreh --torch 1.10.0 --target 23.6.0 --force
 fi
