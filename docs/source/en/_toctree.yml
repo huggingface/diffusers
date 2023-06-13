@@ -84,6 +84,8 @@
       title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
+    - local: training/svdiff
+      title: SVDiff
     title: Training
   - sections:
     - local: using-diffusers/rl
