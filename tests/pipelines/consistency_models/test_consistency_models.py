@@ -187,7 +187,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(seed)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
-    
+
     def test_consistency_model_cd_multistep(self):
         unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
