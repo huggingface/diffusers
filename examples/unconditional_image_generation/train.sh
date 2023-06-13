@@ -2,9 +2,9 @@
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 bs_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 current_dir=$(pwd)
-install_requirements=0
 
-env_name=${1:-"unconditional_image_generation"}
+task=${1:-"unconditional_image_generation"}
+env_name=$task
 model_name=${2:-"ddpm-unet"}
 batch_size=${3:-16}
 output_dir=${4:-"outputs"}
@@ -16,16 +16,14 @@ echo "create env for model ${model_name}.."
 if conda env list | grep -q -E "^$env_name\s"; then
     source ${base_env}/etc/profile.d/conda.sh
     conda activate ${env_name}
-    echo "environment name: ${env_name}"
 else
     conda clean --all --force-pkgs-dir -y
     conda create --name ${env_name} python=3.8 -y
     source ${base_env}/etc/profile.d/conda.sh
     conda activate ${env_name}
-    echo "environment name: ${env_name}"
     install_requirements=1
 fi
-
+echo "environment name: ${env_name}"
 
 if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ] && [ "$install_requirements" == "1" ]; then
     echo "installing requirements in conda env ${env_name}.."
@@ -35,12 +33,6 @@ if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ] && [ "$install_requirements" == "1" 
     pip install -r requirements.txt
     moreh-switch-model -M 2
     update-moreh --torch 1.10.0 --target 23.6.0 --force
-elif [ "$CONDA_DEFAULT_ENV" = "${env_name}" ] && [ "$install_requirements" == "0" ]; then
-    echo "requirements already installed."
-else
-    echo "The command is NOT running in the correct Conda environment."
-    echo "Stop the training process."
-    exit 1
 fi
 
 echo "# ========================================================= #"

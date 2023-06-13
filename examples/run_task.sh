@@ -51,14 +51,13 @@ while read model batch_size ; do
         cd $task
         bash $train_script $task $model $batch_size $output_dir $log_dir $run_mode
     "
-
     bash record.sh 0 $memory_log_file $terminal_log_file "$commands_to_run"
 
     echo Done training $model
     # echo Terminal log: $terminal_log_file
     # echo Results file: $output_dir/all_results.json
     # echo Other results: $output_dir
-
+    echo $CONDA_DEFAULT_ENV
 done < $task/$model_batchsize_file
 
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
