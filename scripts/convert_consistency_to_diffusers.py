@@ -95,7 +95,9 @@ def convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attent
     new_checkpoint[f"{new_prefix}.to_v.weight"] = weight_v.squeeze(-1).squeeze(-1)
     new_checkpoint[f"{new_prefix}.to_v.bias"] = bias_v.squeeze(-1).squeeze(-1)
 
-    new_checkpoint[f"{new_prefix}.to_out.0.weight"] = checkpoint[f"{old_prefix}.proj_out.weight"].squeeze(-1).squeeze(-1)
+    new_checkpoint[f"{new_prefix}.to_out.0.weight"] = (
+        checkpoint[f"{old_prefix}.proj_out.weight"].squeeze(-1).squeeze(-1)
+    )
     new_checkpoint[f"{new_prefix}.to_out.0.bias"] = checkpoint[f"{old_prefix}.proj_out.bias"].squeeze(-1).squeeze(-1)
 
     return new_checkpoint
