@@ -813,7 +813,7 @@ def main(args):
             for p in m.parameters():
                 params_to_optimize.append(p)
     total_params = sum(p.numel() for p in params_to_optimize)
-    print(f"{total_params * 1.e-6:.2f} M trainable params")
+    logger.info(f"{total_params * 1.e-6:.2f} M trainable params")
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
