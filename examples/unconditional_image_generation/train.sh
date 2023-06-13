@@ -20,7 +20,7 @@ python train_unconditional.py \
   --resolution=64 --center_crop --random_flip \
   --dataloader_num_workers 1 \
   --output_dir ${output_dir} \
-  --log_dir "${log_dir}/${model_name}.json" \
+  --log_dir "${log_dir}" \
   --train_batch_size=${batch_size} \
   --num_epochs=1 \
   --gradient_accumulation_steps=2 \

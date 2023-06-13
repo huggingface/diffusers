@@ -19,7 +19,7 @@ python train_controlnet.py \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-hed \
     --dataset_name fusing/fill50k \
     --output_dir ${output_dir} \
-    --log_dir "${log_dir}/${model_name}.json" \
+    --log_dir "${log_dir}" \
     --learning_rate=1e-5 \
     --max_train_steps 10 \
     --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
