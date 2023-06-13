@@ -2,7 +2,6 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
-from torch.backends.cuda import sdp_kernel
 
 from ...models import UNet2DModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -288,9 +287,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
                 scaled_t = self.scheduler.scale_timestep(t)
-                # model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
-                with sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
-                    model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
+                model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
 
                 sample = self.scheduler.step(
                     model_output, t, sample, use_noise=use_noise, **extra_step_kwargs

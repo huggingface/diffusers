@@ -3,14 +3,15 @@ import unittest
 
 import numpy as np
 import torch
+from torch.backends.cuda import sdp_kernel
 
 from diffusers import (
     CMStochasticIterativeScheduler,
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils import slow, torch_device, randn_tensor
+from diffusers.utils.testing_utils import require_torch_2, require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -163,7 +164,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, seed=0):
+    def get_inputs(self, seed=0, get_fixed_latents=False, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
         generator = torch.manual_seed(seed)
 
         inputs = {
@@ -174,9 +175,21 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             "output_type": "numpy",
         }
 
-        return inputs
+        if get_fixed_latents:
+            latents = self.get_fixed_latents(seed=seed, device=device, dtype=dtype, shape=shape)
+            inputs["latents"] = latents
 
-    def test_consistency_model_cd_multistep(self):
+        return inputs
+    
+    def get_fixed_latents(self, seed=0, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
+        if type(device) == str:
+            device = torch.device(device)
+        generator = torch.Generator(device=device).manual_seed(seed)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        return latents
+    
+    @require_torch_2
+    def test_consistency_model_cd_multistep_flash_attn(self):
         unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
@@ -184,19 +197,22 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             sigma_max=80.0,
         )
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
-        pipe.to(torch_device)
+        pipe.to(torch_device=torch_device, torch_dtype=torch.float16)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs()
-        image = pipe(**inputs).images
+        inputs = self.get_inputs(get_fixed_latents=True, device=torch_device)
+        # Ensure usage of flash attention in torch 2.0
+        with sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=False):
+            image = pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.2645, 0.3386, 0.1928, 0.1284, 0.1215, 0.0285, 0.0800, 0.1213, 0.3331])
+        expected_slice = np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 4e-3
-
-    def test_consistency_model_cd_onestep(self):
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    
+    @require_torch_2
+    def test_consistency_model_cd_onestep_flash_attn(self):
         unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
@@ -204,16 +220,18 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             sigma_max=80.0,
         )
         pipe = ConsistencyModelPipeline(unet=unet, scheduler=scheduler)
-        pipe.to(torch_device)
+        pipe.to(torch_device=torch_device, torch_dtype=torch.float16)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(get_fixed_latents=True, device=torch_device)
         inputs["num_inference_steps"] = 1
         inputs["timesteps"] = None
-        image = pipe(**inputs).images
+        # Ensure usage of flash attention in torch 2.0
+        with sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=False):
+            image = pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.2480, 0.1257, 0.0852, 0.2474, 0.3226, 0.1637, 0.3169, 0.2660, 0.3875])
+        expected_slice = np.array([0.1623, 0.2009, 0.2387, 0.1731, 0.1168, 0.1202, 0.2031, 0.1327, 0.2447])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 4e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
