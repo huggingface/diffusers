@@ -49,7 +49,7 @@
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
-      title: Improve image quality with deterministic generation
+      title: Improve image quality from a pipeline
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
