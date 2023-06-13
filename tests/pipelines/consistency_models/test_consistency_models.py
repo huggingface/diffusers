@@ -111,6 +111,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
+        inputs["class_labels"] = 0
         image = pipe(**inputs).images
         assert image.shape == (1, 32, 32, 3)
 
@@ -147,6 +148,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 1
         inputs["timesteps"] = None
+        inputs["class_labels"] = 0
         image = pipe(**inputs).images
         assert image.shape == (1, 32, 32, 3)
 
