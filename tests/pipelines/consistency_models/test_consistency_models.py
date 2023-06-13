@@ -10,7 +10,7 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils import slow, torch_device, randn_tensor
+from diffusers.utils import randn_tensor, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_2, require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
@@ -180,14 +180,14 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             inputs["latents"] = latents
 
         return inputs
-    
+
     def get_fixed_latents(self, seed=0, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
         if type(device) == str:
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
-    
+
     @require_torch_2
     def test_consistency_model_cd_multistep_flash_attn(self):
         unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
@@ -210,7 +210,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-    
+
     @require_torch_2
     def test_consistency_model_cd_onestep_flash_attn(self):
         unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
