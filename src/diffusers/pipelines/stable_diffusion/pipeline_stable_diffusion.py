@@ -109,8 +109,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
     def __init__(
         self,
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
+        vae: Union[AutoencoderKL, ORTModule],
+        text_encoder: Union[CLIPTextModel, ORTModule],
         tokenizer: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, ORTModule],
         scheduler: KarrasDiffusionSchedulers,
