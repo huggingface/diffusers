@@ -397,7 +397,6 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
         return prompt_embeds
 
-
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None
