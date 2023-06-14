@@ -6,6 +6,13 @@ output_dir=${4:-"outputs"}
 current_dir=$(pwd)
 log_dir=${5:-"${current_dir}/logs/${model_name}.json"}
 
+# Check if batch_size is provided , if not use default value of 1
+if expr "$batch_size" + 0 > /dev/null 2>&1; then
+  batch_size=$batch_size
+else
+  batch_size=1
+fi
+
 # Activate conda env
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 source ${base_env}/etc/profile.d/conda.sh
@@ -19,7 +26,7 @@ python train_text_to_image.py \
   --dataset_name lambdalabs/pokemon-blip-captions \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
+  --train_batch_siz \
   --gradient_accumulation_steps=4 \
   --max_train_steps=1 \
   --learning_rate=1e-05 \
