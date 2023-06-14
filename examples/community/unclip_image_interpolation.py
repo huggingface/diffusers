@@ -376,7 +376,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         height = self.decoder.config.sample_size
         width = self.decoder.config.sample_size
 
-        # Get the decoder latents for 1 step and then repeat the same tensor for the entire batch to keep same noise across all batches
+        # Get the decoder latents for 1 step and then repeat the same tensor for the entire batch to keep same noise across all interpolation steps.
         decoder_latents = self.prepare_latents(
             (1, num_channels_latents, height, width),
             text_encoder_hidden_states.dtype,
