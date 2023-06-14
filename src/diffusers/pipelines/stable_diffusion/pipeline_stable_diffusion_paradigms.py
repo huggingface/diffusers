@@ -66,6 +66,7 @@ EXAMPLE_DOC_STRING = """
 class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
     r"""
     Parallelized version of StableDiffusionPipeline, based on the paper https://arxiv.org/abs/2305.16317
+    This pipeline parallelizes the denoising steps to generate a single image faster (more akin to model parallelism).
 
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -192,8 +193,10 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
+        # attribute to wrap the unet with torch.nn.DataParallel when running multiple denoising steps on multiple GPUs
         self.wrapped_unet = self.unet
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding.
@@ -202,14 +205,14 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding.
@@ -218,14 +221,14 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
         """
         self.vae.enable_tiling()
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -250,7 +253,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
 
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -443,7 +446,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         return prompt_embeds
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None
@@ -457,7 +460,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         warnings.warn(
             "The decode_latents method is deprecated and will be removed in a future version. Please"
@@ -470,7 +473,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -487,7 +490,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -534,7 +537,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -599,6 +602,13 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            parallel (`int`, *optional*, defaults to 10):
+                The batch size to use when doing parallel sampling. More parallelism may lead to faster inference
+                but requires higher memory usage and also can require more total FLOPs.
+            tolerance (`float`, *optional*, defaults to 0.1):
+                The error tolerance for determining when to slide the batch window forward for parallel sampling.
+                Lower tolerance usually leads to less/no degradation. Higher tolerance is faster but can risk
+                degradation of sample quality. The tolerance is specified as a ratio of the scheduler's noise magnitude.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -644,6 +654,8 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            debug (`bool`, *optional*, defaults to `False`):
+                Whether or not to run in debug mode. In debug mode, torch.cumsum is evaluated using the CPU.
 
         Examples:
 
@@ -716,6 +728,8 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         end_idx = parallel
         latents_time_evolution_buffer = torch.stack([latents] * (len(scheduler.timesteps) + 1))
 
+        # We must make sure the noise of stochastic schedulers such as DDPM is sampled only once per timestep.
+        # Sampling inside the parallel denoising loop will mess this up, so we pre-sample the noise vectors outside the denoising loop.
         noise_array = torch.zeros_like(latents_time_evolution_buffer)
         for j in range(len(scheduler.timesteps)):
             base_noise = randn_tensor(
@@ -723,6 +737,10 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             )
             noise = (self.scheduler._get_variance(scheduler.timesteps[j]) ** 0.5) * base_noise
             noise_array[j] = noise.clone()
+
+        # We specify the error tolerance as a ratio of the scheduler's noise magnitude. We similarly compute the error tolerance
+        # outside of the denoising loop to avoid recomputing it at every step.
+        # We will be dividing the norm of the noise, so we store its inverse here to avoid a division at every step.
         inverse_variance_norm = 1.0 / torch.tensor(
             [scheduler._get_variance(scheduler.timesteps[j]) for j in range(len(scheduler.timesteps))] + [0]
         ).to(noise_array.device)
@@ -735,7 +753,8 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             steps = 0
             while begin_idx < len(scheduler.timesteps):
                 # these have shape (parallel_dim, 2*batch_size, ...)
-                # parallel_dim is at most parallel, but could be less if we are at the end of the timesteps
+                # parallel_len is at most parallel, but could be less if we are at the end of the timesteps
+                # we are processing batch window of timesteps spanning [begin_idx, end_idx)
                 parallel_len = end_idx - begin_idx
 
                 block_prompt_embeds = torch.stack([prompt_embeds] * parallel_len)
@@ -751,6 +770,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 )
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t_vec)
 
+                # if parallel_len is small, no need to use multiple GPUs
                 net = self.wrapped_unet if parallel_len > 3 else self.unet
                 # predict the noise residual, shape is now [parallel_len * 2 * batch_size * num_images_per_prompt, ...]
                 model_output = net(
@@ -780,10 +800,14 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 ).reshape(block_latents.shape)
 
                 # back to shape (parallel_dim, batch_size, ...)
+                # now we want to add the pre-sampled noise
+                # parallel sampling algorithm requires computing the cumulative drift from the beginning
+                # of the window, so we need to compute cumulative sum of the deltas and the pre-sampled noises.
                 delta = block_latents_denoise - block_latents
                 cumulative_delta = self._cumsum(delta, dim=0, debug=debug)
                 cumulative_noise = self._cumsum(noise_array[begin_idx:end_idx], dim=0, debug=debug)
 
+                # if we are using an ODE-like scheduler (like DDIM), we don't want to add noise
                 if scheduler._is_ode_scheduler:
                     cumulative_noise = 0
 
@@ -799,19 +823,24 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 error_ratio = cur_error * inverse_variance_norm[begin_idx + 1 : end_idx + 1]
 
                 # find the first index of the vector error_ratio that is greater than error tolerance
+                # we can shift the window for the next iteration up to this index
                 error_ratio = torch.nn.functional.pad(
                     error_ratio, (0, 0, 0, 1), value=1e9
                 )  # handle the case when everything is below ratio, by padding the end of parallel_len dimension
                 any_error_at_time = torch.max(error_ratio > scaled_tolerance, dim=1).values.int()
                 ind = torch.argmax(any_error_at_time).item()
 
+                # compute the new begin and end idxs for the window
                 new_begin_idx = begin_idx + min(1 + ind, parallel)
                 new_end_idx = min(new_begin_idx + parallel, len(scheduler.timesteps))
 
+                # store the computed latents for the current window in the global buffer
                 latents_time_evolution_buffer[begin_idx + 1 : end_idx + 1] = block_latents_new
+                # initialize the new sliding window latents with the end of the current window,
+                # should be better than random initialization
                 latents_time_evolution_buffer[end_idx : new_end_idx + 1] = latents_time_evolution_buffer[end_idx][
                     None,
-                ]  # hopefully better than random initialization
+                ]  
 
                 steps += 1
 

@@ -22,6 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
+    DDPMScheduler,
     DDIMScheduler,
     StableDiffusionParadigmsPipeline,
     UNet2DConditionModel,
@@ -139,6 +140,23 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_paradigms_default_case_ddpm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = DDPMScheduler()
+        sd_pipe = StableDiffusionParadigmsPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.4534, 0.5342, 0.5028, 0.4500, 0.5577, 0.4918, 0.4653, 0.4960, 0.5446])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     # override to speed the overall test timing up.
     def test_inference_batch_consistent(self):
         super().test_inference_batch_consistent(batch_sizes=[1, 2])
@@ -202,18 +220,6 @@ class StableDiffusionParadigmsPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
 
-        expected_slice = np.array(
-            [
-                0.96222240,
-                0.96028924,
-                0.97488534,
-                0.95912700,
-                0.96303370,
-                0.96918930,
-                0.96610457,
-                0.96318950,
-                0.97419780,
-            ]
-        )
+        expected_slice = np.array([0.9622, 0.9602, 0.9748, 0.9591, 0.9630, 0.9691, 0.9661, 0.9631, 0.9741])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-2

@@ -413,7 +413,21 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
-        Predict the previous timestep of multiple samples in batch. Does not add noise.
+        Batched version of the `step` function, to be able to reverse the SDE for multiple samples/timesteps at once.
+        Also, does not add any noise to the predicted sample, which is necessary for parallel sampling where
+        the noise is pre-sampled by the pipeline.
+
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            timesteps (`List[int]`): current discrete timesteps in the diffusion chain. This is now a list of integers.
+            sample (`torch.FloatTensor`):
+                current instance of sample being created by diffusion process.
+
+        Returns:
+            `torch.FloatTensor`: sample tensor at previous timestep.
         """
         t = timesteps
         num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps

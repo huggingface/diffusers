@@ -471,12 +471,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
+        Batched version of the `step` function, to be able to reverse the SDE for multiple samples/timesteps at once.
+        Also, does not add any noise to the predicted sample, which is necessary for parallel sampling where
+        the noise is pre-sampled by the pipeline.
+
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            timesteps (`List[int]`): current discrete timesteps in the diffusion chain. This is now a list of integers.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
@@ -491,9 +495,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            `torch.FloatTensor`: sample tensor at previous timestep.
 
         """
         if self.num_inference_steps is None:
