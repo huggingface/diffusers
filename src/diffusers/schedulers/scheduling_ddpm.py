@@ -133,7 +133,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
-        sample_max_value: float = 1.0,
+        sample_max_value: Optional[float] = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -367,9 +367,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 3. Clip or threshold "predicted x_0"
+        if self.config.sample_max_value is None and self.config.clip_sample:
+            pred_original_sample = torch.clamp(
+                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+
         if self.config.thresholding:
             pred_original_sample = self._threshold_sample(pred_original_sample)
-        elif self.config.clip_sample:
+        elif self.config.sample_max_value is not None and self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
