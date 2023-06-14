@@ -88,9 +88,9 @@ fi
 # ==================================
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 
-# echo "deleting env.."
-# source ${base_env}/etc/profile.d/conda.sh
-# conda deactivate
-# conda env remove -n ${task}
+echo "deleting env.."
+source ${base_env}/etc/profile.d/conda.sh
+conda deactivate
+conda env remove -n ${task}
 
 echo Done
