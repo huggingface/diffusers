@@ -81,7 +81,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
     """
 
-    _supports_gradient_checkpointing = False
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(

@@ -11,10 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import nn
 
+from ..utils import is_torch_version
 from .resnet import Downsample2D, ResnetBlock2D, TemporalConvLayer, Upsample2D
 from .transformer_2d import Transformer2DModel
 from .transformer_temporal import TransformerTemporalModel
@@ -364,6 +366,7 @@ class CrossAttnDownBlock3D(nn.Module):
         attention_mask=None,
         num_frames=1,
         cross_attention_kwargs=None,
+        encoder_attention_mask=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
@@ -371,18 +374,64 @@ class CrossAttnDownBlock3D(nn.Module):
         for resnet, temp_conv, attn, temp_attn in zip(
             self.resnets, self.temp_convs, self.attentions, self.temp_attentions
         ):
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
-            hidden_states = attn(
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
-            hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-            ).sample
+            if self.training and self.gradient_checkpointing:
 
-            output_states += (hidden_states,)
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(temp_conv),
+                    hidden_states,
+                    num_frames,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # timestep
+                    None,  # class_labels
+                    cross_attention_kwargs,
+                    attention_mask,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )[0]
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # timestep
+                    None,  # class_labels
+                    num_frames,
+                    cross_attention_kwargs,
+                    **ckpt_kwargs,
+                )[0]
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+                ).sample
+
+                output_states += (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -458,8 +507,31 @@ class DownBlock3D(nn.Module):
         output_states = ()
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(temp_conv), hidden_states, num_frames, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(temp_conv), hidden_states, num_frames
+                    )
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
             output_states += (hidden_states,)
 
@@ -584,6 +656,50 @@ class CrossAttnUpBlock3D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(temp_conv),
+                    hidden_states,
+                    num_frames,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # timestep
+                    None,  # class_labels
+                    cross_attention_kwargs,
+                    **ckpt_kwargs,
+                )[0]
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    None,  # encoder_hidden_states
+                    None,  # timestep
+                    None,  # class_labels
+                    num_frames,
+                    cross_attention_kwargs,
+                    **ckpt_kwargs,
+                )[0]
+
             hidden_states = resnet(hidden_states, temb)
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
             hidden_states = attn(
@@ -666,8 +782,31 @@ class UpBlock3D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(temp_conv), hidden_states, num_frames, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(temp_conv), hidden_states, num_frames
+                    )
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
