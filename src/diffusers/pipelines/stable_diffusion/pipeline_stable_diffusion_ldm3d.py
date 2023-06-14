@@ -406,19 +406,10 @@ class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixi
                 feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input_rgb = self.feature_extractor(feature_extractor_input[0], return_tensors="pt").to(
-                device
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-            safety_checker_input_depth = self.feature_extractor(feature_extractor_input[1], return_tensors="pt").to(
-                device
-            )
-            rgb, has_nsfw_concept_rgb = self.safety_checker(
-                images=image, clip_input=safety_checker_input_rgb.pixel_values.to(dtype)
-            )
-            depth, has_nsfw_concept_depth = self.safety_checker(
-                images=image, clip_input=safety_checker_input_depth.pixel_values.to(dtype)
-            )
-            has_nsfw_concept = [has_nsfw_concept_rgb[0] and has_nsfw_concept_depth[0]]
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
