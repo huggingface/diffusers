@@ -515,7 +515,7 @@ class DreamBoothDataset(Dataset):
         self.instance_images_path = []
         self.num_instance_images = []
         self.instance_prompt = []
-        self.class_data_root = []
+        self.class_data_root = [] if class_data_root is not None else None
         self.class_images_path = []
         self.num_class_images = []
         self.class_prompt = []
@@ -531,7 +531,6 @@ class DreamBoothDataset(Dataset):
             self.instance_prompt.append(instance_prompt[i])
             self._length += self.num_instance_images[i]
 
-            self.class_data_root = None
             if class_data_root is not None:
                 self.class_data_root.append(Path(class_data_root[i]))
                 self.class_data_root[i].mkdir(parents=True, exist_ok=True)
