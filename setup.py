@@ -69,9 +69,10 @@ To create the package for pypi.
 
 import os
 import re
-from distutils.core import Command
 
 from setuptools import find_packages, setup
+
+from distutils.core import Command
 
 
 # IMPORTANT:
