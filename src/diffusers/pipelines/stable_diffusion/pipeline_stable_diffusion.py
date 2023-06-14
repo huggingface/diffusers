@@ -24,6 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from onnxruntime.training.ortmodule import ORTModule
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     deprecate,
@@ -111,7 +112,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
+        unet: Union[UNet2DConditionModel, ORTModule],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
