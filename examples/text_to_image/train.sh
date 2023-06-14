@@ -13,15 +13,10 @@ else
   batch_size=1
 fi
 
-# Activate conda env
-base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
-source ${base_env}/etc/profile.d/conda.sh
-conda activate ${env_name}
-
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-python train_text_to_image.py \
+conda run -n ${env_name} python3 train_text_to_image.py \
   --pretrained_model_name_or_path ${model_name} \
   --dataset_name lambdalabs/pokemon-blip-captions \
   --use_ema \

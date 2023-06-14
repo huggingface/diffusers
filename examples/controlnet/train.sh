@@ -13,16 +13,12 @@ else
   batch_size=5
 fi
 
-# Activate conda env
-base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
-source ${base_env}/etc/profile.d/conda.sh
-conda activate ${env_name}
 moreh-switch-model -M 1 
 
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-python train_controlnet.py \
+conda run -n ${env_name} python3 train_controlnet.py \
     --pretrained_model_name_or_path ${model_name}  \
     --controlnet_model_name_or_path lllyasviel/sd-controlnet-hed \
     --dataset_name fusing/fill50k \

@@ -475,7 +475,7 @@ def main(args):
     # Preprocessing the datasets and DataLoaders creation.
     augmentations = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=PIL.Image.BICUBIC),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
