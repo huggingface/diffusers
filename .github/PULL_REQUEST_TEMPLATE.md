@@ -18,6 +18,7 @@ Fixes # (issue)
 ## Before submitting
 - [ ] This PR fixes a typo or improves the docs (you can dismiss the other checks if that's the case).
 - [ ] Did you read the [contributor guideline](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md)?
+- [ ] Did you read our [philosophy doc](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md) (important for complex PRs)?
 - [ ] Was this discussed/approved via a Github issue or the [forum](https://discuss.huggingface.co/)? Please add a link to it if that's the case.
 - [ ] Did you make sure to update the documentation with your changes? Here are the
       [documentation guidelines](https://github.com/huggingface/diffusers/tree/main/docs), and
@@ -35,11 +36,13 @@ members/contributors who may be interested in your PR.
  If you know how to use git blame, that is the easiest way, otherwise, here is a rough guide of **who to tag**.
  Please tag fewer than 3 people.
 
+Core library:
+
 - Schedulers: @williamberman and @patrickvonplaten
 - Pipelines:  @patrickvonplaten and @sayakpaul
 - Training examples: @sayakpaul and @patrickvonplaten
 - Docs: @stevenliu and @yiyixu
-- JAX: @pcuenca
+- JAX and MPS: @pcuenca
 - Audio: @sanchit-gandhi
 - General functionalities: @patrickvonplaten and @sayakpaul
 
@@ -47,8 +50,6 @@ Integrations:
 
 - deepspeed: HF Trainer/Accelerate: @pacman100
 - ray/raytune: @richardliaw, @amogkam
-
-Documentation: @sgugger, @stevhliu and @MKhalusova
 
 HF projects:
 
