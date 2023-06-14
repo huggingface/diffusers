@@ -14,8 +14,8 @@
 
 from typing import List, Optional, Union
 
-import torch
 import numpy as np
+import torch
 from transformers import (
     XLMRobertaTokenizer,
 )
@@ -23,7 +23,7 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
-from ...schedulers import DDIMScheduler
+from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -89,7 +89,7 @@ class KandinskyPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
-        scheduler ([`DDIMScheduler`]):
+        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -102,7 +102,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
         movq: VQModel,
     ):
         super().__init__()
@@ -408,9 +408,9 @@ class KandinskyPipeline(DiffusionPipeline):
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
             dtype=prompt_embeds.dtype, device=device
         )
-        if hasattr(self.scheduler,"custom_timesteps"):
+        if hasattr(self.scheduler, "custom_timesteps"):
             # if use ddpm scheduler, create timesteps with unclp timestep method and pass a custom timesteps
-            timesteps = self.set_timesteps(num_inference_steps, device=device) 
+            timesteps = self.set_timesteps(num_inference_steps, device=device)
             self.scheduler.set_timesteps(timesteps=timesteps, device=device)
         else:
             self.scheduler.set_timesteps(num_inference_steps, device=device)
