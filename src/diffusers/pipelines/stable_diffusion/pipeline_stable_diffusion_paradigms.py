@@ -65,8 +65,8 @@ EXAMPLE_DOC_STRING = """
 
 class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
     r"""
-    Parallelized version of StableDiffusionPipeline, based on the paper https://arxiv.org/abs/2305.16317
-    This pipeline parallelizes the denoising steps to generate a single image faster (more akin to model parallelism).
+    Parallelized version of StableDiffusionPipeline, based on the paper https://arxiv.org/abs/2305.16317 This pipeline
+    parallelizes the denoising steps to generate a single image faster (more akin to model parallelism).
 
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -205,6 +205,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
@@ -212,6 +213,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         computing decoding in one step.
         """
         self.vae.disable_slicing()
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
@@ -221,6 +223,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
         """
         self.vae.enable_tiling()
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
@@ -228,6 +231,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         computing decoding in one step.
         """
         self.vae.disable_tiling()
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -253,6 +257,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
 
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -300,6 +305,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
@@ -446,6 +452,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         return prompt_embeds
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -460,6 +467,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         warnings.warn(
@@ -473,6 +481,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -490,6 +499,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
@@ -537,6 +547,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -603,12 +614,12 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             parallel (`int`, *optional*, defaults to 10):
-                The batch size to use when doing parallel sampling. More parallelism may lead to faster inference
-                but requires higher memory usage and also can require more total FLOPs.
+                The batch size to use when doing parallel sampling. More parallelism may lead to faster inference but
+                requires higher memory usage and also can require more total FLOPs.
             tolerance (`float`, *optional*, defaults to 0.1):
-                The error tolerance for determining when to slide the batch window forward for parallel sampling.
-                Lower tolerance usually leads to less/no degradation. Higher tolerance is faster but can risk
-                degradation of sample quality. The tolerance is specified as a ratio of the scheduler's noise magnitude.
+                The error tolerance for determining when to slide the batch window forward for parallel sampling. Lower
+                tolerance usually leads to less/no degradation. Higher tolerance is faster but can risk degradation of
+                sample quality. The tolerance is specified as a ratio of the scheduler's noise magnitude.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -840,7 +851,7 @@ class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoader
                 # should be better than random initialization
                 latents_time_evolution_buffer[end_idx : new_end_idx + 1] = latents_time_evolution_buffer[end_idx][
                     None,
-                ]  
+                ]
 
                 steps += 1
 

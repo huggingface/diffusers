@@ -466,21 +466,19 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
-        generator=None,
-        variance_noise: Optional[torch.FloatTensor] = None,
-        return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
         Batched version of the `step` function, to be able to reverse the SDE for multiple samples/timesteps at once.
-        Also, does not add any noise to the predicted sample, which is necessary for parallel sampling where
-        the noise is pre-sampled by the pipeline.
+        Also, does not add any noise to the predicted sample, which is necessary for parallel sampling where the noise
+        is pre-sampled by the pipeline.
 
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timesteps (`List[int]`): current discrete timesteps in the diffusion chain. This is now a list of integers.
+            timesteps (`List[int]`):
+                current discrete timesteps in the diffusion chain. This is now a list of integers.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
@@ -488,11 +486,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 predicted original sample. Necessary because predicted original sample is clipped to [-1, 1] when
                 `self.config.clip_sample` is `True`. If no clipping has happened, "corrected" `model_output` would
                 coincide with the one provided as input and `use_clipped_model_output` will have not effect.
-            generator: random number generator.
-            variance_noise (`torch.FloatTensor`): instead of generating noise for the variance using `generator`, we
-                can directly provide the noise for the variance itself. This is useful for methods such as
-                CycleDiffusion. (https://arxiv.org/abs/2210.05559)
-            return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 
         Returns:
             `torch.FloatTensor`: sample tensor at previous timestep.

@@ -40,7 +40,9 @@ from diffusers import StableDiffusionParadigmsPipeline
 
 scheduler = DDPMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
-pipe = StableDiffusionParadigmsPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16)
+pipe = StableDiffusionParadigmsPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
+)
 pipe = pipe.to("cuda")
 
 ngpu, batch_per_device = torch.cuda.device_count(), 5
@@ -61,6 +63,16 @@ The two parameters to play with are `parallel` (batch size) and `tolerance`.
 may not fit in memory, and lower batch size gives less parallelism. 
 - For tolerance, using a higher tolerance may get better speedups but can risk sample quality degradation. 
 If there is quality degradation with the default tolerance, then use a lower tolerance (e.g. 0.001).
+
+For 1000-step DDPM on 8 A100 GPUs, you can expect around a 3x speedup by StableDiffusionParadigmsPipeline instead of StableDiffusionPipeline
+by setting parallel=80 and tolerance=0.1.
+</Tip>
+
+<Tip>
+Diffusers also offers distributed inference support for generating multiple prompts in parallel on multiple GPUs.
+https://huggingface.co/docs/diffusers/main/en/training/distributed_inference
+
+In contrast, this pipeline is designed for speeding up sampling of a single prompt (by using multiple GPUs).
 </Tip>
 
 ## StableDiffusionParadigmsPipeline
