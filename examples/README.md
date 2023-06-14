@@ -13,6 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+# How to train models in each task
+From ../diffusers/examples repository, run the file run_tash.sh in terminal with the flags:
+--task [required]: task name
+--model [optional]: model name. If not provided, training for all models available in model_batchsize_file
+--batch_size [optional]: batch size
+--train_script [optional]: training script for specific task
+--model_batchsize_file [optional]: file containing model name and batch size respectively
+
+E.g: 
+-Training all model: bash run_task --task unconditional_image_generation 
+-Training a single model: bash run_task --task unconditional_image_generation --model ddpm-unet
+
 # 🧨 Diffusers Examples
 
 Diffusers examples are a collection of scripts to demonstrate how to effectively use the `diffusers` library
