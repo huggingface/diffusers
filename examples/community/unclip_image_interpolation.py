@@ -385,7 +385,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             decoder_latents,
             self.decoder_scheduler,
         )
-        decoder_latents = decoder_latents.repeat((steps, 1, 1, 1))
+        decoder_latents = decoder_latents.repeat((batch_size, 1, 1, 1))
 
         for i, t in enumerate(self.progress_bar(decoder_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
