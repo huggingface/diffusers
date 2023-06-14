@@ -17,6 +17,17 @@ Image processor provides a unified API for Stable Diffusion pipelines to prepare
 All pipelines with VAE image processor will accept image inputs in the format of PIL Image, PyTorch tensor, or Numpy array, and will able to return outputs in the format of PIL Image, Pytorch tensor, and Numpy array based on the `output_type` argument from the user. Additionally, the User can pass encoded image latents directly to the pipeline, or ask the pipeline to return latents as output with `output_type = 'pt'` argument. This allows you to take the generated latents from one pipeline and pass it to another pipeline as input, without ever having to leave the latent space. It also makes it much easier to use multiple pipelines together, by passing PyTorch tensors directly between different pipelines. 
 
 
+# Image Processor for VAE adapted to LDM3D
+
+LDM3D Image processor does the same as the Image processor for VAE but accepting rgb along with depth inputs and will return rgb and depth outputs. It has the same capabilities than the original image processor for VAE.
+
+
+
 ## VaeImageProcessor
 
 [[autodoc]] image_processor.VaeImageProcessor
+
+
+## VaeImageProcessorLDM3D
+
+[[autodoc]] image_processor.VaeImageProcessorLDM3D
