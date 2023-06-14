@@ -58,7 +58,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.wrapped_unet = torch.nn.DataParallel(pipe.unet, device_ids=[d for d in range(ngpu)])
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, parallel=ngpu * batch_per_device).images[0]
+        >>> image = pipe(prompt, parallel=ngpu * batch_per_device, num_inference_steps=1000).images[0]
         ```
 """
 
