@@ -298,7 +298,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             norm_num_groups=unet.config.norm_num_groups,
             norm_eps=unet.config.norm_eps,
             cross_attention_dim=unet.config.cross_attention_dim,
-            num_attention_heads=unet.config.num_attention_heads,
+            attention_head_dim=unet.config.attention_head_dim,
             use_linear_projection=unet.config.use_linear_projection,
             class_embed_type=unet.config.class_embed_type,
             num_class_embeds=unet.config.num_class_embeds,
