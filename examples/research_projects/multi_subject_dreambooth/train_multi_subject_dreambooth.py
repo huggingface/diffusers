@@ -22,6 +22,8 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from PIL import Image
+from torch import dtype
+from torch.nn import Module
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -65,8 +67,8 @@ def log_validation_images_to_tracker(images: List[np.array], label: str, validat
 
 # TODO: Add `prompt_embeds` and `negative_prompt_embeds` parameters to the function when `pre_compute_text_embeddings`
 #  argument is implemented.
-def generate_validation_images(text_encoder: object, tokenizer: object, unet: object, vae: object,
-                               arguments: argparse.Namespace, accelerator: Accelerator, weight_dtype: str):
+def generate_validation_images(text_encoder: Module, tokenizer: Module, unet: Module, vae: Module,
+                               arguments: argparse.Namespace, accelerator: Accelerator, weight_dtype: dtype):
     logger.info(f"Running validation images.")
 
     pipeline_args = {}
@@ -799,9 +801,9 @@ def main(args):
                 sample_dataloader = accelerator.prepare(sample_dataloader)
                 pipeline.to(accelerator.device)
 
-                for example in tqdm(
-                        sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
-                ):
+                for example in tqdm(sample_dataloader,
+                                    desc="Generating class images",
+                                    disable=not accelerator.is_local_main_process):
                     images = pipeline(example["prompt"]).images
 
                     for ii, image in enumerate(images):
@@ -829,6 +831,7 @@ def main(args):
             ).repo_id
 
     # Load the tokenizer
+    tokenizer = None
     if args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
     elif args.pretrained_model_name_or_path:
@@ -1035,24 +1038,24 @@ def main(args):
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+                time_steps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                time_steps = time_steps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, time_steps)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, time_steps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    target = noise_scheduler.get_velocity(latents, noise, time_steps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
