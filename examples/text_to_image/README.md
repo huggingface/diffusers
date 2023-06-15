@@ -111,6 +111,21 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
+Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
+```python
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+
+model_path = "path_to_saved_model"
+
+unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
+
+pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(prompt="yoda").images[0]
+image.save("yoda-pokemon.png")
+```
+
 #### Training with multiple GPUs
 
 `accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
