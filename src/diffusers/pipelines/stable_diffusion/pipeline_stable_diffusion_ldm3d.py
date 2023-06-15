@@ -31,7 +31,6 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import LDM3DPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
