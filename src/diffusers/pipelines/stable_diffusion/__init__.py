@@ -50,6 +50,7 @@ else:
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
     from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
     from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
+    from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
     from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
     from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
     from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
