@@ -201,7 +201,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
         # The reason for this behavior is to correct for incorrectly named variables that were introduced
         # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000 configurations is too backwards breaking
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
         # which is why we correct for the naming here.
         num_attention_heads = num_attention_heads or attention_head_dim
 
