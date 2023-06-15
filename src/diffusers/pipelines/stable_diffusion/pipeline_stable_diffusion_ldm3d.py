@@ -16,6 +16,8 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import PIL
+import numpy as np
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessorLDM3D
@@ -32,6 +34,8 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
+from dataclasses import dataclass
+
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
