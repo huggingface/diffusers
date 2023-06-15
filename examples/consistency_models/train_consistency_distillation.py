@@ -185,11 +185,6 @@ def parse_args():
         "--adam_weight_decay", type=float, default=1e-6, help="Weight decay magnitude for the Adam optimizer."
     )
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
-    parser.add_argument(
-        "--use_ema",
-        action="store_true",
-        help="Whether to use Exponential Moving Average for the final model weights.",
-    )
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
     parser.add_argument("--ema_power", type=float, default=3 / 4, help="The power value for the EMA decay.")
     parser.add_argument("--ema_max_decay", type=float, default=0.9999, help="The maximum decay magnitude for EMA.")
@@ -314,8 +309,7 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+            target_model_ema.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
             for i, model in enumerate(models):
                 model.save_pretrained(os.path.join(output_dir, "unet"))
@@ -324,11 +318,10 @@ def main(args):
                 weights.pop()
 
         def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
-                ema_model.load_state_dict(load_model.state_dict())
-                ema_model.to(accelerator.device)
-                del load_model
+            load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
+            target_model_ema.load_state_dict(load_model.state_dict())
+            target_model_ema.to(accelerator.device)
+            del load_model
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
@@ -429,20 +422,18 @@ def main(args):
     num_scales = 40
     noise_scheduler.set_timesteps(num_scales)
     timesteps = noise_scheduler.timesteps
-    # print(teacher_model)
 
 
     # Create EMA for the model, this is the target model in the paper
-    if args.use_ema:
-        ema_model = EMAModel(
-            model.parameters(),
-            decay=args.ema_max_decay,
-            use_ema_warmup=True,
-            inv_gamma=args.ema_inv_gamma,
-            power=args.ema_power,
-            model_cls=UNet2DModel,
-            model_config=model.config,
-        )
+    target_model_ema = EMAModel(
+        model.parameters(),
+        decay=args.ema_max_decay,
+        use_ema_warmup=True,
+        inv_gamma=args.ema_inv_gamma,
+        power=args.ema_power,
+        model_cls=UNet2DModel,
+        model_config=model.config,
+    )
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -514,12 +505,11 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, ema_model = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, ema_model
+    model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema = accelerator.prepare(
+        model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema
     )
 
-    if args.use_ema:
-        ema_model.to(accelerator.device)
+    target_model_ema.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -583,7 +573,6 @@ def main(args):
             labels = batch["labels"]
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
-            bsz = clean_images.shape[0]
             # Sample a random timestep for each image, TODO - allow different timesteps in a batch
             index = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
@@ -594,7 +583,7 @@ def main(args):
             noised_image = clean_images + noise*append_dims(timestep, clean_images.ndim)
             scaled_timesteps = noise_scheduler.scale_timestep(timestep)
             scaled_timesteps_prev = noise_scheduler.scale_timestep(timestep_prev) 
-            ema_model.copy_to(target_model.parameters())
+            target_model_ema.copy_to(target_model.parameters())
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
@@ -603,7 +592,7 @@ def main(args):
                     model_output, timestep, noised_image, use_noise=False
                 ).prev_sample
 
-                # Heun Solver to get previous timestep image
+                # Heun Solver to get previous timestep image using teacher model
                 samples = noised_image
                 x = samples
                 model_output = teacher_model(x, scaled_timesteps, class_labels=labels).sample
@@ -626,7 +615,7 @@ def main(args):
                     model_output, timestep_prev, denoised_image, use_noise=False
                 ).prev_sample
 
-                loss = F.mse_loss(distiller, distiller_target)  # this could have different weights!
+                loss = F.mse_loss(distiller, distiller_target) 
                 loss = loss.mean()
 
                 accelerator.backward(loss)
@@ -639,8 +628,7 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_model.step(model.parameters())
+                target_model_ema.step(model.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -651,8 +639,7 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-            if args.use_ema:
-                logs["ema_decay"] = ema_model.cur_decay_value
+            logs["ema_decay"] = target_model_ema.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -664,9 +651,8 @@ def main(args):
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 unet = accelerator.unwrap_model(model)
 
-                if args.use_ema:
-                    ema_model.store(unet.parameters())
-                    ema_model.copy_to(unet.parameters())
+                target_model_ema.store(unet.parameters())
+                target_model_ema.copy_to(unet.parameters())
 
                 pipeline = ConsistencyModelPipeline(
                     unet=unet,
@@ -682,8 +668,7 @@ def main(args):
                     output_type="numpy",
                 ).images
 
-                if args.use_ema:
-                    ema_model.restore(unet.parameters())
+                target_model_ema.restore(unet.parameters())
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
@@ -705,9 +690,8 @@ def main(args):
                 # save the model
                 unet = accelerator.unwrap_model(model)
 
-                if args.use_ema:
-                    ema_model.store(unet.parameters())
-                    ema_model.copy_to(unet.parameters())
+                target_model_ema.store(unet.parameters())
+                target_model_ema.copy_to(unet.parameters())
 
                 pipeline = ConsistencyModelPipeline(
                     unet=unet,
@@ -716,8 +700,7 @@ def main(args):
 
                 pipeline.save_pretrained(args.output_dir)
 
-                if args.use_ema:
-                    ema_model.restore(unet.parameters())
+                target_model_ema.restore(unet.parameters())
 
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
