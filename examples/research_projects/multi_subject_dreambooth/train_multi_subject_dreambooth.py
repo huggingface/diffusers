@@ -711,7 +711,7 @@ def main(args):
             negative_validation_prompts = [None] * num_of_validation_prompts
             if args.validation_negative_prompt:
                 negative_validation_prompts = args.validation_negative_prompt.split(",")
-                while len(negative_validation_prompts) < validation_prompts:
+                while len(negative_validation_prompts) < num_of_validation_prompts:
                     negative_validation_prompts.append(None)
             args.validation_negative_prompt = negative_validation_prompts
 
