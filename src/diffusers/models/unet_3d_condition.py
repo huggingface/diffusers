@@ -177,7 +177,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim[i],
+                attn_num_heads=attention_head_dim[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=False,
             )
@@ -191,7 +191,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attention_head_dim[-1],
+            attn_num_heads=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=False,
         )
@@ -230,7 +230,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=reversed_attention_head_dim[i],
+                attn_num_heads=reversed_attention_head_dim[i],
                 dual_cross_attention=False,
             )
             self.up_blocks.append(up_block)
