@@ -9,6 +9,7 @@ import warnings
 from os import environ, listdir, makedirs
 from os.path import basename, join
 from pathlib import Path
+from typing import List
 
 import datasets
 import numpy as np
@@ -42,7 +43,8 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def log_validation_images_to_tracker(images, label, validation_prompt, accelerator, epoch):
+def log_validation_images_to_tracker(images: List[np.array], label: str, validation_prompt: str,
+                                     accelerator: Accelerator, epoch: int):
     logger.info(
         f"Logging images to tracker for validation prompt: {validation_prompt}."
     )
@@ -63,7 +65,8 @@ def log_validation_images_to_tracker(images, label, validation_prompt, accelerat
 
 # TODO: Add `prompt_embeds` and `negative_prompt_embeds` parameters to the function when `pre_compute_text_embeddings`
 #  argument is implemented.
-def generate_validation_images(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype):
+def generate_validation_images(text_encoder: object, tokenizer: object, unet: object, vae: object,
+                               arguments: argparse.Namespace, accelerator: Accelerator, weight_dtype: str):
     logger.info(f"Running validation images.")
 
     pipeline_args = {}
@@ -76,10 +79,10 @@ def generate_validation_images(text_encoder, tokenizer, unet, vae, args, acceler
 
     # create pipeline (note: unet and vae are loaded again in float32)
     pipeline = DiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
+        arguments.pretrained_model_name_or_path,
         tokenizer=tokenizer,
         unet=accelerator.unwrap_model(unet),
-        revision=args.revision,
+        revision=arguments.revision,
         torch_dtype=weight_dtype,
         **pipeline_args,
     )
@@ -100,12 +103,12 @@ def generate_validation_images(text_encoder, tokenizer, unet, vae, args, acceler
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    generator = None if arguments.seed is None else torch.Generator(device=accelerator.device).manual_seed(arguments.seed)
 
     images_sets = []
-    for vp, nvi, vnp, vis, vgs in zip(args.validation_prompt, args.validation_number_images,
-                                      args.validation_negative_prompt,  args.validation_inference_steps,
-                                      args.validation_guidance_scale):
+    for vp, nvi, vnp, vis, vgs in zip(arguments.validation_prompt, arguments.validation_number_images,
+                                      arguments.validation_negative_prompt, arguments.validation_inference_steps,
+                                      arguments.validation_guidance_scale):
         images = []
         if vp is not None:
             logger.info(
@@ -1082,7 +1085,7 @@ def main(args):
                         for images, validation_prompt in zip(images_set, args.validation_prompt):
                             if len(images) > 0:
                                 label = str(uuid.uuid1())[:8]  # generate an id for different set of images
-                                log_validation_images_to_tracker(images, label, validation_prompt, accelerator, epoch)
+                                log_validation_images_to_tracker(images, label, validation_prompt, accelerator, global_step)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
