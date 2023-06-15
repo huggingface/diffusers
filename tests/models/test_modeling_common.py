@@ -261,7 +261,7 @@ class ModelTesterMixin:
         assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
 
     @require_torch_gpu
-    def test_set_attn_processor(self):
+    def test_set_attn_processor_for_determinism(self):
         torch.use_deterministic_algorithms(False)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
