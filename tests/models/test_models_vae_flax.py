@@ -4,7 +4,7 @@ from diffusers import FlaxAutoencoderKL
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
-from .test_modeling_common_flax import FlaxModelTesterMixin
+from .test_modeling_common_flax import FlaxModelTesterMixin, UNetTesterMixin
 
 
 if is_flax_available():
@@ -12,7 +12,7 @@ if is_flax_available():
 
 
 @require_flax
-class FlaxAutoencoderKLTests(FlaxModelTesterMixin, unittest.TestCase):
+class FlaxAutoencoderKLTests(FlaxModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = FlaxAutoencoderKL
 
     @property

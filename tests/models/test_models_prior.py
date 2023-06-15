@@ -28,13 +28,13 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism
 from examples.community.stable_diffusion_controlnet_reference import torch_dfs
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
 
 
-class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
+class PriorTransformerTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = PriorTransformer
 
     @property
