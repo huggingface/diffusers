@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 
 def log_validation_images_to_tracker(images, label, validation_prompt, accelerator, epoch):
     logger.info(
-        f"Logging images to tracker."
+        f"Logging images to tracker for validation prompt: {validation_prompt}."
     )
 
     for tracker in accelerator.trackers:
@@ -1078,11 +1078,11 @@ def main(args):
                             accelerator,
                             weight_dtype
                         )
-                        for ix, (images,  instance_data_dir, validation_prompt) in enumerate(
-                                zip(images_set, args.instance_data_dir, args.validation_prompt)):
+                        for images,  instance_data_dir, validation_prompt in zip(images_set, args.instance_data_dir,
+                                                                                 args.validation_prompt):
                             if len(images) > 0:
                                 # Get the label from the instance data directory
-                                label = basename(normpath(instance_data_dir)) if validation_prompt is None else f"image{ix}"
+                                label = basename(normpath(instance_data_dir))
                                 log_validation_images_to_tracker(images, label, validation_prompt, accelerator, epoch)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
