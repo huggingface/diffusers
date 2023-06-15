@@ -23,6 +23,7 @@ from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMix
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    BaseOutput,
     is_accelerate_available,
     is_accelerate_version,
     logging,
