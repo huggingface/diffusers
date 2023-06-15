@@ -79,6 +79,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
+        num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
     _supports_gradient_checkpointing = False
@@ -105,6 +106,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
         super().__init__()
 
@@ -121,9 +123,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
-        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
         # input
@@ -147,7 +149,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
-            attention_head_dim=attention_head_dim,
+            num_attention_heads=num_attention_heads,
             in_channels=block_out_channels[0],
             num_layers=1,
         )
@@ -156,8 +158,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
         # down
         output_channel = block_out_channels[0]
@@ -177,7 +179,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_heads=attention_head_dim[i],
+                attn_num_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=False,
             )
@@ -191,7 +193,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attention_head_dim[-1],
+            attn_num_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=False,
         )
@@ -201,7 +203,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
-        reversed_attention_head_dim = list(reversed(attention_head_dim))
+        reversed_num_attention_heads = list(reversed(num_attention_heads))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -230,7 +232,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_heads=reversed_attention_head_dim[i],
+                attn_num_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
             )
             self.up_blocks.append(up_block)
@@ -288,7 +290,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
                 `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                provided, uses as many slices as `num_attention_heads // slice_size`. In this case, `num_attention_heads`
                 must be a multiple of `slice_size`.
         """
         sliceable_head_dims = []

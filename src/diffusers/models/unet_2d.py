@@ -67,6 +67,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
+        num_attention_heads (`int`, *optional*): The number of attention heads.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
@@ -97,6 +98,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         downsample_padding: int = 1,
         act_fn: str = "silu",
         attention_head_dim: Optional[int] = 8,
+        num_attention_heads: Optional[int] = None,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
@@ -108,6 +110,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4
+
+        # If `num_attention_heads` is not defined (which is the case for most models)
+        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -164,7 +174,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_heads=attention_head_dim,
+                attn_num_heads=num_attention_heads,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
             )
@@ -178,7 +188,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            attn_num_heads=attention_head_dim,
+            attn_num_heads=num_attention_heads,
             resnet_groups=norm_num_groups,
             add_attention=add_attention,
         )
@@ -204,7 +214,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_heads=attention_head_dim,
+                attn_num_heads=num_attention_heads,
                 resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.up_blocks.append(up_block)
