@@ -538,12 +538,6 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
-    parser.add_argument(
-        "--controlnet_conditioning_embedding_out_channels",
-        type=int,
-        nargs="+",
-        default=None,
-    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -785,12 +779,7 @@ def main(args):
         controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from unet")
-        controlnet_kwargs = {}
-        if args.controlnet_conditioning_embedding_out_channels is not None:
-            controlnet_kwargs[
-                "conditioning_embedding_out_channels"
-            ] = args.controlnet_conditioning_embedding_out_channels
-        controlnet = ControlNetModel.from_unet(unet, **controlnet_kwargs)
+        controlnet = ControlNetModel.from_unet(unet)
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -947,7 +936,6 @@ def main(args):
         # tensorboard cannot handle list types for config
         tracker_config.pop("validation_prompt")
         tracker_config.pop("validation_image")
-        tracker_config.pop("controlnet_conditioning_embedding_out_channels")
 
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 

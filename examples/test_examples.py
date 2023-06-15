@@ -1210,7 +1210,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --max_train_steps=6
             --checkpoints_total_limit=2
             --checkpointing_steps=2
-            --controlnet_conditioning_embedding_out_channels 64 32
+            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
             """.split()
 
             run_command(self._launch_args + test_args)
@@ -1230,7 +1230,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --resolution=64
             --train_batch_size=1
             --gradient_accumulation_steps=1
-            --controlnet_conditioning_embedding_out_channels 64 32
+            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
             --max_train_steps=9
             --checkpointing_steps=2
             """.split()
@@ -1250,7 +1250,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --resolution=64
             --train_batch_size=1
             --gradient_accumulation_steps=1
-            --controlnet_conditioning_embedding_out_channels 64 32
+            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
             --max_train_steps=11
             --checkpointing_steps=2
             --resume_from_checkpoint=checkpoint-8
