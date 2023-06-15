@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Create reproducible pipelines
 
+[[open-in-colab]]
+
 Reproducibility is important for testing, replicating results, and can even be used to [improve image quality](reusing_seeds). However, the randomness in diffusion models is a desired property because it allows the pipeline to generate different images every time it is run. While you can't expect to get the exact same results across platforms, you can expect results to be reproducible across releases and platforms within a certain tolerance range. Even then, tolerance varies depending on the diffusion pipeline and checkpoint.
 
 This is why it's important to understand how to control sources of randomness in diffusion models or use deterministic algorithms.

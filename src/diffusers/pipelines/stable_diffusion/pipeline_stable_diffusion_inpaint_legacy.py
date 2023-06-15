@@ -548,7 +548,7 @@ class StableDiffusionInpaintPipelineLegacy(
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, image, timestep, num_images_per_prompt, dtype, device, generator):
-        image = image.to(device=self.device, dtype=dtype)
+        image = image.to(device=device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = self.vae.config.scaling_factor * init_latents
@@ -558,7 +558,7 @@ class StableDiffusionInpaintPipelineLegacy(
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
-        noise = randn_tensor(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
+        noise = randn_tensor(init_latents.shape, generator=generator, device=device, dtype=dtype)
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
         return latents, init_latents_orig, noise
@@ -710,7 +710,7 @@ class StableDiffusionInpaintPipelineLegacy(
         )
 
         # 7. Prepare mask latent
-        mask = mask_image.to(device=self.device, dtype=latents.dtype)
+        mask = mask_image.to(device=device, dtype=latents.dtype)
         mask = torch.cat([mask] * num_images_per_prompt)
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
