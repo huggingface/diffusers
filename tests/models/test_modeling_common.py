@@ -26,9 +26,10 @@ import torch
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
+from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import logging, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_2, run_test_in_subprocess
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_2, require_torch_gpu, run_test_in_subprocess
 
 
 # Will be run via run_test_in_subprocess
@@ -182,8 +183,9 @@ class UNetTesterMixin:
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+
 class ModelTesterMixin:
-    main_input_name = None # overwrite in model specific tester class
+    main_input_name = None  # overwrite in model specific tester class
 
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -256,6 +258,55 @@ class ModelTesterMixin:
             model.does_not_exist
 
         assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
+
+    @require_torch_gpu
+    def test_set_attn_processor(self):
+        torch.use_deterministic_algorithms(False)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_1 = model(**inputs_dict)[0]
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        model.enable_xformers_memory_efficient_attention()
+        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_3 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor2_0())
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_4 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor())
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_5 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(XFormersAttnProcessor())
+        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_6 = model(**inputs_dict)[0]
+
+        torch.use_deterministic_algorithms(True)
+
+        # make sure that outputs match
+        assert torch.allclose(output_2, output_1, atol=1e-3)
+        assert torch.allclose(output_2, output_3, atol=1e-3)
+        assert torch.allclose(output_2, output_4, atol=1e-3)
+        assert torch.allclose(output_2, output_5, atol=1e-3)
+        assert torch.allclose(output_2, output_6, atol=1e-3)
 
     def test_from_save_pretrained_variant(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

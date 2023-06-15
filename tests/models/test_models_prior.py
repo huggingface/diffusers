@@ -14,21 +14,17 @@
 # limitations under the License.
 
 import gc
-import unittest
 import inspect
-import random
-from jax._src.interpreters.batching import batch
+import unittest
 
 import torch
 from parameterized import parameterized
 
 from diffusers import PriorTransformer
-from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils import floats_tensor, slow, torch_all_close, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
-from examples.community.stable_diffusion_controlnet_reference import torch_dfs
 
-from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from .test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
@@ -49,7 +45,12 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
         proj_embedding = floats_tensor((batch_size, embedding_dim)).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, num_embeddings, embedding_dim)).to(torch_device)
 
-        return {"hidden_states": hidden_states, "timestep": 2, "proj_embedding": proj_embedding, "encoder_hidden_states": encoder_hidden_states}
+        return {
+            "hidden_states": hidden_states,
+            "timestep": 2,
+            "proj_embedding": proj_embedding,
+            "encoder_hidden_states": encoder_hidden_states,
+        }
 
     def get_dummy_seed_input(self, seed=0):
         torch.manual_seed(seed)
@@ -57,13 +58,17 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
         embedding_dim = 8
         num_embeddings = 7
 
-        hidden_states =torch.randn((batch_size, embedding_dim)).to(torch_device)
+        hidden_states = torch.randn((batch_size, embedding_dim)).to(torch_device)
 
         proj_embedding = torch.randn((batch_size, embedding_dim)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, num_embeddings, embedding_dim)).to(torch_device)
 
-        return {"hidden_states": hidden_states, "timestep": 2, "proj_embedding": proj_embedding, "encoder_hidden_states": encoder_hidden_states}
-
+        return {
+            "hidden_states": hidden_states,
+            "timestep": 2,
+            "proj_embedding": proj_embedding,
+            "encoder_hidden_states": encoder_hidden_states,
+        }
 
     @property
     def input_shape(self):
@@ -86,7 +91,9 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = PriorTransformer.from_pretrained("hf-internal-testing/prior-dummy", output_loading_info=True)
+        model, loading_info = PriorTransformer.from_pretrained(
+            "hf-internal-testing/prior-dummy", output_loading_info=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -123,9 +130,7 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
         # the expected output slices are not the same for CPU and GPU.
-        expected_output_slice = torch.tensor(
-            [-1.3436, -0.2870,  0.7538,  0.4368, -0.0239]
-        )
+        expected_output_slice = torch.tensor([-1.3436, -0.2870, 0.7538, 0.4368, -0.0239])
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
 
@@ -140,12 +145,17 @@ class PriorTransformerIntegrationTests(unittest.TestCase):
         embedding_dim = embedding_dim
         num_embeddings = num_embeddings
 
-        hidden_states =torch.randn((batch_size, embedding_dim)).to(torch_device)
+        hidden_states = torch.randn((batch_size, embedding_dim)).to(torch_device)
 
         proj_embedding = torch.randn((batch_size, embedding_dim)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, num_embeddings, embedding_dim)).to(torch_device)
 
-        return {"hidden_states": hidden_states, "timestep": 2, "proj_embedding": proj_embedding, "encoder_hidden_states": encoder_hidden_states}
+        return {
+            "hidden_states": hidden_states,
+            "timestep": 2,
+            "proj_embedding": proj_embedding,
+            "encoder_hidden_states": encoder_hidden_states,
+        }
 
     def tearDown(self):
         # clean up the VRAM after each test
