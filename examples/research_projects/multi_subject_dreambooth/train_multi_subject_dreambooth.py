@@ -36,7 +36,6 @@ from diffusers.utils.import_utils import is_xformers_available
 if is_wandb_available():
     import wandb
 
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
 
@@ -57,7 +56,8 @@ def log_validation_images_to_tracker(images: List[np.array], label: str, validat
             tracker.log(
                 {
                     "validation": [
-                        wandb.Image(image, caption=f"{label}_{i}: {validation_prompt}") for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{label}_{epoch}_{i}: {validation_prompt}") for i, image in
+                        enumerate(images)
                     ]
                 }
             )
@@ -103,7 +103,8 @@ def generate_validation_images(text_encoder: object, tokenizer: object, unet: ob
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    generator = None if arguments.seed is None else torch.Generator(device=accelerator.device).manual_seed(arguments.seed)
+    generator = None if arguments.seed is None else torch.Generator(device=accelerator.device).manual_seed(
+        arguments.seed)
 
     images_sets = []
     for vp, nvi, vnp, vis, vgs in zip(arguments.validation_prompt, arguments.validation_number_images,
@@ -1090,11 +1091,12 @@ def main(args):
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
-                            save_path = join(args.output_dir, f"checkpoint-{global_step}")
-                            accelerator.save_state(save_path)
-                            logger.info(f"Saved state to {save_path}")
+                        save_path = join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
-                    if args.validation_steps and any(args.validation_prompt) and global_step % args.validation_steps == 0:
+                    if args.validation_steps and any(args.validation_prompt) and \
+                            global_step % args.validation_steps == 0:
                         images_set = generate_validation_images(
                             text_encoder,
                             tokenizer,
@@ -1107,7 +1109,8 @@ def main(args):
                         for images, validation_prompt in zip(images_set, args.validation_prompt):
                             if len(images) > 0:
                                 label = str(uuid.uuid1())[:8]  # generate an id for different set of images
-                                log_validation_images_to_tracker(images, label, validation_prompt, accelerator, global_step)
+                                log_validation_images_to_tracker(images, label, validation_prompt, accelerator,
+                                                                 global_step)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
