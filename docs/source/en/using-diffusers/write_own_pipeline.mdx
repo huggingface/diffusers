@@ -42,63 +42,63 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
 
 1. Load the model and scheduler:
 
-    ```py
-    >>> from diffusers import DDPMScheduler, UNet2DModel
+```py
+>>> from diffusers import DDPMScheduler, UNet2DModel
 
-    >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
-    >>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
-    ```
+>>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
+>>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
+```
 
 2. Set the number of timesteps to run the denoising process for:
 
-    ```py
-    >>> scheduler.set_timesteps(50)
-    ```
+```py
+>>> scheduler.set_timesteps(50)
+```
 
 3. Setting the scheduler timesteps creates a tensor with evenly spaced elements in it, 50 in this example. Each element corresponds to a timestep at which the model denoises an image. When you create the denoising loop later, you'll iterate over this tensor to denoise an image:
 
-    ```py
-    >>> scheduler.timesteps
-    tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
-        700, 680, 660, 640, 620, 600, 580, 560, 540, 520, 500, 480, 460, 440,
-        420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 220, 200, 180, 160,
-        140, 120, 100,  80,  60,  40,  20,   0])
-    ```
+```py
+>>> scheduler.timesteps
+tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
+    700, 680, 660, 640, 620, 600, 580, 560, 540, 520, 500, 480, 460, 440,
+    420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 220, 200, 180, 160,
+    140, 120, 100,  80,  60,  40,  20,   0])
+```
 
 4. Create some random noise with the same shape as the desired output:
 
-    ```py
-    >>> import torch
+```py
+>>> import torch
 
-    >>> sample_size = model.config.sample_size
-    >>> noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
-    ```
+>>> sample_size = model.config.sample_size
+>>> noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
+```
 
-4. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
+5. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
 
-    ```py
-    >>> input = noise
+```py
+>>> input = noise
 
-    >>> for t in scheduler.timesteps:
-    ...     with torch.no_grad():
-    ...         noisy_residual = model(input, t).sample
-    ...     previous_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
-    ...     input = previous_noisy_sample
-    ```
+>>> for t in scheduler.timesteps:
+...     with torch.no_grad():
+...         noisy_residual = model(input, t).sample
+...     previous_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
+...     input = previous_noisy_sample
+```
 
-    This is the entire denoising process, and you can use this same pattern to write any diffusion system.
+This is the entire denoising process, and you can use this same pattern to write any diffusion system.
 
-5. The last step is to convert the denoised output into an image:
+6. The last step is to convert the denoised output into an image:
 
-    ```py
-    >>> from PIL import Image
-    >>> import numpy as np
+```py
+>>> from PIL import Image
+>>> import numpy as np
 
-    >>> image = (input / 2 + 0.5).clamp(0, 1)
-    >>> image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
-    >>> image = Image.fromarray((image * 255).round().astype("uint8"))
-    >>> image
-    ```
+>>> image = (input / 2 + 0.5).clamp(0, 1)
+>>> image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
+>>> image = Image.fromarray((image * 255).round().astype("uint8"))
+>>> image
+```
 
 In the next section, you'll put your skills to the test and breakdown the more complex Stable Diffusion pipeline. The steps are more or less the same. You'll initialize the necessary components, and set the number of timesteps to create a `timestep` array. The `timestep` array is used in the denoising loop, and for each element in this array, the model predicts a less noisy image. The denoising loop iterates over the `timestep`'s, and at each timestep, it outputs a noisy residual and the scheduler uses it to predict a less noisy image at the previous timestep. This process is repeated until you reach the end of the `timestep` array.
 
