@@ -203,7 +203,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
         # Changing `attention_head_dim` to `num_attention_heads` for 40,000 configurations is too backwards breaking
         # which is why we correct for the naming here.
-        num_attention_heads = attention_head_dim
+        num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
