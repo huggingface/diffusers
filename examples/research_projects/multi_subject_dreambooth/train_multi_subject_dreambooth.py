@@ -4,9 +4,10 @@ import itertools
 import json
 import logging
 import math
+import uuid
 import warnings
 from os import environ, listdir, makedirs
-from os.path import basename, join, normpath
+from os.path import basename, join
 from pathlib import Path
 
 import datasets
@@ -1078,11 +1079,9 @@ def main(args):
                             accelerator,
                             weight_dtype
                         )
-                        for images,  instance_data_dir, validation_prompt in zip(images_set, args.instance_data_dir,
-                                                                                 args.validation_prompt):
+                        for images, validation_prompt in zip(images_set, args.validation_prompt):
                             if len(images) > 0:
-                                # Get the label from the instance data directory
-                                label = basename(normpath(instance_data_dir))
+                                label = str(uuid.uuid1())[:8]  # generate an id for different set of images
                                 log_validation_images_to_tracker(images, label, validation_prompt, accelerator, epoch)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
