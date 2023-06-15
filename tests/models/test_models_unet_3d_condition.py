@@ -75,6 +75,7 @@ def create_lora_layers(model, mock_weights: bool = True):
 @skip_mps
 class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):

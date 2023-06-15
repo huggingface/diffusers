@@ -122,6 +122,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
 
 class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DConditionModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):

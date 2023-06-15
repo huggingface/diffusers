@@ -34,8 +34,9 @@ from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 enable_full_determinism()
 
 
-class PriorTransformerTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = PriorTransformer
+    main_input_name = "hidden_states"
 
     @property
     def dummy_input(self):

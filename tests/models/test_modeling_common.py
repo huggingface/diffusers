@@ -182,8 +182,8 @@ class UNetTesterMixin:
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
-class ModelTesterMixin, UNetTesterMixin:
-    main_input_name = "sample"
+class ModelTesterMixin:
+    main_input_name = None # overwrite in model specific tester class
 
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -356,7 +356,7 @@ class ModelTesterMixin, UNetTesterMixin:
         self.assertIsNotNone(output)
 
         # input & output have to have the same shape
-        input_tensor = inputs_dict[main_input_name]
+        input_tensor = inputs_dict[self.main_input_name]
         expected_shape = input_tensor.shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
@@ -406,7 +406,7 @@ class ModelTesterMixin, UNetTesterMixin:
         if isinstance(output, dict):
             output = output.to_tuple()[0]
 
-        input_tensor = inputs_dict[main_input_name]
+        input_tensor = inputs_dict[self.main_input_name]
         noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
@@ -425,7 +425,7 @@ class ModelTesterMixin, UNetTesterMixin:
         if isinstance(output, dict):
             output = output.to_tuple()[0]
 
-        input_tensor = inputs_dict[main_input_name]
+        input_tensor = inputs_dict[self.main_input_name]
         noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()

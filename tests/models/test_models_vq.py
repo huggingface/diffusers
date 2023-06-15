@@ -29,6 +29,7 @@ enable_full_determinism()
 
 class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = VQModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):

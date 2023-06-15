@@ -9,7 +9,7 @@ if is_flax_available():
 
 
 @require_flax
-class FlaxModelTesterMixin, UNetTesterMixin:
+class FlaxModelTesterMixin:
     def test_output(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
