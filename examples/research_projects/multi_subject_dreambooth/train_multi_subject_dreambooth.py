@@ -469,10 +469,9 @@ def parse_args(input_args=None):
 
     if args.concepts_list:
         if args.instance_prompt:
-            raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
-                             "the file.")
+            raise ValueError("If you are using `concepts_list` parameter, define the instance prompt within the file.")
         if args.instance_data_dir:
-            raise ValueError("If you are using `concepts_list` parameter, define the instance within "
+            raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
                              "the file.")
 
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
