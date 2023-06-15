@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
