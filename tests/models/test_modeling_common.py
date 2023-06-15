@@ -186,6 +186,7 @@ class UNetTesterMixin:
 
 class ModelTesterMixin:
     main_input_name = None  # overwrite in model specific tester class
+    base_precision = 1e-3
 
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -302,11 +303,11 @@ class ModelTesterMixin:
         torch.use_deterministic_algorithms(True)
 
         # make sure that outputs match
-        assert torch.allclose(output_2, output_1, atol=1e-3)
-        assert torch.allclose(output_2, output_3, atol=1e-3)
-        assert torch.allclose(output_2, output_4, atol=1e-3)
-        assert torch.allclose(output_2, output_5, atol=1e-3)
-        assert torch.allclose(output_2, output_6, atol=1e-3)
+        assert torch.allclose(output_2, output_1, atol=self.base_precision)
+        assert torch.allclose(output_2, output_3, atol=self.base_precision)
+        assert torch.allclose(output_2, output_4, atol=self.base_precision)
+        assert torch.allclose(output_2, output_5, atol=self.base_precision)
+        assert torch.allclose(output_2, output_6, atol=self.base_precision)
 
     def test_from_save_pretrained_variant(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

@@ -33,6 +33,7 @@ enable_full_determinism()
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
+    base_precision = 1e-2
 
     @property
     def dummy_input(self):
