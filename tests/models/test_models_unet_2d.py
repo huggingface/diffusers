@@ -71,6 +71,7 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
 class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -185,6 +186,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
 class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):
