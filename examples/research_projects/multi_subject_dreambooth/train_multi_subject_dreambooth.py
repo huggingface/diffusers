@@ -706,13 +706,13 @@ def main(args):
             num_of_validation_prompts = len(validation_prompts)
             args.validation_prompt = validation_prompts
             args.validation_number_images = [args.validation_number_images] * num_of_validation_prompts
+
+            negative_validation_prompts = [None] * num_of_validation_prompts
             if args.validation_negative_prompt:
                 negative_validation_prompts = args.validation_negative_prompt.split(",")
                 while len(negative_validation_prompts) < validation_prompts:
                     negative_validation_prompts.append(None)
-                args.validation_negative_prompt = negative_validation_prompts
-            else:
-                args.validation_negative_prompt = [None] * num_of_validation_prompts
+            args.validation_negative_prompt = negative_validation_prompts
 
             assert num_of_validation_prompts == len(negative_validation_prompts), \
                 "The length of negative prompts for validation is greater than the prompt."
