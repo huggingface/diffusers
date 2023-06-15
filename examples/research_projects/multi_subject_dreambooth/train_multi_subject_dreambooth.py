@@ -458,37 +458,46 @@ def parse_args(input_args=None):
              " class_prompt, etc.",
     )
 
-    if input_args is not None:
+    if input_args:
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
 
-    if args.concepts_list is None and (args.instance_data_dir is None or args.instance_prompt is None):
+    if not args.concepts_list and (not args.instance_data_dir or not args.instance_prompt):
         raise ValueError("You must specify either instance parameters (data directory, prompt, etc.) or use "
                          "the `concept_list` parameter and specify them within the file.")
+
+    if args.concepts_list:
+        if args.instance_prompt:
+            raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
+                             "the file.")
+        if args.instance_data_dir:
+            raise ValueError("If you are using `concepts_list` parameter, define the instance within "
+                             "the file.")
+
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
     if args.with_prior_preservation:
-        if args.concepts_list is None:
-            if args.class_data_dir is None:
+        if not args.concepts_list:
+            if not args.class_data_dir:
                 raise ValueError("You must specify a data directory for class images.")
-            if args.class_prompt is None:
+            if not args.class_prompt:
                 raise ValueError("You must specify prompt for class images.")
         else:
-            if args.class_data_dir is not None:
-                raise ValueError("If you are using `concepts_list` parameter define the class data directory within "
-                                 "the file.")
-            if args.class_prompt is not None:
-                raise ValueError("If you are using `concepts_list` parameter define the class prompt within "
-                                 "the file.")
+            if args.class_data_dir:
+                raise ValueError(f"If you are using `concepts_list` parameter, define the class data directory within "
+                                 f"the file.")
+            if args.class_prompt:
+                raise ValueError(f"If you are using `concepts_list` parameter, define the class prompt within "
+                                 f"the file.")
     else:
         # logger is not available yet
-        if args.class_data_dir is not None:
+        if not args.class_data_dir:
             warnings.warn(
                 "Ignoring `class_data_dir` parameter, you need to use it together with `with_prior_preservation`.")
-        if args.class_prompt is not None:
+        if not args.class_prompt:
             warnings.warn(
                 "Ignoring `class_prompt` parameter, you need to use it together with `with_prior_preservation`.")
 
@@ -663,7 +672,7 @@ def main(args):
     instance_prompt = []
     class_data_dir = [] if args.with_prior_preservation else None
     class_prompt = [] if args.with_prior_preservation else None
-    if args.concepts_list is not None:
+    if args.concepts_list:
         with open(args.concepts_list, "r") as f:
             concepts_list = json.load(f)
 
@@ -673,6 +682,7 @@ def main(args):
             args.validation_negative_prompt = []
             args.validation_inference_steps = []
             args.validation_guidance_scale = []
+
         for concept in concepts_list:
             instance_data_dir.append(concept['instance_data_dir'])
             instance_prompt.append(concept['instance_prompt'])
