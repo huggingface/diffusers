@@ -702,11 +702,22 @@ def main(args):
             ), "Instance & class data dir or prompt inputs are not of the same length."
 
         if args.validation_steps:
-            args.validation_prompt = [args.validation_prompt]
-            args.validation_number_images = [args.validation_number_images]
-            args.validation_negative_prompt = [args.validation_negative_prompt]
-            args.validation_inference_steps = [args.validation_inference_steps]
-            args.validation_guidance_scale = [args.validation_guidance_scale]
+            validation_prompts = args.validation_prompt.split(",")
+            num_of_validation_prompts = len(validation_prompts)
+            args.validation_prompt = validation_prompts
+            args.validation_number_images = [args.validation_number_images] * num_of_validation_prompts
+            if args.validation_negative_prompt:
+                negative_validation_prompts = args.validation_negative_prompt.split(",")
+                while len(negative_validation_prompts) < validation_prompts:
+                    negative_validation_prompts.append(None)
+                args.validation_negative_prompt = negative_validation_prompts
+            else:
+                args.validation_negative_prompt = [None] * num_of_validation_prompts
+
+            assert num_of_validation_prompts == len(negative_validation_prompts), \
+                "The length of negative prompts for validation is greater than the prompt."
+            args.validation_inference_steps = [args.validation_inference_steps] * num_of_validation_prompts
+            args.validation_guidance_scale = [args.validation_guidance_scale] * num_of_validation_prompts
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
