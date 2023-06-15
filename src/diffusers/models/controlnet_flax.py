@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 import flax
 import flax.linen as nn
@@ -129,6 +129,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of layers per block.
         attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
+        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+            The number of attention heads.
         cross_attention_dim (`int`, *optional*, defaults to 768):
             The dimension of the cross attention features.
         dropout (`float`, *optional*, defaults to 0):
@@ -154,7 +156,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     only_cross_attention: Union[bool, Tuple[bool]] = False
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int]] = 8
+    attention_head_dim: Union[int, Tuple[int]] = 8,
+    num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -182,6 +185,14 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 
+        # If `num_attention_heads` is not defined (which is the case for most models)
+        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        self.num_attention_heads = self.num_attention_heads or self.attention_head_dim
+
         # input
         self.conv_in = nn.Conv(
             block_out_channels[0],
@@ -206,9 +217,9 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(only_cross_attention, bool):
             only_cross_attention = (only_cross_attention,) * len(self.down_block_types)
 
-        attention_head_dim = self.attention_head_dim
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(self.down_block_types)
+        num_attention_heads = self.num_attention_heads
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
         # down
         down_blocks = []
@@ -237,7 +248,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
-                    attn_num_heads=attention_head_dim[i],
+                    attn_num_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
@@ -285,7 +296,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.mid_block = FlaxUNetMidBlock2DCrossAttn(
             in_channels=mid_block_channel,
             dropout=self.dropout,
-            attn_num_heads=attention_head_dim[-1],
+            attn_num_heads=num_attention_heads[-1],
             use_linear_projection=self.use_linear_projection,
             dtype=self.dtype,
         )
