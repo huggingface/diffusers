@@ -716,7 +716,7 @@ def main(args):
             args.validation_negative_prompt = negative_validation_prompts
 
             assert num_of_validation_prompts == len(negative_validation_prompts), \
-                "The length of negative prompts for validation is greater than the prompt."
+                "The length of negative prompts for validation is greater than the number of validation prompts."
             args.validation_inference_steps = [args.validation_inference_steps] * num_of_validation_prompts
             args.validation_guidance_scale = [args.validation_guidance_scale] * num_of_validation_prompts
 
