@@ -381,40 +381,46 @@ def parse_args(input_args=None):
         type=int,
         default=None,
         help=(
-            "Run validation every X steps. Validation consists of running the prompt"
-            " `validation_prompt` multiple times: `validation_number_images`"
-            " and logging the images."
+            "Run validation every X steps. Validation consists of running the prompt(s) `validation_prompt` "
+            "multiple times (`validation_number_images`) and logging the images."
         ),
     )
     parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
-        help="A prompt that is used during validation to verify that the model is learning.",
+        help="A prompt that is used during validation to verify that the model is learning. You can use commas to "
+             "define multiple negative prompts. This parameter can be defined also within the file given by "
+             "`concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_number_images",
         type=int,
         default=4,
-        help="Number of images that should be generated during validation with the validation parameters given.",
+        help="Number of images that should be generated during validation with the validation parameters given. This "
+             "can be defined within the file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_negative_prompt",
         type=str,
         default=None,
-        help="A negative prompt that is used during validation to verify that the model is learning.",
+        help="A negative prompt that is used during validation to verify that the model is learning. You can use commas"
+             " to define multiple negative prompts, each one corresponding to a validation prompt. This parameter can "
+             "be defined also within the file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_inference_steps",
         type=int,
         default=25,
-        help="Number of inference steps (denoising steps) to run during validation.",
+        help="Number of inference steps (denoising steps) to run during validation. This can be defined within the "
+             "file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_guidance_scale",
         type=float,
         default=7.5,
-        help="To control how much the image generation process follows the text prompt",
+        help="To control how much the image generation process follows the text prompt. This can be defined within the "
+             "file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--mixed_precision",
@@ -477,8 +483,12 @@ def parse_args(input_args=None):
         if args.validation_steps:
             if args.validation_prompt or args.validation_negative_prompt or args.validation_guidance_scale \
                     or args.validation_number_images or args.validation_inference_steps:
-                raise ValueError("If you are using `concepts_list` parameter, define all validation parameters for "
-                                 "each subject within the file.")
+                raise ValueError("If you are using `concepts_list` parameter, define validation parameters for "
+                                 "each subject within the file:\n - `validation_prompt`."
+                                 "\n - `validation_negative_prompt`.\n - `validation_guidance_scale`."
+                                 "\n - `validation_number_images`.\n - `validation_prompt`."
+                                 "\n - `validation_inference_steps`.\nThe `validation_steps` parameter is the only one "
+                                 "that needs to be defined outside the file.")
 
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
