@@ -375,7 +375,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=100,
+        default=None,
         help=(
             "Run validation every X steps. Validation consists of running the prompt"
             " `validation_prompt` multiple times: `validation_number_images`"
@@ -663,7 +663,7 @@ def main(args):
         with open(args.concepts_list, "r") as f:
             concepts_list = json.load(f)
 
-        if args.validation_steps is not None:
+        if args.validation_steps:
             args.validation_prompt = []
             args.validation_number_images = []
             args.validation_negative_prompt = []
@@ -679,7 +679,7 @@ def main(args):
                 except KeyError:
                     raise KeyError("`class_data_dir` or `class_prompt` not found in concepts_list while using "
                                    "`with_prior_preservation`.")
-            if args.validation_steps is not None:
+            if args.validation_steps:
                 args.validation_prompt.append(concept.get('validation_prompt', None))
                 args.validation_number_images.append(concept.get('validation_number_images', 4))
                 args.validation_negative_prompt.append(concept.get('validation_negative_prompt', None))
@@ -701,7 +701,7 @@ def main(args):
                 for x in [len(instance_data_dir), len(instance_prompt), len(class_data_dir), len(class_prompt)]
             ), "Instance & class data dir or prompt inputs are not of the same length."
 
-        if args.validation_steps is not None:
+        if args.validation_steps:
             args.validation_prompt = [args.validation_prompt]
             args.validation_number_images = [args.validation_number_images]
             args.validation_negative_prompt = [args.validation_negative_prompt]
@@ -1057,7 +1057,7 @@ def main(args):
                             accelerator.save_state(save_path)
                             logger.info(f"Saved state to {save_path}")
 
-                    if any(args.validation_prompt) and global_step % args.validation_steps == 0:
+                    if args.validation_steps and any(args.validation_prompt) and global_step % args.validation_steps == 0:
                         images_set = generate_validation_images(
                             text_encoder,
                             tokenizer,
@@ -1067,7 +1067,8 @@ def main(args):
                             accelerator,
                             weight_dtype
                         )
-                        for ix, (images,  instance_data_dir, validation_prompt) in enumerate(zip(images_set, args.instance_data_dir, args.validation_prompt)):
+                        for ix, (images,  instance_data_dir, validation_prompt) in enumerate(
+                                zip(images_set, args.instance_data_dir, args.validation_prompt)):
                             if len(images) > 0:
                                 # Get the label from the instance data directory
                                 label = basename(normpath(instance_data_dir)) if validation_prompt is None else f"image{ix}"
