@@ -150,6 +150,38 @@ class ModelUtilsTest(unittest.TestCase):
         assert model.config.in_channels == 9
 
 
+class UNetTesterMixin:
+    def test_forward_signature(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        signature = inspect.signature(model.forward)
+        # signature.parameters is an OrderedDict => so arg_names order is deterministic
+        arg_names = [*signature.parameters.keys()]
+
+        expected_arg_names = ["sample", "timestep"]
+        self.assertListEqual(arg_names[:2], expected_arg_names)
+
+    def test_forward_with_norm_groups(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["norm_num_groups"] = 16
+        init_dict["block_out_channels"] = (16, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
 class ModelTesterMixin:
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -170,12 +202,12 @@ class ModelTesterMixin:
         with torch.no_grad():
             image = model(**inputs_dict)
             if isinstance(image, dict):
-                image = image.sample
+                image = image.to_tuple()[0]
 
             new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
-                new_image = new_image.sample
+                new_image = new_image.to_tuple()[0]
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
@@ -229,6 +261,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         if hasattr(model, "set_default_attn_processor"):
             model.set_default_attn_processor()
+
         model.to(torch_device)
         model.eval()
 
@@ -250,12 +283,12 @@ class ModelTesterMixin:
         with torch.no_grad():
             image = model(**inputs_dict)
             if isinstance(image, dict):
-                image = image.sample
+                image = image.to_tuple()[0]
 
             new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
-                new_image = new_image.sample
+                new_image = new_image.to_tuple()[0]
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
@@ -293,11 +326,11 @@ class ModelTesterMixin:
         with torch.no_grad():
             first = model(**inputs_dict)
             if isinstance(first, dict):
-                first = first.sample
+                first = first.to_tuple()[0]
 
             second = model(**inputs_dict)
             if isinstance(second, dict):
-                second = second.sample
+                second = second.to_tuple()[0]
 
         out_1 = first.cpu().numpy()
         out_2 = second.cpu().numpy()
@@ -316,42 +349,14 @@ class ModelTesterMixin:
             output = model(**inputs_dict)
 
             if isinstance(output, dict):
-                output = output.sample
+                output = output.to_tuple()[0]
 
         self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
+
+        # input & output have to have the same shape
+        input_tensor = next(iter(init_dict.values()))
+        expected_shape = input_tensor.shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_forward_with_norm_groups(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["norm_num_groups"] = 16
-        init_dict["block_out_channels"] = (16, 32)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_forward_signature(self):
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-
-        model = self.model_class(**init_dict)
-        signature = inspect.signature(model.forward)
-        # signature.parameters is an OrderedDict => so arg_names order is deterministic
-        arg_names = [*signature.parameters.keys()]
-
-        expected_arg_names = ["sample", "timestep"]
-        self.assertListEqual(arg_names[:2], expected_arg_names)
 
     def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -378,12 +383,12 @@ class ModelTesterMixin:
             output_1 = model(**inputs_dict)
 
             if isinstance(output_1, dict):
-                output_1 = output_1.sample
+                output_1 = output_1.to_tuple()[0]
 
             output_2 = new_model(**inputs_dict)
 
             if isinstance(output_2, dict):
-                output_2 = output_2.sample
+                output_2 = output_2.to_tuple()[0]
 
         self.assertEqual(output_1.shape, output_2.shape)
 
@@ -397,9 +402,10 @@ class ModelTesterMixin:
         output = model(**inputs_dict)
 
         if isinstance(output, dict):
-            output = output.sample
+            output = output.to_tuple()[0]
 
-        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
+        input_tensor = next(iter(inputs_dict.values()))
+        noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -415,9 +421,10 @@ class ModelTesterMixin:
         output = model(**inputs_dict)
 
         if isinstance(output, dict):
-            output = output.sample
+            output = output.to_tuple()[0]
 
-        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
+        input_tensor = next(iter(inputs_dict.values()))
+        noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
         ema_model.step(model.parameters())
