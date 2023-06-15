@@ -49,7 +49,6 @@ Core library:
 Integrations:
 
 - deepspeed: HF Trainer/Accelerate: @pacman100
-- ray/raytune: @richardliaw, @amogkam
 
 HF projects:
 
