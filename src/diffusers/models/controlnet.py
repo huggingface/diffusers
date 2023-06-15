@@ -397,8 +397,8 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
                 `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `num_attention_heads // slice_size`. In this case, `num_attention_heads`
-                must be a multiple of `slice_size`.
+                provided, uses as many slices as `num_attention_heads // slice_size`. In this case,
+                `num_attention_heads` must be a multiple of `slice_size`.
         """
         sliceable_head_dims = []
 

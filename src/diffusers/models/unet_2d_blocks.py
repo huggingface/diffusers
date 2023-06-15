@@ -2854,9 +2854,7 @@ class KCrossAttnUpBlock2D(nn.Module):
             attentions.append(
                 KAttentionBlock(
                     k_out_channels if (i == num_layers - 1) else out_channels,
-                    k_out_channels // attn_num_heads
-                    if (i == num_layers - 1)
-                    else out_channels // attn_num_heads,
+                    k_out_channels // attn_num_heads if (i == num_layers - 1) else out_channels // attn_num_heads,
                     attn_num_heads,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,

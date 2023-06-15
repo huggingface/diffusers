@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Tuple, Union, Optional
+from typing import Optional, Tuple, Union
 
 import flax
 import flax.linen as nn
@@ -156,8 +156,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     only_cross_attention: Union[bool, Tuple[bool]] = False
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int]] = 8,
-    num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+    attention_head_dim: Union[int, Tuple[int]] = (8,)
+    num_attention_heads: Optional[Union[int, Tuple[int]]] = (None,)
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False

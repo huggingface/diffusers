@@ -103,7 +103,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             If given, the `encoder_hidden_states` and potentially other embeddings will be down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        num_attention_heads (`int`, *optional*): The number of attention. If not defined, defaults to `attention_head_dim`
+        num_attention_heads (`int`, *optional*):
+            The number of attention. If not defined, defaults to `attention_head_dim`
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to None):
@@ -585,8 +586,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
                 `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `num_attention_heads // slice_size`. In this case, `num_attention_heads`
-                must be a multiple of `slice_size`.
+                provided, uses as many slices as `num_attention_heads // slice_size`. In this case,
+                `num_attention_heads` must be a multiple of `slice_size`.
         """
         sliceable_head_dims = []
 
