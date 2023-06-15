@@ -474,6 +474,12 @@ def parse_args(input_args=None):
             raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
                              "the file.")
 
+        if args.validation_steps:
+            if args.validation_prompt or args.validation_negative_prompt or args.validation_guidance_scale \
+                    or args.validation_number_images or args.validation_inference_steps:
+                raise ValueError("If you are using `concepts_list` parameter, define all validation parameters for "
+                                 "each subject within the file.")
+
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
