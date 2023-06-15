@@ -235,7 +235,7 @@ def parse_args():
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+                    "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
         ),
     )
@@ -369,7 +369,7 @@ def main(args):
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Initialize the model
+    # Initialize the model, using a smaller model than the one defined in the original paper by default
     if args.model_config_name_or_path is None:
         model = UNet2DModel(
                 sample_size= args.resolution,
@@ -414,9 +414,10 @@ def main(args):
         model = UNet2DModel.from_config(config)
         target_model = UNet2DModel.from_config(config)
     
+    # load the model to distill into a consistency model
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
     model = model.double()
-    target_model = target_model.double()
+    target_model = target_model.double() # TODO : support half precision training
     teacher_model = teacher_model.double()
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
@@ -579,7 +580,7 @@ def main(args):
             ).long()
             timestep = timesteps[index]
             timestep_prev = timestep + 1
-            # TO-DO, we should have an add noise in the scheduler maybe?
+            # TODO, we should have an add noise in the scheduler maybe?
             noised_image = clean_images + noise*append_dims(timestep, clean_images.ndim)
             scaled_timesteps = noise_scheduler.scale_timestep(timestep)
             scaled_timesteps_prev = noise_scheduler.scale_timestep(timestep_prev) 
@@ -593,6 +594,7 @@ def main(args):
                 ).prev_sample
 
                 # Heun Solver to get previous timestep image using teacher model
+                # TODO - make this cleaner
                 samples = noised_image
                 x = samples
                 model_output = teacher_model(x, scaled_timesteps, class_labels=labels).sample
