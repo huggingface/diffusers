@@ -479,16 +479,13 @@ def parse_args(input_args=None):
         if args.instance_data_dir:
             raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
                              "the file.")
-
-        if args.validation_steps:
-            if args.validation_prompt or args.validation_negative_prompt or args.validation_guidance_scale \
-                    or args.validation_number_images or args.validation_inference_steps:
-                raise ValueError("If you are using `concepts_list` parameter, define validation parameters for "
-                                 "each subject within the file:\n - `validation_prompt`."
-                                 "\n - `validation_negative_prompt`.\n - `validation_guidance_scale`."
-                                 "\n - `validation_number_images`.\n - `validation_prompt`."
-                                 "\n - `validation_inference_steps`.\nThe `validation_steps` parameter is the only one "
-                                 "that needs to be defined outside the file.")
+        if args.validation_steps and (args.validation_prompt or args.validation_negative_prompt):
+            raise ValueError("If you are using `concepts_list` parameter, define validation parameters for "
+                             "each subject within the file:\n - `validation_prompt`."
+                             "\n - `validation_negative_prompt`.\n - `validation_guidance_scale`."
+                             "\n - `validation_number_images`.\n - `validation_prompt`."
+                             "\n - `validation_inference_steps`.\nThe `validation_steps` parameter is the only one "
+                             "that needs to be defined outside the file.")
 
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
