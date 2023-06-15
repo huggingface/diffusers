@@ -22,8 +22,8 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    DDIMScheduler,
-    DDPMScheduler,
+    DDIMParallelScheduler,
+    DDPMParallelScheduler,
     StableDiffusionParadigmsPipeline,
     UNet2DConditionModel,
 )
@@ -62,7 +62,7 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
             attention_head_dim=(2, 4),
             use_linear_projection=True,
         )
-        scheduler = DDIMScheduler(
+        scheduler = DDIMParallelScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -143,7 +143,9 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
     def test_stable_diffusion_paradigms_default_case_ddpm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        components["scheduler"] = DDPMScheduler()
+        torch.manual_seed(0)
+        components["scheduler"] = DDPMParallelScheduler()
+        torch.manual_seed(0)
         sd_pipe = StableDiffusionParadigmsPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -153,7 +155,7 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4534, 0.5342, 0.5028, 0.4500, 0.5577, 0.4918, 0.4653, 0.4960, 0.5446])
+        expected_slice = np.array([0.3573, 0.4420, 0.4960, 0.4799, 0.3796, 0.3879, 0.4819, 0.4365, 0.4468])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -208,7 +210,7 @@ class StableDiffusionParadigmsPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_paradigms_default(self):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
-        scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
+        scheduler = DDIMParallelScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         pipe = StableDiffusionParadigmsPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

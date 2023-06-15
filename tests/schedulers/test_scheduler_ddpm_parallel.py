@@ -1,12 +1,12 @@
 import torch
 
-from diffusers import DDPMScheduler
+from diffusers import DDPMParallelScheduler
 
 from .test_schedulers import SchedulerCommonTest
 
 
-class DDPMSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (DDPMScheduler,)
+class DDPMParallelSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (DDPMParallelScheduler,)
 
     def get_scheduler_config(self, **kwargs):
         config = {
@@ -67,6 +67,31 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
+
+    def test_batch_step_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_trained_timesteps = len(scheduler)
+
+        model = self.dummy_model()
+        sample1 = self.dummy_sample_deter
+        sample2 = self.dummy_sample_deter + 0.1
+        sample3 = self.dummy_sample_deter - 0.1
+
+        per_sample_batch = sample1.shape[0]
+        samples = torch.stack([sample1, sample2, sample3], dim=0)
+        timesteps = torch.arange(num_trained_timesteps)[0:3, None].repeat(1, per_sample_batch)
+
+        residual = model(samples.flatten(0, 1), timesteps.flatten(0, 1))
+        pred_prev_sample = scheduler.batch_step_no_noise(residual, timesteps.flatten(0, 1), samples.flatten(0, 1))
+
+        result_sum = torch.sum(torch.abs(pred_prev_sample))
+        result_mean = torch.mean(torch.abs(pred_prev_sample))
+
+        assert abs(result_sum.item() - 1153.1833) < 1e-2
+        assert abs(result_mean.item() - 0.5005) < 1e-3
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]

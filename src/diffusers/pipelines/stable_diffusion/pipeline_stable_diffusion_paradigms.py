@@ -13,20 +13,16 @@
 # limitations under the License.
 
 import inspect
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -44,10 +40,10 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import DDPMScheduler
+        >>> from diffusers import DDPMParallelScheduler
         >>> from diffusers import StableDiffusionParadigmsPipeline
 
-        >>> scheduler = DDPMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+        >>> scheduler = DDPMParallelScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
         >>> pipe = StableDiffusionParadigmsPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16

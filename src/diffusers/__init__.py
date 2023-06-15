@@ -73,7 +73,9 @@ else:
     )
     from .schedulers import (
         DDIMInverseScheduler,
+        DDIMParallelScheduler,
         DDIMScheduler,
+        DDPMParallelScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,

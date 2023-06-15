@@ -35,10 +35,10 @@ Resources:
 
 ```python
 import torch
-from diffusers import DDPMScheduler
+from diffusers import DDPMParallelScheduler
 from diffusers import StableDiffusionParadigmsPipeline
 
-scheduler = DDPMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+scheduler = DDPMParallelScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
 pipe = StableDiffusionParadigmsPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
