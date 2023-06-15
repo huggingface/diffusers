@@ -21,14 +21,15 @@ from diffusers import VQModel
 from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
 
 
-class VQModelTests(ModelTesterMixin, unittest.TestCase):
+class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = VQModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):
