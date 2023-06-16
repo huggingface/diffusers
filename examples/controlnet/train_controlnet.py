@@ -198,6 +198,11 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
                 image = pipeline(
                     validation_prompt, validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
+            # overlay the validation image over the generated image for better comparison
+            # create a mask with validation image 
+            mask = np.array(validation_image)
+            mask = np.where(mask > 0, 1, 0) 
+            image = np.array(image) * mask + np.array(validation_image) * (1 - mask)
 
             images.append(image)
 
