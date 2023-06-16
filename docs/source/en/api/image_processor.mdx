@@ -1,0 +1,33 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Image Processor for VAE
+
+Image processor provides a unified API for Stable Diffusion pipelines to prepare their image inputs for VAE encoding, as well as post-processing their outputs once decoded. This includes transformations such as resizing, normalization, and conversion between PIL Image, PyTorch, and Numpy arrays. 
+
+All pipelines with VAE image processor will accept image inputs in the format of PIL Image, PyTorch tensor, or Numpy array, and will able to return outputs in the format of PIL Image, Pytorch tensor, and Numpy array based on the `output_type` argument from the user. Additionally, the User can pass encoded image latents directly to the pipeline, or ask the pipeline to return latents as output with `output_type = 'pt'` argument. This allows you to take the generated latents from one pipeline and pass it to another pipeline as input, without ever having to leave the latent space. It also makes it much easier to use multiple pipelines together, by passing PyTorch tensors directly between different pipelines. 
+
+
+# Image Processor for VAE adapted to LDM3D
+
+LDM3D Image processor does the same as the Image processor for VAE but accepts both RGB and depth inputs and will return RGB and depth outputs. 
+
+
+
+## VaeImageProcessor
+
+[[autodoc]] image_processor.VaeImageProcessor
+
+
+## VaeImageProcessorLDM3D
+
+[[autodoc]] image_processor.VaeImageProcessorLDM3D

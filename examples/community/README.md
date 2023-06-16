@@ -1601,7 +1601,7 @@ pipe_images = mixing_pipeline(
 
 ![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
 
-### Stable Diffusion Mixture
+### Stable Diffusion Mixture Tiling
 
 This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
     
@@ -1673,3 +1673,37 @@ prompt = "a mecha robot sitting on a bench"
 image = pipe(prompt, image=input_image, mask_image=mask_image, strength=0.75,).images[0]
 image.save('tensorrt_inpaint_mecha_robot.png')
 ```
+
+### Stable Diffusion Mixture Canvas
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+    
+```python
+from PIL import Image
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import Image2ImageRegion, Text2ImageRegion, preprocess_image
+
+
+# Load and preprocess guide image
+iic_image = preprocess_image(Image.open("input_image.png").convert("RGB"))
+
+# Creater scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler).to("cuda:0", custom_pipeline="mixture_canvas")
+pipeline.to("cuda")
+
+# Mixture of Diffusers generation
+output = pipeline(
+    canvas_height=800,
+    canvas_width=352,
+    regions=[
+        Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
+            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
+        Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
+    ],
+    num_inference_steps=100,
+    seed=5525475061,
+)["images"][0]
+```
+![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
+![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)

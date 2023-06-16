@@ -26,8 +26,9 @@ This tutorial will teach you how to train a [`UNet2DModel`] from scratch on a su
 
 Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets, and 🤗 Accelerate, to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics (you can also use [Weights & Biases](https://docs.wandb.ai/) to track your training).
 
-```bash
-!pip install diffusers[training]
+```py
+# uncomment to install the necessary libraries in Colab
+#!pip install diffusers[training]
 ```
 
 We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:

@@ -1,6 +1,7 @@
 # Inspired by: https://github.com/Mikubill/sd-webui-controlnet/discussions/1236 and https://github.com/Mikubill/sd-webui-controlnet/discussions/1280
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import PIL.Image
 import torch
 
@@ -97,7 +98,14 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -130,8 +138,8 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`,
-                    `List[List[torch.FloatTensor]]`, or `List[List[PIL.Image.Image]]`):
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. `PIL.Image.Image` can
                 also be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If
@@ -223,15 +231,12 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height, width = self._default_height_width(height, width, image)
+        assert reference_attn or reference_adain, "`reference_attn` or `reference_adain` must be True."
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             image,
-            height,
-            width,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -266,6 +271,9 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
         guess_mode = guess_mode or global_pool_conditions
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -274,6 +282,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Prepare image
@@ -289,6 +298,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
+            height, width = image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
             images = []
 
@@ -308,6 +318,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 images.append(image_)
 
             image = images
+            height, width = image[0].shape[-2:]
         else:
             assert False
 
@@ -720,14 +731,15 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
-                    controlnet_latent_model_input = latents
+                    control_model_input = latents
+                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
                 else:
-                    controlnet_latent_model_input = latent_model_input
+                    control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    controlnet_latent_model_input,
+                    control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,

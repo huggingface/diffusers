@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import random
+import shutil
 from pathlib import Path
 
 import accelerate
@@ -52,7 +53,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.18.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -308,6 +309,12 @@ def parse_args():
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
     parser.add_argument(
+        "--prediction_type",
+        type=str,
+        default=None,
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+    )
+    parser.add_argument(
         "--hub_model_id",
         type=str,
         default=None,
@@ -356,11 +363,7 @@ def parse_args():
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=(
-            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
-            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
-        ),
+        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -421,13 +424,12 @@ def main():
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -740,8 +742,8 @@ def main():
     if args.use_ema:
         ema_unet.to(accelerator.device)
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
+    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -848,6 +850,10 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Get the target for loss depending on the prediction type
+                if args.prediction_type is not None:
+                    # set prediction_type of scheduler if defined
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
@@ -898,6 +904,26 @@ def main():
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
