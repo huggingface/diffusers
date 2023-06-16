@@ -701,6 +701,7 @@ def main(args):
         for concept in concepts_list:
             instance_data_dir.append(concept['instance_data_dir'])
             instance_prompt.append(concept['instance_prompt'])
+
             if args.with_prior_preservation:
                 try:
                     class_data_dir.append(concept['class_data_dir'])
@@ -708,6 +709,14 @@ def main(args):
                 except KeyError:
                     raise KeyError("`class_data_dir` or `class_prompt` not found in concepts_list while using "
                                    "`with_prior_preservation`.")
+            else:
+                if 'class_data_dir' in concept:
+                    warnings.warn("Ignoring `class_data_dir` key, to use it you need to enable "
+                                  "`with_prior_preservation`.")
+                if 'class_prompt' in concept:
+                    warnings.warn("Ignoring `class_prompt` key, to use it you need to enable "
+                                  "`with_prior_preservation`.")
+
             if args.validation_steps:
                 args.validation_prompt.append(concept.get('validation_prompt', None))
                 args.validation_number_images.append(concept.get('validation_number_images', 4))
