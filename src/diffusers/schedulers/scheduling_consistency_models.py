@@ -1,4 +1,4 @@
-# Copyright 2023 NVIDIA and The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,18 +24,6 @@ from .scheduling_utils import SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def append_zero(x):
-    return torch.cat([x, x.new_zeros([1])])
-
-
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
-    return x[(...,) + (None,) * dims_to_append]
 
 
 @dataclass
@@ -223,8 +211,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigmas = sigmas.astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
-    # Modified from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
-    # Use self.rho instead of hardcoded 7.0 for rho, sigma_min/max from config, configurable ramp function
+    # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""
 
