@@ -138,7 +138,7 @@ Following are the key hyperparameters that were used to run finetuning:
             wandb_run_url = wandb.run.url
 
     wandb_info = f"""
-More information on all the CLI arguments should be available on the `wandb` run page if you used it via `report_to="wandb"`.
+More information on all the CLI arguments and the environment should be available on the `wandb` run page if you used it via `report_to="wandb"`.
 Check it out here: {wandb_run_url}.
     """
     model_card += wandb_info
