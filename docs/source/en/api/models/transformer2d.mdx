@@ -4,7 +4,7 @@ A Transformer model for image-like data from [CompVis](https://huggingface.co/Co
 
 When the input is **continuous**:
 
-1. Project the input and reshape it to `(b, t, d)`.
+1. Project the input and reshape it to `(batch_size, sequence_length, feature_dimension)`.
 2. Apply the Transformer blocks in the standard way.
 3. Reshape to image.
 
