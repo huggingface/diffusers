@@ -329,6 +329,14 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--formant",
+        action="store_true",
+        default=False,
+        required=False,
+        help="use flag to condition on formants from audio_conf",
+    )
+    
+    parser.add_argument(
         "--custom_unet",
         type=str,
         default=None,
@@ -1006,10 +1014,19 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss)
+                attn_mask_arg = None
+                formants = None
                 if args.unet_att_masking:
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
-                else:
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    attn_mask_arg = attention_mask
+                if args.formant:
+                    formants = batch['formants']
+                    if (formants is None):
+                        print("PLEASE ONLY PASS FORMANTS FLAG IF THE AUDIO_CONF INCLUDES THEM")
+                #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
+                # else:
+                #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attn_mask_arg, class_labels = formants).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
