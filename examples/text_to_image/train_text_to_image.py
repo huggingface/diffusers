@@ -35,6 +35,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -60,6 +61,90 @@ logger = get_logger(__name__, log_level="INFO")
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
+
+
+def make_image_grid(imgs, rows, cols):
+    assert len(imgs) == rows * cols
+
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
+def save_model_card(
+    args,
+    repo_id: str,
+    images=None,
+    repo_folder=None,
+):
+    img_str = ""
+    if images is not None:
+        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
+        image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
+        img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {args.pretrained_model_name_or_path}
+datasets:
+- {args.dataset_name}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+inference: true
+---
+    """
+    model_card = f"""
+# Text-to-image finetuning - {repo_id}
+
+This pipeline was finetuned from {args.pretrained_model_name_or_path} on the {args.dataset_name} dataset. Below are some examples images that were generated with the finetuned pipeline (with the following prompts: {args.validation_prompts}): \n
+{img_str}
+
+## Pipeline usage
+
+You can use the pipeline like so:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained({repo_id}, torch_dtype=torch.float16)
+prompt = "..."
+image = pipeline(prompt).images[0]
+image.save("my_image.png")
+```
+
+## Training info
+
+Following are the key hyperparameters that were used to run finetuning:
+
+* Epochs: {args.num_train_epochs}
+* Learning rate: {args.learning_rate}
+* Batch size: {args.sample_batch_size}
+* Gradient accumulation steps: {args.gradient_accumulation_steps}
+* Image resolution: {args.resolution}
+* Mixed-precision: {args.mixed_precision}
+
+"""
+    if is_wandb_available():
+        wandb_run_url = None
+        if wandb.run is not None:
+            wandb_run_url = wandb.run.url
+
+    wandb_info = f"""
+More information on all the CLI arguments should be available on the `wandb` run page if you used it via `report_to="wandb"`.
+Check it out here: {wandb_run_url}.
+    """
+    model_card += wandb_info
+
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
 
 
 def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
@@ -111,6 +196,8 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
     del pipeline
     torch.cuda.empty_cache()
+
+    return images
 
 
 def parse_args():
@@ -935,12 +1022,13 @@ def main():
                 break
 
         if accelerator.is_main_process:
+            images = None
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
-                log_validation(
+                images = log_validation(
                     vae,
                     text_encoder,
                     tokenizer,
@@ -971,6 +1059,7 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
+            save_model_card(args, repo_id, images, repo_folder=args.output_dir)
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
