@@ -392,7 +392,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
         pipe.scheduler = DDIMScheduler.from_config(
-            pipe.scheduler.config, timestep_scaling="trailing", rescale_betas_zero_snr=True
+            pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
         pipe.to(torch_device)
         pipe.enable_attention_slicing()
