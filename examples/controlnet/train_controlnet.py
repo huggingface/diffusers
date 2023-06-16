@@ -42,22 +42,22 @@ import shutil
 
 # TODO : find a proper place for it. 
 # Authenticate and build the Drive API client
-from google.colab import auth
+""" from google.colab import auth
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 auth.authenticate_user()
 
-service = build('drive', 'v3')
+service = build('drive', 'v3') """
 
-# Define a function to empty the trash bin
+""" # Define a function to empty the trash bin
 def empty_trash():
     try:
         service.files().emptyTrash().execute()
         print('Trash bin emptied successfully.')
     except HttpError as error:
         print(f'An error occurred: {error}')
-        print('Trash bin could not be emptied.')
+        print('Trash bin could not be emptied.') """
 
 
 import diffusers
@@ -111,7 +111,7 @@ def clean_up_drive(drive_folder, n_keep=3):
     # TODO : trash clear from google drive
     # the delete here deletes the files but they are moved to trash in google drive.
     # we need to clear the trash as well.
-    empty_trash()
+    # empty_trash()
 
 
 def upload_to_drive(source, dest):
