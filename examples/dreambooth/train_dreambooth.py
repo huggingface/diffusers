@@ -20,6 +20,7 @@ import itertools
 import logging
 import math
 import os
+import time
 import warnings
 from pathlib import Path
 
@@ -267,6 +268,12 @@ def parse_args(input_args=None):
         type=str,
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -1126,6 +1133,8 @@ def main(args):
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
+    loss_dict = {}
+    start_time = time.time()
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.train_text_encoder:
@@ -1250,7 +1259,7 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
-
+        loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1299,6 +1308,15 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+    elapsed_time = time.time() - start_time
+    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+    output_dict = {"throughput": throughput,
+                   "loss": loss_dict}
+    
+    import json
+    with open(args.log_dir, "w") as f:
+        json.dump(output_dict, f)
+    logger.info(f"Output logs saved in {args.log_dir}")
 
     accelerator.end_training()
 
