@@ -1,4 +1,4 @@
-# Copyright 2023 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2023 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -243,7 +243,6 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler._get_variance
     def _get_variance(self, timestep, prev_timestep=None):
         if prev_timestep is None:
             prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
@@ -257,7 +256,6 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler._batch_get_variance
     def _batch_get_variance(self, t, prev_t):
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
@@ -521,11 +519,6 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         t = t.view(-1, *([1] * (model_output.ndim - 1)))
         prev_t = prev_t.view(-1, *([1] * (model_output.ndim - 1)))
-
-        # if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
-        #     model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
-        # else:
-        #     predicted_variance = None
 
         # 1. compute alphas, betas
         self.alphas_cumprod = self.alphas_cumprod.to(model_output.device)
