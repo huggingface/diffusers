@@ -126,7 +126,7 @@ Following are the key hyperparameters that were used to run finetuning:
 
 * Epochs: {args.num_train_epochs}
 * Learning rate: {args.learning_rate}
-* Batch size: {args.sample_batch_size}
+* Batch size: {args.train_batch_size}
 * Gradient accumulation steps: {args.gradient_accumulation_steps}
 * Image resolution: {args.resolution}
 * Mixed-precision: {args.mixed_precision}
