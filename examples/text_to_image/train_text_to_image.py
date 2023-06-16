@@ -115,7 +115,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
-prompt = f"{args.validation_prompts[0]}"
+prompt = "{args.validation_prompts[0]}"
 image = pipeline(prompt).images[0]
 image.save("my_image.png")
 ```
@@ -130,10 +130,6 @@ Following are the key hyperparameters that were used to run finetuning:
 * Gradient accumulation steps: {args.gradient_accumulation_steps}
 * Image resolution: {args.resolution}
 * Mixed-precision: {args.mixed_precision}
-
-## Environment
-
-{os.system("diffusers-cli env")}
 
 """
     if is_wandb_available():
