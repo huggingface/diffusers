@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Load different Stable Diffusion formats
 
+[[open-in-colab]]
+
 Stable Diffusion models are available in different formats depending on the framework they're trained and saved with, and where you download them from. Converting these formats for use in 🤗 Diffusers allows you to use all the features supported by the library, such as [using different schedulers](schedulers) for inference, [building your custom pipeline](write_own_pipeline), and a variety of techniques and methods for [optimizing inference speed](./optimization/opt_overview).
 
 <Tip>
@@ -141,8 +143,9 @@ pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.conf
 
 Download a LoRA checkpoint from Civitai; this example uses the [Howls Moving Castle,Interior/Scenery LoRA (Ghibli Stlye)](https://civitai.com/models/14605?modelVersionId=19998) checkpoint, but feel free to try out any LoRA checkpoint!
 
-```bash
-!wget https://civitai.com/api/download/models/19998 -O howls_moving_castle.safetensors
+```py
+# uncomment to download the safetensor weights
+#!wget https://civitai.com/api/download/models/19998 -O howls_moving_castle.safetensors
 ```
 
 Load the LoRA checkpoint into the pipeline with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method:

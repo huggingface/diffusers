@@ -49,3 +49,32 @@ body:
       placeholder: diffusers version, platform, python version, ...
     validations:
       required: true
+  - type: textarea
+    id: who-can-help
+    attributes:
+      label: Who can help?
+      description: |
+        Your issue will be replied to more quickly if you can figure out the right person to tag with @
+        If you know how to use git blame, that is the easiest way, otherwise, here is a rough guide of **who to tag**.
+        
+        All issues are read by one of the core maintainers, so if you don't know who to tag, just leave this blank and
+        a core maintainer will ping the right person.
+        
+        Please tag fewer than 3 people.
+        
+        General library related questions: @patrickvonplaten and @sayakpaul
+
+        Questions on the training examples: @williamberman, @sayakpaul, @yiyixuxu
+
+        Questions on memory optimizations, LoRA, float16, etc.: @williamberman, @patrickvonplaten, and @sayakpaul
+
+        Questions on schedulers: @patrickvonplaten and @williamberman
+
+        Questions on models and pipelines: @patrickvonplaten, @sayakpaul, and @williamberman
+
+        Questions on JAX- and MPS-related things: @pcuenca
+
+        Questions on audio pipelines: @patrickvonplaten, @kashif, and @sanchit-gandhi 
+        
+        Documentation: @stevhliu and @yiyixuxu
+      placeholder: "@Username ..."

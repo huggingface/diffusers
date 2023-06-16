@@ -146,6 +146,8 @@
       title: Loaders
     - local: api/utilities
       title: Utilities
+    - local: api/image_processor
+      title: Vae Image Processor
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
@@ -219,6 +221,8 @@
         title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
+      - local: api/pipelines/stable_diffusion/ldm3d_diffusion
+        title: LDM3D Text-to-(RGB, Depth)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
