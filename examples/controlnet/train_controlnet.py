@@ -204,7 +204,8 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
             mask = np.array(validation_image)
             mask = np.where(mask > 0, 1, 0) 
             image = np.array(image) * mask + np.array(validation_image) * (1 - mask)
-
+            image = Image.fromarray(image.astype(np.uint8))
+            
             images.append(image)
 
         image_logs.append(
