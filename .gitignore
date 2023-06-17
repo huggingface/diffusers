@@ -145,7 +145,7 @@ runs
 # data
 /data
 serialization_dir
-
+notebooks/imgs/
 # emacs
 *.*~
 debug.env
