@@ -24,7 +24,6 @@ from diffusers import DDPMPipeline, UNet2DModel, CMStochasticIterativeScheduler,
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
-from diffusers.utils.import_utils import is_xformers_available
 
 
 #Copied from examples/unconditional_image_generation/train_unconditional.py for now
@@ -258,9 +257,6 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
-    parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -436,19 +432,6 @@ def main(args):
         model_config=model.config,
     )
 
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            model.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
-
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -554,22 +537,25 @@ def main(args):
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            resume_global_step = global_step * args.gradient_accumulation_steps
+            initial_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
+    else:
+        initial_global_step = 0
+
+    progress_bar = tqdm(
+        range(0, max_train_steps),
+        initial=initial_global_step,
+        desc="Steps",
+        # Only show the progress bar once on each machine.
+        disable=not accelerator.is_local_main_process,
+    )
+
+
 
     # Train!
     for epoch in range(first_epoch, args.num_epochs):
         model.train()
-        progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
-        progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
-
             clean_images = batch["input"]
             labels = batch["labels"]
             # Sample noise that we'll add to the images
