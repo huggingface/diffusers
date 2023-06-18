@@ -340,5 +340,31 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
+    def add_noise(
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.FloatTensor,
+    ) -> torch.FloatTensor:
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            schedule_timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
+
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
+
+        noisy_samples = original_samples + noise * sigma
+        return noisy_samples
+
     def __len__(self):
         return self.config.num_train_timesteps
