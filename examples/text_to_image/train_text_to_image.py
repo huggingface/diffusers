@@ -132,15 +132,17 @@ These are the key hyperparameters used during training:
 * Mixed-precision: {args.mixed_precision}
 
 """
+    wandb_info = """
+More information on all the CLI arguments and the environment should be available on the `wandb` run page if you used it via `report_to="wandb"`.
+"""
     if is_wandb_available():
         wandb_run_url = None
         if wandb.run is not None:
             wandb_run_url = wandb.run.url
 
-    wandb_info = f"""
-More information on all the CLI arguments and the environment should be available on the `wandb` run page if you used it via `report_to="wandb"`.
-Check it out here: {wandb_run_url}.
-    """
+    if wandb_run_url is not None:
+        wandb_info += f"Check it out here: {wandb_run_url}."
+
     model_card += wandb_info
 
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
