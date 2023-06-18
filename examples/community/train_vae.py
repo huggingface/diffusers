@@ -207,6 +207,12 @@ def parse_args():
         default=5,
         help="Run validation every X epochs.",
     )
+    parser.add_argument(
+        "--kl_scale",
+        type=int,
+        default=0,
+        help="Scaling factor for the Kullback-Leibler divergence penalty term.",
+    )
 
     args = parser.parse_args()
 
@@ -354,10 +360,6 @@ def main():
 
     vae.to(accelerator.device, dtype=weight_dtype)
 
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
-
     # ------------------------------ TRAIN ------------------------------ #
     total_batch_size = (
         args.train_batch_size
@@ -387,7 +389,48 @@ def main():
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
-                return
+                x = batch["pixel_values"].to(weight_dtype)
+                pred_x = vae(x)
+
+                loss = F.mse_loss(pred_x.float(), x.float(), reduction="mean")
+
+                # Gather the losses across all processes for logging (if we use distributed training).
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
+                accelerator.backward(loss)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
+                train_loss = 0.0
+
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        save_path = os.path.join(
+                            args.output_dir, f"checkpoint-{global_step}"
+                        )
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
+
+            logs = {
+                "step_loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
+            progress_bar.set_postfix(**logs)
+
+    # Create the pipeline using the trained modules and save it.
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        vae = accelerator.unwrap_model(vae)
+        vae.save_pretrained(args.output_dir)
+
+    accelerator.end_training()
 
 
 if __name__ == "__main__":
