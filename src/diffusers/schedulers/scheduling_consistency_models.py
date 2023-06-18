@@ -1,4 +1,4 @@
-# Copyright 2023 NVIDIA and The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,18 +24,6 @@ from .scheduling_utils import SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def append_zero(x):
-    return torch.cat([x, x.new_zeros([1])])
-
-
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
-    return x[(...,) + (None,) * dims_to_append]
 
 
 @dataclass
@@ -100,14 +88,14 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         rho: float = 7.0,
         clip_denoised: bool = True,
-        timesteps: Optional[Union[List, np.ndarray, torch.Tensor]] = None,
     ):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = timesteps
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+        self.custom_timesteps = False
         self.is_scale_input_called = False
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -157,7 +145,12 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         return 1000 * 0.25 * torch.log(sigma + 1e-44)
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: Optional[int] = None,
+        device: Union[str, torch.device] = None,
+        timesteps: Optional[List[int]] = None,
+    ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -167,37 +160,58 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-        self.num_inference_steps = num_inference_steps
+        if num_inference_steps is None and timesteps is None:
+            raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
 
-        # Note: timesteps are expected to be increasing rather than decreasing, following original implementation
-        if self.timesteps is None:
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
+
+        # Follow DDPMScheduler custom timesteps logic
+        if timesteps is not None:
+            for i in range(1, len(timesteps)):
+                if timesteps[i] >= timesteps[i - 1]:
+                    raise ValueError("`timesteps` must be in descending order.")
+
+            if timesteps[0] >= self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`timesteps` must start before `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps}."
+                )
+
+            timesteps = np.array(timesteps, dtype=np.int64)
+            self.custom_timesteps = True
         else:
-            if isinstance(self.timesteps, list):
-                timesteps = np.array(self.timesteps, dtype=np.float32)
-            elif isinstance(self.timesteps, np.ndarray):
-                timesteps = self.timesteps.astype(np.float32)
-            else:
-                timesteps = self.timesteps.numpy().astype(np.float32)
-            timesteps = timesteps[: self.num_inference_steps]
+            if num_inference_steps > self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                    f" maximal {self.config.num_train_timesteps} timesteps."
+                )
+
+            self.num_inference_steps = num_inference_steps
+
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            self.custom_timesteps = False
+
+        if str(device).startswith("mps"):
+            # mps does not support float64
+            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float64)
 
         # Map timesteps to Karras sigmas directly for multistep sampling
         # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
         num_train_timesteps = self.config.num_train_timesteps
         # Append num_train_timesteps - 1 so sigmas[-1] == sigma_min
-        ramp = np.append(timesteps, [num_train_timesteps - 1]) / (num_train_timesteps - 1)
+        ramp = np.append(timesteps[::-1].copy(), [num_train_timesteps - 1])
+        ramp = ramp / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
 
         sigmas = sigmas.astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        if str(device).startswith("mps"):
-            # mps does not support float64
-            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
-        else:
-            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-    # Modified from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
-    # Use self.rho instead of hardcoded 7.0 for rho, sigma_min/max from config, configurable ramp function
+    # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""
 
@@ -325,6 +339,32 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample,)
 
         return CMStochasticIterativeSchedulerOutput(prev_sample=prev_sample)
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
+    def add_noise(
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.FloatTensor,
+    ) -> torch.FloatTensor:
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            schedule_timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
+
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
+
+        noisy_samples = original_samples + noise * sigma
+        return noisy_samples
 
     def __len__(self):
         return self.config.num_train_timesteps
