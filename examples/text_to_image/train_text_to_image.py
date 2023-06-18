@@ -103,7 +103,7 @@ inference: true
     model_card = f"""
 # Text-to-image finetuning - {repo_id}
 
-This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some examples images that were generated with the finetuned pipeline (with the following prompts: {args.validation_prompts}): \n
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
 {img_str}
 
 ## Pipeline usage
@@ -122,7 +122,7 @@ image.save("my_image.png")
 
 ## Training info
 
-Following are the key hyperparameters that were used to run finetuning:
+These are the key hyperparameters used during training:
 
 * Epochs: {args.num_train_epochs}
 * Learning rate: {args.learning_rate}
