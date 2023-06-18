@@ -70,3 +70,26 @@ Then cd in the example folder of your choice and run
 ```bash
 pip install -r requirements.txt
 ```
+
+# FAQ
+
+Including a FAQ section could be useful for addressing common issues and solutions that users may encounter. This helps users deal with the errors they encounter more quickly and efficiently.
+
+1. **Question:** How do I install the `requirements.txt` file?
+   **Answer:** In the command line, you can run the following command: `pip install -r requirements.txt`. This installs all the packages listed in the requirements.txt file.
+
+2. **Question:** How can I modify the parameters of the example scripts?
+   **Answer:** Within the script, look for the relevant parameters and change them to values that fit your needs. Such parameters are usually found at the top of the script.
+
+3. **Question:** I'm getting an error when running your scripts. What should I do?
+   **Answer:** Copy the full text of the error and search for it in a search engine. In most cases, other users may have encountered similar errors and shared solutions. Also, you can report your problem as an "issue" on the Github repo. In this way, both the project maintainers and the community can often provide assistance.
+
+4. **Question:** How can I train a model in the Diffusers library?
+   **Answer:** The example scripts in this repo demonstrate how to use the `diffusers` library for various use cases. Typically, to train a model, you need to prepare your dataset, configure the model and the training loop, and start the training loop. Each of these steps is shown in the example scripts.
+
+5. **Question:** How can I use a model in the Diffusers library for inference?
+   **Answer:** This repo contains official examples of how to use the `diffusers` library for inference. By studying these examples and following the steps in the scripts, you can use a model for inference.
+
+These are some of the common issues and solutions that users may encounter. If you have any questions, please create a Github issue and we will get back to you as soon as possible.
+
+
