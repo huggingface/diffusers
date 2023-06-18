@@ -13,3 +13,5 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import ShapEPipeline
 else:
     from .pipeline_shap_e import ShapEPipeline
+    from .params_proj import ShapEParamsProjModel
+    from .renderer import MLPNeRSTFModel
