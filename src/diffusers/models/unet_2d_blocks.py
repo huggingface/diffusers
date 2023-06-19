@@ -55,8 +55,8 @@ def get_down_block(
     # If attn head dim is not defined, we default it to the number of heads
     if attn_head_dim is None:
         logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
-        attn_head_dim = attn_head_dim or attn_num_heads
-    
+        attn_head_dim = attn_num_heads
+
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
         return DownBlock2D(
@@ -241,7 +241,7 @@ def get_up_block(
     # If attn head dim is not defined, we default it to the number of heads
     if attn_head_dim is None:
         logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
-        attn_head_dim = attn_head_dim or attn_num_heads
+        attn_head_dim = attn_num_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
