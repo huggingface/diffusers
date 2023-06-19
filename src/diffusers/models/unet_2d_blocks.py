@@ -329,7 +329,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "SkipUpBlock2D":
