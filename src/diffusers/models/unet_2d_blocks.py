@@ -54,7 +54,9 @@ def get_down_block(
 ):
     # If attn head dim is not defined, we default it to the number of heads
     if attn_head_dim is None:
-        logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
+        logger.warn(
+            f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}."
+        )
         attn_head_dim = attn_num_heads
 
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
@@ -240,7 +242,9 @@ def get_up_block(
 ):
     # If attn head dim is not defined, we default it to the number of heads
     if attn_head_dim is None:
-        logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
+        logger.warn(
+            f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}."
+        )
         attn_head_dim = attn_num_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
@@ -447,7 +451,7 @@ class UNetMidBlock2D(nn.Module):
                     Attention(
                         in_channels,
                         heads=in_channels // attn_head_dim if attn_head_dim is not None else 1,
-                        dim_head=attn_head_dim if attn_head_dim  is not None else in_channels,
+                        dim_head=attn_head_dim if attn_head_dim is not None else in_channels,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
                         norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
@@ -610,7 +614,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_heads=1,
+        attn_head_dim=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         skip_time_act=False,
@@ -621,10 +625,10 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
 
         self.has_cross_attention = True
 
-        self.attn_num_heads = attn_num_heads
+        self.attn_head_dim = attn_head_dim
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
-        self.num_heads = in_channels // self.attn_num_heads
+        self.num_heads = in_channels // self.attn_head_dim
 
         # there is always at least one resnet
         resnets = [
@@ -654,7 +658,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
-                    dim_head=attn_num_heads,
+                    dim_head=self.attn_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
@@ -1479,7 +1483,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         resnets = []
         attentions = []
 
-        self.attn_head_dim = attn_head_dim 
+        self.attn_head_dim = attn_head_dim
         self.num_heads = out_channels // self.attn_head_dim
 
         for i in range(num_layers):
@@ -2588,7 +2592,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_head_dim = attn_head_dim 
+        self.attn_head_dim = attn_head_dim
 
         self.num_heads = out_channels // self.attn_head_dim
 
