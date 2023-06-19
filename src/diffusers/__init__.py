@@ -159,6 +159,10 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
+        RDMPipeline,
+        Index,
+        IndexConfig,
+        Retriever
     )
 
 try:

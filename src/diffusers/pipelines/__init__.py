@@ -86,6 +86,7 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+    from .rdm import RDMPipeline, IndexConfig, Index, Retriever
 
 try:
     if not is_onnx_available():
