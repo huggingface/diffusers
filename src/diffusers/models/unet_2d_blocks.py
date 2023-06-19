@@ -18,12 +18,15 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import is_torch_version
+from ..utils import is_torch_version, logging
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def get_down_block(
@@ -47,7 +50,13 @@ def get_down_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    attn_head_dim=None,
 ):
+    # If attn head dim is not defined, we default it to the number of heads
+    if attn_head_dim is None:
+        logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
+        attn_head_dim = attn_head_dim or attn_num_heads
+    
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
         return DownBlock2D(
@@ -87,7 +96,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
@@ -124,7 +133,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
@@ -152,8 +161,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            downsample_padding=downsample_padding,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "DownEncoderBlock2D":
@@ -178,7 +186,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
@@ -201,7 +209,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             add_self_attention=True if not add_downsample else False,
         )
     raise ValueError(f"{down_block_type} does not exist.")
@@ -228,7 +236,13 @@ def get_up_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    attn_head_dim=None,
 ):
+    # If attn head dim is not defined, we default it to the number of heads
+    if attn_head_dim is None:
+        logger.warn(f"It is recommend to provide `attn_head_dim` when calling `get_up_block`. Defaulting `attn_head_dim` to {attn_num_heads}.")
+        attn_head_dim = attn_head_dim or attn_num_heads
+
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
         return UpBlock2D(
@@ -293,7 +307,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
@@ -336,7 +350,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "UpDecoderBlock2D":
@@ -360,7 +374,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             temb_channels=temb_channels,
         )
@@ -384,7 +398,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            attn_head_dim=attn_head_dim,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -1179,7 +1193,6 @@ class AttnSkipDownBlock2D(nn.Module):
         resnet_pre_norm: bool = True,
         attn_head_dim=1,
         output_scale_factor=np.sqrt(2.0),
-        downsample_padding=1,
         add_downsample=True,
     ):
         super().__init__()
@@ -2255,7 +2268,6 @@ class AttnSkipUpBlock2D(nn.Module):
         resnet_pre_norm: bool = True,
         attn_head_dim=1,
         output_scale_factor=np.sqrt(2.0),
-        upsample_padding=1,
         add_upsample=True,
     ):
         super().__init__()
@@ -2563,7 +2575,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_heads=1,
+        attn_head_dim=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -2576,9 +2588,9 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_heads = attn_num_heads
+        self.attn_head_dim = attn_head_dim 
 
-        self.num_heads = out_channels // self.attn_num_heads
+        self.num_heads = out_channels // self.attn_head_dim
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2609,7 +2621,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
                     heads=self.num_heads,
-                    dim_head=attn_num_heads,
+                    dim_head=self.attn_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
