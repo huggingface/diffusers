@@ -35,7 +35,7 @@ Running LDM3D is straighforward with the [`StableDiffusionLDM3DPipeline`]:
 ```python
 >>> from diffusers import StableDiffusionLDM3DPipeline
 
->>> pipe= StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
+>>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
 prompt ="A picture of some lemons on a table"
 output = pipe(prompt)
 rgb_image, depth_image = output.rgb, output.depth
