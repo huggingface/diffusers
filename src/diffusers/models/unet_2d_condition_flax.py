@@ -109,7 +109,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = (8,)
-    num_attention_heads: Optional[Union[int, Tuple[int]]] = (None,)
+    num_attention_heads: Optional[Union[int, Tuple[int]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
