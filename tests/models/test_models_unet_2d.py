@@ -23,7 +23,7 @@ from diffusers import UNet2DModel
 from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 logger = logging.get_logger(__name__)
@@ -31,8 +31,9 @@ logger = logging.get_logger(__name__)
 enable_full_determinism()
 
 
-class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
+class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -68,8 +69,9 @@ class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
 
-class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
+class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -182,8 +184,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-3))
 
 
-class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
+class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):

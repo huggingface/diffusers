@@ -59,7 +59,7 @@ Continue fine-tuning a checkpoint with [`train_text_to_image.py`](https://github
 and `--prediction_type="v_prediction"`.
 - (3) change the sampler to always start from the last timestep; 
 ```py
-pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, timestep_scaling="trailing")
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
 ```
 - (4) rescale classifier-free guidance to prevent over-exposure. 
 ```py
@@ -76,7 +76,7 @@ from diffusers import DiffusionPipeline, DDIMScheduler
 
 pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", torch_dtype=torch.float16)
 pipe.scheduler = DDIMScheduler.from_config(
-    pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_scaling="trailing"
+    pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
 )
 pipe.to("cuda")
 
