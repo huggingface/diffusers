@@ -140,7 +140,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
         # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
         # which is why we correct for the naming here.
-        self.num_attention_heads = self.num_attention_heads or self.attention_head_dim
+        num_attention_heads = self.num_attention_heads or self.attention_head_dim
 
         # input
         self.conv_in = nn.Conv(
@@ -161,7 +161,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(only_cross_attention, bool):
             only_cross_attention = (only_cross_attention,) * len(self.down_block_types)
 
-        num_attention_heads = self.num_attention_heads
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
