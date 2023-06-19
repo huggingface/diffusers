@@ -5,15 +5,16 @@ if [[ "$@" == *"--task"* ]]; then # --task: task name
   # If the flag is set, assign the value from the user prompt
   task="$(echo "$@" | sed -n 's/.*--task \([^ ]*\).*/\1/p')"
 else
-  echo "Usage: $0 <declare task name>"
+  echo "Usage: $0 <declare --task task_name>"
   exit 1
 fi
 
 if [[ "$@" == *"--model"* ]]; then # --model: model name
   model="$(echo "$@" | sed -n 's/.*--model \([^ ]*\).*/\1/p')"
-  run_mode=1
+  run_mode=1 # run single model
 else 
-  run_mode=2
+  run_mode=2 # run all models in model_batchsize_file
+  echo "Note: --model not specified, will run all models in $model_batchsize_file"
 fi
 
 if [[ "$@" == *"--batch_size"* ]]; then # --batch_size: batch size
