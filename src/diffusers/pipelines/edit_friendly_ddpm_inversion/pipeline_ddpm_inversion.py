@@ -2,7 +2,6 @@ import inspect
 import warnings
 from itertools import repeat
 from typing import Callable, List, Optional, Union
-
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 import numpy as np
@@ -14,8 +13,7 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging, randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-# from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from . import DDPMInversionDiffusionPipelineOutput
+from diffusers.pipelines.edit_friendly_ddpm_inversion import DDPMInversionDiffusionPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -208,12 +206,11 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from DDPM_inversion.ddm_inversion.nversion_utils
-
     @torch.no_grad()
     def invert(self, image, source_prompt, eta, source_guidance_scale, num_inference_steps):
         #  inverts a real image according to Algorihm 1 in https://arxiv.org/pdf/2304.06140.pdf,
-        #  based on the code in https://github.com/inbarhub/DDPM_inversion
+        #  A modified implementation of inversion_forward_process, copied and modified from
+        #  DDPM_inversion.ddm_inversion.inversion_utils:  https://github.com/inbarhub/DDPM_inversion
 
         #  returns wt, zs, wts:
         #  wt - inverted latent
@@ -371,7 +368,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
                 List[PIL.Image.Image],
                 List[np.ndarray],
             ],
-            source_prompt: Union[str, List[str]] = None,
+            source_prompt: Union[str, List[str]] = "",
             height: Optional[int] = None,
             width: Optional[int] = None,
             num_inference_steps: int = 100,
@@ -396,7 +393,12 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the edited image generation.
+            image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the inversion
+                process.
+            source_prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the inversion of image.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -404,10 +406,18 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 15):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). This is the guidance scale used for the editing process.
+                Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            source_guidance_scale (`float`, *optional*, defaults to 3.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). This is the guidance scale used for the inversion process.
+                Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
 
@@ -435,6 +445,15 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            xts:('List[torch.Tensor]', *optional*, defaults to None):
+              Pre-generated intermidate inverted latents corresponding to the given image, to be used for the denoising process: editing or reconstruction.
+              Correspond to x1,...,xT from the Edit Friendly DDPM Inversion paper: https://arxiv.org/pdf/2304.06140.pdf
+              If None, latents are calucalted in the inversion process.
+            zs:('List[torch.Tensor]', *optional*, defaults to None):
+              Pre-generated noise maps corresponding to the given image, to be used for the denoising process: editing or reconstruction.
+              Correspond to z1,...,zT from the Edit Friendly DDPM Inversion paper: https://arxiv.org/pdf/2304.06140.pdf
+              If None, latents are calucalted in the inversion process.
+
 
         Returns:
             [`~pipelines.pipeline_ddpm_inversion.DDPMInversionDiffusionPipelineOutput`] or `tuple`:
@@ -560,6 +579,9 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + noise_guidance
 
             # 7. denoising step:
+            #  A modified implementation of reverse_step, copied and modified from
+            #  DDPM_inversion.ddm_inversion.inversion_utils:  https://github.com/inbarhub/DDPM_inversion
+            # Copied and modified from
             idx = t_to_idx[int(t)]
             z = zs[idx] if not zs is None else None
 
@@ -607,36 +629,22 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         # 8. Post-processing
-        image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embeddings.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
 
-        # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embeddings.dtype)
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        # 10. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return DDPMInversionDiffusionPipelineOutput(images=image, nsfw_content_detected=[False])
-
-        # # 8. Post-processing
-        # if not output_type == "latent":
-        #     image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-        #     image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embeddings.dtype)
-        # else:
-        #     image = latents
-        #     has_nsfw_concept = None
-
-        # if has_nsfw_concept is None:
-        #     do_denormalize = [True] * image.shape[0]
-        # else:
-        #     do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
-
-        # image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-
-        # if not return_dict:
-        #     return (image, has_nsfw_concept)
-
-        # return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return DDPMInversionDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

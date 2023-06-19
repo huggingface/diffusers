@@ -8,7 +8,7 @@ from PIL import Image
 
 from diffusers.utils import BaseOutput, is_torch_available, is_transformers_available
 
-
+# Copied from diffusers.pipelines.stable_diffusion.__init__.StableDiffusionPipelineOutput
 @dataclass
 class DDPMInversionDiffusionPipelineOutput(BaseOutput):
     """
