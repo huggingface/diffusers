@@ -3,6 +3,7 @@ import inspect
 import logging
 import math
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +19,7 @@ from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
+import PIL
 
 import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
@@ -90,6 +92,12 @@ def parse_args():
         type=str,
         default="ddpm-model-64",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument(
@@ -374,7 +382,7 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
-    if args.model_config_name_or_path is None:
+    if args.model_config_name_or_path is None or args.model_config_name_or_path == "ddpm-unet":
         model = UNet2DModel(
             sample_size=args.resolution,
             in_channels=3,
@@ -549,6 +557,8 @@ def main(args):
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Train!
+    loss_dict = {}
+    start_time = time.time()
     for epoch in range(first_epoch, args.num_epochs):
         model.train()
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
@@ -617,51 +627,53 @@ def main(args):
                 logs["ema_decay"] = ema_model.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
+        
+        loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
         progress_bar.close()
 
         accelerator.wait_for_everyone()
 
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
-            if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-                unet = accelerator.unwrap_model(model)
+            # if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            #     unet = accelerator.unwrap_model(model)
 
-                if args.use_ema:
-                    ema_model.store(unet.parameters())
-                    ema_model.copy_to(unet.parameters())
+            #     if args.use_ema:
+            #         ema_model.store(unet.parameters())
+            #         ema_model.copy_to(unet.parameters())
 
-                pipeline = DDPMPipeline(
-                    unet=unet,
-                    scheduler=noise_scheduler,
-                )
+            #     pipeline = DDPMPipeline(
+            #         unet=unet,
+            #         scheduler=noise_scheduler,
+            #     )
 
-                generator = torch.Generator(device=pipeline.device).manual_seed(0)
-                # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(
-                    generator=generator,
-                    batch_size=args.eval_batch_size,
-                    num_inference_steps=args.ddpm_num_inference_steps,
-                    output_type="numpy",
-                ).images
+            #     generator = torch.Generator(device=pipeline.device).manual_seed(0)
+            #     # run pipeline in inference (sample random noise and denoise)
+            #     images = pipeline(
+            #         generator=generator,
+            #         batch_size=args.eval_batch_size,
+            #         num_inference_steps=args.ddpm_num_inference_steps,
+            #         output_type="numpy",
+            #     ).images
 
-                if args.use_ema:
-                    ema_model.restore(unet.parameters())
+            #     if args.use_ema:
+            #         ema_model.restore(unet.parameters())
 
-                # denormalize the images and save to tensorboard
-                images_processed = (images * 255).round().astype("uint8")
+            #     # denormalize the images and save to tensorboard
+            #     images_processed = (images * 255).round().astype("uint8")
 
-                if args.logger == "tensorboard":
-                    if is_accelerate_version(">=", "0.17.0.dev0"):
-                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
-                    else:
-                        tracker = accelerator.get_tracker("tensorboard")
-                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
-                elif args.logger == "wandb":
-                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
-                    accelerator.get_tracker("wandb").log(
-                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
-                        step=global_step,
-                    )
+            #     if args.logger == "tensorboard":
+            #         if is_accelerate_version(">=", "0.17.0.dev0"):
+            #             tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+            #         else:
+            #             tracker = accelerator.get_tracker("tensorboard")
+            #         tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
+            #     elif args.logger == "wandb":
+            #         # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
+            #         accelerator.get_tracker("wandb").log(
+            #             {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+            #             step=global_step,
+            #         )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
@@ -683,7 +695,18 @@ def main(args):
 
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
-
+    elapsed_time = time.time() - start_time
+    throughput = (len(dataset)*args.num_epochs) / elapsed_time
+    output_dict = {"throughput": throughput,
+                   "loss": loss_dict}
+    
+    import json
+    logs_parent_folder = os.path.dirname(args.log_dir)
+    if not os.path.exists(logs_parent_folder):
+        os.makedirs(logs_parent_folder)
+    with open(args.log_dir, "w") as f:
+        json.dump(output_dict, f)
+    logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 

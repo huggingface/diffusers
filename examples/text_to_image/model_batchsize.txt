@@ -1,0 +1,3 @@
+CompVis/stable-diffusion-v1-4 1
+stabilityai/stable-diffusion-2 1
+#### end list ####
