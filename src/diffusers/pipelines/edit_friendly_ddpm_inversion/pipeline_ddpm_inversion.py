@@ -1,4 +1,3 @@
-
 import inspect
 import warnings
 from itertools import repeat
@@ -17,7 +16,6 @@ from diffusers.utils import logging, randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 # from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from . import DDPMInversionDiffusionPipelineOutput
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -55,15 +53,15 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
-        self,
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
-        tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        requires_safety_checker: bool = True,
+            self,
+            vae: AutoencoderKL,
+            text_encoder: CLIPTextModel,
+            tokenizer: CLIPTokenizer,
+            unet: UNet2DConditionModel,
+            scheduler: KarrasDiffusionSchedulers,
+            safety_checker: StableDiffusionSafetyChecker,
+            feature_extractor: CLIPImageProcessor,
+            requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -91,6 +89,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -145,20 +144,20 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+            self,
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt=None,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -209,11 +208,162 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from DDPM_inversion.ddm_inversion.nversion_utils
+
+    @torch.no_grad()
+    def invert(self, image, source_prompt, eta, source_guidance_scale, num_inference_steps):
+        #  inverts a real image according to Algorihm 1 in https://arxiv.org/pdf/2304.06140.pdf,
+        #  based on the code in https://github.com/inbarhub/DDPM_inversion
+
+        #  returns wt, zs, wts:
+        #  wt - inverted latent
+        #  wts - intermediate inverted latents
+        #  zs - noise maps
+
+        # 1. vae encode image
+        x0 = (self.vae.encode(image).latent_dist.mode() * 0.18215).float()
+
+        if not source_prompt == "":
+            # 1. get prompt text embeddings and uncond embeddings
+            text_inputs = self.tokenizer(
+                source_prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+
+            if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+                removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length:])
+                logger.warning(
+                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                )
+                text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+            text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+
+        uncond_tokens = [""]
+        uncond_input = self.tokenizer(
+            uncond_tokens,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+
+        self.scheduler.set_timesteps(num_inference_steps)
+        timesteps = self.scheduler.timesteps.to(self.device)
+
+        if eta is None or (type(eta) in [int, float] and eta == 0):
+            eta_is_zero = True
+            zs = None
+
+        else:
+            eta_is_zero = False
+            if type(eta) in [int, float]: eta = [eta] * self.scheduler.num_inference_steps
+
+            # xts = sample_xts_from_x0(self, x0, num_inference_steps=num_inference_steps)
+            # 2. calculates intermidiate latents x1,...,xT according to formula(6) of https://arxiv.org/pdf/2304.06140.pdf
+            alpha_bar = self.scheduler.alphas_cumprod
+            sqrt_one_minus_alpha_bar = (1 - alpha_bar) ** 0.5
+            alphas = self.scheduler.alphas
+            variance_noise_shape = (
+                num_inference_steps,
+                self.unet.in_channels,
+                self.unet.sample_size,
+                self.unet.sample_size)
+
+            t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
+            xts = torch.zeros(variance_noise_shape).to(x0.device)
+            for t in reversed(timesteps):
+                idx = t_to_idx[int(t)]
+                xts[idx] = x0 * (alpha_bar[t] ** 0.5) + torch.randn_like(x0) * sqrt_one_minus_alpha_bar[t]
+            xts = torch.cat([xts, x0], dim=0)
+
+            zs = torch.zeros(size=variance_noise_shape, device=self.device)
+
+        t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
+        xt = x0
+        reversed_timesteps = reversed(timesteps)
+
+        for t in reversed_timesteps:
+            # 3. calculates noise maps z1,...,zT according to formula(5) of https://arxiv.org/pdf/2304.06140.pdf
+
+            idx = t_to_idx[int(t)]
+            if not eta_is_zero:
+                xt = xts[idx][None]
+
+            # todo: use torch.cat to avoid 2 forward passes
+            out = self.unet.forward(xt, timestep=t, encoder_hidden_states=uncond_embeddings)
+            if not source_prompt == "":
+                cond_out = self.unet.forward(xt, timestep=t, encoder_hidden_states=text_embeddings)
+
+            if not source_prompt == "":
+                # classifier free guidance
+                noise_pred = out.sample + source_guidance_scale * (cond_out.sample - out.sample)
+            else:
+                noise_pred = out.sample
+
+            if eta_is_zero:
+                # x_t -> x_t+1
+                # xt = forward_step(self, noise_pred, t, xt)
+
+                next_timestep = min(self.scheduler.config.num_train_timesteps - 2,
+                                    t + self.scheduler.config.num_train_timesteps //
+                                    self.scheduler.num_inference_steps)
+
+                alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                beta_prod_t = 1 - alpha_prod_t
+
+                # compute predicted original sample from predicted noise also called
+                # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+                pred_original_sample = (xt - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
+
+                xt = self.scheduler.add_noise(pred_original_sample,
+                                              noise_pred,
+                                              torch.LongTensor([next_timestep]))
+
+
+            else:
+                xtm1 = xts[idx + 1][None]
+                # pred of x0
+                pred_original_sample = (xt - (1 - alpha_bar[t]) ** 0.5 * noise_pred) / alpha_bar[t] ** 0.5
+
+                # direction to xt
+                prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                alpha_prod_t_prev = self.scheduler.alphas_cumprod[
+                    prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+
+                # variance = get_variance(self, t)
+                prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                alpha_prod_t_prev = self.scheduler.alphas_cumprod[
+                    prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+                beta_prod_t = 1 - alpha_prod_t
+                beta_prod_t_prev = 1 - alpha_prod_t_prev
+                variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+
+                pred_sample_direction = (1 - alpha_prod_t_prev - eta[idx] * variance) ** (0.5) * noise_pred
+
+                mu_xt = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+
+                z = (xtm1 - mu_xt) / (eta[idx] * variance ** 0.5)
+                zs[idx] = z
+
+                # correction to avoid error accumulation
+                xtm1 = mu_xt + (eta[idx] * variance ** 0.5) * z
+                xts[idx + 1] = xtm1
+
+        if not zs is None:
+            zs[-1] = torch.zeros_like(zs[-1])
+        return zs, xts
+
     @torch.no_grad()
     def __call__(
-        self,
-        prompt: Union[str, List[str]],  # target prompt
-        image: Union[
+            self,
+            prompt: Union[str, List[str]],  # target prompt
+            image: Union[
                 torch.FloatTensor,
                 PIL.Image.Image,
                 np.ndarray,
@@ -221,27 +371,25 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
                 List[PIL.Image.Image],
                 List[np.ndarray],
             ],
-        source_prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: int = 100,
-        guidance_scale: float = 15,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: int = 1,
-        eta: float = 1.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+            source_prompt: Union[str, List[str]] = None,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
+            num_inference_steps: int = 100,
+            guidance_scale: float = 15,
+            source_guidance_scale=3.5,
+            # negative_prompt: Optional[Union[str, List[str]]] = None,
+            num_images_per_prompt: int = 1,
+            eta: float = 1.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            callback_steps: int = 1,
 
-
-        # DDPM additions
-        use_ddpm: bool = False,
-        wts: Optional[List[torch.Tensor]] = None,
-        zs: Optional[List[torch.Tensor]] = None,
-        skip_steps: Optional[Union[int, List[int]]] = 36
+            xts: Optional[List[torch.Tensor]] = None,
+            zs: Optional[List[torch.Tensor]] = None,
+            skip_steps: Optional[Union[int, List[int]]] = 36
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -300,7 +448,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs([prompt,source_prompt], height, width, callback_steps)
+        self.check_inputs([prompt, source_prompt], height, width, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
@@ -315,7 +463,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         text_input_ids = text_inputs.input_ids
 
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length:])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -338,7 +486,6 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             uncond_tokens: List[str]
             uncond_tokens = [""]
 
-
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
                 uncond_tokens,
@@ -359,16 +506,22 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
-        # get the initial random noise unless the user supplied it
+        # preprocess image
+        image = self.image_processor.preprocess(image, width=512, height=512).to(self.device)
 
-        # 4. Prepare timesteps
+        # 4. Invert image and extract latents (x1,...,xT) and noise maps (z1,...,zT)
+        # todo: check zs dim match num_inference_steps - skip if not None
+        if latents is None or zs is None:
+            zs, xts = self.invert(image, source_prompt, eta, source_guidance_scale, num_inference_steps)
+            latents = xts[skip_steps].expand(1, -1, -1, -1)
+            zs = zs[skip_steps:]
+
+        # 5. Prepare timesteps, denoising loop starts from step num skip_steps -> num_inference_steps
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-        timesteps = self.scheduler.timesteps
-        if use_ddpm:
-          t_to_idx = {int(v):k for k,v in enumerate(timesteps[-zs.shape[0]:])}
-          timesteps = timesteps[-zs.shape[0]:]
+        timesteps = self.scheduler.timesteps[-zs.shape[0]:]
+        t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
 
-        # 5. Prepare latent variables
+        # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -383,12 +536,6 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
 
         # 6. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
-        #
-        # self.uncond_estimates = None
-        # self.text_estimates = None
-        # self.edit_estimates = None
-        # self.sem_guidance = None
 
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
@@ -412,61 +559,54 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
 
                 noise_pred = noise_pred_uncond + noise_guidance
 
-            ## ddpm ###########################################################
-            if use_ddpm:
+            # 7. denoising step:
+            idx = t_to_idx[int(t)]
+            z = zs[idx] if not zs is None else None
 
-              idx = t_to_idx[int(t)]
-              z = zs[idx] if not zs is None else None
+            # 7.1 get previous step value (=t-1)
+            prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+            # 7.2 compute alphas, betas
+            alpha_prod_t = self.scheduler.alphas_cumprod[t]
+            alpha_prod_t_prev = self.scheduler.alphas_cumprod[
+                prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+            beta_prod_t = 1 - alpha_prod_t
 
-              # 1. get previous step value (=t-1)
-              prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
-              # 2. compute alphas, betas
-              alpha_prod_t = self.scheduler.alphas_cumprod[t]
-              alpha_prod_t_prev = self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
-              beta_prod_t = 1 - alpha_prod_t
+            # 7.3 compute predicted original sample from predicted noise also called
+            # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+            pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
 
-              # 3. compute predicted original sample from predicted noise also called
-              # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-              pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
+            # 7.4 compute variance: "sigma_t(η)" -> see formula (16)
+            # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
+            # variance = self.scheduler._get_variance(timestep, prev_timestep)
+            # variance = get_variance(model, t) #, prev_timestep)
+            beta_prod_t_prev = 1 - alpha_prod_t_prev
+            variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
+            # 7.5 Take care of asymetric reverse process (asyrp)
+            noise_pred_direction = noise_pred
 
-              # 5. compute variance: "sigma_t(η)" -> see formula (16)
-              # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-              # variance = self.scheduler._get_variance(timestep, prev_timestep)
-              # variance = get_variance(model, t) #, prev_timestep)
-              beta_prod_t_prev = 1 - alpha_prod_t_prev
-              variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+            # 7.6 compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+            # pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output_direction
+            pred_sample_direction = (1 - alpha_prod_t_prev - eta * variance) ** (0.5) * noise_pred_direction
 
+            # 7.7 compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+            prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+            # 7.8 Add noise if eta > 0
+            if eta > 0:
+                if z is None:
+                    z = torch.randn(noise_pred.shape, device=self.device)
+                sigma_z = eta * variance ** (0.5) * z
+                latents = prev_sample + sigma_z
 
-
-              std_dev_t = eta * variance ** (0.5)
-              # Take care of asymetric reverse process (asyrp)
-              noise_pred_direction = noise_pred
-
-              # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-              # pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output_direction
-              pred_sample_direction = (1 - alpha_prod_t_prev - eta * variance) ** (0.5) * noise_pred_direction
-
-              # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-              prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-              # 8. Add noice if eta > 0
-              if eta > 0:
-                  if z is None:
-                      z = torch.randn(noise_pred.shape, device=self.device)
-                  sigma_z =  eta * variance ** (0.5) * z
-                  latents = prev_sample + sigma_z
-
-            ## ddpm ##########################################################
-                # compute the previous noisy sample x_t -> x_t-1
-            else: #if not use_ddpm:
-              latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            # compute the previous noisy sample x_t -> x_t-1
+            else:  # if not use_ddpm:
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-
-         # 8. Post-processing
+        # 8. Post-processing
         image = self.decode_latents(latents)
 
         # 9. Run safety checker
