@@ -1394,6 +1394,10 @@ class FromCkptMixin:
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not. Defaults to `True`.
+            clip_text_model (`transformers.models.clip.modeling_clip.CLIPTextModel`, *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use. If this parameter is `None`, the function will load a new instance of `CLIPTextModel`, if needed.
+            clip_tokenizer (`transformers.models.clip.tokenization_clip.CLIPTokenizer`, *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function will load a new instance of `CLIPTokenizer`, if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -1438,6 +1442,8 @@ class FromCkptMixin:
         upcast_attention = kwargs.pop("upcast_attention", None)
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
+        clip_text_model = kwargs.pop("clip_text_model", None)
+        clip_tokenizer = kwargs.pop("clip_tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
@@ -1518,6 +1524,8 @@ class FromCkptMixin:
             upcast_attention=upcast_attention,
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
+            clip_text_model=clip_text_model,
+            clip_tokenizer=clip_tokenizer,
         )
 
         if torch_dtype is not None:
