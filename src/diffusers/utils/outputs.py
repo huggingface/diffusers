@@ -41,12 +41,12 @@ class BaseOutput(OrderedDict):
     """
     Base class for all model outputs as dataclass. Has a `__getitem__` that allows indexing by integer or slice (like a
     tuple) or strings (like a dictionary) that will ignore the `None` attributes. Otherwise behaves like a regular
-    python dictionary.
+    Python dictionary.
 
     <Tip warning={true}>
 
-    You can't unpack a `BaseOutput` directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
-    before.
+    You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
+    first.
 
     </Tip>
     """
