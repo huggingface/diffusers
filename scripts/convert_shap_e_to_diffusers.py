@@ -6,7 +6,7 @@ from accelerate import load_checkpoint_and_dispatch
 from collections import OrderedDict
 
 from diffusers.models.prior_transformer import PriorTransformer
-from diffusers.pipelines.shap_e import ShapEParamsProjModel
+from diffusers.pipelines.shap_e import ShapEParamsProjModel, MLPNeRSTFModel
 
 
 """
@@ -21,9 +21,9 @@ Convert the model:
 ```sh
 $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
-      --params_proj_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shape/params_proj \
-      --debug params_proj
+      --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
+      --dump_path /home/yiyi_huggingface_co/model_repo/shape/renderer \
+      --debug renderer
 ```
 """
 
@@ -243,6 +243,28 @@ def params_proj_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
 # done params_proj
 
 
+# renderer
+
+RENDERER_ORIGINAL_PREFIX = "renderer.nerstf"
+
+RENDERER_CONFIG = {}
+
+def renderer_model_from_original_config():
+    model = MLPNeRSTFModel(**RENDERER_CONFIG)
+
+    return model
+
+def renderer_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
+    diffusers_checkpoint = {
+        k: checkpoint[f"{RENDERER_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()
+    }
+
+    return diffusers_checkpoint
+
+# done renderer
+
+
+
 # TODO maybe document and/or can do more efficiently (build indices in for loop and extract once for each split?)
 def split_attentions(*, weight, bias, split, chunk_size):
     weights = [None] * split
@@ -297,7 +319,7 @@ def prior(*, args, checkpoint_map_location):
 def params_proj(*, args, checkpoint_map_location):
     print("loading params_proj")
 
-    params_proj_checkpoint = torch.load(args.params_proj_checkpoint_path, map_location=checkpoint_map_location)
+    params_proj_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
     
     params_proj_model = params_proj_model_from_original_config()
 
@@ -310,6 +332,23 @@ def params_proj(*, args, checkpoint_map_location):
     print("done loading params_proj")
 
     return params_proj_model
+
+def renderer(*, args, checkpoint_map_location):
+    print(" loading renderer")
+
+    renderer_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
+    
+    renderer_model = renderer_model_from_original_config()
+
+    renderer_diffusers_checkpoint = renderer_original_checkpoint_to_diffusers_checkpoint(renderer_model, renderer_checkpoint)
+
+    del renderer_checkpoint
+
+    load_checkpoint_to_model(renderer_diffusers_checkpoint, renderer_model, strict=True)
+
+    print("done loading renderer")
+
+    return renderer_model
 
 
 def load_checkpoint_to_model(checkpoint, model, strict=False):
@@ -336,11 +375,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--params_proj_checkpoint_path",
+        "--transmitter_checkpoint_path",
         default=None,
         type=str,
         required=False,
-        help="Path to the prior checkpoint to convert.",
+        help="Path to the transmitter checkpoint to convert.",
     )
 
     parser.add_argument(
@@ -376,5 +415,8 @@ if __name__ == "__main__":
     elif args.debug == "params_proj":
         params_proj_model = params_proj(args=args, checkpoint_map_location=checkpoint_map_location)
         params_proj_model.save_pretrained(args.dump_path)
+    elif args.debug == "renderer":
+        renderer_model = renderer(args=args, checkpoint_map_location=checkpoint_map_location)
+        renderer_model.save_pretrained(args.dump_path)
     else:
         raise ValueError(f"unknown debug value : {args.debug}")
