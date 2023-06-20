@@ -18,6 +18,7 @@ class DifferentiableProjectiveCamera:
     height: int
     x_fov: float
     y_fov: float
+    shape: Tuple[int]
 
     def __post_init__(self):
         assert self.x.shape[0] == self.y.shape[0] == self.z.shape[0] == self.origin.shape[0]
@@ -35,8 +36,8 @@ class DifferentiableProjectiveCamera:
 
     def fov(self):
         return torch.from_numpy(np.array([self.x_fov, self.y_fov], dtype=np.float32))
-
-    def image_coords(self) -> torch.Tensor:
+    
+    def get_image_coords(self) -> torch.Tensor:
         """
         :return: coords of shape (width * height, 2)
         """
@@ -49,15 +50,30 @@ class DifferentiableProjectiveCamera:
             axis=1,
         )
         return coords
+    
+    @property
+    def camera_rays(self):
 
-    def camera_rays(self, coords: torch.Tensor) -> torch.Tensor:
+        batch_size, *inner_shape = self.shape
+        inner_batch_size = int(np.prod(inner_shape))
+
+        coords = self.get_image_coords()
+        coords = torch.broadcast_to(coords.unsqueeze(0), [batch_size * inner_batch_size, *coords.shape])
+        rays = self.get_camera_rays(coords)
+
+        rays = rays.view(batch_size, inner_batch_size * self.height * self.width, 2, 3)
+
+        return rays
+
+    def get_camera_rays(self, coords: torch.Tensor) -> torch.Tensor:
         batch_size, *shape, n_coords = coords.shape
         assert n_coords == 2
         assert batch_size == self.origin.shape[0]
+
         flat = coords.view(batch_size, -1, 2)
 
-        res = self.resolution().to(flat.device)
-        fov = self.fov().to(flat.device)
+        res = self.resolution()
+        fov = self.fov()
 
         fracs = (flat.float() / (res - 1)) * 2 - 1
         fracs = fracs * torch.tan(fov / 2)
@@ -96,16 +112,8 @@ class DifferentiableProjectiveCamera:
             y_fov=self.y_fov,
         )
 
-@dataclass
-class DifferentiableCameraBatch:
-    """
-    Annotate a differentiable camera with a multi-dimensional batch shape.
-    """
 
-    shape: Tuple[int]
-    flat_camera: DifferentiableProjectiveCamera
-
-def create_pan_cameras(size: int, device: torch.device) -> DifferentiableCameraBatch:
+def create_pan_cameras(size: int) -> DifferentiableProjectiveCamera:
     origins = []
     xs = []
     ys = []
@@ -120,16 +128,14 @@ def create_pan_cameras(size: int, device: torch.device) -> DifferentiableCameraB
         xs.append(x)
         ys.append(y)
         zs.append(z)
-    return DifferentiableCameraBatch(
-        shape=(1, len(xs)),
-        flat_camera=DifferentiableProjectiveCamera(
-            origin=torch.from_numpy(np.stack(origins, axis=0)).float().to(device),
-            x=torch.from_numpy(np.stack(xs, axis=0)).float().to(device),
-            y=torch.from_numpy(np.stack(ys, axis=0)).float().to(device),
-            z=torch.from_numpy(np.stack(zs, axis=0)).float().to(device),
+    return DifferentiableProjectiveCamera(
+            origin=torch.from_numpy(np.stack(origins, axis=0)).float(),
+            x=torch.from_numpy(np.stack(xs, axis=0)).float(),
+            y=torch.from_numpy(np.stack(ys, axis=0)).float(),
+            z=torch.from_numpy(np.stack(zs, axis=0)).float(),
             width=size,
             height=size,
             x_fov=0.7,
             y_fov=0.7,
-        ),
-    )
+            shape=(1, len(xs))
+        )
