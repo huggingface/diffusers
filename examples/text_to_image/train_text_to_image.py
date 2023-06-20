@@ -1062,7 +1062,7 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         # Run a final round of inference.
-        images = [None]
+        images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
             pipeline = pipeline.to(accelerator.device)
