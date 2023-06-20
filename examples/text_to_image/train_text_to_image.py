@@ -139,8 +139,8 @@ These are the key hyperparameters used during training:
             wandb_run_url = wandb.run.url
 
     if wandb_run_url is not None:
-        wandb_info = """
- More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
+        wandb_info = f"""
+More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
 """
 
     model_card += wandb_info
