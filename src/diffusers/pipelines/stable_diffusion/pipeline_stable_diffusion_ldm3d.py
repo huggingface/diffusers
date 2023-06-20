@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> output = pipe_ldm3d(prompt)
+        >>> output = pipe(prompt)
         >>> rgb_image, depth_image = output.rgb, output.depth
         ```
 """

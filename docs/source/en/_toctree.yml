@@ -50,6 +50,8 @@
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
+    - local: using-diffusers/control_brightness
+      title: Control image brightness
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
