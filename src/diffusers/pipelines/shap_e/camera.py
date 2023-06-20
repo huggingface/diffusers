@@ -133,10 +133,3 @@ def create_pan_cameras(size: int, device: torch.device) -> DifferentiableCameraB
             y_fov=0.7,
         ),
     )
-
-def get_image_coords(width, height) -> torch.Tensor:
-    pixel_indices = torch.arange(height * width)
-    # torch throws warnings for pixel_indices // width
-    pixel_indices_div = torch.div(pixel_indices, width, rounding_mode="trunc")
-    coords = torch.stack([pixel_indices % width, pixel_indices_div], dim=1)
-    return coords
