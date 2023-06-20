@@ -132,16 +132,16 @@ These are the key hyperparameters used during training:
 * Mixed-precision: {args.mixed_precision}
 
 """
-    wandb_info = """
-More information on all the CLI arguments and the environment should be available on the `wandb` run page if you used it via `report_to="wandb"`.
-"""
+    wandb_info = ""
     if is_wandb_available():
         wandb_run_url = None
         if wandb.run is not None:
             wandb_run_url = wandb.run.url
 
     if wandb_run_url is not None:
-        wandb_info += f"Check it out here: {wandb_run_url}."
+        wandb_info = """
+ More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
+"""
 
     model_card += wandb_info
 
@@ -1026,13 +1026,12 @@ def main():
                 break
 
         if accelerator.is_main_process:
-            images = None
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
-                images = log_validation(
+                log_validation(
                     vae,
                     text_encoder,
                     tokenizer,
