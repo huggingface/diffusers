@@ -10,7 +10,7 @@ import PIL
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging, randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.edit_friendly_ddpm_inversion import DDPMInversionDiffusionPipelineOutput
@@ -56,7 +56,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             text_encoder: CLIPTextModel,
             tokenizer: CLIPTokenizer,
             unet: UNet2DConditionModel,
-            scheduler: KarrasDiffusionSchedulers,
+            scheduler: DDIMScheduler,
             safety_checker: StableDiffusionSafetyChecker,
             feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
@@ -253,18 +253,17 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps.to(self.device)
 
         if eta is None or (type(eta) in [int, float] and eta == 0):
-            eta_is_zero = True
+            do_ddpm_scheme = False
             zs = None
 
         else:
-            eta_is_zero = False
+            do_ddpm_scheme = True
             if type(eta) in [int, float]: eta = [eta] * self.scheduler.num_inference_steps
 
             # xts = sample_xts_from_x0(self, x0, num_inference_steps=num_inference_steps)
             # 2. calculates intermidiate latents x1,...,xT according to formula(6) of https://arxiv.org/pdf/2304.06140.pdf
             alpha_bar = self.scheduler.alphas_cumprod
             sqrt_one_minus_alpha_bar = (1 - alpha_bar) ** 0.5
-            alphas = self.scheduler.alphas
             variance_noise_shape = (
                 num_inference_steps,
                 self.unet.in_channels,
@@ -288,7 +287,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             # 3. calculates noise maps z1,...,zT according to formula(5) of https://arxiv.org/pdf/2304.06140.pdf
 
             idx = t_to_idx[int(t)]
-            if not eta_is_zero:
+            if do_ddpm_scheme:
                 xt = xts[idx][None]
 
             # todo: use torch.cat to avoid 2 forward passes
@@ -302,27 +301,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             else:
                 noise_pred = out.sample
 
-            if eta_is_zero:
-                # x_t -> x_t+1
-                # xt = forward_step(self, noise_pred, t, xt)
-
-                next_timestep = min(self.scheduler.config.num_train_timesteps - 2,
-                                    t + self.scheduler.config.num_train_timesteps //
-                                    self.scheduler.num_inference_steps)
-
-                alpha_prod_t = self.scheduler.alphas_cumprod[t]
-                beta_prod_t = 1 - alpha_prod_t
-
-                # compute predicted original sample from predicted noise also called
-                # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-                pred_original_sample = (xt - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
-
-                xt = self.scheduler.add_noise(pred_original_sample,
-                                              noise_pred,
-                                              torch.LongTensor([next_timestep]))
-
-
-            else:
+            if do_ddpm_scheme:
                 xtm1 = xts[idx + 1][None]
                 # pred of x0
                 pred_original_sample = (xt - (1 - alpha_bar[t]) ** 0.5 * noise_pred) / alpha_bar[t] ** 0.5
@@ -352,9 +331,31 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
                 xtm1 = mu_xt + (eta[idx] * variance ** 0.5) * z
                 xts[idx + 1] = xtm1
 
+            else:
+                # x_t -> x_t+1
+                # xt = forward_step(self, noise_pred, t, xt)
+
+                next_timestep = min(self.scheduler.config.num_train_timesteps - 2,
+                                    t + self.scheduler.config.num_train_timesteps //
+                                    self.scheduler.num_inference_steps)
+
+                alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                beta_prod_t = 1 - alpha_prod_t
+
+                # compute predicted original sample from predicted noise also called
+                # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+                pred_original_sample = (xt - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
+
+                xt = self.scheduler.add_noise(pred_original_sample,
+                                              noise_pred,
+                                              torch.LongTensor([next_timestep]))
+
         if not zs is None:
             zs[-1] = torch.zeros_like(zs[-1])
-        return zs, xts
+        if do_ddpm_scheme:
+            return zs, xts
+        else:
+            return xt
 
     @torch.no_grad()
     def __call__(
@@ -386,7 +387,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
 
             xts: Optional[List[torch.Tensor]] = None,
             zs: Optional[List[torch.Tensor]] = None,
-            skip_steps: Optional[Union[int, List[int]]] = 36
+            skip_steps: Optional[int] = 36
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -394,11 +395,15 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the edited image generation.
+                Corresponds to 'target prompt'  as used in the [Edit Friendly DDPM paper] (
+                https://arxiv.org/pdf/2304.06140.pdf)
             image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the inversion
                 process.
             source_prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the inversion of image.
+                Corresponds to 'source prompt'  as used in the [Edit Friendly DDPM paper] (
+                https://arxiv.org/pdf/2304.06140.pdf)
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -445,14 +450,18 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-            xts:('List[torch.Tensor]', *optional*, defaults to None):
+            xts ('List[torch.Tensor]', *optional*, defaults to None):
               Pre-generated intermidate inverted latents corresponding to the given image, to be used for the denoising process: editing or reconstruction.
               Correspond to x1,...,xT from the Edit Friendly DDPM Inversion paper: https://arxiv.org/pdf/2304.06140.pdf
               If None, latents are calucalted in the inversion process.
-            zs:('List[torch.Tensor]', *optional*, defaults to None):
+            zs ('List[torch.Tensor]', *optional*, defaults to None):
               Pre-generated noise maps corresponding to the given image, to be used for the denoising process: editing or reconstruction.
               Correspond to z1,...,zT from the Edit Friendly DDPM Inversion paper: https://arxiv.org/pdf/2304.06140.pdf
               If None, latents are calucalted in the inversion process.
+            skip_steps ('int' , *optional*, defaults to 36):
+                Corresponds to 'Tskip'  as used in the [Edit Friendly DDPM paper] (
+                https://arxiv.org/pdf/2304.06140.pdf). A parameter controlling the adherence to the input image by
+                setting the starting timestep of the generation process to be T-Tskip
 
 
         Returns:
@@ -528,16 +537,25 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
         # preprocess image
         image = self.image_processor.preprocess(image, width=512, height=512).to(self.device)
 
+        do_ddpm_scheme = eta > 0
+
         # 4. Invert image and extract latents (x1,...,xT) and noise maps (z1,...,zT)
         # todo: check zs dim match num_inference_steps - skip if not None
         if latents is None or zs is None:
-            zs, xts = self.invert(image, source_prompt, eta, source_guidance_scale, num_inference_steps)
-            latents = xts[skip_steps].expand(1, -1, -1, -1)
-            zs = zs[skip_steps:]
+            if do_ddpm_scheme:
+                zs, xts = self.invert(image, source_prompt, eta, source_guidance_scale, num_inference_steps)
+                latents = xts[skip_steps].expand(1, -1, -1, -1)
+                zs = zs[skip_steps:]
+            else:
+                xt = self.invert(image, source_prompt, eta, source_guidance_scale, num_inference_steps)
+                latents = xt.expand(1, -1, -1, -1)
 
         # 5. Prepare timesteps, denoising loop starts from step num skip_steps -> num_inference_steps
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-        timesteps = self.scheduler.timesteps[-zs.shape[0]:]
+        if do_ddpm_scheme:
+            timesteps = self.scheduler.timesteps[-zs.shape[0]:]
+        else:
+            timesteps = self.scheduler.timesteps
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
 
         # 6. Prepare latent variables
@@ -614,7 +632,7 @@ class DDPMInversionDiffusionPipeline(DiffusionPipeline):
             # 7.7 compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
             prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
             # 7.8 Add noise if eta > 0
-            if eta > 0:
+            if do_ddpm_scheme:
                 if z is None:
                     z = torch.randn(noise_pred.shape, device=self.device)
                 sigma_z = eta * variance ** (0.5) * z
