@@ -79,7 +79,7 @@ class Encoder(nn.Module):
                 downsample_padding=0,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_heads=None,
+                num_attention_heads=None,
                 temb_channels=None,
             )
             self.down_blocks.append(down_block)
@@ -208,7 +208,7 @@ class Decoder(nn.Module):
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_heads=None,
+                num_attention_heads=None,
                 temb_channels=temb_channels,
                 resnet_time_scale_shift=norm_type,
             )

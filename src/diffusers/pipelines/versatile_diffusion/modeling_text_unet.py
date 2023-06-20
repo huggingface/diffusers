@@ -41,7 +41,7 @@ def get_down_block(
     add_downsample,
     resnet_eps,
     resnet_act_fn,
-    attn_num_heads,
+    num_attention_heads,
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
@@ -82,7 +82,7 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            num_attention_heads=num_attention_heads,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -101,7 +101,7 @@ def get_up_block(
     add_upsample,
     resnet_eps,
     resnet_act_fn,
-    attn_num_heads,
+    num_attention_heads,
     resnet_groups=None,
     cross_attention_dim=None,
     dual_cross_attention=False,
@@ -141,7 +141,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_heads=attn_num_heads,
+            num_attention_heads=num_attention_heads,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -512,7 +512,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim[i],
-                attn_num_heads=num_attention_heads[i],
+                num_attention_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
@@ -536,7 +536,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 output_scale_factor=mid_block_scale_factor,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 cross_attention_dim=cross_attention_dim[-1],
-                attn_num_heads=num_attention_heads[-1],
+                num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
@@ -599,7 +599,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
-                attn_num_heads=reversed_num_attention_heads[i],
+                num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
@@ -1214,7 +1214,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_heads=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         downsample_padding=1,
@@ -1229,7 +1229,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_heads = attn_num_heads
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1250,8 +1250,8 @@ class CrossAttnDownBlockFlat(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_heads,
-                        out_channels // attn_num_heads,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1264,8 +1264,8 @@ class CrossAttnDownBlockFlat(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_heads,
-                        out_channels // attn_num_heads,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1448,7 +1448,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_heads=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -1462,7 +1462,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_heads = attn_num_heads
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1485,8 +1485,8 @@ class CrossAttnUpBlockFlat(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_heads,
-                        out_channels // attn_num_heads,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1499,8 +1499,8 @@ class CrossAttnUpBlockFlat(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_heads,
-                        out_channels // attn_num_heads,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1594,7 +1594,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_heads=1,
+        num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         dual_cross_attention=False,
@@ -1604,7 +1604,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         super().__init__()
 
         self.has_cross_attention = True
-        self.attn_num_heads = attn_num_heads
+        self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -1628,8 +1628,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_heads,
-                        in_channels // attn_num_heads,
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
                         in_channels=in_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1641,8 +1641,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_heads,
-                        in_channels // attn_num_heads,
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
                         in_channels=in_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,

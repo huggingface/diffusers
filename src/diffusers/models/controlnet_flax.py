@@ -247,7 +247,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
-                    attn_num_heads=num_attention_heads[i],
+                    num_attention_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
@@ -295,7 +295,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.mid_block = FlaxUNetMidBlock2DCrossAttn(
             in_channels=mid_block_channel,
             dropout=self.dropout,
-            attn_num_heads=num_attention_heads[-1],
+            num_attention_heads=num_attention_heads[-1],
             use_linear_projection=self.use_linear_projection,
             dtype=self.dtype,
         )
