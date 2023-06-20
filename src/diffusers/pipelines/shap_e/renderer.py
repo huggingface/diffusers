@@ -28,6 +28,58 @@ from ...utils import BaseOutput
 from typing import Optional, Dict
 
 
+def sample_pmf(pmf: torch.Tensor, n_samples: int) -> torch.Tensor:
+    r"""
+    Sample from the given discrete probability distribution with replacement.
+
+    The i-th bin is assumed to have mass pmf[i].
+
+    Args:
+        pmf: [batch_size, *shape, n_samples, 1] where (pmf.sum(dim=-2) == 1).all()
+        n_samples: number of samples
+
+    Return: 
+        indices sampled with replacement
+    """
+
+    *shape, support_size, last_dim = pmf.shape
+    assert last_dim == 1
+
+    cdf = torch.cumsum(pmf.view(-1, support_size), dim=1)
+    inds = torch.searchsorted(cdf, torch.rand(cdf.shape[0], n_samples, device=cdf.device))
+
+    return inds.view(*shape, n_samples, 1).clamp(0, support_size - 1)
+
+
+def posenc_nerf(x: torch.Tensor, min_deg: int = 0, max_deg: int = 15) -> torch.Tensor:
+    """
+    Concatenate x and its positional encodings, following NeRF.
+
+    Reference: https://arxiv.org/pdf/2210.04628.pdf
+    """
+    if min_deg == max_deg:
+        return x
+
+    scales = 2.0 ** torch.arange(min_deg, max_deg, dtype=x.dtype, device=x.device)
+    *shape, dim = x.shape
+    xb = (x.reshape(-1, 1, dim) * scales.view(1, -1, 1)).reshape(*shape, -1)
+    assert xb.shape[-1] == dim * (max_deg - min_deg)
+    emb = torch.cat([xb, xb + math.pi / 2.0], axis=-1).sin()
+    return torch.cat([x, emb], dim=-1)
+
+
+def encode_position(position):
+
+    return posenc_nerf(position, min_deg=0, max_deg=15)
+
+
+def encode_direction(position, direction=None):
+    if direction is None:
+        return torch.zeros_like(posenc_nerf(position, min_deg=0, max_deg=8))
+    else:
+        return posenc_nerf(direction, min_deg=0, max_deg=8)
+
+
 class VoidNeRFModel(nn.Module):
     """
     Implements the default empty space model where all queries are rendered as
@@ -55,6 +107,7 @@ class VoidNeRFModel(nn.Module):
 
         return background
 
+
 @dataclass
 class VolumeRange:
     t0: torch.Tensor
@@ -68,28 +121,27 @@ class VolumeRange:
         """
         Partitions t0 and t1 into n_samples intervals.
 
-        :param ts: [batch_size, *shape, n_samples, 1]
-        :return: a tuple of (
+        Args:
+            ts: [batch_size, *shape, n_samples, 1]
+        
+        Return: 
+            
             lower: [batch_size, *shape, n_samples, 1]
             upper: [batch_size, *shape, n_samples, 1]
             delta: [batch_size, *shape, n_samples, 1]
-        ) where
-
+        
+        where
             ts \\in [lower, upper]
             deltas = upper - lower
         """
-        #print(" ")
-        #print(f" inside BoundingBoxVolume.partition:")
-        #print(f" - ts: {ts.shape}, {ts.abs().sum()}")
+
         mids = (ts[..., 1:, :] + ts[..., :-1, :]) * 0.5
-        #print(f" - mids: {mids.shape}, {mids.abs().sum()}")
         lower = torch.cat([self.t0[..., None, :], mids], dim=-2)
-        #print(f" -t0: {self.t0.shape}, {self.t0.abs().sum()}")
         upper = torch.cat([mids, self.t1[..., None, :]], dim=-2)
-        #print(f" -upper: {upper.shape}, {upper.abs().sum()}")
         delta = upper - lower
         assert lower.shape == upper.shape == delta.shape == ts.shape
         return lower, upper, delta
+
 
 class BoundingBoxVolume(nn.Module):
     """
@@ -105,20 +157,22 @@ class BoundingBoxVolume(nn.Module):
         min_t_range: float = 1e-3,
     ):
         """
-        :param bbox_min: the left/bottommost corner of the bounding box
-        :param bbox_max: the other corner of the bounding box
-        :param min_dist: all rays should start at least this distance away from the origin.
+        Args:
+            bbox_min: the left/bottommost corner of the bounding box
+            bbox_max: the other corner of the bounding box
+            min_dist: all rays should start at least this distance away from the origin.
         """
         super().__init__()
 
-        self.bbox_min = torch.tensor(bbox_min)
-        self.bbox_max = torch.tensor(bbox_max)
         self.min_dist = min_dist
         self.min_t_range = min_t_range
+
+        self.bbox_min = torch.tensor(bbox_min)
+        self.bbox_max = torch.tensor(bbox_max)
         self.bbox = torch.stack([self.bbox_min, self.bbox_max])
         assert self.bbox.shape == (2, 3)
-        assert self.min_dist >= 0.0
-        assert self.min_t_range > 0.0
+        assert min_dist >= 0.0
+        assert min_t_range > 0.0
 
     def intersect(
         self,
@@ -128,13 +182,15 @@ class BoundingBoxVolume(nn.Module):
         epsilon=1e-6,
     ):
         """
-        :param origin: [batch_size, *shape, 3]
-        :param direction: [batch_size, *shape, 3]
-        :param t0_lower: Optional [batch_size, *shape, 1] lower bound of t0 when intersecting this volume.
-        :param params: Optional meta parameters in case Volume is parametric
-        :param epsilon: to stabilize calculations
+        Args:
+            origin: [batch_size, *shape, 3]
+            direction: [batch_size, *shape, 3]
+            t0_lower: Optional [batch_size, *shape, 1] lower bound of t0 when intersecting this volume.
+            params: Optional meta parameters in case Volume is parametric
+            epsilon: to stabilize calculations
 
-        :return: A tuple of (t0, t1, intersected) where each has a shape
+        Return: 
+            A tuple of (t0, t1, intersected) where each has a shape
             [batch_size, *shape, 1]. If a ray intersects with the volume, `o + td` is
             in the volume for all t in [t0, t1]. If the volume is bounded, t1 is guaranteed
             to be on the boundary of the volume.
@@ -171,6 +227,7 @@ class BoundingBoxVolume(nn.Module):
 
         return VolumeRange(t0=t0, t1=t1, intersected=intersected)
 
+
 class StratifiedRaySampler(nn.Module):
     """
     Instead of fixed intervals, a sample is drawn uniformly at random from each
@@ -193,10 +250,12 @@ class StratifiedRaySampler(nn.Module):
         epsilon: float = 1e-3,
     ) -> torch.Tensor:
         """
-        :param t0: start time has shape [batch_size, *shape, 1]
-        :param t1: finish time has shape [batch_size, *shape, 1]
-        :param n_samples: number of ts to sample
-        :return: sampled ts of shape [batch_size, *shape, n_samples, 1]
+        Args:
+            t0: start time has shape [batch_size, *shape, 1]
+            t1: finish time has shape [batch_size, *shape, 1]
+            n_samples: number of ts to sample
+        Return: 
+            sampled ts of shape [batch_size, *shape, n_samples, 1]
         """
         ones = [1] * (len(t0.shape) - 1)
         ts = torch.linspace(0, 1, n_samples).view(*ones, n_samples).to(t0.dtype).to(t0.device)
@@ -221,36 +280,62 @@ class StratifiedRaySampler(nn.Module):
         return ts.unsqueeze(-1)
 
 
-def posenc_nerf(x: torch.Tensor, min_deg: int = 0, max_deg: int = 15) -> torch.Tensor:
+class ImportanceRaySampler(nn.Module):
     """
-    Concatenate x and its positional encodings, following NeRF.
-
-    Reference: https://arxiv.org/pdf/2210.04628.pdf
+    Given the initial estimate of densities, this samples more from
+    regions/bins expected to have objects.
     """
-    if min_deg == max_deg:
-        return x
-    print(" ")
-    print(f" inside posenc_nerf")
-    print(f" - x.device {x.device}, x.dtype: {x.dtype}")
-    scales = 2.0 ** torch.arange(min_deg, max_deg, dtype=x.dtype, device=x.device)
-    *shape, dim = x.shape
-    xb = (x.reshape(-1, 1, dim) * scales.view(1, -1, 1)).reshape(*shape, -1)
-    assert xb.shape[-1] == dim * (max_deg - min_deg)
-    emb = torch.cat([xb, xb + math.pi / 2.0], axis=-1).sin()
-    return torch.cat([x, emb], dim=-1)
 
-def encode_position(position):
+    def __init__(
+        self, volume_range: VolumeRange, ts: torch.Tensor, weights: torch.Tensor, blur_pool: bool = False, alpha: float = 1e-5
+    ):
+        """
+        Args:
+            volume_range: the range in which a ray intersects the given volume.
+            ts: earlier samples from the coarse rendering step
+            weights: discretized version of density * transmittance
+            blur_pool: if true, use 2-tap max + 2-tap blur filter from mip-NeRF.
+            alpha: small value to add to weights.
+        """
+        self.volume_range = volume_range
+        self.ts = ts.clone().detach()
+        self.weights = weights.clone().detach()
+        self.blur_pool = blur_pool
+        self.alpha = alpha
 
-    return posenc_nerf(position, min_deg=0, max_deg=15)
+    @torch.no_grad()
+    def sample(self, t0: torch.Tensor, t1: torch.Tensor, n_samples: int) -> torch.Tensor:
+        """
+        Args:
+            t0: start time has shape [batch_size, *shape, 1]
+            t1: finish time has shape [batch_size, *shape, 1]
+            n_samples: number of ts to sample
+        Return: 
+            sampled ts of shape [batch_size, *shape, n_samples, 1]
+        """
+        lower, upper, _ = self.volume_range.partition(self.ts)
 
-def encode_direction(position, direction=None):
-    if direction is None:
-        return torch.zeros_like(posenc_nerf(position, min_deg=0, max_deg=8))
-    else:
-        return posenc_nerf(direction, min_deg=0, max_deg=8)
+        batch_size, *shape, n_coarse_samples, _ = self.ts.shape
 
-def swish(x):
-    return x * torch.sigmoid(x)
+        weights = self.weights
+        if self.blur_pool:
+            padded = torch.cat([weights[..., :1, :], weights, weights[..., -1:, :]], dim=-2)
+            maxes = torch.maximum(padded[..., :-1, :], padded[..., 1:, :])
+            weights = 0.5 * (maxes[..., :-1, :] + maxes[..., 1:, :])
+        weights = weights + self.alpha
+        pmf = weights / weights.sum(dim=-2, keepdim=True)
+        inds = sample_pmf(pmf, n_samples)
+        assert inds.shape == (batch_size, *shape, n_samples, 1)
+        assert (inds >= 0).all() and (inds < n_coarse_samples).all()
+
+        t_rand = torch.rand(inds.shape, device=inds.device)
+        lower_ = torch.gather(lower, -2, inds)
+        upper_ = torch.gather(upper, -2, inds)
+
+        ts = lower_ + (upper_ - lower_) * t_rand
+        ts = torch.sort(ts, dim=-2).values
+        return ts
+
 
 @dataclass
 class MLPNeRFModelOutput(BaseOutput):
@@ -322,51 +407,28 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         
 
     def forward(self, *, position, direction, ts, nerf_level = "coarse"):
-        print(" ")
-        print(f" model inputs:")
-        print(f" - position: {position.shape}, {position.abs().sum()}")
-        print(f" - direction: {direction}")
-
 
         h = encode_position(position)
-        print(f" position after encode -> h: {h.shape}, {h.abs().sum()}")
+
         h_preact = h
         h_directionless = None
         for i, layer in enumerate(self.mlp):
-            print(f" ")
-            print(f" ***** layer {i}")
             if i == self.config.insert_direction_at: # 4 in the config 
-                print(" insert direction")
+
                 h_directionless = h_preact
                 h_direction = encode_direction(position, direction=direction)
                 h = torch.cat([h, h_direction], dim=-1)
-                print(f" -> h with direction: {h.shape}, {h.abs().sum()}")
-            #batch_size, *shape, d_in = h.shape
-            #h = h.view(batch_size, -1, d_in)
-            print(f" h: {h.shape}, {h.abs().sum()}")
-            #print(h[0,0,:])
-            print(f" weight: {layer.weight.shape}, {layer.weight.abs().sum()}")
-            #print(layer.weight[0,:])
-            #print(f" bias: {layer.bias.shape}, {layer.bias.abs().sum()}")
+
             h = layer(h)
-            #print(f" -> layer -> {h.shape}, {h.abs().sum()}")
-            #print(h[0,0,0])
 
             h_preact = h
+
             if i < len(self.mlp) - 1:
-                print(self.activation)
                 h = self.activation(h)
-                print(f" -> act -> {h.shape}, {h.abs().sum()}")
+
         h_final = h
         if h_directionless is None:
             h_directionless = h_preact
-        print(" ")
-        print(" ***************************")
-        print(" out:")
-        print(f" - h_final:{h_final.shape},{h_final.abs().sum()}")
-        print(f" - h_directionless: {h_directionless.shape}, {h_directionless.abs().sum()}")
-        print(" ***************************")
-        print(" ")
 
         activation = self.map_indices_to_keys(h_final)
 
@@ -380,11 +442,6 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         density=self.density_activation(h_density)
         signed_distance=self.sdf_activation(activation['sdf'])
         channels=self.channel_activation(h_channels)
-        print(" model out /raw !!" )
-        print(f" density: {density.shape}, {density.abs().sum()}")
-        print(f" signed_distance: {signed_distance.shape}, {signed_distance.abs().sum()}")
-        print(f" channels: {channels.shape}, {channels.abs().sum()}")
-        print(f" ts: {ts.shape}, {ts.abs().sum()}")
         
         # yiyi notes: I think signed_distance is not used 
         return MLPNeRFModelOutput(density = density, signed_distance= signed_distance, channels=channels, ts=ts)

@@ -14,5 +14,5 @@ except OptionalDependencyNotAvailable:
 else:
     from .pipeline_shap_e import ShapEPipeline
     from .params_proj import ShapEParamsProjModel
-    from .renderer import MLPNeRSTFModel, MLPNeRFModelOutput, VoidNeRFModel, BoundingBoxVolume, StratifiedRaySampler
+    from .renderer import MLPNeRSTFModel, MLPNeRFModelOutput, VoidNeRFModel, BoundingBoxVolume, StratifiedRaySampler, ImportanceRaySampler
     from .camera import create_pan_cameras
