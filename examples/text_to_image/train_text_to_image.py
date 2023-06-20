@@ -81,7 +81,7 @@ def save_model_card(
     repo_folder=None,
 ):
     img_str = ""
-    if images is not None:
+    if len(images) > 0:
         image_grid = make_image_grid(images, 1, len(args.validation_prompts))
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
@@ -1062,7 +1062,7 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         # Run a final round of inference.
-        images = None
+        images = [None]
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
             pipeline = pipeline.to(accelerator.device)
