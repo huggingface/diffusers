@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from typing import Tuple
 
-import torch
 import numpy as np
+import torch
+
 
 @dataclass
 class DifferentiableProjectiveCamera:
@@ -23,20 +24,14 @@ class DifferentiableProjectiveCamera:
     def __post_init__(self):
         assert self.x.shape[0] == self.y.shape[0] == self.z.shape[0] == self.origin.shape[0]
         assert self.x.shape[1] == self.y.shape[1] == self.z.shape[1] == self.origin.shape[1] == 3
-        assert (
-            len(self.x.shape)
-            == len(self.y.shape)
-            == len(self.z.shape)
-            == len(self.origin.shape)
-            == 2
-        )
+        assert len(self.x.shape) == len(self.y.shape) == len(self.z.shape) == len(self.origin.shape) == 2
 
     def resolution(self):
         return torch.from_numpy(np.array([self.width, self.height], dtype=np.float32))
 
     def fov(self):
         return torch.from_numpy(np.array([self.x_fov, self.y_fov], dtype=np.float32))
-    
+
     def get_image_coords(self) -> torch.Tensor:
         """
         :return: coords of shape (width * height, 2)
@@ -50,10 +45,9 @@ class DifferentiableProjectiveCamera:
             axis=1,
         )
         return coords
-    
+
     @property
     def camera_rays(self):
-
         batch_size, *inner_shape = self.shape
         inner_batch_size = int(np.prod(inner_shape))
 
@@ -87,9 +81,7 @@ class DifferentiableProjectiveCamera:
         directions = directions / directions.norm(dim=-1, keepdim=True)
         rays = torch.stack(
             [
-                torch.broadcast_to(
-                    self.origin.view(batch_size, 1, 3), [batch_size, directions.shape[1], 3]
-                ),
+                torch.broadcast_to(self.origin.view(batch_size, 1, 3), [batch_size, directions.shape[1], 3]),
                 directions,
             ],
             dim=2,
@@ -129,13 +121,13 @@ def create_pan_cameras(size: int) -> DifferentiableProjectiveCamera:
         ys.append(y)
         zs.append(z)
     return DifferentiableProjectiveCamera(
-            origin=torch.from_numpy(np.stack(origins, axis=0)).float(),
-            x=torch.from_numpy(np.stack(xs, axis=0)).float(),
-            y=torch.from_numpy(np.stack(ys, axis=0)).float(),
-            z=torch.from_numpy(np.stack(zs, axis=0)).float(),
-            width=size,
-            height=size,
-            x_fov=0.7,
-            y_fov=0.7,
-            shape=(1, len(xs))
-        )
+        origin=torch.from_numpy(np.stack(origins, axis=0)).float(),
+        x=torch.from_numpy(np.stack(xs, axis=0)).float(),
+        y=torch.from_numpy(np.stack(ys, axis=0)).float(),
+        z=torch.from_numpy(np.stack(zs, axis=0)).float(),
+        width=size,
+        height=size,
+        x_fov=0.7,
+        y_fov=0.7,
+        shape=(1, len(xs)),
+    )

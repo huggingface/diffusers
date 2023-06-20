@@ -3,10 +3,9 @@ import tempfile
 
 import torch
 from accelerate import load_checkpoint_and_dispatch
-from collections import OrderedDict
 
 from diffusers.models.prior_transformer import PriorTransformer
-from diffusers.pipelines.shap_e import ShapEParamsProjModel, MLPNeRSTFModel
+from diffusers.pipelines.shap_e import MLPNeRSTFModel, ShapEParamsProjModel
 
 
 """
@@ -225,6 +224,7 @@ PARAMS_PROJ_ORIGINAL_PREFIX = "encoder.params_proj"
 
 PARAMS_PROJ_CONFIG = {}
 
+
 def params_proj_model_from_original_config():
     model = ShapEParamsProjModel(**PARAMS_PROJ_CONFIG)
 
@@ -232,10 +232,7 @@ def params_proj_model_from_original_config():
 
 
 def params_proj_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
-
-    diffusers_checkpoint = {
-        k: checkpoint[f"{PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()
-    }
+    diffusers_checkpoint = {k: checkpoint[f"{PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()}
 
     return diffusers_checkpoint
 
@@ -249,20 +246,20 @@ RENDERER_ORIGINAL_PREFIX = "renderer.nerstf"
 
 RENDERER_CONFIG = {}
 
+
 def renderer_model_from_original_config():
     model = MLPNeRSTFModel(**RENDERER_CONFIG)
 
     return model
 
+
 def renderer_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
-    diffusers_checkpoint = {
-        k: checkpoint[f"{RENDERER_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()
-    }
+    diffusers_checkpoint = {k: checkpoint[f"{RENDERER_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()}
 
     return diffusers_checkpoint
 
-# done renderer
 
+# done renderer
 
 
 # TODO maybe document and/or can do more efficiently (build indices in for loop and extract once for each split?)
@@ -320,27 +317,32 @@ def params_proj(*, args, checkpoint_map_location):
     print("loading params_proj")
 
     params_proj_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
-    
+
     params_proj_model = params_proj_model_from_original_config()
 
-    params_proj_diffusers_checkpoint = params_proj_original_checkpoint_to_diffusers_checkpoint(params_proj_model, params_proj_checkpoint)
+    params_proj_diffusers_checkpoint = params_proj_original_checkpoint_to_diffusers_checkpoint(
+        params_proj_model, params_proj_checkpoint
+    )
 
     del params_proj_checkpoint
 
-    load_checkpoint_to_model(params_proj_diffusers_checkpoint,params_proj_model, strict=True)
+    load_checkpoint_to_model(params_proj_diffusers_checkpoint, params_proj_model, strict=True)
 
     print("done loading params_proj")
 
     return params_proj_model
 
+
 def renderer(*, args, checkpoint_map_location):
     print(" loading renderer")
 
     renderer_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
-    
+
     renderer_model = renderer_model_from_original_config()
 
-    renderer_diffusers_checkpoint = renderer_original_checkpoint_to_diffusers_checkpoint(renderer_model, renderer_checkpoint)
+    renderer_diffusers_checkpoint = renderer_original_checkpoint_to_diffusers_checkpoint(
+        renderer_model, renderer_checkpoint
+    )
 
     del renderer_checkpoint
 

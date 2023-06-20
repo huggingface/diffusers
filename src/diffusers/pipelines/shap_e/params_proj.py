@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Tuple
+
 import torch
 from torch import nn
 
-from typing import Tuple, Optional
-from collections import OrderedDict
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
+
 
 class ChannelsProj(nn.Module):
     def __init__(
@@ -51,8 +51,9 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
     """
     project the latent representation of a 3D asset to obtain weights of a multi-layer perceptron (MLP).
 
-    For more details, see the original paper: 
+    For more details, see the original paper:
     """
+
     @register_to_config
     def __init__(
         self,
@@ -63,16 +64,19 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
             "nerstf.mlp.2.weight",
             "nerstf.mlp.3.weight",
         ),
-        param_shapes: Tuple[Tuple[int]] = ((256, 93),(256, 256),(256, 256),(256, 256),),
+        param_shapes: Tuple[Tuple[int]] = (
+            (256, 93),
+            (256, 256),
+            (256, 256),
+            (256, 256),
+        ),
         d_latent: int = 1024,
-    ):  
+    ):
         super().__init__()
 
         # check inputs
         if len(param_names) != len(param_shapes):
-            raise ValueError(
-                f"Must provide same number of `param_names` as `param_shapes`"
-            )
+            raise ValueError("Must provide same number of `param_names` as `param_shapes`")
         self.projections = nn.ModuleDict({})
         for k, (vectors, channels) in zip(param_names, param_shapes):
             self.projections[_sanitize_name(k)] = ChannelsProj(
@@ -91,6 +95,7 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
             out[k] = self.projections[_sanitize_name(k)](x_bvd).reshape(len(x), *shape)
             start = end
         return out
+
 
 def _sanitize_name(x: str) -> str:
     return x.replace(".", "__")
