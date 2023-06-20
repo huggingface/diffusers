@@ -412,9 +412,9 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         Parameters:
             processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `Attention` layers.
+                for **all** `Attention` layers.
 
-                If `processor` is a `dict`, the key needs to define the path to the corresponding cross attention
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
                 processor. This is strongly recommended when setting trainable attention processors.
 
         """
