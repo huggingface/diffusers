@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import flax
+import jax
 import jax.numpy as jnp
-from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils_flax import (
@@ -153,19 +153,35 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
 
         def lms_derivative(tau):
-            prod = 1.0
-            for k in range(order):
-                if current_order == k:
-                    continue
-                prod *= (tau - state.sigmas[t - k]) / (state.sigmas[t - current_order] - state.sigmas[t - k])
-            return prod
+            # getting the indices where the coeffs should be computed using a mask
+            mask = jnp.arange(len(state.sigmas)).reshape(1, -1).repeat(len(tau), axis=0)
+            greater_than = t - order + 1 <= mask
+            lower_than = mask < t + 1
+            not_same_value = mask != t - current_order
+            mask = greater_than & lower_than & not_same_value
 
-        integrated_coeff = integrate.quad(lms_derivative, state.sigmas[t], state.sigmas[t + 1], epsrel=1e-4)[0]
+            # computing the coefficients
+            correct_coeffs = (tau.reshape(-1, 1) - state.sigmas.reshape(1, -1)) / (
+                state.sigmas[t - current_order] - state.sigmas.reshape(1, -1) + 1e-5
+            )
+
+            # setting the coefficients to 1 if the mask is False to make them not affect the product
+            coeffs = jnp.where(mask, correct_coeffs, jnp.ones_like(mask))
+
+            # computing the product of the coeffs
+            prod = jnp.prod(coeffs, axis=1)
+
+            return prod.reshape(-1)
+
+        # integrating
+        num_integration_steps = 10
+        x = jnp.linspace(state.sigmas[t], state.sigmas[t + 1], num_integration_steps)
+        integrated_coeff = jnp.trapz(lms_derivative(x), x, x[1] - x[0], 0)
 
         return integrated_coeff
 
     def set_timesteps(
-        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = (), max_order: int = 4
     ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -175,6 +191,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the `FlaxLMSDiscreteScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
+            max_order ('int'):
+            the maximum order of the derivatives used in the sampler
         """
 
         timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
@@ -191,7 +209,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps = timesteps.astype(jnp.int32)
 
         # initial running values
-        derivatives = jnp.zeros((0,) + shape, dtype=self.dtype)
+        derivatives = jnp.zeros((max_order,) + shape, dtype=self.dtype)
 
         return state.replace(
             timesteps=timesteps,
@@ -232,7 +250,11 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        sigma = state.sigmas[timestep]
+        # had to do this because jnp.where yields ConcretizationTypeError
+        step_index = jnp.where(state.timesteps == timestep, jnp.arange(len(state.timesteps)), 0).sum()
+
+        # adding 1e-5 to avoid division by zero
+        sigma = state.sigmas[step_index] + 1e-5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -247,17 +269,18 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
-        state = state.replace(derivatives=jnp.append(state.derivatives, derivative))
+        derivative = derivative.reshape(1, *derivative.shape).astype(self.dtype)
+        state = state.replace(derivatives=jnp.append(state.derivatives, derivative, axis=0))
         if len(state.derivatives) > order:
-            state = state.replace(derivatives=jnp.delete(state.derivatives, 0))
+            state = state.replace(derivatives=jnp.delete(state.derivatives, 0, axis=0))
 
-        # 3. Compute linear multistep coefficients
-        order = min(timestep + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(state, order, timestep, curr_order) for curr_order in range(order)]
-
-        # 4. Compute previous sample based on the derivatives path
-        prev_sample = sample + sum(
-            coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(state.derivatives))
+        # 3. Compute linear multistep coefficients and the previous sample based on the derivatives path
+        order = jnp.minimum(step_index + 1, order)
+        prev_sample = jax.lax.fori_loop(
+            0,
+            order,
+            lambda i, val: val + self.get_lms_coefficient(state, order, step_index, i) * state.derivatives[-i - 1],
+            sample,
         )
 
         if not return_dict:
