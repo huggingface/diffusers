@@ -1080,7 +1080,7 @@ def main():
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
                     image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
-                    images.append(image)
+                images.append(image)
 
         if args.push_to_hub:
             save_model_card(args, repo_id, images, repo_folder=args.output_dir)
