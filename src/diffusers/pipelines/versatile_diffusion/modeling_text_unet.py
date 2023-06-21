@@ -522,7 +522,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attn_head_dim=attention_head_dim[i],
+                attention_head_dim=attention_head_dim[i],
             )
             self.down_blocks.append(down_block)
 
@@ -550,7 +550,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
                 cross_attention_dim=cross_attention_dim[-1],
-                attn_head_dim=attention_head_dim[-1],
+                attention_head_dim=attention_head_dim[-1],
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
@@ -608,7 +608,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attn_head_dim=attention_head_dim[i],
+                attention_head_dim=attention_head_dim[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -1704,7 +1704,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_head_dim=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         skip_time_act=False,
@@ -1715,10 +1715,10 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
 
         self.has_cross_attention = True
 
-        self.attn_head_dim = attn_head_dim
+        self.attention_head_dim = attention_head_dim
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
-        self.num_heads = in_channels // self.attn_head_dim
+        self.num_heads = in_channels // self.attention_head_dim
 
         # there is always at least one resnet
         resnets = [
@@ -1748,7 +1748,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
-                    dim_head=self.attn_head_dim,
+                    dim_head=self.attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
