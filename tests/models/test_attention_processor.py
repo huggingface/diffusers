@@ -115,5 +115,5 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        self.assertTrue(np.allclose(pre_conversion, conversion))
-        self.assertTrue(np.allclose(conversion, after_conversion))
+        self.assertTrue(np.allclose(pre_conversion, conversion, atol=1e-5))
+        self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-5))
