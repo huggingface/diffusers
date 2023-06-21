@@ -20,22 +20,6 @@ def make_index_dict(label_csv):
             line_count += 1
     return index_lookup
 
-def make_name_dict(label_csv):
-    name_lookup = {}
-    with open(label_csv, 'r') as f:
-        csv_reader = csv.DictReader(f)
-        line_count = 0
-        for row in csv_reader:
-            name_lookup[row['index']] = row['display_name']
-            line_count += 1
-    return name_lookup
-
-def lookup_list(index_list, label_csv):
-    label_list = []
-    table = make_name_dict(label_csv)
-    for item in index_list:
-        label_list.append(table[item])
-    return label_list
 
 def preemphasis(signal,coeff=0.97):
     """perform preemphasis on the input signal.
@@ -58,30 +42,6 @@ class AudiosetDataset(Dataset):
         self.datapath = audio_conf["dataset_json_file"]
         self.latent_folder = audio_conf["latent_folder_path"]
         self.wav_folder = audio_conf["wav_folder"]
-        if ('formant_folder' in audio_conf):
-            self.formant_folder = audio_conf['formant_folder']
-        else:
-            self.formant_folder = None
-            
-        if ('strong_label_dir' in audio_conf):
-            self.strong_label_dir = audio_conf['strong_label_dir']
-            self.make_data_lookup()
-            
-            tsv_file = open(self.strong_label_dir, 'r')
-            reader = csv.DictReader(myFile, delimiter="\t")
-            self.strong_label_data = list()
-            for dictionary in reader:
-                dictionary['start_time_seconds'] = float(dictionary['start_time_seconds'])
-                dictionary['end_time_seconds'] = float(dictionary['end_time_seconds'])
-                dictionary['length'] = dictionary['end_time_seconds'] - dictionary['start_time_seconds']
-                self.strong_label_data.append(dictionary)
-                
-            len_max = 5.0
-            len_min = 1.5
-            self.strong_label_data = [el for el in self.strong_label_data if el['length'] > len_min and el['length'] < len_max]
-        else:
-            self.strong_label_dir = None
-        
         
         if ("norm_mean" in audio_conf.keys() and "norm_std" in audio_conf.keys()):
             self.norm_mean = audio_conf["norm_mean"]
@@ -107,13 +67,37 @@ class AudiosetDataset(Dataset):
             self.dtype = torch.float16
         else:
             self.dtype = dtype
+            
+        if ('formant_folder' in audio_conf):
+            self.formant_folder = audio_conf['formant_folder']
+        else:
+            self.formant_folder = None
+            
+        if ('strong_label_dir' in audio_conf):
+            self.strong_label_dir = audio_conf['strong_label_dir']
+            self.make_data_lookup()
+            
+            tsv_file = open(self.strong_label_dir, 'r')
+            reader = csv.DictReader(tsv_file, delimiter="\t")
+            self.strong_label_data = list()
+            for dictionary in reader:
+                dictionary['start_time_seconds'] = float(dictionary['start_time_seconds'])
+                dictionary['end_time_seconds'] = float(dictionary['end_time_seconds'])
+                dictionary['length'] = dictionary['end_time_seconds'] - dictionary['start_time_seconds']
+                self.strong_label_data.append(dictionary)
+                
+            len_max = 5.0
+            len_min = 1.5
+            self.strong_label_data = [el for el in self.strong_label_data if el['length'] > len_min and el['length'] < len_max]
+        else:
+            self.strong_label_dir = None
 
             
     def mixup_tensor_set(self, tensors, ids=None):
         total_size = tensors[0].shape[2]
         n_tensors = len(tensors)
         slice_size = total_size // n_tensors
-        shakeup_size = slice_size // 4
+        shakeup_size = slice_size // 2
 
         final = torch.clone(tensors[0])
         
@@ -123,7 +107,7 @@ class AudiosetDataset(Dataset):
         for i in range(n_tensors):
             if (i != n_tensors - 1):
                 end = (i + 1) * slice_size
-                end += random.random()*shakeup_size - (shakeup_size/2)
+                end += random.random() * shakeup_size - (shakeup_size / 2)
                 end = int(end)
             else:
                 end = total_size
@@ -134,7 +118,7 @@ class AudiosetDataset(Dataset):
     
     def mixup_label_set(self, labels, ids):
         final = [labels[i] for i in ids]
-        return " and then ".join(final)
+        return " followed by ".join(final)
 
     def mixup_tensor(self, t1, t2, beta=0.5):
         split_idx = int(t1.shape[2] * beta)
@@ -148,7 +132,7 @@ class AudiosetDataset(Dataset):
         
     def make_mid_to_name(self, path):
         tsv_file = open(path, 'r')
-        reader = csv.Reader(myFile, delimiter="\t")
+        reader = csv.Reader(tsv_file, delimiter="\t")
         self.mid_to_name = {}
         for line in reader:
             self.mid_to_name[line[0]] = line[1]
@@ -161,7 +145,7 @@ class AudiosetDataset(Dataset):
         datum = self.strong_label_data[idx]
         seg_id = datum['segment_id'][:11]
         ref_datum = self.data_lookup[seg_id]
-        waveform, label, wav, sr, latent, formant = gather_data(ref_datum)
+        waveform, label, wav, sr, latent, formant = self.gather_data(ref_datum)
         
         total_len = latent.shape[2]
         latent_t0 = int(datum['start_time_seconds'] * total_len)
@@ -175,7 +159,7 @@ class AudiosetDataset(Dataset):
             strong_formant = formant[formant_t0 : formant_t1]
         
         label = datum['label']
-        return waveform, label, wav, sr, latent, formant
+        return waveform, label, wav, sr, latent, formant, self.strong_label_data[idx]
     
     def gather_data(self, datum):
         """
@@ -258,8 +242,54 @@ class AudiosetDataset(Dataset):
                 label = self.mixup_label_set(labels, ids)
                 
             elif (self.mixup_type == 'strong'):
-                rand_mixup_idx = random.randrange(len(self.
-                     
+                # print("=============")
+                mixup_ids = [random.randrange(len(self.strong_label_data)) for _ in range(self.n_mixup - 1)]
+                added_labels = []
+                
+                prev_end_latent = latent.shape[2] - 1
+                if (formant):
+                    prev_end_formant = formant.shape[2] - 1
+                
+                for idx in mixup_ids:
+                    datum = self.strong_label_data[idx]
+                    ref_datum = self.data_lookup[datum['youtube_id']]
+                    mix_waveform, mix_label, mix_wav, mix_sr, mix_latent, mix_formant = self.gather_data(ref_datum)
+                    
+                    total_len = latent.shape[2]
+                    latent_t0 = int(datum['start_time_seconds'] * total_len / 10)
+                    latent_t1 = int(datum['end_time_seconds'] * total_len / 10)
+                    strong_latent = mix_latent[:, :, latent_t0 : latent_t1]
+                    
+                    length = latent_t1 - latent_t0
+                    start = prev_end_latent - length
+                    
+                    
+                    # print(start, " : ", prev_end_latent)
+                    latent[:, :, start:prev_end_latent] = strong_latent[0, :, :]
+                    
+                    prev_end_latent = start
+
+                    if (formant):
+                        formant_total_len = formant.shape[2]
+                        formant_t0 = int(datum['start_time_seconds'] * formant_total_len / 10)
+                        formant_t1 = int(datum['end_time_seconds'] * formant_total_len / 10)
+                        strong_formant = mix_formant[formant_t0 : formant_t1]
+                        
+                        lenth = formant_t1 - formant_t0
+                        start = prev_end_formant - length
+
+                        formant[:, :, start:prev_end_formant] = strong_formant[0, :, :]
+
+                        prev_end_formant = start
+                    added_labels.append(datum['name'])
+                
+                
+                # transitional_terms = [" followed by" , " and then ", " after this we hear "]
+                
+                for mix_label in reversed(added_labels):
+                    label += " followed by " + mix_label
+                
+                                 
             else:
                 print("no other mixup types are implemented yet")
         input_ids = []
@@ -270,8 +300,6 @@ class AudiosetDataset(Dataset):
             )
             input_ids = tokens["input_ids"][0]
             attn_mask = tokens["attention_mask"][0]
-            
-            
         if (self.device is not None):
             waveform = waveform.to(self.device, dtype=self.dtype)
             input_ids = input_ids.to(self.device, dtype=torch.int32)
@@ -287,12 +315,3 @@ class AudiosetDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
-
-    def construct_label(self, label_indices):
-        #base string to add labels to
-        label = "A mel spectrogram of the sound of "
-        # pulling english label names from non-zero indicies of multi-hot encoded labels
-        terms = [self.name_dict[str(int(idx))] for idx in (label_indices >= 0).nonzero(as_tuple=True)[0]]
-        # converting list of labels to oxford comma single string
-        label += ", ".join(terms[:-2] + [", and ".join(terms[-2:])])
-        return label

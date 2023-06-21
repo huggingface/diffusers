@@ -344,6 +344,22 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--mixup_type",
+        type=str,
+        default="strong",
+        required=False,
+        choices=['storng', 'random'],
+        help="mixup_type",
+    )
+    
+    parser.add_argument(
+        "--n_mixup",
+        type=int,
+        default=2,
+        help="number of samples used in mixup",
+    )
+    
+    parser.add_argument(
         "--custom_unet",
         type=str,
         default=None,
@@ -797,13 +813,13 @@ def main():
             accelerator.print("Using Balanced Sampler, loading weights from: ", data['weight_path'])
             sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
             train_dataloader = torch.utils.data.DataLoader( 
-                AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1, mixup_ratio=args.mixup_ratio),
+                AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1, mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
                 batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
         else:
             sampler=None
 
             train_dataloader = torch.utils.data.DataLoader( 
-                    AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1,  mixup_ratio=args.mixup_ratio),
+                    AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1,  mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
                     batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers, shuffle=True)
 
     # Scheduler and math around the number of training steps.
