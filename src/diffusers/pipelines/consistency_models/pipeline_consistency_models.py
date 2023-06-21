@@ -8,9 +8,13 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
+    logging,
     randn_tensor,
 )
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class ConsistencyModelPipeline(DiffusionPipeline):
@@ -169,7 +173,10 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
 
         if num_inference_steps is not None and timesteps is not None:
-            raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
+            logger.warning(
+                f"Both `num_inference_steps`: {num_inference_steps} and `timesteps`: {timesteps} are supplied;"
+                " `timesteps` will be used over `num_inference_steps`."
+            )
 
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
