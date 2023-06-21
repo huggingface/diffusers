@@ -516,9 +516,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             )[0]
 
             if do_classifier_free_guidance:
-                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
+                noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                _, variance_pred_text = variance_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = torch.cat([noise_pred, variance_pred_text], dim=1)
+
+            if not (
+                hasattr(self.scheduler.config, "variance_type")
+                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+            ):
+                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
