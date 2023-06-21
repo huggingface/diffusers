@@ -1,8 +1,13 @@
 import argparse
+import os
 
 import torch
 
-from diffusers.models.unet_2d import UNet2DModel
+from diffusers import (
+    CMStochasticIterativeScheduler,
+    ConsistencyModelPipeline,
+    UNet2DModel,
+)
 
 
 TEST_UNET_CONFIG = {
@@ -45,6 +50,51 @@ IMAGENET_64_UNET_CONFIG = {
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "scale_shift",
+}
+
+LSUN_256_UNET_CONFIG = {
+    "sample_size": 256,
+    "in_channels": 3,
+    "out_channels": 3,
+    "layers_per_block": 2,
+    "num_class_embeds": None,
+    "block_out_channels": [256, 256, 256 * 2, 256 * 2, 256 * 4, 256 * 4],
+    "attention_head_dim": 64,
+    "down_block_types": [
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "AttnDownsampleBlock2D",
+        "AttnDownsampleBlock2D",
+        "AttnDownsampleBlock2D",
+    ],
+    "up_block_types": [
+        "AttnUpsampleBlock2D",
+        "AttnUpsampleBlock2D",
+        "AttnUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+    ],
+    "resnet_time_scale_shift": "default",
+}
+
+CD_SCHEDULER_CONFIG = {
+    "num_train_timesteps": 40,
+    "sigma_min": 0.002,
+    "sigma_max": 80.0,
+}
+
+CT_IMAGENET_64_SCHEDULER_CONFIG = {
+    "num_train_timesteps": 201,
+    "sigma_min": 0.002,
+    "sigma_max": 80.0,
+}
+
+CT_LSUN_256_SCHEDULER_CONFIG = {
+    "num_train_timesteps": 151,
+    "sigma_min": 0.002,
+    "sigma_max": 80.0,
 }
 
 
@@ -121,22 +171,27 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
     down_block_types = unet_config["down_block_types"]
     layers_per_block = unet_config["layers_per_block"]
     attention_head_dim = unet_config["attention_head_dim"]
+    channels_list = unet_config["block_out_channels"]
     current_layer = 1
+    prev_channels = channels_list[0]
 
     for i, layer_type in enumerate(down_block_types):
+        current_channels = channels_list[i]
+        downsample_block_has_skip = current_channels != prev_channels
         if layer_type == "ResnetDownsampleBlock2D":
             for j in range(layers_per_block):
                 new_prefix = f"down_blocks.{i}.resnets.{j}"
                 old_prefix = f"input_blocks.{current_layer}.0"
-                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
+                has_skip = True if j == 0 and downsample_block_has_skip else False
+                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=has_skip)
                 current_layer += 1
 
         elif layer_type == "AttnDownsampleBlock2D":
             for j in range(layers_per_block):
                 new_prefix = f"down_blocks.{i}.resnets.{j}"
                 old_prefix = f"input_blocks.{current_layer}.0"
-                has_skip = True if j == 0 else False
-                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip)
+                has_skip = True if j == 0 and downsample_block_has_skip else False
+                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=has_skip)
                 new_prefix = f"down_blocks.{i}.attentions.{j}"
                 old_prefix = f"input_blocks.{current_layer}.1"
                 new_checkpoint = convert_attention(
@@ -149,6 +204,8 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
             old_prefix = f"input_blocks.{current_layer}.0"
             new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
             current_layer += 1
+        
+        prev_channels = current_channels
 
     # hardcoded the mid-block for now
     new_prefix = "mid_block.resnets.0"
@@ -171,6 +228,11 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                 old_prefix = f"output_blocks.{current_layer}.0"
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=True)
                 current_layer += 1
+            
+            if i != len(up_block_types) - 1:
+                new_prefix = f"up_blocks.{i}.upsamplers.0"
+                old_prefix = f"output_blocks.{current_layer-1}.1"
+                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
         elif layer_type == "AttnUpsampleBlock2D":
             for j in range(layers_per_block + 1):
                 new_prefix = f"up_blocks.{i}.resnets.{j}"
@@ -182,12 +244,11 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                     checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim
                 )
                 current_layer += 1
-
-            new_prefix = f"up_blocks.{i}.upsamplers.0"
-            old_prefix = f"output_blocks.{current_layer-1}.2"
-            # print(new_prefix)
-            # print(old_prefix)
-            new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
+        
+            if i != len(up_block_types) - 1:
+                new_prefix = f"up_blocks.{i}.upsamplers.0"
+                old_prefix = f"output_blocks.{current_layer-1}.2"
+                new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
 
     new_checkpoint["conv_norm_out.weight"] = checkpoint["out.0.weight"]
     new_checkpoint["conv_norm_out.bias"] = checkpoint["out.0.bias"]
@@ -204,18 +265,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model."
     )
-    parser.add_argument("--checkpoint_name", default="cd_imagenet64_l2", type=str, help="Checkpoint to convert.")
     parser.add_argument("--class_cond", default=True, type=str, help="Whether the model is class-conditional.")
 
     args = parser.parse_args()
     args.class_cond = str2bool(args.class_cond)
 
-    if "imagenet64" in args.checkpoint_name:
+    ckpt_name = os.path.basename(args.unet_path)
+    print(f"Checkpoint: {ckpt_name}")
+
+    # Get U-Net config
+    if "imagenet64" in ckpt_name:
         unet_config = IMAGENET_64_UNET_CONFIG
-    elif "test" in args.checkpoint_name:
+    elif "256" in ckpt_name and (("bedroom" in ckpt_name) or ("cat" in ckpt_name)):
+        unet_config = LSUN_256_UNET_CONFIG
+    elif "test" in ckpt_name:
         unet_config = TEST_UNET_CONFIG
     else:
-        raise ValueError(f"Checkpoint type {args.checkpoint_name} is not currently supported.")
+        raise ValueError(f"Checkpoint type {ckpt_name} is not currently supported.")
 
     if not args.class_cond:
         unet_config["num_class_embeds"] = None
@@ -223,7 +289,19 @@ if __name__ == "__main__":
     converted_unet_ckpt = con_pt_to_diffuser(args.unet_path, unet_config)
 
     image_unet = UNet2DModel(**unet_config)
-    # print(image_unet)
-    # exit()
     image_unet.load_state_dict(converted_unet_ckpt)
-    image_unet.save_pretrained(args.dump_path)
+
+    # Get scheduler config
+    if "cd" in ckpt_name or "test" in ckpt_name:
+        scheduler_config = CD_SCHEDULER_CONFIG
+    elif "ct" in ckpt_name and "imagenet64" in ckpt_name:
+        scheduler_config = CT_IMAGENET_64_SCHEDULER_CONFIG
+    elif "ct" in ckpt_name and "256" in ckpt_name and (("bedroom" in ckpt_name) or ("cat" in ckpt_name)):
+        scheduler_config = CT_LSUN_256_SCHEDULER_CONFIG
+    else:
+        raise ValueError(f"Checkpoint type {ckpt_name} is not currently supported.")
+    
+    cm_scheduler = CMStochasticIterativeScheduler(**scheduler_config)
+
+    consistency_model = ConsistencyModelPipeline(unet=image_unet, scheduler=cm_scheduler)
+    consistency_model.save_pretrained(args.dump_path)
