@@ -202,6 +202,9 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
 
+        if isinstance(attention_head_dim, int):
+            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
@@ -229,6 +232,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 num_attention_heads=num_attention_heads[i],
+                attention_head_dim=attention_head_dim[i],
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
@@ -299,6 +303,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             norm_eps=unet.config.norm_eps,
             cross_attention_dim=unet.config.cross_attention_dim,
             attention_head_dim=unet.config.attention_head_dim,
+            num_attention_heads=unet.config.num_attention_heads,
             use_linear_projection=unet.config.use_linear_projection,
             class_embed_type=unet.config.class_embed_type,
             num_class_embeds=unet.config.num_class_embeds,

@@ -55,8 +55,9 @@ def get_down_block(
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
         logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+            f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
+        assert False
         attention_head_dim = num_attention_heads
 
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
@@ -245,6 +246,7 @@ def get_up_block(
         logger.warn(
             f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
+        assert False
         attention_head_dim = num_attention_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
