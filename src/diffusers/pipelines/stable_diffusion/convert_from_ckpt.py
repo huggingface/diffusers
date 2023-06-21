@@ -286,7 +286,6 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "use_linear_projection": use_linear_projection,
         "class_embed_type": class_embed_type,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
-        "conditioning_channels": unet_params.hint_channels,
     }
 
     if not controlnet:
