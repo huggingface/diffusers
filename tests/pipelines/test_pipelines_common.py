@@ -640,7 +640,9 @@ class PipelineTesterMixin:
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass()
 
-    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4):
+    def _test_xformers_attention_forwardGenerator_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
+    ):
         if not self.test_xformers_attention:
             return
 
