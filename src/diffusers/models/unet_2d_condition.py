@@ -417,7 +417,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i],
+                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
             )
             self.down_blocks.append(down_block)
 
@@ -503,7 +503,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i],
+                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
