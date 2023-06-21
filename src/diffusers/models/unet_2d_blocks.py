@@ -57,7 +57,6 @@ def get_down_block(
         logger.warn(
             f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
-        assert False
         attention_head_dim = num_attention_heads
 
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
@@ -246,7 +245,6 @@ def get_up_block(
         logger.warn(
             f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
-        assert False
         attention_head_dim = num_attention_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
@@ -447,13 +445,19 @@ class UNetMidBlock2D(nn.Module):
         ]
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
+            )
+            attention_head_dim = in_channels
+
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
                     Attention(
                         in_channels,
-                        heads=in_channels // attention_head_dim if attention_head_dim is not None else 1,
-                        dim_head=attention_head_dim if attention_head_dim is not None else in_channels,
+                        heads=in_channels // attention_head_dim,
+                        dim_head=attention_head_dim,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
                         norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
@@ -749,6 +753,12 @@ class AttnDownBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
@@ -768,8 +778,8 @@ class AttnDownBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -1128,6 +1138,12 @@ class AttnDownEncoderBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
@@ -1147,8 +1163,8 @@ class AttnDownEncoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -1205,6 +1221,12 @@ class AttnSkipDownBlock2D(nn.Module):
         self.attentions = nn.ModuleList([])
         self.resnets = nn.ModuleList([])
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             self.resnets.append(
@@ -1225,8 +1247,8 @@ class AttnSkipDownBlock2D(nn.Module):
             self.attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=32,
@@ -1844,6 +1866,12 @@ class AttnUpBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
@@ -1865,8 +1893,8 @@ class AttnUpBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -2206,6 +2234,12 @@ class AttnUpDecoderBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
 
@@ -2226,8 +2260,8 @@ class AttnUpDecoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups if resnet_time_scale_shift != "spatial" else None,
@@ -2300,11 +2334,17 @@ class AttnSkipUpBlock2D(nn.Module):
                 )
             )
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         self.attentions.append(
             Attention(
                 out_channels,
-                heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
-                dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
+                heads=out_channels // attention_head_dim,
+                dim_head=attention_head_dim,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
                 norm_num_groups=32,
