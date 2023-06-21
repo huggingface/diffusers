@@ -279,23 +279,6 @@ class KandinskyPipeline(DiffusionPipeline):
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
-
-        Note that this scheduler uses a slightly different step ratio than the other diffusers schedulers. The
-        different step ratio is to mimic the original karlo implementation and does not affect the quality or accuracy
-        of the results.
-
-        Args:
-            num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
-        """
-        self.num_inference_steps = num_inference_steps
-        step_ratio = (self.scheduler.config.num_train_timesteps - 1) / (num_inference_steps - 1)
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
-        return timesteps
-
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
@@ -408,13 +391,8 @@ class KandinskyPipeline(DiffusionPipeline):
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
             dtype=prompt_embeds.dtype, device=device
         )
-        if hasattr(self.scheduler, "custom_timesteps"):
-            # if use ddpm scheduler, create timesteps with unclp timestep method and pass a custom timesteps
-            timesteps = self.set_timesteps(num_inference_steps, device=device)
-            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
-        else:
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-
+        
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
         num_channels_latents = self.unet.config.in_channels
