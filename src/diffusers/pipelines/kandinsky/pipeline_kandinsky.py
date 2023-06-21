@@ -14,7 +14,6 @@
 
 from typing import List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import (
     XLMRobertaTokenizer,
@@ -391,7 +390,7 @@ class KandinskyPipeline(DiffusionPipeline):
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
             dtype=prompt_embeds.dtype, device=device
         )
-        
+
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
