@@ -12,31 +12,26 @@ specific language governing permissions and limitations under the License.
 
 # Loaders
 
-There are many ways to train adapter neural networks for diffusion models, such as 
-- [Textual Inversion](./training/text_inversion.mdx)
-- [LoRA](https://github.com/cloneofsimo/lora)
-- [Hypernetworks](https://arxiv.org/abs/1609.09106)
+Adapters (textual inversion, LoRA, hypernetworks) allow you to modify a diffusion model to generate images in a specific style without training or finetuning the entire model. The adapter weights are typically only a tiny fraction of the pretrained model's which making them very portable. 🤗 Diffusers provides an easy-to-use `LoaderMixin` API to load adapter weights.
 
-Such adapter neural networks often only consist of a fraction of the number of weights compared 
-to the pretrained model and as such are very portable. The Diffusers library offers an easy-to-use
-API to load such adapter neural networks via the [`loaders.py` module](https://github.com/huggingface/diffusers/blob/main/src/diffusers/loaders.py). 
+<Tip warning={true}>
 
-**Note**: This module is still highly experimental and prone to future changes.
+🧪 The `LoaderMixins` are highly experimental and prone to future changes. To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `huggingface-cli login`.
 
-## LoaderMixins
+</Tip>
 
-### UNet2DConditionLoadersMixin
+## UNet2DConditionLoadersMixin
 
 [[autodoc]] loaders.UNet2DConditionLoadersMixin
 
-### TextualInversionLoaderMixin
+## TextualInversionLoaderMixin
 
 [[autodoc]] loaders.TextualInversionLoaderMixin
 
-### LoraLoaderMixin
+## LoraLoaderMixin
 
 [[autodoc]] loaders.LoraLoaderMixin
 
-### FromCkptMixin
+## FromCkptMixin
 
 [[autodoc]] loaders.FromCkptMixin

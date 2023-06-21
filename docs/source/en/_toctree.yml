@@ -149,7 +149,7 @@
     - local: api/utilities
       title: Utilities
     - local: api/image_processor
-      title: Vae Image Processor
+      title: VAE Image Processor
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
