@@ -204,7 +204,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
             old_prefix = f"input_blocks.{current_layer}.0"
             new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
             current_layer += 1
-        
+
         prev_channels = current_channels
 
     # hardcoded the mid-block for now
@@ -228,7 +228,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                 old_prefix = f"output_blocks.{current_layer}.0"
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=True)
                 current_layer += 1
-            
+
             if i != len(up_block_types) - 1:
                 new_prefix = f"up_blocks.{i}.upsamplers.0"
                 old_prefix = f"output_blocks.{current_layer-1}.1"
@@ -244,7 +244,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                     checkpoint, new_checkpoint, old_prefix, new_prefix, attention_head_dim
                 )
                 current_layer += 1
-        
+
             if i != len(up_block_types) - 1:
                 new_prefix = f"up_blocks.{i}.upsamplers.0"
                 old_prefix = f"output_blocks.{current_layer-1}.2"
@@ -300,7 +300,7 @@ if __name__ == "__main__":
         scheduler_config = CT_LSUN_256_SCHEDULER_CONFIG
     else:
         raise ValueError(f"Checkpoint type {ckpt_name} is not currently supported.")
-    
+
     cm_scheduler = CMStochasticIterativeScheduler(**scheduler_config)
 
     consistency_model = ConsistencyModelPipeline(unet=image_unet, scheduler=cm_scheduler)
