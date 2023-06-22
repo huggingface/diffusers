@@ -36,7 +36,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import is_xformers_available, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
@@ -361,12 +361,15 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
 
 @slow
-# @require_torch_gpu
 class AudioLDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
