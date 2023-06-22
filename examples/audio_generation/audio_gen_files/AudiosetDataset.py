@@ -122,44 +122,33 @@ class AudiosetDataset(Dataset):
 
     def mixup_tensor(self, t1, t2, beta=0.5):
         split_idx = int(t1.shape[2] * beta)
-        
         t1[:, :, split_idx:] = t2[:, :, split_idx:]
-                
         return t1
     
     def make_data_lookup(self):
         self.data_lookup = {datum['wav'].split("/")[-1].split(".")[0]: datum for datum in self.data}
-        
-    def make_mid_to_name(self, path):
-        tsv_file = open(path, 'r')
-        reader = csv.Reader(tsv_file, delimiter="\t")
-        self.mid_to_name = {}
-        for line in reader:
-            self.mid_to_name[line[0]] = line[1]
-            self.strong_label_data.append(dictionary)
+
     
-    def mixup_strong(self, idx):
-        pass
     
-    def get_strong_datum(self, idx):
-        datum = self.strong_label_data[idx]
-        seg_id = datum['segment_id'][:11]
-        ref_datum = self.data_lookup[seg_id]
-        waveform, label, wav, sr, latent, formant = self.gather_data(ref_datum)
+#     def get_strong_datum(self, idx):
+#         datum = self.strong_label_data[idx]
+#         seg_id = datum['segment_id'][:11]
+#         ref_datum = self.data_lookup[seg_id]
+#         waveform, label, wav, sr, latent, formant = self.gather_data(ref_datum)
         
-        total_len = latent.shape[2]
-        latent_t0 = int(datum['start_time_seconds'] * total_len)
-        latent_t1 = int(datum['end_time_seconds'] * total_len)
-        strong_latent = latent[latent_t0 : latent_t1]
+#         total_len = latent.shape[2]
+#         latent_t0 = int(datum['start_time_seconds'] * total_len)
+#         latent_t1 = int(datum['end_time_seconds'] * total_len)
+#         strong_latent = latent[latent_t0 : latent_t1]
         
-        if (formant):
-            formant_total_len = formant.shape[2]
-            formant_t0 = int(datum['start_time_seconds'] * formant_total_len)
-            formant_t1 = int(datum['end_time_seconds'] * formant_total_len)
-            strong_formant = formant[formant_t0 : formant_t1]
+#         if (formant):
+#             formant_total_len = formant.shape[2]
+#             formant_t0 = int(datum['start_time_seconds'] * formant_total_len)
+#             formant_t1 = int(datum['end_time_seconds'] * formant_total_len)
+#             strong_formant = formant[formant_t0 : formant_t1]
         
-        label = datum['label']
-        return waveform, label, wav, sr, latent, formant, self.strong_label_data[idx]
+#         label = datum['label']
+#         return waveform, label, wav, sr, latent, formant, self.strong_label_data[idx]
     
     def gather_data(self, datum):
         """
@@ -251,6 +240,8 @@ class AudiosetDataset(Dataset):
                     prev_end_formant = formant.shape[2] - 1
                 
                 for idx in mixup_ids:
+                    if (prev_end_latent <= 0):
+                        break
                     datum = self.strong_label_data[idx]
                     ref_datum = self.data_lookup[datum['youtube_id']]
                     mix_waveform, mix_label, mix_wav, mix_sr, mix_latent, mix_formant = self.gather_data(ref_datum)
@@ -261,10 +252,13 @@ class AudiosetDataset(Dataset):
                     strong_latent = mix_latent[:, :, latent_t0 : latent_t1]
                     
                     length = latent_t1 - latent_t0
-                    start = prev_end_latent - length
-                    
-                    
+                    start = max(0, prev_end_latent - length)
+                    if start < total_len /4:
+                        label = ""
+                    if start == 0:
+                        break
                     # print(start, " : ", prev_end_latent)
+                    # print(strong_latent.shape)
                     latent[:, :, start:prev_end_latent] = strong_latent[0, :, :]
                     
                     prev_end_latent = start
@@ -276,7 +270,8 @@ class AudiosetDataset(Dataset):
                         strong_formant = mix_formant[formant_t0 : formant_t1]
                         
                         lenth = formant_t1 - formant_t0
-                        start = prev_end_formant - length
+                        start = max(0, prev_end_formant - length)
+                        # if start == 0:
 
                         formant[:, :, start:prev_end_formant] = strong_formant[0, :, :]
 
@@ -287,7 +282,10 @@ class AudiosetDataset(Dataset):
                 # transitional_terms = [" followed by" , " and then ", " after this we hear "]
                 
                 for mix_label in reversed(added_labels):
-                    label += " followed by " + mix_label
+                    if label == "":
+                        label = mix_label
+                    else:
+                        label += ", followed by sound of " + mix_label
                 
                                  
             else:

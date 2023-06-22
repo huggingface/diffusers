@@ -348,7 +348,7 @@ def parse_args():
         type=str,
         default="strong",
         required=False,
-        choices=['storng', 'random'],
+        choices=['strong', 'random'],
         help="mixup_type",
     )
     
@@ -995,7 +995,6 @@ def main():
                     latents = torch.stack(latents, dim=0).to(accelerator.device, dtype=final_type)
 
                     latents = torch.Tensor.view(latents, [latents.shape[0], 128, 24, 21])
-        
                 
                     transform = transforms.Compose([
                         transforms.Normalize(channel_means, channel_stds)
