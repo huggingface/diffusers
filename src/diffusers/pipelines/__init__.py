@@ -99,6 +99,7 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+    from .wuerstchen import WuerstchenPipeline
 
 try:
     if not is_onnx_available():

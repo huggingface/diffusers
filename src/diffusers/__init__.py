@@ -175,6 +175,7 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
+        WuerstchenPipeline,
     )
 
 try:

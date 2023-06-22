@@ -710,7 +710,8 @@ class GlobalResponseResidualBlock(nn.Module):
             nn.Linear(inp_channels * 4, inp_channels),
         )
 
-    def _norm(self, x, norm):
+    @staticmethod
+    def _norm(x, norm):
         return norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
     def forward(self, inputs, inputs_skip=None):

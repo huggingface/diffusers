@@ -1,20 +1,17 @@
-import argparse
-import inspect
 import os
 
-import numpy as np
 import torch
-import torch.nn as nn
 
 from diffusers import PaellaVQModel
-from src.vqgan import VQModel
-from src.modules import Paella
+from modules import Paella
+from vqgan import VQModel
+
 
 model_path = "models/"
 device = "cpu"
 
 paella_vqmodel = VQModel()
-state_dict = torch.load(os.path.join(model_path, "vqgan_f4.pt"), map_location=device)
+state_dict = torch.load(os.path.join(model_path, "vqgan_f4_v1_500k.pt"), map_location=device)["state_dict"]
 paella_vqmodel.load_state_dict(state_dict)
 
 state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
@@ -23,6 +20,7 @@ vqmodel = PaellaVQModel(
     codebook_size=paella_vqmodel.codebook_size,
     c_latent=paella_vqmodel.c_latent,
 )
+
 vqmodel.load_state_dict(state_dict)
 
 # test vqmodel outputs match paella_vqmodel outputs

@@ -46,7 +46,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        downscale_factor (int, *optional*, defaults to 2): Downscale factor of the input image.
+        up_down_scale_factor (int, *optional*, defaults to 2): Up and Downscale factor of the input image.
         levels  (int, *optional*, defaults to 2): Number of levels in the model.
         bottleneck_blocks (int, *optional*, defaults to 12): Number of bottleneck blocks in the model.
         c_hidden (int, *optional*, defaults to 384): Number of hidden channels in the model.
