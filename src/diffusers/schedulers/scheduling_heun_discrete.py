@@ -281,7 +281,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.FloatTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
-        step_index: Optional[int] = None,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Args:
