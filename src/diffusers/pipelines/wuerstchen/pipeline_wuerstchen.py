@@ -14,10 +14,11 @@
 from typing import List, Optional, Union
 
 import torch
-from transformers import T5EncoderModel, T5Tokenizer
+from transformers import CLIPTextModel, AutoTokenizer
 
 from ...utils import is_accelerate_available, logging
 from ..pipeline_utils import DiffusionPipeline
+from ...models import PaellaVQModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,15 +39,19 @@ EXAMPLE_DOC_STRING = """
 
 
 class WuerstchenPipeline(DiffusionPipeline):
-    tokenizer: T5Tokenizer
-    text_encoder: T5EncoderModel
+    clip_tokenizer: AutoTokenizer
+    text_encoder: CLIPTextModel
+    vqmodel: PaellaVQModel
 
-    def __init__(self, tokenizer: T5Tokenizer, text_encoder: T5EncoderModel, scheduler) -> None:
+    def __init__(
+        self, clip_tokenizer: AutoTokenizer, text_encoder: CLIPTextModel, vqmodel: PaellaVQModel, scheduler
+    ) -> None:
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer,
+            clip_tokenizer=clip_tokenizer,
             text_encoder=text_encoder,
+            vqmodel=vqmodel,
             scheduler=scheduler,
         )
         self.register_to_config()

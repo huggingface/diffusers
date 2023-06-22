@@ -1,11 +1,16 @@
+import argparse
+import inspect
 import os
 
+import numpy as np
 import torch
-from modules import Paella
-from vqgan import VQModel
+import torch.nn as nn
 
 from diffusers import PaellaVQModel
+from transformers import CLIPTextModel, AutoTokenizer
 
+from vqgan import VQModel
+from modules import Paella, Prior
 
 model_path = "models/"
 device = "cpu"
@@ -20,12 +25,19 @@ vqmodel = PaellaVQModel(
     codebook_size=paella_vqmodel.codebook_size,
     c_latent=paella_vqmodel.c_latent,
 )
-
 vqmodel.load_state_dict(state_dict)
+# TODO: test vqmodel outputs match paella_vqmodel outputs
 
-# test vqmodel outputs match paella_vqmodel outputs
+# Clip Text encoder and tokenizer
+text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+clip_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
+# EfficientNet
 
-state_dict = torch.load(os.path.join(model_path, "paella_v3.pt"), map_location=device)
+# Paella
+state_dict = torch.load(os.path.join(model_path, "model_stage_b.pt"), map_location=device)t['state_dict']
 paella_model = Paella(byt5_embd=2560).to(device)
 paella_model.load_state_dict(state_dict)
+
+# Prior
+prior_model = Prior(c_in=16, c=1536, c_cond=1024, c_r=64, depth=32, nhead=24).to(device)
