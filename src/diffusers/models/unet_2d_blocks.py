@@ -22,7 +22,7 @@ from ..utils import is_torch_version
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
-from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D, GlobalResponseResidualBlock
 from .transformer_2d import Transformer2DModel
 
 
@@ -392,9 +392,9 @@ def get_up_block(
 
 def get_paella_block(block_type, c_hidden, nhead, c_cond, c_r, kernel_size=3, c_skip=0, dropout=0, self_attn=True):
     if block_type == "C":
-        return ResBlock(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
+        return GlobalResponseResidualBlock(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
     elif block_type == "A":
-        return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
+        return Attention(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
     elif block_type == "T":
         return TimestepBlock(c_hidden, c_r)
     else:

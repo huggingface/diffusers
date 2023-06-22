@@ -742,7 +742,8 @@ class MixingResidualBlock(nn.Module):
 
         self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
 
-    def _norm(self, x, norm):
+    @staticmethod
+    def _norm(x, norm):
         return norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
     def forward(self, x):

@@ -1,10 +1,10 @@
 import os
 
 import torch
-
-from diffusers import PaellaVQModel
 from modules import Paella
 from vqgan import VQModel
+
+from diffusers import PaellaVQModel
 
 
 model_path = "models/"
