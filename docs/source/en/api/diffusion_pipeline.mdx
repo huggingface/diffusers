@@ -12,12 +12,12 @@ specific language governing permissions and limitations under the License.
 
 # Pipelines
 
-The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and use it for inference.
+The [`DiffusionPipeline`] is the quickest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) for inference.
 
 <Tip>
-	
+
 You shouldn't use the [`DiffusionPipeline`] class for training or finetuning a diffusion model. Individual 
-components (for example, [`UNetModel`] and [`UNetConditionModel`]) of diffusion pipelines are usually trained individually, so we suggest directly working with instead.
+components (for example, [`UNet2DModel`] and [`UNet2DConditionModel`]) of diffusion pipelines are usually trained individually, so we suggest directly working with them instead.
 
 </Tip>
 
