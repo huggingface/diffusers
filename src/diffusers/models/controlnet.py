@@ -93,6 +93,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         in_channels: int = 4,
+        conditioning_channels: int = 3,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str] = (
@@ -185,6 +186,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
             conditioning_embedding_channels=block_out_channels[0],
             block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         self.down_blocks = nn.ModuleList([])

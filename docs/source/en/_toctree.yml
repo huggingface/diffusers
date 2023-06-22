@@ -50,6 +50,8 @@
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
+    - local: using-diffusers/control_brightness
+      title: Control image brightness
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
@@ -146,6 +148,8 @@
       title: Loaders
     - local: api/utilities
       title: Utilities
+    - local: api/image_processor
+      title: VAE Image Processor
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
@@ -184,6 +188,8 @@
       title: MultiDiffusion Panorama
     - local: api/pipelines/paint_by_example
       title: PaintByExample
+    - local: api/pipelines/paradigms
+      title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
     - local: api/pipelines/pndm
@@ -219,6 +225,8 @@
         title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
+      - local: api/pipelines/stable_diffusion/ldm3d_diffusion
+        title: LDM3D Text-to-(RGB, Depth)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
