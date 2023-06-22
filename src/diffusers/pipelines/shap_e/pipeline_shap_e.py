@@ -439,7 +439,6 @@ class ShapEPipeline(DiffusionPipeline):
                 noise_pred,
                 timestep=t,
                 sample=latents,
-                step_index=i,
             ).prev_sample
 
         # project the the paramters from the generated latents
