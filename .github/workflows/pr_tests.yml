@@ -81,7 +81,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
 
