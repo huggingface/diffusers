@@ -12,47 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
 
 class DependencyTester(unittest.TestCase):
-    # We include all the soft dependencies listed in setup.py except `pytest`.
-    # We need `pytest` to test this utility. `urllib3` is also excluded because it's needed
-    # by `requests`.
-    soft_dependencies = [
-        "tensorboard",
-        "parameterized",
-        "requests-mock",
-        "omegaconf",
-        "torchvision",
-        "datasets",
-        "black",
-        "ruff",
-        "flax",
-        "protobuf",
-        "pytest-timeout",
-        "k-diffusion",
-        "sentencepiece",
-        "hf-doc-builder",
-        "scipy",
-        "pytest-xdist",
-        "transformers",
-        "jax",
-        "accelerate",
-        "torch",
-        "safetensors",
-        "jaxlib",
-        "librosa",
-        "compel",
-        "isort",
-        "Jinja2",
-    ]
+    def test_diffusers_import(self):
+        try:
+            import diffusers  # noqa: F401
+        except ImportError:
+            assert False
 
     def test_soft_dependencies_no_installed(self):
-        for soft_dep in self.soft_dependencies:
-            with self.subTest(dependency=soft_dep):
-                try:
-                    __import__(soft_dep)
-                    self.fail(f"Imported {soft_dep} successfully")
-                except ImportError:
-                    assert True
+        import diffusers
+        from diffusers.dependency_versions_table import deps
+
+        all_classes = inspect.getmembers(diffusers, inspect.isclass)
+
+        for cls_name, cls_module in all_classes:
+            if "dummy_" in cls_module.__module__:
+                for backend in cls_module._backends:
+                    assert backend in deps, f"{backend} is not in the deps table!"
