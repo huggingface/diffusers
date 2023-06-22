@@ -32,4 +32,6 @@ class DependencyTester(unittest.TestCase):
         for cls_name, cls_module in all_classes:
             if "dummy_" in cls_module.__module__:
                 for backend in cls_module._backends:
+                    if "torchsde" in backend:
+                        print(f"{cls_name} requires torchsde.")
                     assert backend in deps, f"{backend} is not in the deps table!"
