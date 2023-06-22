@@ -337,7 +337,7 @@ class ShapEPipeline(DiffusionPipeline):
         ray_batch_size: int = 4096,
         n_coarse_samples=64,
         n_fine_samples=128,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
         """
@@ -441,6 +441,10 @@ class ShapEPipeline(DiffusionPipeline):
                 sample=latents,
                 step_index=i,
             ).prev_sample
+        
+        # YiYi testing only: I don't think we need to return latent for this pipeline
+        if output_type == 'latent':
+            return ShapEPipelineOutput(images=latents)
 
         # project the the paramters from the generated latents
         projected_params = self.params_proj(latents)

@@ -25,7 +25,7 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, Schedul
 def betas_for_alpha_bar(
     num_diffusion_timesteps,
     max_beta=0.999,
-    alpha_bar_fn=None,
+    alpha_transform_type="cosine", # cosine, exp
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -43,12 +43,12 @@ def betas_for_alpha_bar(
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
-
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
-
-    if alpha_bar_fn is None:
-        alpha_bar_fn = alpha_bar
+    if alpha_transform_type == "cosine":
+        alpha_bar_fn = lambda t:  math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+    elif alpha_transform_type == 'exp': 
+        alpha_bar_fn = lambda t: math.exp(t * -12.0)
+    else:
+        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_tranform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -111,9 +111,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_transform_type='cosine')
         elif beta_schedule == "exp":
-            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_bar_fn=lambda t: math.exp(t * -12.0))
+            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_transform_type='exp')
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
