@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Load pipelines, models, and schedulers
 
+[[open-in-colab]]
+
 Having an easy way to use a diffusion system for inference is essential to 🧨 Diffusers. Diffusion systems often consist of multiple components like parameterized models, tokenizers, and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API, while remaining flexible enough to be adapted for other use cases, such as loading each component individually as building blocks to assemble your own diffusion system.
 
 Everything you need for inference or training is accessible with the `from_pretrained()` method.

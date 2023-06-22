@@ -30,7 +30,7 @@ from .constants import (
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
-    TEXT_ENCODER_TARGET_MODULES,
+    TEXT_ENCODER_ATTN_MODULE,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate

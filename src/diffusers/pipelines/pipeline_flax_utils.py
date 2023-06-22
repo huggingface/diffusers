@@ -83,8 +83,8 @@ class FlaxImagePipelineOutput(BaseOutput):
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
-            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]

@@ -37,6 +37,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 | CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
+| TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1600,18 +1601,17 @@ pipe_images = mixing_pipeline(
 
 ![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
 
-### Stable Diffusion Mixture
+### Stable Diffusion Mixture Tiling
 
 This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
     
 ```python
-from diffusers import LMSDiscreteScheduler
-from mixdiff import StableDiffusionTilingPipeline
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
 
 # Creater scheduler and model (similar to StableDiffusionPipeline)
 scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
-pipeline = StableDiffusionTilingPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
-pipeline.to("cuda:0")
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler, custom_pipeline="mixture_tiling")
+pipeline.to("cuda")
 
 # Mixture of Diffusers generation
 image = pipeline(
@@ -1629,3 +1629,81 @@ image = pipeline(
     num_inference_steps=50,
 )["images"][0]
 ```
+![mixture_tiling_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/mixture_tiling.png)
+
+### TensorRT Inpainting Stable Diffusion Pipeline
+
+The TensorRT Pipeline can be used to accelerate the Inpainting Stable Diffusion Inference run.
+
+NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
+
+```python
+import requests
+from io import BytesIO
+from PIL import Image
+import torch
+from diffusers import PNDMScheduler
+from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+
+# Use the PNDMScheduler scheduler here instead
+scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
+
+
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+    custom_pipeline="stable_diffusion_tensorrt_inpaint",
+    revision='fp16',
+    torch_dtype=torch.float16,
+    scheduler=scheduler,
+    )
+
+# re-use cached folder to save ONNX models and TensorRT Engines
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-inpainting", revision='fp16',)
+
+pipe = pipe.to("cuda")
+
+url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+response = requests.get(url)
+input_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+response = requests.get(mask_url)
+mask_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+prompt = "a mecha robot sitting on a bench"
+image = pipe(prompt, image=input_image, mask_image=mask_image, strength=0.75,).images[0]
+image.save('tensorrt_inpaint_mecha_robot.png')
+```
+
+### Stable Diffusion Mixture Canvas
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+    
+```python
+from PIL import Image
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import Image2ImageRegion, Text2ImageRegion, preprocess_image
+
+
+# Load and preprocess guide image
+iic_image = preprocess_image(Image.open("input_image.png").convert("RGB"))
+
+# Creater scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler).to("cuda:0", custom_pipeline="mixture_canvas")
+pipeline.to("cuda")
+
+# Mixture of Diffusers generation
+output = pipeline(
+    canvas_height=800,
+    canvas_width=352,
+    regions=[
+        Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
+            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
+        Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
+    ],
+    num_inference_steps=100,
+    seed=5525475061,
+)["images"][0]
+```
+![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
+![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)

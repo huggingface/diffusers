@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Weighting prompts
 
+[[open-in-colab]]
+
 Text-guided diffusion models generate images based on a given text prompt. The text prompt
 can include multiple concepts that the model should generate and it's often desirable to weight
 certain parts of the prompt more or less. 
@@ -93,6 +95,16 @@ a try!
 
 If your favorite pipeline does not have a `prompt_embeds` input, please make sure to open an issue, the 
 diffusers team tries to be as responsive as possible.
+
+Compel 1.1.6 adds a utility class to simplify using textual inversions.  Instantiate a `DiffusersTextualInversionManager` and pass it to Compel init:
+
+```
+textual_inversion_manager = DiffusersTextualInversionManager(pipe)
+compel = Compel(
+    tokenizer=pipe.tokenizer,
+    text_encoder=pipe.text_encoder,
+    textual_inversion_manager=textual_inversion_manager)
+```
 
 Also, please check out the documentation of the [compel](https://github.com/damian0815/compel) library for 
 more information.

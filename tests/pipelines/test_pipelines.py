@@ -61,6 +61,7 @@ from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     floats_tensor,
+    is_compiled_module,
     nightly,
     require_torch_2,
     slow,
@@ -99,6 +100,11 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         scheduler = DDPMScheduler(num_train_timesteps=10)
 
         ddpm = DDPMPipeline(model, scheduler)
+
+        # previous diffusers versions stripped compilation off
+        # compiled modules
+        assert is_compiled_module(ddpm.unet)
+
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
@@ -237,27 +243,6 @@ class DownloadTests(unittest.TestCase):
                     cache_dir=tmpdirname,
                     use_safetensors=True,
                 )
-
-    def test_returned_cached_folder(self):
-        prompt = "hello"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
-        )
-        _, local_path = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, return_cached_folder=True
-        )
-        pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
-
-        pipe = pipe.to(torch_device)
-        pipe_2 = pipe_2.to(torch_device)
-
-        generator = torch.manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
-        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
-
-        assert np.max(np.abs(out - out_2)) < 1e-3
 
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -719,6 +704,18 @@ class DownloadTests(unittest.TestCase):
         assert pipe._maybe_convert_prompt("<xxxx>", pipe.tokenizer) == "<xxxx> <xxxx>_1 <xxxx>_2"
 
         prompt = "hey <xxxx>"
+        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        assert out.shape == (1, 128, 128, 3)
+
+        # multiple references to multi embedding
+        ten = {"<cat>": torch.ones(3, 32)}
+        pipe.load_textual_inversion(ten)
+
+        assert (
+            pipe._maybe_convert_prompt("<cat> <cat>", pipe.tokenizer) == "<cat> <cat>_1 <cat>_2 <cat> <cat>_1 <cat>_2"
+        )
+
+        prompt = "hey <cat> <cat>"
         out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
         assert out.shape == (1, 128, 128, 3)
 

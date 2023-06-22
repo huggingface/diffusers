@@ -79,7 +79,7 @@ class Encoder(nn.Module):
                 downsample_padding=0,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_head_channels=None,
+                attention_head_dim=output_channel,
                 temb_channels=None,
             )
             self.down_blocks.append(down_block)
@@ -91,7 +91,7 @@ class Encoder(nn.Module):
             resnet_act_fn=act_fn,
             output_scale_factor=1,
             resnet_time_scale_shift="default",
-            attn_num_head_channels=None,
+            attention_head_dim=block_out_channels[-1],
             resnet_groups=norm_num_groups,
             temb_channels=None,
         )
@@ -184,7 +184,7 @@ class Decoder(nn.Module):
             resnet_act_fn=act_fn,
             output_scale_factor=1,
             resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
-            attn_num_head_channels=None,
+            attention_head_dim=block_out_channels[-1],
             resnet_groups=norm_num_groups,
             temb_channels=temb_channels,
         )
@@ -208,7 +208,7 @@ class Decoder(nn.Module):
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attn_num_head_channels=None,
+                attention_head_dim=output_channel,
                 temb_channels=temb_channels,
                 resnet_time_scale_shift=norm_type,
             )

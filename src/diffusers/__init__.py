@@ -1,4 +1,4 @@
-__version__ = "0.17.0.dev0"
+__version__ = "0.18.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -73,7 +73,9 @@ else:
     )
     from .schedulers import (
         DDIMInverseScheduler,
+        DDIMParallelScheduler,
         DDIMScheduler,
+        DDPMParallelScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,
@@ -150,8 +152,10 @@ else:
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
+        StableDiffusionLDM3DPipeline,
         StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
+        StableDiffusionParadigmsPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionPix2PixZeroPipeline,
