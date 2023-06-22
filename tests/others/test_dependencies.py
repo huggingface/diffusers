@@ -23,7 +23,7 @@ class DependencyTester(unittest.TestCase):
         except ImportError:
             assert False
 
-    def test_soft_dependencies_no_installed(self):
+    def test_backend_registration(self):
         import diffusers
         from diffusers.dependency_versions_table import deps
 
@@ -32,6 +32,6 @@ class DependencyTester(unittest.TestCase):
         for cls_name, cls_module in all_classes:
             if "dummy_" in cls_module.__module__:
                 for backend in cls_module._backends:
-                    if "torchsde" in backend:
-                        print(f"{cls_name} requires torchsde.")
+                    if backend == "k_diffusion":
+                        backend = "k-diffusion"
                     assert backend in deps, f"{backend} is not in the deps table!"
