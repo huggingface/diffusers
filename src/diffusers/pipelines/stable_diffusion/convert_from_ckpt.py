@@ -734,8 +734,8 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, clip_text_model=None):
-    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only) if clip_text_model is None else clip_text_model
+def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
+    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only) if text_encoder is None else text_encoder
 
     keys = list(checkpoint.keys())
 
@@ -1025,8 +1025,8 @@ def download_from_original_stable_diffusion_ckpt(
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
-    clip_text_model=None,
-    clip_tokenizer=None,
+    text_encoder=None,
+    tokenizer=None,
 ) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -1074,10 +1074,13 @@ def download_from_original_stable_diffusion_ckpt(
             The pipeline class to use. Pass `None` to determine automatically.
         local_files_only (`bool`, *optional*, defaults to `False`):
             Whether or not to only look at local files (i.e., do not try to download the model).
-        clip_text_model (`transformers.models.clip.modeling_clip.CLIPTextModel`, *optional*, defaults to `None`):
-            An instance of `CLIPTextModel` to use. If this parameter is `None`, the function will load a new instance of `CLIPTextModel`, if needed.
-        clip_tokenizer (`transformers.models.clip.tokenization_clip.CLIPTokenizer`, *optional*, defaults to `None`):
-            An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function will load a new instance of `CLIPTokenizer`, if needed.
+        text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
+            An instance of [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+        tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
+            An instance of [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer) to use. 
+            If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by itself, if needed.
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
@@ -1333,8 +1336,8 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor=feature_extractor,
         )
     elif model_type == "FrozenCLIPEmbedder":
-        text_model = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only, clip_text_model=clip_text_model)
-        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14") if clip_tokenizer is None else clip_tokenizer
+        text_model = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only, text_encoder=text_encoder)
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14") if tokenizer is None else tokenizer
 
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
