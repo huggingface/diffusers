@@ -647,7 +647,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         negative_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
         controlnet_guidance_start=None,
-        controlnet_guidance_end=None
+        controlnet_guidance_end=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -1124,7 +1124,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             negative_prompt_embeds,
             controlnet_conditioning_scale,
             controlnet_guidance_start,
-            controlnet_guidance_end
+            controlnet_guidance_end,
         )
 
         # 2. Define call parameters
@@ -1267,7 +1267,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-
                 # compute the percentage of total steps we are at
                 current_sampling_percent = i / len(timesteps)
 
@@ -1304,8 +1303,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                         # To apply the output of ControlNet to both the unconditional and conditional batches,
                         # add 0 to the unconditional batch to keep it unchanged.
                         down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                        mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
-
+                        mid_block_res_sample = torch.cat(
+                            [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                        )
 
                 # predict the noise residual
                 if num_channels_unet == 9:
