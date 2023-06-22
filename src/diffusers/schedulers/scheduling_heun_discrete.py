@@ -295,8 +295,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        if step_index is None:
-            step_index = self.index_for_timestep(timestep)
+        step_index = self.index_for_timestep(timestep)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
