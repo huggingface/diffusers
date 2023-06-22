@@ -81,10 +81,9 @@ class FrozenDict(OrderedDict):
 
 class ConfigMixin:
     r"""
-    Base class for all configuration classes. Stores all configuration parameters under `self.config` Also handles all
-    methods for loading/downloading/saving classes inheriting from [`ConfigMixin`] with
-        - [`~ConfigMixin.from_config`]
-        - [`~ConfigMixin.save_config`]
+    Base class for all configuration classes. All configuration parameters are stored under `self.config`. Also
+    provides the [`~ConfigMixin.from_config`] and [`~ConfigMixin.save_config`] methods for loading, downloading, and
+    saving classes that inherit from [`ConfigMixin`].
 
     Class attributes:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
@@ -92,7 +91,7 @@ class ConfigMixin:
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by subclass).
         - **has_compatibles** (`bool`) -- Whether the class has compatible classes (should be overridden by subclass).
-        - **_deprecated_kwargs** (`List[str]`) -- Keyword arguments that are deprecated. Note that the init function
+        - **_deprecated_kwargs** (`List[str]`) -- Keyword arguments that are deprecated. Note that the `init` function
           should only have a `kwargs` argument if at least one argument is deprecated (should be overridden by
           subclass).
     """
@@ -139,12 +138,12 @@ class ConfigMixin:
 
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
-        Save a configuration object to the directory `save_directory`, so that it can be re-loaded using the
+        Save a configuration object to the directory specified in `save_directory` so that it can be reloaded using the
         [`~ConfigMixin.from_config`] class method.
 
         Args:
             save_directory (`str` or `os.PathLike`):
-                Directory where the configuration JSON file will be saved (will be created if it does not exist).
+                Directory where the configuration JSON file is saved (will be created if it does not exist).
         """
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -164,15 +163,14 @@ class ConfigMixin:
 
         Parameters:
             config (`Dict[str, Any]`):
-                A config dictionary from which the Python class will be instantiated. Make sure to only load
-                configuration files of compatible classes.
+                A config dictionary from which the Python class is instantiated. Make sure to only load configuration
+                files of compatible classes.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether kwargs that are not consumed by the Python class should be returned or not.
-
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to update the configuration object (after it is loaded) and initiate the Python class.
-                `**kwargs` are directly passed to the underlying scheduler/model's `__init__` method and eventually
-                overwrite same named arguments in `config`.
+                `**kwargs` are passed directly to the underlying scheduler/model's `__init__` method and eventually
+                overwrite the same named arguments in `config`.
 
         Returns:
             [`ModelMixin`] or [`SchedulerMixin`]:
@@ -280,16 +278,16 @@ class ConfigMixin:
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
             resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to False, any
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
                 incompletely downloaded files are deleted.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            local_files_only(`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
-                won’t be downloaded from the Hub.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
@@ -307,14 +305,6 @@ class ConfigMixin:
             `dict`:
                 A dictionary of all the parameters stored in a JSON configuration file.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
-        ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to use this method in a
-        firewalled environment.
-
-        </Tip>
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -536,10 +526,11 @@ class ConfigMixin:
 
     def to_json_string(self) -> str:
         """
-        Serializes this instance to a JSON string.
+        Serializes the configuration instance to a JSON string.
 
         Returns:
-            `str`: String containing all the attributes that make up this configuration instance in JSON format.
+            `str`:
+                String containing all the attributes that make up the configuration instance in JSON format.
         """
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
         config_dict["_class_name"] = self.__class__.__name__
@@ -560,11 +551,11 @@ class ConfigMixin:
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
         """
-        Save this instance to a JSON file.
+        Save the configuration instance's parameters to a JSON file.
 
         Args:
             json_file_path (`str` or `os.PathLike`):
-                Path to the JSON file in which this configuration instance's parameters will be saved.
+                Path to the JSON file to save a configuration instance's parameters.
         """
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
