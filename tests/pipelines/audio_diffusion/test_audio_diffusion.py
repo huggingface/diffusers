@@ -21,6 +21,7 @@ import torch
 
 from diffusers import (
     AudioDiffusionPipeline,
+    DDIMScheduler,
     AutoencoderKL,
     DDPMScheduler,
     DiffusionPipeline,
@@ -98,7 +99,10 @@ class PipelineFastTests(unittest.TestCase):
     @slow
     def test_audio_diffusion(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        mel = Mel()
+        mel = Mel(
+            x_res=self.dummy_unet.config.sample_size[1],
+            y_res=self.dummy_unet.config.sample_size[0],
+        )
 
         scheduler = DDPMScheduler()
         pipe = AudioDiffusionPipeline(vqvae=None, unet=self.dummy_unet, mel=mel, scheduler=scheduler)
@@ -126,43 +130,49 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() == 0
 
-        # TODO(teticio) - not sure how exactly this should be fixed
-        # scheduler = DDIMScheduler()
-        # dummy_vqvae_and_unet = self.dummy_vqvae_and_unet
-        # pipe = AudioDiffusionPipeline(
-        #     vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_vqvae_and_unet[1], mel=mel, scheduler=scheduler
-        # )
-        # pipe = pipe.to(device)
-        # pipe.set_progress_bar_config(disable=None)
+        mel = Mel(
+            x_res=self.dummy_vqvae_and_unet[0].config.sample_size[1],
+            y_res=self.dummy_vqvae_and_unet[0].config.sample_size[0],
+        )
 
-        # np.random.seed(0)
-        # raw_audio = np.random.uniform(-1, 1, ((dummy_vqvae_and_unet[0].config.sample_size[1] - 1) * mel.hop_length,))
-        # generator = torch.Generator(device=device).manual_seed(42)
-        # output = pipe(raw_audio=raw_audio, generator=generator, start_step=5, steps=10)
-        # image = output.images[0]
+        scheduler = DDIMScheduler()
+        dummy_vqvae_and_unet = self.dummy_vqvae_and_unet
+        pipe = AudioDiffusionPipeline(
+            vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_vqvae_and_unet[1], mel=mel, scheduler=scheduler
+        )
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-        # assert (
-        #     image.height == self.dummy_vqvae_and_unet[0].config.sample_size[0]
-        #     and image.width == self.dummy_vqvae_and_unet[0].config.sample_size[1]
-        # )
-        # image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
-        # expected_slice = np.array([120, 117, 110, 109, 138, 167, 138, 148, 132, 121])
+        np.random.seed(0)
+        raw_audio = np.random.uniform(-1, 1, ((dummy_vqvae_and_unet[0].config.sample_size[1] - 1) * mel.hop_length,))
+        generator = torch.Generator(device=device).manual_seed(42)
+        output = pipe(raw_audio=raw_audio, generator=generator, start_step=5, steps=10)
+        image = output.images[0]
 
-        # assert np.abs(image_slice.flatten() - expected_slice).max() == 0
+        assert (
+            image.height == self.dummy_vqvae_and_unet[0].config.sample_size[0]
+            and image.width == self.dummy_vqvae_and_unet[0].config.sample_size[1]
+        )
+        image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
+        expected_slice = np.array([120, 117, 110, 109, 138, 167, 138, 148, 132, 121])
 
-        # dummy_unet_condition = self.dummy_unet_condition
-        # pipe = AudioDiffusionPipeline(
-        #     vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_unet_condition, mel=mel, scheduler=scheduler
-        # )
+        assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
-        # np.random.seed(0)
-        # encoding = torch.rand((1, 1, 10))
-        # output = pipe(generator=generator, encoding=encoding)
-        # image = output.images[0]
-        # image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
-        # expected_slice = np.array([120, 139, 147, 123, 124, 96, 115, 121, 126, 144])
+        dummy_unet_condition = self.dummy_unet_condition
+        pipe = AudioDiffusionPipeline(
+            vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_unet_condition, mel=mel, scheduler=scheduler
+        )
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-        # assert np.abs(image_slice.flatten() - expected_slice).max() == 0
+        np.random.seed(0)
+        encoding = torch.rand((1, 1, 10))
+        output = pipe(generator=generator, encoding=encoding)
+        image = output.images[0]
+        image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
+        expected_slice = np.array([107, 103, 120, 127, 142, 122, 113, 122, 97, 111])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
 
 @slow
