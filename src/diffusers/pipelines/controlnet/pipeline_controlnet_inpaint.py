@@ -646,6 +646,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         prompt_embeds=None,
         negative_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
+        controlnet_guidance_start=None,
+        controlnet_guidance_end=None
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -750,6 +752,23 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 )
         else:
             assert False
+
+        if controlnet_guidance_end is not None and controlnet_guidance_start is not None:
+            if controlnet_guidance_start < 0 or controlnet_guidance_start > 1:
+                raise ValueError(
+                    f"The value of `controlnet_guidance_start` should in [0.0, 1.0] but is {controlnet_guidance_start}"
+                )
+
+            if controlnet_guidance_end < 0 or controlnet_guidance_end > 1:
+                raise ValueError(
+                    f"The value of `controlnet_guidance_end` should in [0.0, 1.0] but is {controlnet_guidance_end}"
+                )
+
+            if controlnet_guidance_start > controlnet_guidance_end:
+                raise ValueError(
+                    "The value of `controlnet_guidance_start` should be less than `controlnet_guidance_end`, but got"
+                    f" `controlnet_guidance_start` {controlnet_guidance_start} >= `controlnet_guidance_end` {controlnet_guidance_end}"
+                )
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
@@ -990,6 +1009,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 0.5,
         guess_mode: bool = False,
+        controlnet_guidance_start: float = 0.0,
+        controlnet_guidance_end: float = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1073,6 +1094,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             guess_mode (`bool`, *optional*, defaults to `False`):
                 In this mode, the ControlNet encoder will try best to recognize the content of the input image even if
                 you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
+            controlnet_guidance_start ('float', *optional*, defaults to 0.0):
+                The percentage of total steps the controlnet starts applying. Must be between 0 and 1.
+            controlnet_guidance_end ('float', *optional*, defaults to 1.0):
+                The percentage of total steps the controlnet ends applying. Must be between 0 and 1. Must be greater
+                than `controlnet_guidance_start`.
 
         Examples:
 
@@ -1097,6 +1123,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             prompt_embeds,
             negative_prompt_embeds,
             controlnet_conditioning_scale,
+            controlnet_guidance_start,
+            controlnet_guidance_end
         )
 
         # 2. Define call parameters
@@ -1239,32 +1267,45 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # controlnet(s) inference
-                if guess_mode and do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+
+                # compute the percentage of total steps we are at
+                current_sampling_percent = i / len(timesteps)
+
+                if (
+                    current_sampling_percent < controlnet_guidance_start
+                    or current_sampling_percent > controlnet_guidance_end
+                ):
+                    # do not apply the controlnet
+                    down_block_res_samples = None
+                    mid_block_res_sample = None
                 else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
+                    # controlnet(s) inference
+                    if guess_mode and do_classifier_free_guidance:
+                        # Infer ControlNet only for the conditional batch.
+                        control_model_input = latents
+                        control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                        controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                    else:
+                        control_model_input = latent_model_input
+                        controlnet_prompt_embeds = prompt_embeds
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
-                    t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=control_image,
-                    conditioning_scale=controlnet_conditioning_scale,
-                    guess_mode=guess_mode,
-                    return_dict=False,
-                )
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        control_model_input,
+                        t,
+                        encoder_hidden_states=controlnet_prompt_embeds,
+                        controlnet_cond=control_image,
+                        conditioning_scale=controlnet_conditioning_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
 
-                if guess_mode and do_classifier_free_guidance:
-                    # Infered ControlNet only for the conditional batch.
-                    # To apply the output of ControlNet to both the unconditional and conditional batches,
-                    # add 0 to the unconditional batch to keep it unchanged.
-                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+                    if guess_mode and do_classifier_free_guidance:
+                        # Infered ControlNet only for the conditional batch.
+                        # To apply the output of ControlNet to both the unconditional and conditional batches,
+                        # add 0 to the unconditional batch to keep it unchanged.
+                        down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                        mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+
 
                 # predict the noise residual
                 if num_channels_unet == 9:
