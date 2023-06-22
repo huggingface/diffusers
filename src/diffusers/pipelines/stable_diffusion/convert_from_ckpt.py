@@ -1211,9 +1211,6 @@ def download_from_original_stable_diffusion_ckpt(
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
-    import ipdb
-
-    ipdb.set_trace()
     unet = UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
