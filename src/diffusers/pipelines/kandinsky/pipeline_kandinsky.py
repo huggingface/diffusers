@@ -22,7 +22,7 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.pipeline_utils import ImagePipelineOutput
-from ...schedulers import DDIMScheduler
+from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -88,7 +88,7 @@ class KandinskyPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
-        scheduler ([`DDIMScheduler`]):
+        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -101,7 +101,7 @@ class KandinskyPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
         movq: VQModel,
     ):
         super().__init__()
@@ -439,9 +439,6 @@ class KandinskyPipeline(DiffusionPipeline):
                 noise_pred,
                 t,
                 latents,
-                # YiYi notes: only reason this pipeline can't work with unclip scheduler is that can't pass down this argument
-                #             need to use DDPM scheduler instead
-                # prev_timestep=prev_timestep,
                 generator=generator,
             ).prev_sample
         # post-processing

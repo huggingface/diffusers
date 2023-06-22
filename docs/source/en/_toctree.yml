@@ -149,7 +149,7 @@
     - local: api/utilities
       title: Utilities
     - local: api/image_processor
-      title: Vae Image Processor
+      title: VAE Image Processor
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
@@ -188,6 +188,8 @@
       title: MultiDiffusion Panorama
     - local: api/pipelines/paint_by_example
       title: PaintByExample
+    - local: api/pipelines/paradigms
+      title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
     - local: api/pipelines/pndm

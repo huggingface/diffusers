@@ -53,6 +53,7 @@ else:
     from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
     from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
     from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
+    from .pipeline_stable_diffusion_paradigms import StableDiffusionParadigmsPipeline
     from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
     from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
     from .pipeline_stable_unclip import StableUnCLIPPipeline

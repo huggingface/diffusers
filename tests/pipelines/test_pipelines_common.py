@@ -640,7 +640,9 @@ class PipelineTesterMixin:
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass()
 
-    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True, expected_max_diff=1e-4):
+    def _test_xformers_attention_forwardGenerator_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
+    ):
         if not self.test_xformers_attention:
             return
 
@@ -660,7 +662,8 @@ class PipelineTesterMixin:
             max_diff = np.abs(output_with_offload - output_without_offload).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
-        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()

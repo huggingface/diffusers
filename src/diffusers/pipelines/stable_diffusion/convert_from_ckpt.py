@@ -288,7 +288,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
     }
 
-    if not controlnet:
+    if controlnet:
+        config["conditioning_channels"] = unet_params.hint_channels
+    else:
         config["out_channels"] = unet_params.out_channels
         config["up_block_types"] = tuple(up_block_types)
 

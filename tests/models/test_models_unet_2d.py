@@ -59,7 +59,7 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "block_out_channels": (32, 64),
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
             "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
-            "attention_head_dim": None,
+            "attention_head_dim": 3,
             "out_channels": 3,
             "in_channels": 3,
             "layers_per_block": 2,

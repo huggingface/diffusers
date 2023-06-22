@@ -12,12 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Logging
 
-🧨 Diffusers has a centralized logging system, so that you can setup the verbosity of the library easily.
+🤗 Diffusers has a centralized logging system to easily manage the verbosity of the library. The default verbosity is set to `WARNING`.
 
-Currently the default verbosity of the library is `WARNING`.
-
-To change the level of verbosity, just use one of the direct setters. For instance, here is how to change the verbosity
-to the INFO level.
+To change the verbosity level, use one of the direct setters. For instance, to change the verbosity to the `INFO` level.
 
 ```python
 import diffusers
@@ -33,7 +30,7 @@ DIFFUSERS_VERBOSITY=error ./myprogram.py
 ```
 
 Additionally, some `warnings` can be disabled by setting the environment variable
-`DIFFUSERS_NO_ADVISORY_WARNINGS` to a true value, like *1*. This will disable any warning that is logged using
+`DIFFUSERS_NO_ADVISORY_WARNINGS` to a true value, like `1`. This disables any warning logged by
 [`logger.warning_advice`]. For example:
 
 ```bash
@@ -52,20 +49,21 @@ logger.warning("WARN")
 ```
 
 
-All the methods of this logging module are documented below, the main ones are
+All methods of the logging module are documented below. The main methods are
 [`logging.get_verbosity`] to get the current level of verbosity in the logger and
-[`logging.set_verbosity`] to set the verbosity to the level of your choice. In order (from the least
-verbose to the most verbose), those levels (with their corresponding int values in parenthesis) are:
+[`logging.set_verbosity`] to set the verbosity to the level of your choice. 
 
-- `diffusers.logging.CRITICAL` or `diffusers.logging.FATAL` (int value, 50): only report the most
-  critical errors.
-- `diffusers.logging.ERROR` (int value, 40): only report errors.
-- `diffusers.logging.WARNING` or `diffusers.logging.WARN` (int value, 30): only reports error and
-  warnings. This is the default level used by the library.
-- `diffusers.logging.INFO` (int value, 20): reports error, warnings and basic information.
-- `diffusers.logging.DEBUG` (int value, 10): report all information.
+In order from the least verbose to the most verbose:
 
-By default, `tqdm` progress bars will be displayed during model download. [`logging.disable_progress_bar`] and [`logging.enable_progress_bar`] can be used to suppress or unsuppress this behavior.
+|                                                    Method | Integer value |                                         Description |
+|----------------------------------------------------------:|--------------:|----------------------------------------------------:|
+| `diffusers.logging.CRITICAL` or `diffusers.logging.FATAL` |            50 |                only report the most critical errors |
+|                                 `diffusers.logging.ERROR` |            40 |                                  only report errors |
+|   `diffusers.logging.WARNING` or `diffusers.logging.WARN` |            30 |           only report errors and warnings (default) |
+|                                  `diffusers.logging.INFO` |            20 | only report errors, warnings, and basic information |
+|                                 `diffusers.logging.DEBUG` |            10 |                              report all information |
+
+By default, `tqdm` progress bars are displayed during model download. [`logging.disable_progress_bar`] and [`logging.enable_progress_bar`] are used to enable or disable this behavior.
 
 ## Base setters
 
