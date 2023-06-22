@@ -1,4 +1,23 @@
-runwayml/stable-diffusion-v1-5 5
-CompVis/stable-diffusion-v1-4 5
-stabilityai/stable-diffusion-2-1 5
+lllyasviel/sd-controlnet-canny 5
+lllyasviel/sd-controlnet-depth 5
+lllyasviel/sd-controlnet-hed 5
+lllyasviel/sd-controlnet-mlsd 5
+lllyasviel/sd-controlnet-normal 5
+lllyasviel/sd-controlnet-openpose 5
+lllyasviel/sd-controlnet-scribble 5
+lllyasviel/sd-controlnet-seg 5
+lllyasviel/control_v11p_sd15_canny 5
+lllyasviel/control_v11e_sd15_ip2p 5
+lllyasviel/control_v11p_sd15_inpaint 5
+lllyasviel/control_v11p_sd15_mlsd 5
+lllyasviel/control_v11f1p_sd15_depth 5
+lllyasviel/control_v11p_sd15_normalbae 5
+lllyasviel/control_v11p_sd15_seg 5
+lllyasviel/control_v11p_sd15_lineart 5
+lllyasviel/control_v11p_sd15s2_lineart_anime 5
+lllyasviel/control_v11p_sd15_openpose 5
+lllyasviel/control_v11p_sd15_scribble 5
+lllyasviel/control_v11p_sd15_softedge 5
+lllyasviel/control_v11e_sd15_shuffle 5
+lllyasviel/control_v11f1e_sd15_tile 5
 #### end list ####
