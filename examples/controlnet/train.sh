@@ -1,10 +1,29 @@
 ###controlnet.sh PSEUDO###
-env_name=${1}
-model_name=${2}
-batch_size=${3}
-output_dir=${4:-"outputs"}
+if [[ "$@" == *"--task"* ]]; then # --env_name: conda env name
+  env_name="$(echo "$@" | sed -n 's/.*--task \([^ ]*\).*/\1/p')"
+  echo "env_name: $env_name"
+fi
+
+if [[ "$@" == *"--model_name"* ]]; then
+  model_name="$(echo "$@" | sed -n 's/.*--model_name \([^ ]*\).*/\1/p')"
+fi
+
+if [[ "$@" == *"--batch_size"* ]]; then 
+  batch_size="$(echo "$@" | sed -n 's/.*--batch_size \([^ ]*\).*/\1/p')"
+fi
+
+output_dir=outputs
+if [[ "$@" == *"--output_dir"* ]]; then 
+  output_dir="$(echo "$@" | sed -n 's/.*--output_dir \([^ ]*\).*/\1/p')"
+fi
+
 current_dir=$(pwd)
-log_dir=${5:-"${current_dir}/logs/${model_name}.json"}
+log_dir=${current_dir}/logs/${model_name}.json
+if [[ "$@" == *"--log_dir"* ]]; then 
+  log_dir="$(echo "$@" | sed -n 's/.*--log_dir \([^ ]*\).*/\1/p')"
+fi
+
+moreh-switch-model -M 1
 
 # Check if $batch_size is provided , if not use default value of 5
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
@@ -13,14 +32,11 @@ else
   batch_size=5
 fi
 
-moreh-switch-model -M 1 
-
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
 conda run -n ${env_name} python3 train_controlnet.py \
     --pretrained_model_name_or_path ${model_name}  \
-    --controlnet_model_name_or_path lllyasviel/sd-controlnet-hed \
     --dataset_name fusing/fill50k \
     --output_dir ${output_dir} \
     --log_dir "${log_dir}" \

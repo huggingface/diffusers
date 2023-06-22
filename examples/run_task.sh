@@ -5,7 +5,13 @@ if [[ "$@" == *"--task"* ]]; then # --task: task name
   # If the flag is set, assign the value from the user prompt
   task="$(echo "$@" | sed -n 's/.*--task \([^ ]*\).*/\1/p')"
 else
-  echo "Usage: $0 <declare --task task_name>"
+  echo -e "Declare --task task_name> \
+          \n - dreambooth \
+          \n - instruct_pix2pix \
+          \n - controlnet \
+          \n - text_to_image \
+          \n - unconditional_image_generation \
+  "
   exit 1
 fi
 
@@ -14,7 +20,7 @@ if [[ "$@" == *"--model"* ]]; then # --model: model name
   run_mode=1 # run single model
 else 
   run_mode=2 # run all models in model_batchsize_file
-  echo "Note: --model not specified, will run all models in $model_batchsize_file"
+  echo "Note: --model not specified, will run all models in model_batchsize_file"
 fi
 
 if [[ "$@" == *"--batch_size"* ]]; then # --batch_size: batch size
@@ -30,12 +36,6 @@ model_batchsize_file=model_batchsize.txt
 if [[ "$@" == *"--model_batchsize_file"* ]]; then # --model_batchsize_file: file containing model name and batch size respectively
   model_batchsize_file="$(echo "$@" | sed -n 's/.*--model_batchsize_file \([^ ]*\).*/\1/p')"
 fi
-
-
-# Check input files
-# ==================================
-bash all_scripts/check_file_exist.sh $train_script $task
-bash all_scripts/check_file_exist.sh $model_batchsize_file $task
 
 # Create env for task
 # ==================================
@@ -60,17 +60,13 @@ execute_training() {
 
             model_name=${model#*/}
 
-            terminal_log_file="${LOG_DIR}/${model_name}_terminal.log"
-            memory_log_file="${LOG_DIR}/${model_name}_memory.log"
-
             output_dir="${OUTPUT_DIR}/${model_name}"
             log_dir="${LOG_DIR}/${model_name}.json"
 
-            commands_to_run="
-                cd $task
-                bash $train_script $task $model $batch_size $output_dir $log_dir                
-            " 
-            bash record.sh 0 $memory_log_file $terminal_log_file "$commands_to_run"
+
+            cd $task
+            # echo "Running script $train_script task $task model $model bs $batch_size output $output_dir log $log_dir"
+            bash $train_script --task $task --model_name $model --batch_size $batch_size --output_dir $output_dir --log_dir $log_dir                
 
             echo Done training $model
 }
@@ -89,9 +85,9 @@ fi
 # ==================================
 base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
 
-echo "deleting env.."
-source ${base_env}/etc/profile.d/conda.sh
-conda deactivate
-conda env remove -n ${task}
+# echo "deleting env.."
+# source ${base_env}/etc/profile.d/conda.sh
+# conda deactivate
+# conda env remove -n ${task}
 
 echo Done

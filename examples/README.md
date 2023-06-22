@@ -15,15 +15,23 @@ limitations under the License.
 
 # How to train models in each task
 From ../diffusers/examples repository, run the file run_tash.sh in terminal with the flags:
---task [required]: task name
---model [optional]: model name. If not provided, training for all models available in model_batchsize_file
---batch_size [optional]: batch size
---train_script [optional]: training script for specific task
---model_batchsize_file [optional]: file containing model name and batch size respectively
+1. --task [required]: task name
+2. --model [optional]: model name. If not provided, training for all models available in model_batchsize_file
+3. --batch_size [optional]: batch size
+4. --train_script [optional]: training script for specific task
+5. --model_batchsize_file [optional]: file containing model name and batch size respectively
 
 E.g: 
--Training all model: bash run_task --task unconditional_image_generation 
--Training a single model: bash run_task --task unconditional_image_generation --model ddpm-unet
+- Training all model: bash run_task --task unconditional_image_generation 
+- Training a single model: bash run_task --task unconditional_image_generation --model ddpm-unet
+
+# Record GPU usage
+While running a Python process, open **another terminal** and run:
+
+    bash all_scripts/memory_record_moreh.sh ${DEVICE_ID} | tee ${LOG_FILE}
+
+- DEVICE_ID is the id of the Moreh device you are running the python process on and whose memory you want to record
+- LOG_FILE is the file you want to save the memory to
 
 # 🧨 Diffusers Examples
 

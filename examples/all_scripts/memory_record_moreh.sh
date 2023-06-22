@@ -1,13 +1,13 @@
 device_id=$1
 
-echo Using moreh device $device_id
+echo Recording memory usage of moreh device $device_id
 
 set -f
 
 query_process_info() {
     moreh-smi > /tmp/moreh_smi_output.txt
     
-    memory=$(grep -n "$device_id     |  KT AI" /tmp/moreh_smi_output.txt | awk -F'GB ' '{print $2}' | awk -F'MiB' '{print $1}')
+    memory=$(grep -n "$device_id     |  KT AI" /tmp/moreh_smi_output.txt | awk -F'GB ' '{print $2}' | awk -F'MiB' '{print $1}' | awk -F' ' '{print $2}')
 
     echo $memory
 }
