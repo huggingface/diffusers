@@ -21,8 +21,8 @@ import torch
 
 from diffusers import (
     AudioDiffusionPipeline,
-    DDIMScheduler,
     AutoencoderKL,
+    DDIMScheduler,
     DDPMScheduler,
     DiffusionPipeline,
     Mel,
