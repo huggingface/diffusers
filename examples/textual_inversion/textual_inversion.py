@@ -17,6 +17,7 @@ import argparse
 import logging
 import math
 import os
+import time
 import random
 import warnings
 from pathlib import Path
@@ -226,6 +227,12 @@ def parse_args():
         type=str,
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -814,6 +821,8 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data.clone()
 
+    loss_dict = {}
+    start_time = time.time()
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
@@ -896,6 +905,7 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+        loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -930,7 +940,15 @@ def main():
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-
+    elapsed_time = time.time() - start_time
+    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+    output_dict = {"throughput": throughput,
+                   "loss": loss_dict}
+    
+    import json
+    with open(args.log_dir, "w") as f:
+        json.dump(output_dict, f)
+    logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 
