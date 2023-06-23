@@ -14,11 +14,11 @@
 from typing import List, Optional, Union
 
 import torch
-from transformers import CLIPTextModel, AutoTokenizer
+from transformers import AutoTokenizer, CLIPTextModel
 
+from ...models import PaellaVQModel
 from ...utils import is_accelerate_available, logging
 from ..pipeline_utils import DiffusionPipeline
-from ...models import PaellaVQModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -97,7 +97,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
-        clip_text_embeddings = self.text_encoder(**clip_tokens).last_hidden_state
+        self.text_encoder(**clip_tokens).last_hidden_state
 
         if negative_prompt is None:
             negative_prompt = ""
@@ -109,4 +109,4 @@ class WuerstchenPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
-        clip_text_embeddings_uncond = self.text_encoder(**clip_tokens_uncond).last_hidden_state
+        self.text_encoder(**clip_tokens_uncond).last_hidden_state
