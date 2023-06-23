@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTokenizer, CLIPTextModel
 
 from ...models import PaellaVQModel
-from ...utils import is_accelerate_available, logging, BaseOutput
+from ...utils import is_accelerate_available, logging, BaseOutput, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import DDPMScheduler
 
@@ -100,6 +100,17 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         )
         self.register_to_config()
 
+    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        latents = latents * scheduler.init_noise_sigma
+        return latents
+
     @torch.no_grad()
     def __call__(
         self,
@@ -138,3 +149,41 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         clip_text_embeddings_uncond = self.text_encoder(**clip_tokens_uncond).last_hidden_state
 
         effnet_features_shape = (num_images_per_prompt, 16, 24, 24)
+
+        device = "cuda"
+
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        prior_timesteps_tensor = self.scheduler.timesteps
+
+        latents = self.prepare_latents(
+            effnet_features_shape,
+            clip_text_embeddings.dtype,
+            device,
+            generator,
+            latents,
+            self.scheduler,
+        )
+
+        cond = torch.cat([clip_text_embeddings, clip_text_embeddings_uncond])
+
+        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
+            #  x, r, c
+            predicted_image_embedding = self.prior(latents, r=t, c=cond)
+
+            if i + 1 == prior_timesteps_tensor.shape[0]:
+                prev_timestep = None
+            else:
+                prev_timestep = prior_timesteps_tensor[i + 1]
+
+            latents = self.scheduler.step(
+                predicted_image_embedding,
+                timestep=t,
+                sample=latents,
+                generator=generator,
+                prev_timestep=prev_timestep,
+            ).prev_sample
+
+        if not return_dict:
+            return (latents, clip_text_embeddings, clip_text_embeddings_uncond)
+
+        return WuerstchenPriorPipelineOutput(latents, clip_text_embeddings, clip_text_embeddings_uncond)
