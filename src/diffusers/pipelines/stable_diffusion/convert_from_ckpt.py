@@ -273,19 +273,18 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
             head_dim = [5 * c for c in list(unet_params.channel_mult)]
 
     class_embed_type = None
+    addition_embed_type = None
+    addition_time_embed_dim = None
     projection_class_embeddings_input_dim = None
 
     if "num_classes" in unet_params:
         if unet_params.num_classes == "sequential":
             if unet_params.context_dim == 2048:
                 # SDXL
-                class_embed_type = None
                 addition_embed_type = "text_time"
                 addition_time_embed_dim = 256
             else:
                 class_embed_type = "projection"
-                addition_embed_type = None
-                addition_time_embed_dim = None
             assert "adm_in_channels" in unet_params
             projection_class_embeddings_input_dim = unet_params.adm_in_channels
         else:
@@ -1244,8 +1243,6 @@ def download_from_original_stable_diffusion_ckpt(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
     )
     unet.load_state_dict(converted_unet_checkpoint)
-    # Works!
-    import ipdb; ipdb.set_trace()
 
     # Convert the VAE model.
     if vae_path is None:
@@ -1396,7 +1393,7 @@ def download_from_original_stable_diffusion_ckpt(
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
         text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
         tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-        text_encoder_2  = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+        text_encoder_2  = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280)
         pipe = StableDiffusionXLPipeline(
             vae=vae,
             text_encoder=text_encoder,
