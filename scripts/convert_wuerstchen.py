@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from diffusers import PaellaVQModel
+from diffusers import PaellaVQModel, WuerstchenPipeline, WuerstchenPriorPipeline, DDPMScheduler
 from transformers import CLIPTextModel, AutoTokenizer
 
 from vqgan import VQModel
@@ -30,25 +30,28 @@ vqmodel.load_state_dict(state_dict)
 
 # Clip Text encoder and tokenizer
 text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-clip_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
 # EfficientNet
 state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)["effnet_state_dict"]
 
-# Paella
-state_dict = torch.load(os.path.join(model_path, "model_stage_b.pt"), map_location=device)["state_dict"]
-paella_model = Paella(byt5_embd=1024).to(device)
-paella_model.load_state_dict(state_dict)
-
 # Prior
-state_dict = torch.load(os.path.join(model_path, "model_v2__stage_c.pt"), map_location=device)
+state_dict = torch.load(os.path.join(model_path, "model_v2_stage_c.pt"), map_location=device)
 prior_model = Prior(c_in=16, c=1536, c_cond=1024, c_r=64, depth=32, nhead=24).to(device)
-prior_model.load_state_dict(state_dict["state_dict"])
+prior_model.load_state_dict(state_dict["ema_state_dict"])
 
 
 # scheduler
 scheduler = DDPMScheduler(
     beta_schedule="linear",
+)
+
+# Prior pipeline
+prior_pipeline = WuerstchenPriorPipeline(
+    prior=prior_model,
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    scheduler=scheduler,
 )
 
 # WuerstchenPipeline(

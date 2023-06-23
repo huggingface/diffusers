@@ -169,7 +169,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             #  x, r, c
-            predicted_image_embedding = self.prior(latents, r=t, c=cond)
+            predicted_image_embedding = self.prior(latents, r=t / num_inference_steps, c=cond)
 
             if i + 1 == prior_timesteps_tensor.shape[0]:
                 prev_timestep = None
