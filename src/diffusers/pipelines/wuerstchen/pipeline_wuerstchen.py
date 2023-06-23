@@ -90,8 +90,23 @@ class WuerstchenPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
     ):
-        self.tokenizer.tokenize([prompt] * num_images_per_prompt)
+        clip_tokens = self.tokenizer(
+            [prompt] * num_images_per_prompt,
+            truncation=True,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        clip_text_embeddings = self.text_encoder(**clip_tokens).last_hidden_state
 
-        if negative_prompt:
-            clip_text_tokens_uncond = self.tokenizer([negative_prompt] * num_images_per_prompt)
-            self.text_encoder.get_input_embeddings()(clip_text_tokens_uncond["input_ids"])
+        if negative_prompt is None:
+            negative_prompt = ""
+
+        clip_text_tokens_uncond = self.tokenizer(
+            [negative_prompt] * num_images_per_prompt,
+            truncation=True,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        clip_text_embeddings_uncond = self.text_encoder(**clip_tokens_uncond).last_hidden_state
