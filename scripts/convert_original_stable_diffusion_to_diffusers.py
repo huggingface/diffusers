@@ -126,6 +126,13 @@ if __name__ == "__main__":
         "--controlnet", action="store_true", default=None, help="Set flag if this is a controlnet checkpoint."
     )
     parser.add_argument("--half", action="store_true", help="Save weights in half precision.")
+    parser.add_argument(
+        "--vae_path",
+        type=str,
+        default=None,
+        required=False,
+        help="Set to a path, hub id to an already converted vae to not convert it again."
+    )
     args = parser.parse_args()
 
     pipe = download_from_original_stable_diffusion_ckpt(
@@ -144,6 +151,7 @@ if __name__ == "__main__":
         stable_unclip_prior=args.stable_unclip_prior,
         clip_stats_path=args.clip_stats_path,
         controlnet=args.controlnet,
+        vae_path=args.vae_path,
     )
 
     if args.half:

@@ -108,7 +108,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        # vae: AutoencoderKL,
+        vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
@@ -138,7 +138,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         #     )
 
         self.register_modules(
-            # vae=vae,
+            vae=vae,
             text_encoder=text_encoder,
             text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
@@ -148,9 +148,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             # safety_checker=safety_checker,
             # feature_extractor=feature_extractor,
         )
-        # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.vae_scale_factor = 8
-        # self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         # self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):

@@ -277,7 +277,15 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
 
     if "num_classes" in unet_params:
         if unet_params.num_classes == "sequential":
-            class_embed_type = "projection"
+            if unet_params.context_dim == 2048:
+                # SDXL
+                class_embed_type = None
+                addition_embed_type = "text_time"
+                addition_time_embed_dim = 256
+            else:
+                class_embed_type = "projection"
+                addition_embed_type = None
+                addition_time_embed_dim = None
             assert "adm_in_channels" in unet_params
             projection_class_embeddings_input_dim = unet_params.adm_in_channels
         else:
@@ -293,6 +301,8 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
         "class_embed_type": class_embed_type,
+        "addition_embed_type": addition_embed_type,
+        "addition_time_embed_dim": addition_time_embed_dim,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
         "num_transformer_blocks": num_transformer_blocks,
     }
@@ -408,6 +418,12 @@ def convert_ldm_unet_checkpoint(
         new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
     else:
         raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
+
+    if config["addition_embed_type"] == "text_time":
+        new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
+        new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+        new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
+        new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
@@ -1034,6 +1050,7 @@ def download_from_original_stable_diffusion_ckpt(
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
+    vae_path=None,
 ) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -1092,6 +1109,7 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
+        StableDiffusionXLPipeline,
     )
 
     if pipeline_class is None:
@@ -1230,16 +1248,22 @@ def download_from_original_stable_diffusion_ckpt(
     import ipdb; ipdb.set_trace()
 
     # Convert the VAE model.
-    vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
-    converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
+    if vae_path is None:
+        vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+        converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-    vae = AutoencoderKL(**vae_config)
-    vae.load_state_dict(converted_vae_checkpoint)
+        vae = AutoencoderKL(**vae_config)
+        vae.load_state_dict(converted_vae_checkpoint)
+    else:
+        vae = AutoencoderKL.from_pretrained(vae_path)
 
     # Convert the text model.
-    if model_type is None:
+    if model_type is None and original_config.model.params.cond_stage_config is not None:
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
         logger.debug(f"no `model_type` given, `model_type` inferred as: {model_type}")
+    elif model_type is None and original_config.model.params.network_config is not None:
+        if original_config.model.params.network_config.params.context_dim == 2048:
+            model_type = "SDXL"
 
     if model_type == "FrozenOpenCLIPEmbedder":
         text_model = convert_open_clip_checkpoint(checkpoint)
@@ -1368,6 +1392,23 @@ def download_from_original_stable_diffusion_ckpt(
                 safety_checker=safety_checker,
                 feature_extractor=feature_extractor,
             )
+    elif model_type == "SDXL":
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+        text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+        tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+        text_encoder_2  = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+        pipe = StableDiffusionXLPipeline(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            text_encoder_2=text_encoder_2,
+            tokenizer_2=tokenizer_2,
+            unet=unet,
+            scheduler=scheduler,
+            # safety_checker=None,
+            # feature_extractor=None,
+            # requires_safety_checker=False,
+        )
     else:
         text_config = create_ldm_bert_config(original_config)
         text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)
