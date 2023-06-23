@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
@@ -249,11 +248,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         # but time_embedding might be fp16, so we need to cast here.
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
-
-        # Rescale the features to have unit variance
-        # YiYi TO-DO: It was normalized before during encode_prompt step, move this step to pipeline
-        if self.clip_mean is None:
-            proj_embedding = math.sqrt(proj_embedding.shape[1]) * proj_embedding
+        
         proj_embeddings = self.embedding_proj(proj_embedding)
         if self.encoder_hidden_states_proj is not None and encoder_hidden_states is not None:
             encoder_hidden_states = self.encoder_hidden_states_proj(encoder_hidden_states)

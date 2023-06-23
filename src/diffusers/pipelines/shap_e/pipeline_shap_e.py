@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
@@ -242,6 +243,9 @@ class ShapEPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        
+        # Rescale the features to have unit variance (this step is taken from the original repo)
+        prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         return prompt_embeds
 
