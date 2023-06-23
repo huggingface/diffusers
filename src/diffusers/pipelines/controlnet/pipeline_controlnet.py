@@ -945,7 +945,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
 
                 # Skip ControlNet inference if not in the guidance range
                 sampling_pct = i / len(timesteps)
-                controlnet_guidance_skip = [sampling_pct < cg[0] or sampling_pct > cg[1] for cg in controlnet_guidance]
+                controlnet_guidance_skip = [sampling_pct < cg[0] or sampling_pct >= cg[1] for cg in controlnet_guidance]
 
                 down_block_res_samples = None
                 mid_block_res_sample = None
