@@ -398,7 +398,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
                 x = batch["pixel_values"].to(weight_dtype)
-                pred_x = vae(x)
+                pred_x = vae(x).sample
 
                 loss = F.mse_loss(pred_x, x, reduction="mean")
 
