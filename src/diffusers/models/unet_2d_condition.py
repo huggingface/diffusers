@@ -820,6 +820,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
 
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+            add_embeds = add_embeds.to(emb.dtype)
             aug_emb = self.add_embedding(add_embeds)
 
         emb = emb + aug_emb
