@@ -15,9 +15,10 @@
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
+from pytorch_lightning import seed_everything
 
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
@@ -109,11 +110,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         self,
         # vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
-        text_encoder_2: CLIPTextModel,
+        text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
-        # unet: UNet2DConditionModel,
-        # scheduler: KarrasDiffusionSchedulers,
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
         # safety_checker: StableDiffusionSafetyChecker,
         # feature_extractor: CLIPImageProcessor,
         # requires_safety_checker: bool = True,
@@ -142,12 +143,13 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
-            # unet=unet,
-            # scheduler=scheduler,
+            unet=unet,
+            scheduler=scheduler,
             # safety_checker=safety_checker,
             # feature_extractor=feature_extractor,
         )
         # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 8
         # self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         # self.register_to_config(requires_safety_checker=requires_safety_checker)
 
@@ -341,7 +343,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     output_hidden_states=True,
                 )
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                pooled_prompt_embeds = prompt_embeds.pooler_output
+                pooled_prompt_embeds = prompt_embeds[0]
 
                 prompt_embeds = prompt_embeds.hidden_states[-2]
 
@@ -398,7 +400,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     output_hidden_states=True,
                 )
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                negative_pooled_prompt_embeds = negative_prompt_embeds.pooler_output
+                negative_pooled_prompt_embeds = negative_prompt_embeds[0]
 
                 negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
 
@@ -630,8 +632,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        # height = height or self.unet.config.sample_size * self.vae_scale_factor
-        # width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+
+        seed_everything(0)
 
         # 1. Check inputs. Raise error if not correct
         # self.check_inputs(
@@ -668,7 +672,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
-        import ipdb; ipdb.set_trace()
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -692,6 +695,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+        add_text_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+        add_time_ids = torch.tensor(2 * [[128, 128, 0, 0, 1024, 1024]], dtype=torch.long)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -699,13 +706,16 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
+                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
+                # TODO(Patrick) - forward path matches
 
                 # perform guidance
                 if do_classifier_free_guidance:
