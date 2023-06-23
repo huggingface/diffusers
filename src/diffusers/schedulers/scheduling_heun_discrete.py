@@ -177,8 +177,16 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
 
+        if use_karras_sigmas is None:
+            use_karras_sigmas = self.use_karras_sigmas
+
         if sigma_min is not None and sigma_max is not None:
-            sigmas = torch.tensor([sigma_max, sigma_min])
+            
+            if use_karras_sigmas is not None:
+                sigmas = torch.tensor([sigma_max, sigma_min])
+                log_sigmas = None
+            else:
+                raise ValueError(f"`sigma_min` and `sigma_max` arguments are only supported when `use_karras_sigma` is not None")
 
         else:
             timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
@@ -187,15 +195,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             log_sigmas = np.log(sigmas)
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
-        if use_karras_sigmas is None:
-            use_karras_sigmas = self.use_karras_sigmas
-
         if use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
-            if self.config.beta_schedule == "exp":
-                timesteps = np.array([self._sigma_to_t_yiyi(sigma) for sigma in sigmas])
-            else:
-                timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -217,45 +219,47 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.prev_derivative = None
         self.dt = None
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
-        # get log sigma
-        log_sigma = np.log(sigma)
+        
+        # perform interpolation on sigmas if log_sigmas is not None
+        if log_sigmas is not None:
+            # get log sigma
+            log_sigma = np.log(sigma)
 
-        # get distribution
-        dists = log_sigma - log_sigmas[:, np.newaxis]
+            # get distribution
+            dists = log_sigma - log_sigmas[:, np.newaxis]
 
-        # get sigmas range
-        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
-        high_idx = low_idx + 1
+            # get sigmas range
+            low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+            high_idx = low_idx + 1
 
-        low = log_sigmas[low_idx]
-        high = log_sigmas[high_idx]
+            low = log_sigmas[low_idx]
+            high = log_sigmas[high_idx]
 
-        # interpolate sigmas
-        w = (low - log_sigma) / (low - high)
-        w = np.clip(w, 0, 1)
+            # interpolate sigmas
+            w = (low - log_sigma) / (low - high)
+            w = np.clip(w, 0, 1)
 
-        # transform interpolation to time range
-        t = (1 - w) * low_idx + w * high_idx
-        t = t.reshape(sigma.shape)
+            # transform interpolation to time range
+            t = (1 - w) * low_idx + w * high_idx
+            t = t.reshape(sigma.shape)
+
+        else:
+            # perform interpolation on alphas_cumprod
+
+            alpha_cumprod = 1.0 / (sigma**2 + 1)
+            if alpha_cumprod > self.alphas_cumprod[0]:
+                t = 0
+
+            elif alpha_cumprod <= self.alphas_cumprod[-1]:
+                t = len(self.alphas_cumprod) - 1
+
+            else:
+                t = np.interp(alpha_cumprod, self.alphas_cumprod.numpy()[::-1].copy(), np.arange(0, len(self.alphas_cumprod))[::-1])
+                t = int(t)
+
         return t
 
-    # YiYi Notes: Taking from the origional repo, will refactor and not introduce dependency on spicy
-    def _sigma_to_t_yiyi(self, sigma):
-        alpha_cumprod = 1.0 / (sigma**2 + 1)
-
-        if alpha_cumprod > self.alphas_cumprod[0]:
-            return 0
-        elif alpha_cumprod <= self.alphas_cumprod[-1]:
-            return len(self.alphas_cumprod) - 1
-        else:
-            from scipy import interpolate
-
-            timestep = interpolate.interp1d(self.alphas_cumprod, np.arange(0, len(self.alphas_cumprod)))(
-                alpha_cumprod
-            )  # yiyi testing, origin implementation
-        return int(timestep)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
@@ -280,6 +284,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: Union[float, torch.FloatTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
+        step_index: Optional[int] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -295,7 +300,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        step_index = self.index_for_timestep(timestep)
+        if step_index is None:
+            step_index = self.index_for_timestep(timestep)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]

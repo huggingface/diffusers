@@ -412,7 +412,7 @@ class ShapEPipeline(DiffusionPipeline):
         # YiYi notes: for testing only to match ldm, we can directly create a latents with desired shape: batch_size, num_embeddings, embedding_dim
         latents = latents.reshape(latents.shape[0], num_embeddings, embedding_dim)
 
-        for t in self.progress_bar(timesteps):
+        for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -439,6 +439,7 @@ class ShapEPipeline(DiffusionPipeline):
                 noise_pred,
                 timestep=t,
                 sample=latents,
+                step_index=i,
             ).prev_sample
         
         # YiYi testing only: I don't think we need to return latent for this pipeline
