@@ -233,7 +233,10 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if controlnet:
         unet_params = original_config.model.params.control_stage_config.params
     else:
-        unet_params = original_config.model.params.unet_config.params
+        if original_config.model.params.unet_config is not None:
+            unet_params = original_config.model.params.unet_config.params
+        else:
+            unet_params = original_config.model.params.network_config.params
 
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
 
@@ -253,6 +256,11 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         up_block_types.append(block_type)
         resolution //= 2
 
+    if unet_params.transformer_depth is not None:
+        num_transformer_blocks = unet_params.transformer_depth if isinstance(unet_params.transformer_depth, int) else list(unet_params.transformer_depth)
+    else:
+        num_transformer_blocks = 1
+
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
     head_dim = unet_params.num_heads if "num_heads" in unet_params else None
@@ -262,7 +270,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if use_linear_projection:
         # stable diffusion 2-base-512 and 2-768
         if head_dim is None:
-            head_dim = [5, 10, 20, 20]
+            head_dim = [5 * c for c in list(unet_params.channel_mult)]
 
     class_embed_type = None
     projection_class_embeddings_input_dim = None
@@ -286,6 +294,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "use_linear_projection": use_linear_projection,
         "class_embed_type": class_embed_type,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
+        "num_transformer_blocks": num_transformer_blocks,
     }
 
     if controlnet:
@@ -1172,9 +1181,9 @@ def download_from_original_stable_diffusion_ckpt(
             checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
         )
 
-    num_train_timesteps = original_config.model.params.timesteps
-    beta_start = original_config.model.params.linear_start
-    beta_end = original_config.model.params.linear_end
+    num_train_timesteps = original_config.model.params.timesteps or 1000
+    beta_start = original_config.model.params.linear_start or 0.02
+    beta_end = original_config.model.params.linear_end or 0.085
 
     scheduler = DDIMScheduler(
         beta_end=beta_end,
@@ -1216,8 +1225,9 @@ def download_from_original_stable_diffusion_ckpt(
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
     )
-
     unet.load_state_dict(converted_unet_checkpoint)
+    # Works!
+    import ipdb; ipdb.set_trace()
 
     # Convert the VAE model.
     vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
