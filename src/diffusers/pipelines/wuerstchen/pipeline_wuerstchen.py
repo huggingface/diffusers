@@ -11,15 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import torch
-from transformers import AutoTokenizer, CLIPTextModel
+from transformers import CLIPTokenizer, CLIPTextModel
 
 from ...models import PaellaVQModel
-from ...utils import is_accelerate_available, logging
+from ...utils import is_accelerate_available, logging, BaseOutput
 from ..pipeline_utils import DiffusionPipeline
+from ...schedulers import DDPMScheduler
 
+from .modules import DiffNeXt, Prior, EfficientNetEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -39,46 +43,61 @@ EXAMPLE_DOC_STRING = """
 
 
 class WuerstchenPipeline(DiffusionPipeline):
-    clip_tokenizer: AutoTokenizer
-    text_encoder: CLIPTextModel
+    unet: DiffNeXt
     vqmodel: PaellaVQModel
 
+
+@dataclass
+class WuerstchenPriorPipelineOutput(BaseOutput):
+    """
+    Output class for WuerstchenPriorPipeline.
+
+    Args:
+        image_embeds (`torch.FloatTensor`)
+            clip image embeddings for text prompt
+        negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
+            clip image embeddings for unconditional tokens
+    """
+
+    image_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
+
+
+class WuerstchenPriorPipeline(DiffusionPipeline):
+    """
+    Pipeline for generating image prior for Wuerstchen.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        prior ([`Prior`]):
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
+        text_encoder ([`CLIPTextModelWithProjection`]):
+            Frozen text-encoder.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        scheduler ([`DDPMScheduler`]):
+            A scheduler to be used in combination with `prior` to generate image embedding.
+    """
+
     def __init__(
-        self, clip_tokenizer: AutoTokenizer, text_encoder: CLIPTextModel, vqmodel: PaellaVQModel, scheduler
+        self,
+        tokenizer: CLIPTokenizer,
+        text_encoder: CLIPTextModel,
+        prior: Prior,
+        scheduler: DDPMScheduler,
     ) -> None:
         super().__init__()
 
         self.register_modules(
-            clip_tokenizer=clip_tokenizer,
+            tokenizer=tokenizer,
             text_encoder=text_encoder,
-            vqmodel=vqmodel,
+            prior=prior,
             scheduler=scheduler,
         )
         self.register_to_config()
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.text_encoder,
-            self.unet,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @torch.no_grad()
     def __call__(
@@ -89,6 +108,12 @@ class WuerstchenPipeline(DiffusionPipeline):
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
+        num_inference_steps: int = 25,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        guidance_scale: float = 4.0,
+        output_type: Optional[str] = "pt",  # pt only
+        return_dict: bool = True,
     ):
         clip_tokens = self.tokenizer(
             [prompt] * num_images_per_prompt,
