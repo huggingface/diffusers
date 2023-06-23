@@ -7,10 +7,10 @@ import torch
 import torch.nn as nn
 
 from diffusers import PaellaVQModel, WuerstchenPipeline, WuerstchenPriorPipeline, DDPMScheduler
+from diffusers.pipelines.wuerstchen import Prior
 from transformers import CLIPTextModel, AutoTokenizer
 
 from vqgan import VQModel
-from modules import Paella, Prior
 
 model_path = "models/"
 device = "cpu"

@@ -5,6 +5,9 @@ import torch
 import torch.nn as nn
 from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
 
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from ...models.modeling_utils import ModelMixin
+
 
 class LayerNorm2d(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
@@ -123,7 +126,8 @@ class EfficientNetEncoder(nn.Module):
         return self.mapper(self.backbone(x))
 
 
-class Prior(nn.Module):
+class Prior(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, latent_size=(12, 12), dropout=0.1):
         super().__init__()
         self.c_r = c_r
