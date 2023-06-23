@@ -1,3 +1,12 @@
+"""
+python train_vae.py --mixed_precision="fp16" \
+    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1" \
+    --dataset_name="Fazzie/Teyvat" \
+    --train_batch_size=1 \
+    --gradient_accumulation_steps=4 \
+    --gradient_checkpointing
+
+"""
 import argparse
 import logging
 import math
@@ -260,7 +269,6 @@ def main():
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
     )
     vae.requires_grad_(True)
-
     vae_params = vae.parameters()
 
     if args.gradient_checkpointing:
@@ -392,7 +400,7 @@ def main():
                 x = batch["pixel_values"].to(weight_dtype)
                 pred_x = vae(x)
 
-                loss = F.mse_loss(pred_x.float(), x.float(), reduction="mean")
+                loss = F.mse_loss(pred_x, x, reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
