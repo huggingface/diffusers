@@ -160,6 +160,7 @@ else:
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
