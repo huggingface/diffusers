@@ -61,7 +61,8 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     """
 
     image_embeds: Union[torch.FloatTensor, np.ndarray]
-    negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
+    text_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_text_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class WuerstchenPriorPipeline(DiffusionPipeline):
@@ -182,6 +183,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 generator=generator,
                 prev_timestep=prev_timestep,
             ).prev_sample
+
+        # normalize the latents
+        latent = latent * 42.0 - 1.0
 
         if not return_dict:
             return (latents, clip_text_embeddings, clip_text_embeddings_uncond)
