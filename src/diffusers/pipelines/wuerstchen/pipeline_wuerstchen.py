@@ -15,6 +15,7 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import CLIPTokenizer, CLIPTextModel
 
@@ -108,13 +109,13 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        num_inference_steps: int = 25,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
     ):
+        do_classifier_free_guidance = guidance_scale > 1.0
+
         clip_tokens = self.tokenizer(
             [prompt] * num_images_per_prompt,
             truncation=True,
@@ -122,7 +123,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
-        self.text_encoder(**clip_tokens).last_hidden_state
+        clip_text_embeddings = self.text_encoder(**clip_tokens).last_hidden_state
 
         if negative_prompt is None:
             negative_prompt = ""
@@ -134,4 +135,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
-        self.text_encoder(**clip_tokens_uncond).last_hidden_state
+        clip_text_embeddings_uncond = self.text_encoder(**clip_tokens_uncond).last_hidden_state
+
+        effnet_features_shape = (num_images_per_prompt, 16, 24, 24)
