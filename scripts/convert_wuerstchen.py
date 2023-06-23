@@ -54,6 +54,8 @@ prior_pipeline = WuerstchenPriorPipeline(
     scheduler=scheduler,
 )
 
+prior_pipeline.save_pretrained("kashif/WuerstchenPriorPipeline")
+
 # WuerstchenPipeline(
 #     vae=VQGan()
 #     text_encoder=ClipTextEncoder(),
