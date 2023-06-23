@@ -441,9 +441,9 @@ class ShapEPipeline(DiffusionPipeline):
                 sample=latents,
                 step_index=i,
             ).prev_sample
-        
+
         # YiYi testing only: I don't think we need to return latent for this pipeline
-        if output_type == 'latent':
+        if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
         # project the the paramters from the generated latents
