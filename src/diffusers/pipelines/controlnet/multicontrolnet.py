@@ -42,8 +42,21 @@ class MultiControlNetModel(ModelMixin):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
+        controlnet_guidance_skip: Union[bool, List[bool]] = False,
     ) -> Union[ControlNetOutput, Tuple]:
-        for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
+        controlnet_guidance_skip = (
+            controlnet_guidance_skip
+            if isinstance(controlnet_guidance_skip, list)
+            else [controlnet_guidance_skip] * len(controlnet_cond)
+        )
+        down_block_res_samples, mid_block_res_sample = (None, None)
+
+        for image, scale, controlnet, skip in zip(
+            controlnet_cond, conditioning_scale, self.nets, controlnet_guidance_skip
+        ):
+            if skip:
+                continue
+
             down_samples, mid_sample = controlnet(
                 sample,
                 timestep,
@@ -59,7 +72,7 @@ class MultiControlNetModel(ModelMixin):
             )
 
             # merge samples
-            if i == 0:
+            if down_block_res_samples is None or mid_block_res_sample is None:
                 down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
             else:
                 down_block_res_samples = [
