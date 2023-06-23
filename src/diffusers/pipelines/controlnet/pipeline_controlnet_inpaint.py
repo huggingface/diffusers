@@ -1004,6 +1004,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         controlnet_conditioning_scale: Union[float, List[float]] = 0.5,
         guess_mode: bool = False,
         controlnet_guidance: List[Tuple[float, float]] = [(0.0, 1.0)],
+        mask_guidance: Tuple[float, float] = (0.0, 1.0),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1090,6 +1091,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             controlnet_guidance ('List[Tuple[float, float]]', *optional*, defaults to [(0.0, 1.0)]):
                 The percentage of total steps the controlnet starts applying. First tuple value sets the start step
                 controlnet is applied and second value sets the end step where controlnet stops being applied.
+            mask_guidance (`Tuple[float, float]`, *optional*, defaults to `False`):
+                The percentage of total steps the mask is applied. First tuple value sets the start step the mask is
+                applied and second value sets the end step where the mask stops being applied.
 
         Examples:
 
@@ -1312,8 +1316,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
-                if num_channels_unet == 9:
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+                if (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 9:
+                        latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
                     latent_model_input,
@@ -1333,7 +1337,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if num_channels_unet == 4:
+                if (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 4:
                     init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
