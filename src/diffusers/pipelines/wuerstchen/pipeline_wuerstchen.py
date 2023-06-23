@@ -102,7 +102,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         if negative_prompt is None:
             negative_prompt = ""
 
-        clip_text_tokens_uncond = self.tokenizer(
+        clip_tokens_uncond = self.tokenizer(
             [negative_prompt] * num_images_per_prompt,
             truncation=True,
             padding="max_length",
