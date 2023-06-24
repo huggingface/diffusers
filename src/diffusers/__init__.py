@@ -140,6 +140,7 @@ else:
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetImg2ImgReferencePipeline,
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
