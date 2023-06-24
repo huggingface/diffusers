@@ -240,7 +240,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=1,
+        default=5,
         help="Run validation every X epochs.",
     )
     parser.add_argument(
@@ -411,6 +411,11 @@ def main():
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
+    args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+
     # ------------------------------ TRAIN ------------------------------ #
     total_batch_size = (
         args.train_batch_size
@@ -430,7 +435,7 @@ def main():
     first_epoch = 0
 
     progress_bar = tqdm(
-        range(global_step, args.num_train_epochs),
+        range(global_step, args.max_train_steps),
         disable=not accelerator.is_local_main_process,
     )
     progress_bar.set_description("Steps")
