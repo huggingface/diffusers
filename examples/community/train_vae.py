@@ -5,6 +5,7 @@ python train_vae.py --mixed_precision="no" \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
     --gradient_checkpointing
+    --report_to="wandb"
 
 TODO: fix training mixed precision -- issue with AdamW optimizer
 """
@@ -36,12 +37,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
-)
+from diffusers import AutoencoderKL
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
@@ -52,6 +48,26 @@ if is_wandb_available():
     import wandb
 
 logger = get_logger(__name__, log_level="INFO")
+
+
+def log_validation(x, vae, accelerator, weight_dtype, epoch):
+    logger.info("Running validation... ")
+
+    vae_model = accelerator.unwrap_model(vae)
+
+    noise = torch.torch.randn_like(x).to(weight_dtype)
+    gen_imgs = vae_model(noise).sample
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            tracker.writer.add_images("validation", gen_imgs, epoch)
+        elif tracker.name == "wandb":
+            tracker.log({"validation": [wandb.Image(gen_imgs)]})
+        else:
+            logger.warn(f"image logging not implemented for {tracker.name}")
+
+    del vae_model
+    torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -194,6 +210,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--report_to",
+        type=str,
+        default="tensorboard",
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
+            ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
+        ),
+    )
+    parser.add_argument(
         "--checkpointing_steps",
         type=int,
         default=500,
@@ -215,7 +240,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=5,
+        default=1,
         help="Run validation every X epochs.",
     )
     parser.add_argument(
@@ -257,6 +282,7 @@ def main():
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
         project_config=accelerator_project_config,
     )
 
@@ -448,6 +474,10 @@ def main():
                 "lr": lr_scheduler.get_last_lr()[0],
             }
             progress_bar.set_postfix(**logs)
+
+        if accelerator.is_main_process:
+            if epoch % args.validation_epochs == 0:
+                log_validation(x, vae, accelerator, weight_dtype, epoch)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()

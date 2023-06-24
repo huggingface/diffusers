@@ -232,7 +232,7 @@ def parse_args():
         "--gradient_accumulation_steps",
         type=int,
         default=1,
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
+        help="Number of upda steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
         "--gradient_checkpointing",
