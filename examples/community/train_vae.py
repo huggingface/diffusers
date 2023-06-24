@@ -1,12 +1,14 @@
 """
-python train_vae.py --mixed_precision="fp16" \
+python train_vae.py --mixed_precision="no" \
     --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1" \
     --dataset_name="Fazzie/Teyvat" \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
     --gradient_checkpointing
 
+TODO: fix training mixed precision -- issue with AdamW optimizer
 """
+
 import argparse
 import logging
 import math
