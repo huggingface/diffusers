@@ -217,6 +217,15 @@ def parse_args():
         help="Run validation every X epochs.",
     )
     parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="vae-fine-tune",
+        help=(
+            "The `project_name` argument passed to Accelerator.init_trackers for"
+            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+        ),
+    )
+    parser.add_argument(
         "--kl_scale",
         type=int,
         default=0,
@@ -372,7 +381,6 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        tracker_config.pop("validation_prompts")
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # ------------------------------ TRAIN ------------------------------ #
