@@ -1041,12 +1041,16 @@ def main():
                 if args.unet_att_masking:
                     attn_mask_arg = attention_mask
                 if args.formant:
-                    formants = batch['formants']
+                    formants = batch['formant']
                     if (formants is None):
                         print("PLEASE ONLY PASS FORMANTS FLAG IF THE AUDIO_CONF INCLUDES THEM")
+                    logger.info("FORMANT CHECKER: ", formants.shape)
                 #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
                 # else:
                 #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                
+                
+                logger.info("LATENT CHECKER: ", latents.shape)
                 
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attn_mask_arg, class_labels = formants).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")

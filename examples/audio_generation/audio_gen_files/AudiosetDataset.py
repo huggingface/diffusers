@@ -141,7 +141,7 @@ class AudiosetDataset(Dataset):
 #         latent_t1 = int(datum['end_time_seconds'] * total_len)
 #         strong_latent = latent[latent_t0 : latent_t1]
         
-#         if (formant):
+#         if formant.any():
 #             formant_total_len = formant.shape[2]
 #             formant_t0 = int(datum['start_time_seconds'] * formant_total_len)
 #             formant_t1 = int(datum['end_time_seconds'] * formant_total_len)
@@ -190,6 +190,10 @@ class AudiosetDataset(Dataset):
         if (self.formant_folder):
             file_name = Path(datum["wav"]).name.split(".")[0]
             formant = np.load(f'{os.path.join(self.formant_folder,file_name)}.npy', allow_pickle=True)
+            formant = torch.from_numpy(formant)
+            nan_mask = torch.isnan(formant)
+            formant[nan_mask] = 0 #replace nan with 0
+            formant = formant/8000.0 #standardize
         return waveform, label, datum['wav'], sr, latent, formant
     
     def idx_to_datum(self, index):
@@ -236,9 +240,7 @@ class AudiosetDataset(Dataset):
                 added_labels = []
                 
                 prev_end_latent = latent.shape[2] - 1
-                if (formant):
-                    prev_end_formant = formant.shape[2] - 1
-                
+
                 for idx in mixup_ids:
                     if (prev_end_latent <= 0):
                         break
@@ -257,25 +259,28 @@ class AudiosetDataset(Dataset):
                         label = ""
                     if start == 0:
                         break
-                    # print(start, " : ", prev_end_latent)
-                    # print(strong_latent.shape)
+                    # print("Latent: ", start, " : ", prev_end_latent, strong_latent.shape)
                     latent[:, :, start:prev_end_latent] = strong_latent[0, :, :]
                     
                     prev_end_latent = start
 
-                    if (formant):
-                        formant_total_len = formant.shape[2]
+                    if mix_formant.any():
+                        # print('Loading formant: ', formant.shape)
+                        prev_end_formant = formant.shape[1] - 1
+                
+                        formant_total_len = formant.shape[1]
                         formant_t0 = int(datum['start_time_seconds'] * formant_total_len / 10)
                         formant_t1 = int(datum['end_time_seconds'] * formant_total_len / 10)
-                        strong_formant = mix_formant[formant_t0 : formant_t1]
+                        strong_formant = mix_formant[:, formant_t0 : formant_t1]
                         
-                        lenth = formant_t1 - formant_t0
-                        start = max(0, prev_end_formant - length)
-                        # if start == 0:
+                        formant_length = formant_t1 - formant_t0
+                        start_formant = max(0, prev_end_formant - formant_length)
 
-                        formant[:, :, start:prev_end_formant] = strong_formant[0, :, :]
+                        # print("Formant: ", start_formant, " : ", prev_end_formant, strong_formant[:, :].shape)
 
-                        prev_end_formant = start
+                        formant[:, start_formant:prev_end_formant] = strong_formant[:, :]
+
+                        prev_end_formant = start_formant
                     added_labels.append(datum['name'])
                 
                 
