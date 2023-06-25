@@ -150,15 +150,20 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
-        # standard deviation of the initial noise distribution
-        self.init_noise_sigma = self.sigmas.max()
-
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
         self.is_scale_input_called = False
         self.use_karras_sigmas = use_karras_sigmas
+
+    @property
+    def init_noise_sigma(self):
+        # standard deviation of the initial noise distribution
+        if self.config.timestep_spacing == "linspace":
+            return self.sigmas.max()
+
+        return (self.sigmas.max() ** 2 + 1) ** 0.5
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
@@ -178,7 +183,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
-        sample = sample / ((sigma**2 + 1) ** 0.5)
+        sample = sample / ((sigma **2 + 1) ** 0.5)
 
         self.is_scale_input_called = True
         return sample

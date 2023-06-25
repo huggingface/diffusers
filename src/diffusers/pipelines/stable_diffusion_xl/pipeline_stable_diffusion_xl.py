@@ -437,19 +437,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             )
         return image, has_nsfw_concept
 
-    def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -542,7 +529,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -710,7 +697,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = latent_model_input * 0.07601528
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -722,13 +708,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
-                # TODO(Patrick) - forward path matches
-                import ipdb; ipdb.set_trace()
 
                 # perform guidance
-                # if do_classifier_free_guidance:
-                #     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                #     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
@@ -745,9 +729,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             # CHECK there is problem here (PVP)
-            # self.vae = self.vae.to(dtype=torch.float32)
-            # latents = latents.float()
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            with torch.autocast("cuda", enabled=False):
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             #image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
             has_nsfw_concept = None
         else:
