@@ -51,7 +51,7 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
-def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch, resolution):
+def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
     vae_model = accelerator.unwrap_model(vae)
@@ -510,7 +510,7 @@ def main():
 
         if accelerator.is_main_process:
             if epoch % args.validation_epochs == 0:
-                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch, args.resolution)
+                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
