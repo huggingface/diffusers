@@ -104,7 +104,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker", "feature_extractor", "tokenizer", "text_encoder"]
 
     def __init__(
         self,
@@ -304,8 +304,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # Define tokenizers and text encoders
-        tokenizers = [self.tokenizer, self.tokenizer_2]
-        text_encoders = [self.text_encoder.to(device), self.text_encoder_2.to(device)]
+        tokenizers = [self.tokenizer, self.tokenizer_2] if self.tokenizer is not None else [self.tokenizer_2]
+        text_encoders = [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
 
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
