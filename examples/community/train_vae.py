@@ -23,6 +23,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+import torchvision
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -50,36 +51,36 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
-def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
+def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch, resolution):
     logger.info("Running validation... ")
 
     vae_model = accelerator.unwrap_model(vae)
-    original = []
-    reconstructed = []
+    images = []
     for _, batch in enumerate(test_dataloader):
         noise = batch["pixel_values"].to(weight_dtype)
-        gen_imgs = vae_model(noise).sample
-        original.append(batch["pixel_values"])
-        reconstructed.append(gen_imgs)
+        recon_imgs = vae_model(noise).sample
+        images.append(torch.cat([batch["pixel_values"].cpu(), recon_imgs.cpu()], axis=0))
+    
+    noise = torch.randn((len(test_dataloader), vae_model.config.latent_channels, 32, 32)).to(accelerator.device, weight_dtype)
+    gen_images = vae_model.decode(noise).sample
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
-            np_images = np.stack([np.asarray(img) for img in reconstructed])
+            np_images = np.stack([np.asarray(img) for img in images])
             tracker.writer.add_images("validation", np_images, epoch)
         elif tracker.name == "wandb":
             tracker.log(
                 {
-                    "Original": [
-                        wandb.Image(image) for _, image in enumerate(original)
+                    "Original/Reconstruction": [
+                        wandb.Image(torchvision.utils.make_grid(image)) for _, image in enumerate(images)
                     ],
-                    "Reconstruction": [
-                        wandb.Image(image) for _, image in enumerate(reconstructed)
+                    "Generated": [
+                        wandb.Image(torchvision.utils.make_grid(gen_images))
                     ],
-                    
                 }
             )
         else:
-            logger.warn(f"image logging not implemented for {tracker.name}")
+            logger.warn(f"image logging not implemented for {tracker.gen_images}")
 
 
 def parse_args():
@@ -509,7 +510,7 @@ def main():
 
         if accelerator.is_main_process:
             if epoch % args.validation_epochs == 0:
-                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch)
+                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch, args.resolution)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
