@@ -14,8 +14,7 @@
 
 import inspect
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Union
-from pytorch_lightning import seed_everything
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
@@ -511,10 +510,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            seed_everything(0)
-            # latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = randn_tensor(shape, generator=generator, device="cpu", dtype=torch.float32)
-            latents = latents.to(dtype=dtype, device=device)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
@@ -544,6 +540,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
+        original_size: Tuple[int, int] = (1024, 1024),
+        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        target_size: Tuple[int, int] = (1024, 1024),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -609,6 +608,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
                 [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
                 Guidance rescale factor should fix overexposure when using zero terminal SNR.
+            original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                TODO
+            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                TODO
+            target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                TODO
 
         Examples:
 
@@ -681,15 +686,18 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-        add_text_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+
+        add_text_embeds = pooled_prompt_embeds
+        add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + target_size)], dtype=torch.long)
+
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-
-        # TODO - find better explanations where they come from
-        # original_size_as_tuple x crops_coords_top_left x target_size_as_tuple
-        add_time_ids = torch.tensor(2 * [[1024, 1024, 0, 0, 1024, 1024]], dtype=torch.long, device=add_text_embeds.device)
+        add_time_ids = add_time_ids.to(device)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
