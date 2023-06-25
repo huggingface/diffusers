@@ -765,9 +765,12 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
 
     text_model_dict = {}
 
+    remove_prefixes = ["cond_stage_model.transformer", "conditioner.embedders.0.transformer"]
+
     for key in keys:
-        if key.startswith("cond_stage_model.transformer"):
-            text_model_dict[key[len("cond_stage_model.transformer.") :]] = checkpoint[key]
+        for prefix in remove_prefixes:
+            if key.startswith(prefix):
+                text_model_dict[key[len(prefix + "."):]] = checkpoint[key]
 
     text_model.load_state_dict(text_model_dict)
 
@@ -775,10 +778,11 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
 
 
 textenc_conversion_lst = [
-    ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
-    ("cond_stage_model.model.token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
-    ("cond_stage_model.model.ln_final.weight", "text_model.final_layer_norm.weight"),
-    ("cond_stage_model.model.ln_final.bias", "text_model.final_layer_norm.bias"),
+    ("positional_embedding", "text_model.embeddings.position_embedding.weight"),
+    ("token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
+    ("ln_final.weight", "text_model.final_layer_norm.weight"),
+    ("ln_final.bias", "text_model.final_layer_norm.bias"),
+    ("text_projection", "text_projection.weight")
 ]
 textenc_conversion_map = {x[0]: x[1] for x in textenc_conversion_lst}
 
@@ -865,27 +869,34 @@ def convert_paint_by_example_checkpoint(checkpoint):
     return model
 
 
-def convert_open_clip_checkpoint(checkpoint):
-    text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
+def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
+    # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
+    text_model = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280)
 
     keys = list(checkpoint.keys())
 
     text_model_dict = {}
 
-    if "cond_stage_model.model.text_projection" in checkpoint:
-        d_model = int(checkpoint["cond_stage_model.model.text_projection"].shape[0])
+    if prefix + "text_projection" in checkpoint:
+        d_model = int(checkpoint[prefix + "text_projection"].shape[0])
     else:
         d_model = 1024
 
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     for key in keys:
-        if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
-            continue
-        if key in textenc_conversion_map:
-            text_model_dict[textenc_conversion_map[key]] = checkpoint[key]
-        if key.startswith("cond_stage_model.model.transformer."):
-            new_key = key[len("cond_stage_model.model.transformer.") :]
+        # if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
+        #     continue
+        if key[len(prefix):] in textenc_conversion_map:
+            if key.endswith("text_projection"):
+                value = checkpoint[key].T
+            else:
+                value = checkpoint[key]
+
+            text_model_dict[textenc_conversion_map[key[len(prefix):]]] = value
+
+        if key.startswith(prefix + "transformer."):
+            new_key = key[len(prefix + "transformer.") :]
             if new_key.endswith(".in_proj_weight"):
                 new_key = new_key[: -len(".in_proj_weight")]
                 new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
@@ -1391,9 +1402,10 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type == "SDXL":
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-        text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
-        tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+        text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
         text_encoder_2  = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280)
+        text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.1.model.")
         pipe = StableDiffusionXLPipeline(
             vae=vae,
             text_encoder=text_encoder,

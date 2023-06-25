@@ -15,7 +15,7 @@
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
-# from pytorch_lightning import seed_everything
+from pytorch_lightning import seed_everything
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
@@ -305,7 +305,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # Define tokenizers and text encoders
         tokenizers = [self.tokenizer, self.tokenizer_2]
-        text_encoders = [self.text_encoder, self.text_encoder_2]
+        text_encoders = [self.text_encoder.to(device), self.text_encoder_2.to(device)]
 
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
@@ -334,7 +334,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
-
+                    
                 prompt_embeds = text_encoder(
                     text_input_ids.to(device),
                     output_hidden_states=True,
@@ -523,7 +523,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            seed_everything(0)
+            # latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device="cpu", dtype=torch.float32)
+            latents = latents.to(dtype=dtype, device=device)
         else:
             latents = latents.to(device)
 
@@ -632,8 +635,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        # seed_everything(0)
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
@@ -660,7 +661,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         )
         prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = self.encode_prompt(
             prompt,
-            device,
+            "cpu",
+            # device,
             num_images_per_prompt,
             do_classifier_free_guidance,
             negative_prompt,
@@ -671,6 +673,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
@@ -694,14 +697,20 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
         add_text_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+
         # TODO - find better explanations where they come from
-        add_time_ids = torch.tensor(2 * [[128, 128, 0, 0, 1024, 1024]], dtype=torch.long, device=add_text_embeds.device)
+        # original_size_as_tuple x crops_coords_top_left x target_size_as_tuple
+        add_time_ids = torch.tensor(2 * [[1024, 1024, 0, 0, 1024, 1024]], dtype=torch.long, device=add_text_embeds.device)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = latent_model_input * 0.07601528
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -714,11 +723,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     return_dict=False,
                 )[0]
                 # TODO(Patrick) - forward path matches
+                import ipdb; ipdb.set_trace()
 
                 # perform guidance
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                # if do_classifier_free_guidance:
+                #     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                #     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
