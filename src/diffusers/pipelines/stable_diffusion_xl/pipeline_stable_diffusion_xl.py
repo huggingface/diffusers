@@ -25,6 +25,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
+from ...models.attention_processor import AttnProcessor2_0, LoRAXFormersAttnProcessor, XFormersAttnProcessor, LoRAAttnProcessor2_0
 from ...utils import (
     deprecate,
     is_accelerate_available,
@@ -648,8 +649,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         )
         prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = self.encode_prompt(
             prompt,
-            "cpu",
-            # device,
+            device,
             num_images_per_prompt,
             do_classifier_free_guidance,
             negative_prompt,
@@ -727,10 +727,28 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        self.vae.to(dtype=torch.float32)
+
+        use_torch_2_0_or_xformers = self.vae.decoder.mid_block.attentions[0].processor in [
+            AttnProcessor2_0,
+            XFormersAttnProcessor,
+            LoRAXFormersAttnProcessor,
+            LoRAAttnProcessor2_0,
+        ]
+        # if xformers or torch_2_0 is used attention block does not need
+        # to be in float32 which can save lots of memory
+        if not use_torch_2_0_or_xformers:
+            self.vae.post_quant_conv.to(latents.dtype)
+            self.vae.decoder.conv_in.to(latents.dtype)
+            self.vae.decoder.mid_block.to(latents.dtype)
+        else:
+            latents = latents.float()
+
+
         if not output_type == "latent":
             # CHECK there is problem here (PVP)
-            with torch.autocast("cuda", enabled=False):
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             #image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
             has_nsfw_concept = None
         else:
