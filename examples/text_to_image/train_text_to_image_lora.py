@@ -343,6 +343,18 @@ def parse_args():
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--network_alpha",
+        type=int,
+        default=None,
+        help=("Equivalent to LoRAs `alpha` but it's usage is specific to Kohya (A1111) style LoRAs."),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -464,7 +476,12 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_procs[name] = LoRAAttnProcessor(
+            hidden_size=hidden_size,
+            cross_attention_dim=cross_attention_dim,
+            network_alpha=args.network_alpha,
+            rank=args.rank,
+        )
 
     unet.set_attn_processor(lora_attn_procs)
 
@@ -906,7 +923,7 @@ def main():
     pipeline = pipeline.to(accelerator.device)
 
     # load attention processors
-    pipeline.unet.load_attn_procs(args.output_dir)
+    pipeline.unet.load_attn_procs(args.output_dir, network_alpha=args.network_alpha)
 
     # run inference
     generator = torch.Generator(device=accelerator.device)
