@@ -50,24 +50,36 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
-def log_validation(x, vae, accelerator, weight_dtype, epoch):
+def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
     vae_model = accelerator.unwrap_model(vae)
-
-    noise = torch.torch.randn_like(x).to(weight_dtype)
-    gen_imgs = vae_model(noise).sample
+    original = []
+    reconstructed = []
+    for _, batch in enumerate(test_dataloader):
+        noise = batch["pixel_values"].to(weight_dtype)
+        gen_imgs = vae_model(noise).sample
+        original.append(batch["pixel_values"])
+        reconstructed.append(gen_imgs)
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
-            tracker.writer.add_images("validation", gen_imgs, epoch)
+            np_images = np.stack([np.asarray(img) for img in reconstructed])
+            tracker.writer.add_images("validation", np_images, epoch)
         elif tracker.name == "wandb":
-            tracker.log({"validation": [wandb.Image(gen_imgs)]})
+            tracker.log(
+                {
+                    "Original": [
+                        wandb.Image(image) for _, image in enumerate(original)
+                    ],
+                    "Reconstruction": [
+                        wandb.Image(image) for _, image in enumerate(reconstructed)
+                    ],
+                    
+                }
+            )
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
-
-    del vae_model
-    torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -238,6 +250,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--test_samples",
+        type=int,
+        default=4,
+        help="Number of images to remove from training set to be used as validation.",
+    )
+    parser.add_argument(
         "--validation_epochs",
         type=int,
         default=5,
@@ -363,14 +381,17 @@ def main():
         ]
     )
 
-    def preprocess_train(examples):
+    def preprocess(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
         return examples
 
     with accelerator.main_process_first():
+        # Split into train/test
+        dataset = dataset["train"].train_test_split(test_size=args.test_samples)
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset["train"].with_transform(preprocess)
+        test_dataset = dataset["test"].with_transform(preprocess)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -385,6 +406,10 @@ def main():
         batch_size=args.train_batch_size,
     )
 
+    test_dataloader = torch.utils.data.DataLoader(
+        test_dataset, shuffle=True, collate_fn=collate_fn
+    )
+
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
@@ -393,8 +418,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    vae, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        vae, optimizer, train_dataloader, lr_scheduler
+    vae, optimizer, train_dataloader, test_dataloader, lr_scheduler = accelerator.prepare(
+        vae, optimizer, train_dataloader, test_dataloader, lr_scheduler
     )
 
     weight_dtype = torch.float32
@@ -425,6 +450,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num test samples = {len(test_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(
@@ -448,7 +474,8 @@ def main():
                 x = batch["pixel_values"].to(weight_dtype)
                 pred_x = vae(x).sample.to(weight_dtype)
 
-                loss = F.mse_loss(pred_x, x, reduction="mean")
+                kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
+                loss = F.mse_loss(pred_x, x, reduction="mean") + args.kl_scale * kl_loss(pred_x, x)
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
@@ -482,7 +509,7 @@ def main():
 
         if accelerator.is_main_process:
             if epoch % args.validation_epochs == 0:
-                log_validation(x, vae, accelerator, weight_dtype, epoch)
+                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
