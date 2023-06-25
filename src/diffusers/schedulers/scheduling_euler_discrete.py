@@ -107,6 +107,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
              of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        timestep_spacing (`str`, default `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -123,6 +126,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
+        timestep_spacing: str = "linspace",
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -191,7 +195,16 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
-        timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+        # "linspace" and "leading" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+        elif self.config.timestep_spacing == "leading":
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         log_sigmas = np.log(sigmas)
 
