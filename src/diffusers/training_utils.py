@@ -1,6 +1,6 @@
 import contextlib
 import copy
-from random import random
+import random
 from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
