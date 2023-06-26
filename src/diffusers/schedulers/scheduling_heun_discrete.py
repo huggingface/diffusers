@@ -156,7 +156,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        if step_index is not None:
+        if step_index is None:
             step_index = self.index_for_timestep(timestep)
 
         sigma = self.sigmas[step_index]
