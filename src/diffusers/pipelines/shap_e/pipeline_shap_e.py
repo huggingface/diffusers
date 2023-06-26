@@ -243,8 +243,6 @@ class ShapEPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-        print(f" inside pipeline._encode_prompt")
-        print(f" prompt_embeds: {prompt_embeds.shape}, {prompt_embeds.abs().sum()}, {prompt_embeds.abs().sum(-1)}")
 
         return prompt_embeds
 
