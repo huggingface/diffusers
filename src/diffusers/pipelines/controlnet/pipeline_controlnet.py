@@ -807,9 +807,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             guess_mode (`bool`, *optional*, defaults to `False`):
                 In this mode, the ControlNet encoder will try best to recognize the content of the input image even if
                 you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
-            controlnet_guidance ('List[Tuple[float, float]]', *optional*, defaults to [(0.0, 1.0)]):
-                The percentage of total steps the controlnet starts applying. First tuple value sets the start step
-                controlnet is applied and second value sets the end step where controlnet stops being applied.
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the controlnet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the controlnet stops applying.
 
         Examples:
 
@@ -967,8 +968,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
                     cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
-
-                print(cond_scale)
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
