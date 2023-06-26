@@ -1133,6 +1133,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             controlnet_conditioning_scale,
             controlnet_guidance,
         )
+        if mask_image is not None and mask_guidance is None:
+            mask_guidance = (0.0, 1.0)
+        if mask_image is None and mask_guidance is not None:
+            raise ValueError("Mask guidance is specified but no mask image is provided.")
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1321,7 +1325,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
-                if (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 9:
+                if mask_image and (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 9:
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
@@ -1342,7 +1346,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 4:
+                if mask_image and (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 4:
                     init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
