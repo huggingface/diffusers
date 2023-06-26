@@ -1271,9 +1271,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
                 # Update controlnet images
                 if update_controlnet_image == t:
+                    image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
                     control_image = [
                         self.prepare_control_image(
-                            image=cn_image,
+                            image=image,
                             width=width,
                             height=height,
                             batch_size=batch_size * num_images_per_prompt,
@@ -1284,7 +1285,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                             guess_mode=guess_mode,
                             controlnet_image_transform=controlnet_image_transformers[i] if controlnet_image_transformers else None,
                         )
-                        for i, cn_image in enumerate(control_image)
+                        for i, _ in enumerate(control_image)
                     ]
 
                 # Skip ControlNet inference if not in the guidance range
