@@ -111,7 +111,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-    
+
     def _encode_prompt(
         self,
         prompt,
@@ -194,6 +194,24 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         return text_encoder_hidden_states
 
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.text_encoder, "_hf_hook"):
+            return self.device
+        for module in self.text_encoder.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
     @torch.no_grad()
     def __call__(
         self,
@@ -211,7 +229,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         device = self._execution_device
-        
+
         do_classifier_free_guidance = guidance_scale > 1.0
 
         if negative_prompt is None:
@@ -227,7 +245,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         elif not isinstance(negative_prompt, list) and negative_prompt is not None:
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
-        text_encoder_hidden_states = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt)
+        text_encoder_hidden_states = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
         latent_height = 128 * (height / 128) // (1024 / 24)
         latent_width = 128 * (width / 128) // (1024 / 24)
