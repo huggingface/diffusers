@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
@@ -64,7 +63,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         time_embed_dim: Optional[int] = None,
         clip_embedding_dim: Optional[int] = None,
         out_dim: Optional[int] = None,
-    ): 
+    ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
@@ -119,7 +118,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             self.norm_in = None
 
         self.norm_out = nn.LayerNorm(inner_dim)
-        
+
         self.proj_to_clip_embeddings = nn.Linear(inner_dim, out_dim)
 
         causal_attention_mask = torch.full(

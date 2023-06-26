@@ -146,7 +146,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
-        step_index: Optional[int]=None,
+        step_index: Optional[int] = None,
     ) -> torch.FloatTensor:
         """
         Args:
