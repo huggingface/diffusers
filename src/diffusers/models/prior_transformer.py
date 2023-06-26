@@ -60,15 +60,11 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         num_embeddings=77,
         additional_embeddings=4,
         dropout: float = 0.0,
-        act_fn: str = "silu",
-        has_pre_norm: bool = False,
-        has_encoder_hidden_states_proj: bool = True,
-        has_prd_embedding: bool = True,
-        has_post_process: bool = True,
+        time_embed_act_fn: str = "silu",
         time_embed_dim: Optional[int] = None,
         clip_embedding_dim: Optional[int] = None,
         out_dim: Optional[int] = None,
-    ):
+    ): 
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
@@ -85,20 +81,20 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             out_dim = embedding_dim
 
         self.time_proj = Timesteps(inner_dim, True, 0)
-        self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, out_dim=inner_dim, act_fn=act_fn)
+        self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, out_dim=inner_dim, act_fn=time_embed_act_fn)
 
         self.proj_in = nn.Linear(embedding_dim, inner_dim)
 
         self.embedding_proj = nn.Linear(clip_embedding_dim, inner_dim)
 
-        if has_encoder_hidden_states_proj:
-            self.encoder_hidden_states_proj = nn.Linear(clip_embedding_dim, inner_dim)
+        if self.config.clip_embedding_dim is None:
+            self.encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
         else:
             self.encoder_hidden_states_proj = None
 
         self.positional_embedding = nn.Parameter(torch.zeros(1, num_embeddings + additional_embeddings, inner_dim))
 
-        if has_prd_embedding:
+        if self.config.out_dim is None:
             self.prd_embedding = nn.Parameter(torch.zeros(1, 1, inner_dim))
         else:
             self.prd_embedding = None
@@ -117,13 +113,13 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             ]
         )
 
-        if has_pre_norm:
+        if self.config.out_dim is not None:
             self.norm_in = nn.LayerNorm(inner_dim)
         else:
             self.norm_in = None
 
         self.norm_out = nn.LayerNorm(inner_dim)
-
+        
         self.proj_to_clip_embeddings = nn.Linear(inner_dim, out_dim)
 
         causal_attention_mask = torch.full(
@@ -132,9 +128,9 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         causal_attention_mask.triu_(1)
         causal_attention_mask = causal_attention_mask[None, ...]
         self.register_buffer("causal_attention_mask", causal_attention_mask, persistent=False)
-        if has_post_process:
-            self.clip_mean = nn.Parameter(torch.zeros(1, clip_embedding_dim))
-            self.clip_std = nn.Parameter(torch.zeros(1, clip_embedding_dim))
+        if self.config.out_dim is None:
+            self.clip_mean = nn.Parameter(torch.zeros(1, out_dim))
+            self.clip_std = nn.Parameter(torch.zeros(1, out_dim))
         else:
             self.clip_mean = None
             self.clip_std = None
