@@ -634,7 +634,9 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
 
         for start, end in zip(control_guidance_start, control_guidance_end):
             if start >= end:
-                raise ValueError(f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}.")
+                raise ValueError(
+                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
+                )
             if start < 0.0:
                 raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
             if end > 1.0:
@@ -922,7 +924,9 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [control_guidance_end]
+            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
+                control_guidance_end
+            ]
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1037,7 +1041,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversi
         # 7.1 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(num_inference_steps):
-            keeps = [1.0 - float(i / num_inference_steps < s or (i + 1) / num_inference_steps > e) for s,e in zip(control_guidance_start, control_guidance_end)]
+            keeps = [
+                1.0 - float(i / num_inference_steps < s or (i + 1) / num_inference_steps > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
             controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
 
         # 8. Denoising loop
