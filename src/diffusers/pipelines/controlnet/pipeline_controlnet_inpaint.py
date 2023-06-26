@@ -275,7 +275,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: Union[List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -814,7 +814,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
+        controlnet_image_transform: Optional[Callable] = None,
     ):
+        if controlnet_image_transform is not None:
+            image = controlnet_image_transform(image)
+
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
@@ -977,13 +981,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         control_image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
             List[torch.FloatTensor],
             List[PIL.Image.Image],
             List[np.ndarray],
         ] = None,
+        controlnet_image_transformers: Optional[List[Callable]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 1.0,
@@ -1005,6 +1007,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         guess_mode: bool = False,
         controlnet_guidance: List[Tuple[float, float]] = [(0.0, 1.0)],
         mask_guidance: Tuple[float, float] = (0.0, 1.0),
+        update_controlnet_image: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1021,6 +1024,13 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 height and/or width are passed, `image` is resized according to them. If multiple ControlNets are
                 specified in init, images must be passed as a list such that each element of the list can be correctly
                 batched for input to a single controlnet.
+            mask_image (`torch.FloatTensor`, `PIL.Image.Image`):
+                The mask image to be used for masking the input image.
+            control_image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]`):
+                Controlnet input images. Need to be the same length as the number of controlnets specified in init.
+            controlnet_image_transformers (`List[Callable]`, *optional*):
+                List of functions to be applied to the controlnet input images. Need to be the same length as the
+                number of controlnets specified in init.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -1094,6 +1104,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             mask_guidance (`Tuple[float, float]`, *optional*, defaults to `False`):
                 The percentage of total steps the mask is applied. First tuple value sets the start step the mask is
                 applied and second value sets the end step where the mask stops being applied.
+            update_controlnet_image (`int`, *optional*, defaults to `None`):
+                The step where the controlnet images are updated. If `None`, the controlnet images are updated at the
+                beginning of the inference.
 
         Examples:
 
@@ -1137,10 +1150,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+        # Scale variable to fit number of CN nets
+        if isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
-
-        if isinstance(controlnet, MultiControlNetModel) and len(controlnet_guidance) == 1:
+        if len(controlnet_guidance) == 1:
             controlnet_guidance = controlnet_guidance * len(controlnet.nets)
 
         global_pool_conditions = (
@@ -1166,9 +1179,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         )
 
         # 4. Prepare image
-        if isinstance(controlnet, ControlNetModel):
-            control_image = self.prepare_control_image(
-                image=control_image,
+        control_image = [
+            self.prepare_control_image(
+                image=cn_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -1177,28 +1190,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
+                controlnet_image_transform=controlnet_image_transformers[i] if controlnet_image_transformers else None,
             )
-        elif isinstance(controlnet, MultiControlNetModel):
-            control_images = []
-
-            for control_image_ in control_image:
-                control_image_ = self.prepare_control_image(
-                    image=control_image_,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    do_classifier_free_guidance=do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                )
-
-                control_images.append(control_image_)
-
-            control_image = control_images
-        else:
-            assert False
+            for i, cn_image in enumerate(control_image)
+        ]
 
         # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
         mask, masked_image, init_image = prepare_mask_and_masked_image(
@@ -1274,34 +1269,43 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
+                # Update controlnet images
+                if update_controlnet_image == t:
+                    control_image = [
+                        self.prepare_control_image(
+                            image=cn_image,
+                            width=width,
+                            height=height,
+                            batch_size=batch_size * num_images_per_prompt,
+                            num_images_per_prompt=num_images_per_prompt,
+                            device=device,
+                            dtype=controlnet.dtype,
+                            do_classifier_free_guidance=do_classifier_free_guidance,
+                            guess_mode=guess_mode,
+                            controlnet_image_transform=controlnet_image_transformers[i] if controlnet_image_transformers else None,
+                        )
+                        for i, cn_image in enumerate(control_image)
+                    ]
+
                 # Skip ControlNet inference if not in the guidance range
                 sampling_pct = i / len(timesteps)
-                controlnet_guidance_skip = [sampling_pct < cg[0] or sampling_pct >= cg[1] for cg in controlnet_guidance]
+                controlnet_guidance_skip = [
+                    sampling_pct < cg[0] or sampling_pct >= cg[1] for cg in controlnet_guidance
+                ]
 
                 down_block_res_samples = None
                 mid_block_res_sample = None
 
-                if isinstance(controlnet, MultiControlNetModel):
-                    down_block_res_samples, mid_block_res_sample = self.controlnet(
-                        control_model_input,
-                        t,
-                        encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond=control_image,
-                        conditioning_scale=controlnet_conditioning_scale,
-                        guess_mode=guess_mode,
-                        return_dict=False,
-                        controlnet_guidance_skip=controlnet_guidance_skip,
-                    )
-                elif not controlnet_guidance_skip[0]:
-                    down_block_res_samples, mid_block_res_sample = self.controlnet(
-                        control_model_input,
-                        t,
-                        encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond=control_image,
-                        conditioning_scale=controlnet_conditioning_scale,
-                        guess_mode=guess_mode,
-                        return_dict=False,
-                    )
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=control_image,
+                    conditioning_scale=controlnet_conditioning_scale,
+                    guess_mode=guess_mode,
+                    return_dict=False,
+                    controlnet_guidance_skip=controlnet_guidance_skip,
+                )
 
                 if (
                     guess_mode
@@ -1317,7 +1321,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
                 # predict the noise residual
                 if (mask_guidance[0] <= sampling_pct <= mask_guidance[1]) and num_channels_unet == 9:
-                        latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
                     latent_model_input,
