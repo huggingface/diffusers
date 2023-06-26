@@ -249,8 +249,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        latent_height = 128 * (height / 128) // (1024 / 24)
-        latent_width = 128 * (width / 128) // (1024 / 24)
+        latent_height = 128 * (height // 128) // (1024 // 24)
+        latent_width = 128 * (width // 128) // (1024 // 24)
         effnet_features_shape = (num_images_per_prompt, 16, latent_height, latent_width)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -268,7 +268,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             #  x, r, c
             latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            predicted_image_embedding = self.prior(latents, r=t / num_inference_steps, c=text_encoder_hidden_states)
+            predicted_image_embedding = self.prior(
+                latents, r=t / prior_timesteps_tensor.max(), c=text_encoder_hidden_states
+            )
 
             if do_classifier_free_guidance:
                 predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
