@@ -339,12 +339,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     text_input_ids.to(device),
                     output_hidden_states=True,
                 )
+
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
-
                 prompt_embeds = prompt_embeds.hidden_states[-2]
-
-                prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
 
                 bs_embed, seq_len, _ = prompt_embeds.shape
                 # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -398,7 +396,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 )
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 negative_pooled_prompt_embeds = negative_prompt_embeds[0]
-
                 negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
 
                 if do_classifier_free_guidance:
@@ -420,6 +417,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
+
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(bs_embed * num_images_per_prompt, -1)
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(bs_embed * num_images_per_prompt, -1)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -697,7 +697,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device)
+        add_time_ids = add_time_ids.to(device).repeat(num_images_per_prompt, 1)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
