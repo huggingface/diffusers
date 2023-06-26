@@ -730,8 +730,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         guess_mode: bool = False,
-        control_guidance_start: List[float] = 0.0,
-        control_guidance_end: List[float] = 1.0,
+        control_guidance_start: Union[float, List[float]] = 0.0,
+        control_guidance_end: Union[float, List[float]] = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -821,7 +821,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # align format
+        # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
