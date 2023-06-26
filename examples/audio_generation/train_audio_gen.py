@@ -1051,7 +1051,8 @@ def main():
                 
                 
                 logger.info("LATENT CHECKER: ", latents.shape)
-                
+                formants= formants.view(formants.size(0), -1)
+                # print("FORMANT CHECKER: ", formants.shape)
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attn_mask_arg, class_labels = formants).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
