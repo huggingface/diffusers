@@ -146,6 +146,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
+        step_index: Optional[int]=None,
     ) -> torch.FloatTensor:
         """
         Args:
@@ -155,7 +156,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        step_index = self.index_for_timestep(timestep)
+        if step_index is not None:
+            step_index = self.index_for_timestep(timestep)
 
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)

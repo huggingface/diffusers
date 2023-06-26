@@ -419,7 +419,7 @@ class ShapEPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t, step_index=i)
 
             noise_pred = self.prior(
                 scaled_model_input,
