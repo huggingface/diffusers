@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
@@ -242,6 +243,8 @@ class ShapEPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        print(f" inside pipeline._encode_prompt")
+        print(f" prompt_embeds: {prompt_embeds.shape}, {prompt_embeds.abs().sum()}, {prompt_embeds.abs().sum(-1)}")
 
         return prompt_embeds
 
@@ -389,6 +392,8 @@ class ShapEPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
         prompt_embeds = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
+        # Rescale the features to have unit variance
+        prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         # prior
 
