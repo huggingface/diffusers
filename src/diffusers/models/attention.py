@@ -139,12 +139,6 @@ class BasicTransformerBlock(nn.Module):
             )
         else:
             norm_hidden_states = self.norm1(hidden_states)
-        #print(" ")
-        #print(" -----")
-        #print(" inside transformer block")
-        #print(f" input h: {hidden_states.shape}, {hidden_states.abs().sum()}")
-        #print(f" -> ln_1 :{norm_hidden_states.shape}, {norm_hidden_states.abs().sum()}")
-
 
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
@@ -153,12 +147,9 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        #print(f" -> attn: {attn_output.shape}, {attn_output.abs().sum()}")
-
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
-        #print(f" -> attn+ x: {hidden_states.shape}, {hidden_states.abs().sum()}")
 
         # 2. Cross-Attention
         if self.attn2 is not None:
@@ -176,19 +167,16 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)
-        #print(f" -> ln_2: {norm_hidden_states.shape}, {norm_hidden_states.abs().sum()}")
 
         if self.use_ada_layer_norm_zero:
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         ff_output = self.ff(norm_hidden_states)
-        #print(f" -> mlp: {ff_output.shape}, {ff_output.abs().sum()}")
 
         if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
-        #print(f" -> x + mlp: {hidden_states.shape},{hidden_states.abs().sum()}")
 
         return hidden_states
 

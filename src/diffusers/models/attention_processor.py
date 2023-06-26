@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Callable, Optional, Union
-import math
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -345,7 +345,6 @@ class Attention(nn.Module):
         return tensor
 
     def get_attention_scores(self, query, key, attention_mask=None):
-        #print(f"    inside get_attention_scores")
         dtype = query.dtype
         if self.upcast_attention:
             query = query.float()
@@ -359,32 +358,17 @@ class Attention(nn.Module):
         else:
             baddbmm_input = attention_mask
             beta = 1
-        #print(f" self.scale: {self.scale}")
-        scale_sqrt = math.sqrt(self.scale)
-        #print(f" scale_sqrt: {scale_sqrt}")
-        #print(f" k input: {key.transpose(-1, -2).shape}")
-#         attention_scores = torch.baddbmm(
-#             baddbmm_input,
-#             #query * scale_sqrt, # yiyi testing
-#             query, # [32, 1026, 64]
-#             #key.transpose(-1, -2) * scale_sqrt, # yiyi testing
-#             key.transpose(-1, -2), # [32, 64, 1026]
-#             beta=beta,
-# #            alpha=self.scale, # yiyi testing: scale q and k before the matrix multiplication (vs afterword with alpha)
-#             # alpha=self.scale, # yiyi testing: comment back
-#         )
-        # yiyi testing
-        attention_scores = torch.einsum(
-            "btc,bsc->bts", query, key
-        )  # More stable with f16 than dividing afterwards
-        #print(f" q@v: {attention_scores.shape},{attention_scores.abs().sum()}")
-        attention_scores = attention_scores * self.scale # yiyi testing: comment out
-        #print(f" scaled q@v: {attention_scores.shape},{attention_scores.abs().sum()}")
+
+        attention_scores = torch.baddbmm(
+            baddbmm_input,
+            query,
+            key.transpose(-1, -2),
+            beta=beta,
+            alpha=self.scale,
+        )
         del baddbmm_input
-        # yiyi testing:
-        #attention_scores = attention_scores.float() # yiyi added for testing
+
         if self.upcast_softmax:
-        #    print("upscale_softmax")
             attention_scores = attention_scores.float()
 
         attention_probs = attention_scores.softmax(dim=-1)
@@ -467,17 +451,14 @@ class AttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
-    ):  
-        print(" ")
-        print(" ********")
-        print(f"  inside AttnProcessor")
+    ):
         residual = hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
-        print(f" input_ndim: {input_ndim}")
+
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
@@ -486,37 +467,25 @@ class AttnProcessor:
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-      
+
         if attn.group_norm is not None:
-            print(f" group_norm")
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
-            print(f" encoder_hidden_states is None")
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            print(" norm_cross")
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        print(f" -q: {query.shape},{query.abs().sum()}")
-        print(f" -k: {key.shape},{key.abs().sum()}")
-        print(f" -v: {value.shape},{value.abs().sum()}")
-
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
-        print(f" -> head_to_batch_dim:")
-        print(f" -q: {query.shape},{query.abs().sum()}")
-        print(f" -k: {key.shape},{key.abs().sum()}")
-        print(f" -v: {value.shape},{value.abs().sum()}")
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        print(f" attention_probs: {attention_probs.shape}, {attention_probs.abs().sum()}")
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
