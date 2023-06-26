@@ -269,7 +269,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             #  x, r, c
             latents = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             predicted_image_embedding = self.prior(
-                latents, r=t / prior_timesteps_tensor.max(), c=text_encoder_hidden_states
+                latents,
+                r=(t / prior_timesteps_tensor.max()).expand(num_images_per_prompt * 2, 1),
+                c=text_encoder_hidden_states,
             )
 
             if do_classifier_free_guidance:
