@@ -16,11 +16,9 @@
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from jax._src.dispatch import is_single_device_sharding
 
 import numpy as np
 import PIL.Image
-from tensorflow.python.ops.control_flow_ops import control_trigger_eager_fallback
 import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
