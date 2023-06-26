@@ -130,9 +130,9 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, 64, 64)
 
         expected_slice_rgb = np.array(
-            [0.37350047, 0.70260847, 0.74218935, 0.5166996 , 0.582674  , 0.6094541 , 0.41805607, 0.48368582, 0.46530965]
+            [0.37350047, 0.70260847, 0.74218935, 0.5166996, 0.582674, 0.6094541, 0.41805607, 0.48368582, 0.46530965]
         )
-        expected_slice_depth = np.array([103.46226 ,  85.828445,  87.86833])
+        expected_slice_depth = np.array([103.46226, 85.828445, 87.86833])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
@@ -296,7 +296,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
         output = ldm3d_pipe(**inputs)
         rgb, depth = output.rgb, output.depth
-        
+
         expected_rgb_mean = 0.4194127
         expected_rgb_std = 0.35375586
         expected_depth_mean = 0.5638502
