@@ -91,6 +91,9 @@ class AudiosetDataset(Dataset):
             self.strong_label_data = [el for el in self.strong_label_data if el['length'] > len_min and el['length'] < len_max]
         else:
             self.strong_label_dir = None
+        self.index_dict = make_index_dict(label_csv)
+        self.label_num = len(self.index_dict)
+        print('number of classes is {:d}'.format(self.label_num))
 
             
     def mixup_tensor_set(self, tensors, ids=None):
@@ -176,6 +179,11 @@ class AudiosetDataset(Dataset):
         else:
             label = datum["caption"]
         
+        label_indices = np.zeros(self.label_num)
+        if 'labels' in datum.keys():
+            for label_str in datum['labels'].split(','):
+                label_indices[int(self.index_dict[label_str])] = 1.0
+        label_indices = torch.FloatTensor(label_indices)
             
         latent = torch.Tensor([0])
         formant = torch.Tensor([0])
@@ -194,11 +202,11 @@ class AudiosetDataset(Dataset):
             nan_mask = torch.isnan(formant)
             formant[nan_mask] = 0 #replace nan with 0
             formant = formant/8000.0 #standardize
-        return waveform, label, datum['wav'], sr, latent, formant
+        return waveform, label, datum['wav'], sr, latent, formant, label_indices
     
     def idx_to_datum(self, index):
         
-        waveform, label, path, sr, latent, formant = self.gather_data(self.data[index])
+        waveform, label, path, sr, latent, formant, label_indices = self.gather_data(self.data[index])
             
         do_mixup = random.random() <= self.mixup_ratio
         
@@ -216,7 +224,7 @@ class AudiosetDataset(Dataset):
                         random.shuffle(ids)
 
                     mix_index = random.randrange(len(self.data))
-                    mix_wav, mix_label, mix_path, mix_st, mix_latent, mix_formant = self.gather_data(self.data[mix_index])
+                    mix_wav, mix_label, mix_path, mix_st, mix_latent, mix_formant, mix_label_indices= self.gather_data(self.data[mix_index])
 
                     wavs.append(mix_wav)
                     labels.append(mix_label)
@@ -233,7 +241,7 @@ class AudiosetDataset(Dataset):
                     formant = self.mixup_tensor_set(formants, ids)
 
                 label = self.mixup_label_set(labels, ids)
-                
+                label_indices += mix_label_indices
             elif (self.mixup_type == 'strong'):
                 # print("=============")
                 mixup_ids = [random.randrange(len(self.strong_label_data)) for _ in range(self.n_mixup - 1)]
@@ -246,7 +254,7 @@ class AudiosetDataset(Dataset):
                         break
                     datum = self.strong_label_data[idx]
                     ref_datum = self.data_lookup[datum['youtube_id']]
-                    mix_waveform, mix_label, mix_wav, mix_sr, mix_latent, mix_formant = self.gather_data(ref_datum)
+                    mix_waveform, mix_label, mix_wav, mix_sr, mix_latent, mix_formant, mix_label_indices = self.gather_data(ref_datum)
                     
                     total_len = latent.shape[2]
                     latent_t0 = int(datum['start_time_seconds'] * total_len / 10)
@@ -282,10 +290,12 @@ class AudiosetDataset(Dataset):
 
                         prev_end_formant = start_formant
                     added_labels.append(datum['name'])
-                
+                    # print('strong label: ', torch.nonzero(mix_label_indices))
+                    label_indices += mix_label_indices
+
                 
                 # transitional_terms = [" followed by" , " and then ", " after this we hear "]
-                
+
                 for mix_label in reversed(added_labels):
                     if label == "":
                         label = mix_label
@@ -310,7 +320,7 @@ class AudiosetDataset(Dataset):
                 latent = latent.to(self.device, dtype=self.dtype)
         
         #TODO add attention mask as a key:
-        batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': path, 'sample_rate': sr, "latent": latent, "attn_mask": attn_mask, 'formant': formant}
+        batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': path, 'sample_rate': sr, "latent": latent, "attn_mask": attn_mask, 'formant': formant, 'one_hot': label_indices}
         
         return batch
     def __getitem__(self, index):

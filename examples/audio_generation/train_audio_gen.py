@@ -337,6 +337,14 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--one_hot",
+        action="store_true",
+        default=False,
+        required=False,
+        help="use flag to condition on one_hot embeddings of labels from audio_conf",
+    )
+    
+    parser.add_argument(
         "--mixup_ratio",
         type=float,
         default=0.0,
@@ -813,13 +821,13 @@ def main():
             accelerator.print("Using Balanced Sampler, loading weights from: ", data['weight_path'])
             sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
             train_dataloader = torch.utils.data.DataLoader( 
-                AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1, mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
+                AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, label_csv=data['label_csv'], channels=1, mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
                 batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
         else:
             sampler=None
 
             train_dataloader = torch.utils.data.DataLoader( 
-                    AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, channels=1,  mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
+                    AudiosetDataset(data, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, logger=logger, label_csv=data['label_csv'], channels=1,  mixup_ratio=args.mixup_ratio, mixup_type=args.mixup_type, n_mixup = args.n_mixup),
                     batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -1038,6 +1046,7 @@ def main():
                 # Predict the noise residual and compute loss)
                 attn_mask_arg = None
                 formants = None
+                class_labels = None
                 if args.unet_att_masking:
                     attn_mask_arg = attention_mask
                 if args.formant:
@@ -1045,15 +1054,18 @@ def main():
                     if (formants is None):
                         print("PLEASE ONLY PASS FORMANTS FLAG IF THE AUDIO_CONF INCLUDES THEM")
                     logger.info("FORMANT CHECKER: ", formants.shape)
+                    formants= formants.view(formants.size(0), -1)
+                    # print("FORMANT CHECKER: ", formants.shape)
+                    class_labels = formants
+                if args.one_hot:
+                    class_labels = batch['one_hot']
                 #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attention_mask).sample
                 # else:
                 #     model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 
                 
                 logger.info("LATENT CHECKER: ", latents.shape)
-                formants= formants.view(formants.size(0), -1)
-                # print("FORMANT CHECKER: ", formants.shape)
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attn_mask_arg, class_labels = formants).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, attention_mask = attn_mask_arg, class_labels = class_labels).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
