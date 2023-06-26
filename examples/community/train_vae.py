@@ -60,23 +60,17 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
         noise = batch["pixel_values"].to(weight_dtype)
         recon_imgs = vae_model(noise).sample
         images.append(torch.cat([batch["pixel_values"].cpu(), recon_imgs.cpu()], axis=0))
-    
-    noise = torch.randn((len(test_dataloader), vae_model.config.latent_channels, 32, 32)).to(accelerator.device, weight_dtype)
-    gen_images = vae_model.decode(noise).sample
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch)
+            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch)
         elif tracker.name == "wandb":
             tracker.log(
                 {
-                    "Original/Reconstruction": [
+                    "Original (left) / Reconstruction (right)": [
                         wandb.Image(torchvision.utils.make_grid(image)) for _, image in enumerate(images)
-                    ],
-                    "Generated": [
-                        wandb.Image(torchvision.utils.make_grid(gen_images))
-                    ],
+                    ]
                 }
             )
         else:
@@ -472,11 +466,11 @@ def main():
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
-                x = batch["pixel_values"].to(weight_dtype)
-                pred_x = vae(x).sample.to(weight_dtype)
+                target = batch["pixel_values"].to(weight_dtype)
+                pred = vae(target).sample.to(weight_dtype)
 
                 kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
-                loss = F.mse_loss(pred_x, x, reduction="mean") + args.kl_scale * kl_loss(pred_x, x)
+                loss = F.mse_loss(pred, target, reduction="mean") + args.kl_scale * kl_loss(pred, target)
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
