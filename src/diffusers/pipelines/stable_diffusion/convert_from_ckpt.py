@@ -1125,6 +1125,7 @@ def download_from_original_stable_diffusion_ckpt(
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         StableDiffusionXLPipeline,
+        StableDiffusionXLImg2ImgPipeline,
     )
 
     if pipeline_class is None:
@@ -1413,24 +1414,37 @@ def download_from_original_stable_diffusion_ckpt(
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
             text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.1.model.")
+
+            pipe = StableDiffusionXLPipeline(
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                text_encoder_2=text_encoder_2,
+                tokenizer_2=tokenizer_2,
+                unet=unet,
+                scheduler=scheduler,
+                # safety_checker=None,
+                # feature_extractor=None,
+                # requires_safety_checker=False,
+            )
         else:
             tokenizer = None
             text_encoder = None
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
             text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.0.model.")
 
-        pipe = StableDiffusionXLPipeline(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            text_encoder_2=text_encoder_2,
-            tokenizer_2=tokenizer_2,
-            unet=unet,
-            scheduler=scheduler,
-            # safety_checker=None,
-            # feature_extractor=None,
-            # requires_safety_checker=False,
-        )
+            pipe = StableDiffusionXLImg2ImgPipeline(
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                text_encoder_2=text_encoder_2,
+                tokenizer_2=tokenizer_2,
+                unet=unet,
+                scheduler=scheduler,
+                # safety_checker=None,
+                # feature_extractor=None,
+                # requires_safety_checker=False,
+            )
     else:
         text_config = create_ldm_bert_config(original_config)
         text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)

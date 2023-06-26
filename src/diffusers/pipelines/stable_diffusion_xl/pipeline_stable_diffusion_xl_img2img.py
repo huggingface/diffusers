@@ -15,6 +15,8 @@
 import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+import numpy as np
+import PIL.Image
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
@@ -69,7 +71,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLPipeline(DiffusionPipeline):
+class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -455,17 +457,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         return extra_step_kwargs
 
     def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+        self, prompt, strength, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -501,30 +496,84 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != batch_size:
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
+
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
+        image = image.to(device=device, dtype=dtype)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        batch_size = batch_size * num_images_per_prompt
+
+        if image.shape[1] == 4:
+            init_latents = image
+
+        else:
+
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            image = image.float()
+            self.vae.to(dtype=torch.float32)
+
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            elif isinstance(generator, list):
+                init_latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
+                init_latents = torch.cat(init_latents, dim=0)
+            else:
+                init_latents = self.vae.encode(image).latent_dist.sample(generator)
+
+            self.vae.to(dtype)
+            init_latents = init_latents.to(dtype)
+
+            init_latents = self.vae.config.scaling_factor * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        shape = init_latents.shape
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        # get latents
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+
         return latents
+
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
+        strength: float = 0.5,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -543,6 +592,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         original_size: Tuple[int, int] = (1024, 1024),
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = (1024, 1024),
+        aesthetic_score: float = 6.0,
+        negative_aesthetic_score: float = 2.5,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -551,10 +602,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
+            strength (`float`, *optional*, defaults to 0.8):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -614,6 +667,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 TODO
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 TODO
+            aesthetic_score (`float`, *optional*, defaults to 6.0):
+                TODO
+            negative_aesthetic_score (`float`, *optional*, defaults to 2.5):
+                TDOO
 
         Examples:
 
@@ -624,14 +681,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -663,42 +714,44 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             lora_scale=text_encoder_lora_scale,
         )
 
+        # 4. Preprocess image
+        image = self.image_processor.preprocess(image)
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        timesteps = self.scheduler.timesteps
-
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
+        # 6. Prepare latent variables
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
+            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-
         add_text_embeds = pooled_prompt_embeds
-        add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + target_size)], dtype=torch.long)
+
+        if self.unet.add_embedding.linear_1.in_features == (1280 + 5 * 256):
+            # refiner
+            add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + (aesthetic_score,))], dtype=torch.long)
+            neg_add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + (negative_aesthetic_score,))], dtype=torch.long)
+        elif self.unet.add_embedding.linear_1.in_features == (1280 + 6 * 256):
+            # SD-XL Base
+            add_time_ids = torch.tensor([list(original_size + crops_coords_top_left + target_size)], dtype=torch.long)
+            neg_add_time_ids = add_time_ids.clone()
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+            add_time_ids = torch.cat([add_time_ids, neg_add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device)
 
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -752,7 +805,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             self.vae.decoder.mid_block.to(latents.dtype)
         else:
             latents = latents.float()
-
 
         if not output_type == "latent":
             # CHECK there is problem here (PVP)
