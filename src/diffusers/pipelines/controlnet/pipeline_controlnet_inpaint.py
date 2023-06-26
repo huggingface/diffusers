@@ -1026,7 +1026,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 batched for input to a single controlnet.
             mask_image (`torch.FloatTensor`, `PIL.Image.Image`):
                 The mask image to be used for masking the input image.
-            control_image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]`):
+            control_image (`List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[torch.FloatTensor]`):
                 Controlnet input images. Need to be the same length as the number of controlnets specified in init.
             controlnet_image_transformers (`List[Callable]`, *optional*):
                 List of functions to be applied to the controlnet input images. Need to be the same length as the
@@ -1155,11 +1155,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
         if len(controlnet_guidance) == 1:
             controlnet_guidance = controlnet_guidance * len(controlnet.nets)
+        if len(control_image) == 1:
+            control_image = control_image * len(controlnet.nets)
 
         global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, ControlNetModel)
-            else controlnet.nets[0].config.global_pool_conditions
+            controlnet.nets[0].config.global_pool_conditions
         )
         guess_mode = guess_mode or global_pool_conditions
 
