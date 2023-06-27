@@ -105,7 +105,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor", "tokenizer", "text_encoder"]
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -149,6 +149,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             # safety_checker=safety_checker,
             # feature_extractor=feature_extractor,
         )
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
@@ -355,7 +356,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
 
         # get unconditional embeddings for classifier free guidance
-        zero_out_negative_prompt = negative_prompt is None and self.force_zeros_for_empty_prompt
+        zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
         if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
@@ -524,16 +525,16 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score):
-        add_time_ids = [list(original_size + crops_coords_top_left + target_size)]
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.unet.config.cross_attention_dim
+        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `unet.config.cross_attention_dim`.")
+            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
 
-        add_time_ids = torch.tensor(add_time_ids, dtype=torch.long)
+        add_time_ids = torch.tensor([add_time_ids], dtype=torch.long)
         return add_time_ids
 
     @torch.no_grad()
@@ -718,7 +719,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order

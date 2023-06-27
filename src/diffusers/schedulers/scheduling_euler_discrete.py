@@ -110,6 +110,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing (`str`, default `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
             Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -127,6 +131,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
         timestep_spacing: str = "linspace",
+        steps_offset: int = 1,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)

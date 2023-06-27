@@ -153,6 +153,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             # safety_checker=safety_checker,
             # feature_extractor=feature_extractor,
         )
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+        self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.vae_scale_factor = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -362,7 +364,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
 
         # get unconditional embeddings for classifier free guidance
-        zero_out_negative_prompt = negative_prompt is None and self.force_zeros_for_empty_prompt
+        zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
         if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
@@ -576,25 +578,25 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         return latents
 
     def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score):
-        if self.requires_aesthetics_score:
-            add_time_ids = [list(original_size + crops_coords_top_left + (aesthetic_score,))]
-            add_neg_time_ids = [list(original_size + crops_coords_top_left + (negative_aesthetic_score,))]
+        if self.config.requires_aesthetics_score:
+            add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
+            add_neg_time_ids = list(original_size + crops_coords_top_left + (negative_aesthetic_score,))
         else:
-            add_time_ids = [list(original_size + crops_coords_top_left + target_size)]
-            add_neg_time_ids = [list(original_size + crops_coords_top_left + target_size)]
+            add_time_ids = list(original_size + crops_coords_top_left + target_size)
+            add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.unet.config.cross_attention_dim
+        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
         if expected_add_embed_dim > passed_add_embed_dim and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim:
             raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to enable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=True)` to make sure `aesthetic_score` {aesthetic_score} and `negative_aesthetic_score` {negative_aesthetic_score} is correctly used by the model.")
         elif expected_add_embed_dim < passed_add_embed_dim and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size}  is correctly used by the model.")
+            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size} is correctly used by the model.")
         elif expected_add_embed_dim != passed_add_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `unet.config.cross_attention_dim`.")
+            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
 
-        add_time_ids = torch.tensor(add_time_ids, dtype=torch.long)
-        add_neg_time_ids = torch.tensor(add_neg_time_ids, dtype=torch.long)
+        add_time_ids = torch.tensor([add_time_ids], dtype=torch.long)
+        add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=torch.long)
 
         return add_time_ids, add_neg_time_ids
 
