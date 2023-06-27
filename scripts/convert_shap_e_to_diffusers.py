@@ -229,7 +229,7 @@ PRIOR_IMAGE_CONFIG = {
     "num_embeddings": 1024,
     "additional_embeddings": 0,
     "time_embed_act_fn": "gelu",
-    "embedding_proj_norm": True,
+    "norm_embedding_proj": True,
     "time_embed_dim": 1024 * 4,
     "clip_embedding_dim": 1024,
     "out_dim": 1024 * 2,

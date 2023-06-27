@@ -60,7 +60,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         additional_embeddings=4,
         dropout: float = 0.0,
         time_embed_act_fn: str = "silu",
-        embedding_proj_norm: bool = False,
+        norm_embedding_proj: bool = False,
         time_embed_dim: Optional[int] = None,
         clip_embedding_dim: Optional[int] = None,
         out_dim: Optional[int] = None,
@@ -85,7 +85,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.proj_in = nn.Linear(embedding_dim, inner_dim)
 
-        if embedding_proj_norm:
+        if norm_embedding_proj:
             self.embedding_proj_norm = nn.LayerNorm(clip_embedding_dim)
         else:
             self.embedding_proj_norm = None
@@ -262,14 +262,22 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         positional_embeddings = self.positional_embedding.to(hidden_states.dtype)
 
         tokens = []
+        additional_embeddings =0 
 
         if encoder_hidden_states is not None:
             tokens.append(encoder_hidden_states)
+            additional_embeddings += encoder_hidden_states.shape[1]
+        
+        if len(proj_embeddings.shape) == 2:
+            proj_embeddings = proj_embeddings[:, None, :]
+        
+        if len(hidden_states.shape) == 2:
+            hidden_states = hidden_states[:, None, :]
 
         tokens = tokens + [
-            proj_embeddings[:, None, :],
+            proj_embeddings,
             time_embeddings[:, None, :],
-            hidden_states[:, None, :] if len(hidden_states.shape) == 2 else hidden_states,
+            hidden_states,
         ]
 
         if self.prd_embedding is not None:
@@ -282,7 +290,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         )
 
         # Allow positional_embedding to not include the `addtional_embeddings` and instead pad it with zeros for these additional tokens
-        additional_embeddings = 2 + (encoder_hidden_states.shape[1] if encoder_hidden_states is not None else 0)
+        additional_embeddings = additional_embeddings + proj_embeddings.shape[1] + 1
         if positional_embeddings.shape[1] < hidden_states.shape[1]:
             positional_embeddings = F.pad(
                 positional_embeddings,
