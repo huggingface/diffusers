@@ -154,7 +154,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
 @slow
 @require_torch_gpu
-class StableDiffusion2PipelineSlowTests(unittest.TestCase):
+class StableDiffusionXLPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -175,7 +175,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_stable_diffusion_default_euler(self):
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
