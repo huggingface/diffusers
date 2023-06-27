@@ -54,15 +54,14 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     Output class for WuerstchenPriorPipeline.
 
     Args:
-        image_embeds (`torch.FloatTensor`)
-            clip image embeddings for text prompt
-        negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
-            clip image embeddings for unconditional tokens
+        image_embeds (`torch.FloatTensor` or `np.ndarray`)
+            Prior image embeddings for text prompt
+        text_embeds (`torch.FloatTensor` or `np.ndarray`)
+            Clip text embeddings for unconditional tokens
     """
 
     image_embeds: Union[torch.FloatTensor, np.ndarray]
     text_embeds: Union[torch.FloatTensor, np.ndarray]
-    negative_text_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class WuerstchenPriorPipeline(DiffusionPipeline):
@@ -293,13 +292,14 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             ).prev_sample
 
         # normalize the latents
-        latent = latent * 42.0 - 1.0
+        latents = latents * 42.0 - 1.0
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
 
         if output_type == "np":
             latents = latents.cpu().numpy()
+            text_encoder_hidden_states = text_encoder_hidden_states.cpu().numpy()
 
         if not return_dict:
             return (latents, text_encoder_hidden_states)
