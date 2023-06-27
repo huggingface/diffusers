@@ -1,26 +1,23 @@
 ###controlnet.sh PSEUDO###
-if [[ "$@" == *"--task"* ]]; then # --env_name: conda env name
-  env_name="$(echo "$@" | sed -n 's/.*--task \([^ ]*\).*/\1/p')"
-  echo "env_name: $env_name"
-fi
-
-if [[ "$@" == *"--model_name"* ]]; then
-  model_name="$(echo "$@" | sed -n 's/.*--model_name \([^ ]*\).*/\1/p')"
-fi
-
-if [[ "$@" == *"--batch_size"* ]]; then 
-  batch_size="$(echo "$@" | sed -n 's/.*--batch_size \([^ ]*\).*/\1/p')"
-fi
-
 output_dir=outputs
-if [[ "$@" == *"--output_dir"* ]]; then 
-  output_dir="$(echo "$@" | sed -n 's/.*--output_dir \([^ ]*\).*/\1/p')"
-fi
-
 current_dir=$(pwd)
-log_dir=${current_dir}/logs/${model_name}.json
-if [[ "$@" == *"--log_dir"* ]]; then 
-  log_dir="$(echo "$@" | sed -n 's/.*--log_dir \([^ ]*\).*/\1/p')"
+
+while getopts t:m:b:o:l: flag
+do
+    case "${flag}" in
+        t) env_name=${OPTARG};;
+        m) model_name=${OPTARG};;
+        b) batch_size=${OPTARG};;
+        o) output_dir=${OPTARG};;
+        l) log_dir=${OPTARG};;
+    esac
+done
+
+# Check if log_dir is provided , if not use default value of current_dir/logs/${model_name}.json
+if [ -z "$log_dir" ]
+then
+    log_dir=${current_dir}/logs/${model_name}.json
+    mkdir -p ${current_dir}/logs
 fi
 
 moreh-switch-model -M 1

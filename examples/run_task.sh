@@ -66,7 +66,7 @@ execute_training() {
 
             cd $task
             # echo "Running script $train_script task $task model $model bs $batch_size output $output_dir log $log_dir"
-            bash $train_script --task $task --model_name $model --batch_size $batch_size --output_dir $output_dir --log_dir $log_dir                
+            bash $train_script -t $task -m $model -o $output_dir -l $log_dir -b $batch_size              
 
             echo Done training $model
 }
