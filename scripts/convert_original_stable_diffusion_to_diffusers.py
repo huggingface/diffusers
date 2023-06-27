@@ -131,7 +131,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="Set to a path, hub id to an already converted vae to not convert it again."
+        help="Set to a path, hub id to an already converted vae to not convert it again.",
     )
     args = parser.parse_args()
 

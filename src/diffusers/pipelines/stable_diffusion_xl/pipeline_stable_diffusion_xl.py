@@ -13,20 +13,22 @@
 # limitations under the License.
 
 import inspect
-import warnings
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjection
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...schedulers import KarrasDiffusionSchedulers
-from ...models.attention_processor import AttnProcessor2_0, LoRAXFormersAttnProcessor, XFormersAttnProcessor, LoRAAttnProcessor2_0
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -35,7 +37,6 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
-from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -305,7 +306,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # Define tokenizers and text encoders
         tokenizers = [self.tokenizer, self.tokenizer_2] if self.tokenizer is not None else [self.tokenizer_2]
-        text_encoders = [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+        text_encoders = (
+            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+        )
 
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
@@ -327,14 +330,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                     text_input_ids, untruncated_ids
                 ):
-                    removed_text = tokenizer.batch_decode(
-                        untruncated_ids[:, tokenizer.model_max_length - 1 : -1]
-                    )
+                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
                     logger.warning(
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
-                    
+
                 prompt_embeds = text_encoder(
                     text_input_ids.to(device),
                     output_hidden_states=True,
@@ -405,7 +406,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
                     negative_prompt_embeds = negative_prompt_embeds.to(dtype=text_encoder.dtype, device=device)
 
                     negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-                    negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+                    negative_prompt_embeds = negative_prompt_embeds.view(
+                        batch_size * num_images_per_prompt, seq_len, -1
+                    )
 
                     # For classifier free guidance, we need to do two forward passes.
                     # Here we concatenate the unconditional and text embeddings into a single batch
@@ -417,9 +420,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-
-        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(bs_embed * num_images_per_prompt, -1)
-        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(bs_embed * num_images_per_prompt, -1)
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -652,7 +658,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = self.encode_prompt(
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -753,11 +764,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         else:
             latents = latents.float()
 
-
         if not output_type == "latent":
             # CHECK there is problem here (PVP)
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            #image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            # image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
             has_nsfw_concept = None
         else:
             image = latents
