@@ -545,6 +545,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         unet_mask = False,
         debug = False,
+        class_labels=None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -689,6 +690,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                         encoder_hidden_states=prompt_embeds,
                         attention_mask=attention_mask,
                         cross_attention_kwargs=cross_attention_kwargs,
+                        class_labels=class_labels,
                     ).sample
                 else:
                     print(f'unet Cross Attention UNMASKED!')
@@ -697,6 +699,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                         t,
                         encoder_hidden_states=prompt_embeds,
                         cross_attention_kwargs=cross_attention_kwargs,
+                        class_labels=class_labels,
                     ).sample
 
                 # perform guidance

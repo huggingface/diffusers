@@ -696,10 +696,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
-
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            # print("debug",class_labels.dtype, self.dtype, self.class_embedding.weight.dtype, self.class_embedding.bias.dtype)
+            class_emb = self.class_embedding(class_labels.to(dtype=self.dtype))
 
             if self.config.class_embeddings_concat:
+                # print("debug: ", emb.shape, class_emb.shape)
                 emb = torch.cat([emb, class_emb], dim=-1)
             else:
                 emb = emb + class_emb
