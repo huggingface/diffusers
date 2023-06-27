@@ -352,7 +352,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
                 prompt_embeds = prompt_embeds.hidden_states[-2]
 
-                prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
+                prompt_embeds = prompt_embeds
 
                 bs_embed, seq_len, _ = prompt_embeds.shape
                 # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -577,7 +577,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score):
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
             add_neg_time_ids = list(original_size + crops_coords_top_left + (negative_aesthetic_score,))
@@ -595,8 +595,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         elif expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
 
-        add_time_ids = torch.tensor([add_time_ids], dtype=torch.long)
-        add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=torch.long)
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
+        add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=dtype)
 
         return add_time_ids, add_neg_time_ids
 
@@ -777,12 +777,12 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
         # 8. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
-        add_time_ids, add_neg_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score)
+        add_time_ids, add_neg_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype=prompt_embeds.dtype)
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_neg_time_ids], dim=0)
+            add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
