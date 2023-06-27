@@ -20,9 +20,10 @@ Convert the model:
 ```sh
 $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
+      --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shape/renderer \
-      --debug renderer
+      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e/prior_image \
+      --debug prior_image
 ```
 """
 
@@ -39,14 +40,10 @@ PRIOR_CONFIG = {
     "embedding_dim": 1024,
     "num_embeddings": 1024,
     "additional_embeddings": 0,
-    "act_fn": "gelu",
+    "time_embed_act_fn": "gelu",
     "time_embed_dim": 1024 * 4,
     "clip_embedding_dim": 768,
     "out_dim": 1024 * 2,
-    "has_pre_norm": True,
-    "has_encoder_hidden_states_proj": False,
-    "has_prd_embedding": False,
-    "has_post_process": False,
 }
 
 
@@ -75,7 +72,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
         }
     )
 
-    # <original>.clip_img_proj -> <diffusers>.proj_in
+    # <original>.input_proj -> <diffusers>.proj_in
     diffusers_checkpoint.update(
         {
             "proj_in.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.input_proj.weight"],
@@ -83,7 +80,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
         }
     )
 
-    # <original>.text_emb_proj -> <diffusers>.embedding_proj
+    # <original>.clip_emb -> <diffusers>.embedding_proj
     diffusers_checkpoint.update(
         {
             "embedding_proj.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.clip_embed.weight"],
@@ -91,7 +88,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
         }
     )
 
-    # <original>.positional_embedding -> <diffusers>.positional_embedding
+    # <original>.pos_emb -> <diffusers>.positional_embedding
     diffusers_checkpoint.update({"positional_embedding": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.pos_emb"][None, :]})
 
     # <original>.ln_pre -> <diffusers>.norm_in
@@ -102,7 +99,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
         }
     )
 
-    # <original>.resblocks.<x> -> <diffusers>.transformer_blocks.<x>
+    # <original>.backbone.resblocks.<x> -> <diffusers>.transformer_blocks.<x>
     for idx in range(len(model.transformer_blocks)):
         diffusers_transformer_prefix = f"transformer_blocks.{idx}"
         original_transformer_prefix = f"{PRIOR_ORIGINAL_PREFIX}.backbone.resblocks.{idx}"
@@ -148,7 +145,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
             }
         )
 
-    # <original>.final_ln -> <diffusers>.norm_out
+    # <original>.ln_post -> <diffusers>.norm_out
     diffusers_checkpoint.update(
         {
             "norm_out.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.ln_post.weight"],
@@ -156,7 +153,7 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
         }
     )
 
-    # <original>.out_proj -> <diffusers>.proj_to_clip_embeddings
+    # <original>.output_proj -> <diffusers>.proj_to_clip_embeddings
     diffusers_checkpoint.update(
         {
             "proj_to_clip_embeddings.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.output_proj.weight"],
@@ -216,6 +213,154 @@ def prior_ff_to_diffusers(checkpoint, *, diffusers_ff_prefix, original_ff_prefix
 
 
 # done prior
+
+
+# prior_image (only slightly different from prior)
+
+
+PRIOR_IMAGE_ORIGINAL_PREFIX = "wrapped"
+
+# Uses default arguments
+PRIOR_IMAGE_CONFIG = {
+    "num_attention_heads": 16,
+    "attention_head_dim": 1024 // 16,
+    "num_layers": 24,
+    "embedding_dim": 1024,
+    "num_embeddings": 1024,
+    "additional_embeddings": 0,
+    "time_embed_act_fn": "gelu",
+    "embedding_proj_norm": True,
+    "time_embed_dim": 1024 * 4,
+    "clip_embedding_dim": 1024,
+    "out_dim": 1024 * 2,
+}
+
+def prior_image_model_from_original_config():
+    model = PriorTransformer(**PRIOR_IMAGE_CONFIG)
+
+    return model
+
+
+def prior_image_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
+    diffusers_checkpoint = {}
+
+    # <original>.time_embed.c_fc -> <diffusers>.time_embedding.linear_1
+    diffusers_checkpoint.update(
+        {
+            "time_embedding.linear_1.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.time_embed.c_fc.weight"],
+            "time_embedding.linear_1.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.time_embed.c_fc.bias"],
+        }
+    )
+
+    # <original>.time_embed.c_proj -> <diffusers>.time_embedding.linear_2
+    diffusers_checkpoint.update(
+        {
+            "time_embedding.linear_2.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.time_embed.c_proj.weight"],
+            "time_embedding.linear_2.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.time_embed.c_proj.bias"],
+        }
+    )
+
+    # <original>.input_proj -> <diffusers>.proj_in
+    diffusers_checkpoint.update(
+        {
+            "proj_in.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.input_proj.weight"],
+            "proj_in.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.input_proj.bias"],
+        }
+    )
+
+    # <original>.clip_embed.0 -> <diffusers>.embedding_proj_norm
+    diffusers_checkpoint.update(
+        {
+            "embedding_proj_norm.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.clip_embed.0.weight"],
+            "embedding_proj_norm.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.clip_embed.0.bias"],
+        }
+    )
+
+    # <original>..clip_embed.1 -> <diffusers>.embedding_proj
+    diffusers_checkpoint.update(
+        {
+            "embedding_proj.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.clip_embed.1.weight"],
+            "embedding_proj.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.clip_embed.1.bias"],
+        }
+    )
+
+    # <original>.pos_emb -> <diffusers>.positional_embedding
+    diffusers_checkpoint.update({"positional_embedding": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.pos_emb"][None, :]})
+
+    # <original>.ln_pre -> <diffusers>.norm_in
+    diffusers_checkpoint.update(
+        {
+            "norm_in.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.ln_pre.weight"],
+            "norm_in.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.ln_pre.bias"],
+        }
+    )
+
+    # <original>.backbone.resblocks.<x> -> <diffusers>.transformer_blocks.<x>
+    for idx in range(len(model.transformer_blocks)):
+        diffusers_transformer_prefix = f"transformer_blocks.{idx}"
+        original_transformer_prefix = f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.backbone.resblocks.{idx}"
+
+        # <original>.attn -> <diffusers>.attn1
+        diffusers_attention_prefix = f"{diffusers_transformer_prefix}.attn1"
+        original_attention_prefix = f"{original_transformer_prefix}.attn"
+        diffusers_checkpoint.update(
+            prior_attention_to_diffusers(
+                checkpoint,
+                diffusers_attention_prefix=diffusers_attention_prefix,
+                original_attention_prefix=original_attention_prefix,
+                attention_head_dim=model.attention_head_dim,
+            )
+        )
+
+        # <original>.mlp -> <diffusers>.ff
+        diffusers_ff_prefix = f"{diffusers_transformer_prefix}.ff"
+        original_ff_prefix = f"{original_transformer_prefix}.mlp"
+        diffusers_checkpoint.update(
+            prior_ff_to_diffusers(
+                checkpoint, diffusers_ff_prefix=diffusers_ff_prefix, original_ff_prefix=original_ff_prefix
+            )
+        )
+
+        # <original>.ln_1 -> <diffusers>.norm1
+        diffusers_checkpoint.update(
+            {
+                f"{diffusers_transformer_prefix}.norm1.weight": checkpoint[
+                    f"{original_transformer_prefix}.ln_1.weight"
+                ],
+                f"{diffusers_transformer_prefix}.norm1.bias": checkpoint[f"{original_transformer_prefix}.ln_1.bias"],
+            }
+        )
+
+        # <original>.ln_2 -> <diffusers>.norm3
+        diffusers_checkpoint.update(
+            {
+                f"{diffusers_transformer_prefix}.norm3.weight": checkpoint[
+                    f"{original_transformer_prefix}.ln_2.weight"
+                ],
+                f"{diffusers_transformer_prefix}.norm3.bias": checkpoint[f"{original_transformer_prefix}.ln_2.bias"],
+            }
+        )
+
+    # <original>.ln_post -> <diffusers>.norm_out
+    diffusers_checkpoint.update(
+        {
+            "norm_out.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.ln_post.weight"],
+            "norm_out.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.ln_post.bias"],
+        }
+    )
+
+    # <original>.output_proj -> <diffusers>.proj_to_clip_embeddings
+    diffusers_checkpoint.update(
+        {
+            "proj_to_clip_embeddings.weight": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.output_proj.weight"],
+            "proj_to_clip_embeddings.bias": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.output_proj.bias"],
+        }
+    )
+
+    return diffusers_checkpoint
+
+
+# done prior_image
 
 
 # params_proj
@@ -313,6 +458,24 @@ def prior(*, args, checkpoint_map_location):
     return prior_model
 
 
+def prior_image(*, args, checkpoint_map_location):
+    print("loading prior_image")
+
+    prior_checkpoint = torch.load(args.prior_image_checkpoint_path, map_location=checkpoint_map_location)
+
+    prior_model = prior_image_model_from_original_config()
+
+    prior_diffusers_checkpoint = prior_image_original_checkpoint_to_diffusers_checkpoint(prior_model, prior_checkpoint)
+
+    del prior_checkpoint
+
+    load_checkpoint_to_model(prior_diffusers_checkpoint, prior_model, strict=True)
+
+    print("done loading prior_image")
+
+    return prior_model
+
+
 def params_proj(*, args, checkpoint_map_location):
     print("loading params_proj")
 
@@ -377,6 +540,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--prior_image_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to the prior_image checkpoint to convert.",
+    )
+
+    parser.add_argument(
         "--transmitter_checkpoint_path",
         default=None,
         type=str,
@@ -413,6 +584,9 @@ if __name__ == "__main__":
         print("YiYi TO-DO")
     elif args.debug == "prior":
         prior_model = prior(args=args, checkpoint_map_location=checkpoint_map_location)
+        prior_model.save_pretrained(args.dump_path)
+    elif args.debug == "prior_image":
+        prior_model = prior_image(args=args, checkpoint_map_location=checkpoint_map_location)
         prior_model.save_pretrained(args.dump_path)
     elif args.debug == "params_proj":
         params_proj_model = params_proj(args=args, checkpoint_map_location=checkpoint_map_location)

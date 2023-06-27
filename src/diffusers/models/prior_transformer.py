@@ -60,6 +60,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         additional_embeddings=4,
         dropout: float = 0.0,
         time_embed_act_fn: str = "silu",
+        embedding_proj_norm: bool = False,
         time_embed_dim: Optional[int] = None,
         clip_embedding_dim: Optional[int] = None,
         out_dim: Optional[int] = None,
@@ -84,6 +85,11 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.proj_in = nn.Linear(embedding_dim, inner_dim)
 
+        if embedding_proj_norm:
+            self.embedding_proj_norm = nn.LayerNorm(clip_embedding_dim)
+        else:
+            self.embedding_proj_norm = None
+            
         self.embedding_proj = nn.Linear(clip_embedding_dim, inner_dim)
 
         if self.config.clip_embedding_dim is None:
