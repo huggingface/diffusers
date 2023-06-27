@@ -183,7 +183,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
-        sample = sample / ((sigma **2 + 1) ** 0.5)
+        sample = sample / ((sigma**2 + 1) ** 0.5)
 
         self.is_scale_input_called = True
         return sample
@@ -202,12 +202,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace" and "leading" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[
+                ::-1
+            ].copy()
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
             timesteps += self.config.steps_offset
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)

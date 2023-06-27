@@ -257,7 +257,11 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         resolution //= 2
 
     if unet_params.transformer_depth is not None:
-        num_transformer_blocks = unet_params.transformer_depth if isinstance(unet_params.transformer_depth, int) else list(unet_params.transformer_depth)
+        num_transformer_blocks = (
+            unet_params.transformer_depth
+            if isinstance(unet_params.transformer_depth, int)
+            else list(unet_params.transformer_depth)
+        )
     else:
         num_transformer_blocks = 1
 
@@ -270,7 +274,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if use_linear_projection:
         # stable diffusion 2-base-512 and 2-768
         if head_dim is None:
-            head_dim_mult = unet_params.model_channels  // unet_params.num_head_channels
+            head_dim_mult = unet_params.model_channels // unet_params.num_head_channels
             head_dim = [head_dim_mult * c for c in list(unet_params.channel_mult)]
 
     class_embed_type = None
@@ -280,7 +284,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     context_dim = None
 
     if unet_params.context_dim is not None:
-        context_dim = unet_params.context_dim if isinstance(unet_params.context_dim, int) else unet_params.context_dim[0]
+        context_dim = (
+            unet_params.context_dim if isinstance(unet_params.context_dim, int) else unet_params.context_dim[0]
+        )
 
     if "num_classes" in unet_params:
         if unet_params.num_classes == "sequential":
@@ -775,7 +781,7 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
     for key in keys:
         for prefix in remove_prefixes:
             if key.startswith(prefix):
-                text_model_dict[key[len(prefix + "."):]] = checkpoint[key]
+                text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
 
     text_model.load_state_dict(text_model_dict)
 
@@ -787,7 +793,7 @@ textenc_conversion_lst = [
     ("token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
     ("ln_final.weight", "text_model.final_layer_norm.weight"),
     ("ln_final.bias", "text_model.final_layer_norm.bias"),
-    ("text_projection", "text_projection.weight")
+    ("text_projection", "text_projection.weight"),
 ]
 textenc_conversion_map = {x[0]: x[1] for x in textenc_conversion_lst}
 
@@ -876,7 +882,9 @@ def convert_paint_by_example_checkpoint(checkpoint):
 
 def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
     # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
-    text_model = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280)
+    text_model = CLIPTextModelWithProjection.from_pretrained(
+        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
+    )
 
     keys = list(checkpoint.keys())
 
@@ -892,13 +900,13 @@ def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
     for key in keys:
         # if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
         #     continue
-        if key[len(prefix):] in textenc_conversion_map:
+        if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
                 value = checkpoint[key].T
             else:
                 value = checkpoint[key]
 
-            text_model_dict[textenc_conversion_map[key[len(prefix):]]] = value
+            text_model_dict[textenc_conversion_map[key[len(prefix) :]]] = value
 
         if key.startswith(prefix + "transformer."):
             new_key = key[len(prefix + "transformer.") :]
@@ -1122,10 +1130,10 @@ def download_from_original_stable_diffusion_ckpt(
         PaintByExamplePipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionPipeline,
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
-        StableDiffusionXLPipeline,
-        StableDiffusionXLImg2ImgPipeline,
     )
 
     if pipeline_class is None:
