@@ -250,6 +250,9 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         # but time_embedding might be fp16, so we need to cast here.
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
+        
+        if self.embedding_proj_norm is not None:
+            proj_embedding = self.embedding_proj_norm(proj_embedding)
 
         proj_embeddings = self.embedding_proj(proj_embedding)
         if self.encoder_hidden_states_proj is not None and encoder_hidden_states is not None:

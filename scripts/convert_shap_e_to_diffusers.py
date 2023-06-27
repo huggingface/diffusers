@@ -222,8 +222,8 @@ PRIOR_IMAGE_ORIGINAL_PREFIX = "wrapped"
 
 # Uses default arguments
 PRIOR_IMAGE_CONFIG = {
-    "num_attention_heads": 16,
-    "attention_head_dim": 1024 // 16,
+    "num_attention_heads": 8,
+    "attention_head_dim": 1024 // 8,
     "num_layers": 24,
     "embedding_dim": 1024,
     "num_embeddings": 1024,
@@ -461,6 +461,7 @@ def prior(*, args, checkpoint_map_location):
 def prior_image(*, args, checkpoint_map_location):
     print("loading prior_image")
 
+    print(f"load checkpoint from {args.prior_image_checkpoint_path}")
     prior_checkpoint = torch.load(args.prior_image_checkpoint_path, map_location=checkpoint_map_location)
 
     prior_model = prior_image_model_from_original_config()
