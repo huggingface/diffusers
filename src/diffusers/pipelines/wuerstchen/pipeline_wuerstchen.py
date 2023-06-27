@@ -17,14 +17,14 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import CLIPTokenizer, CLIPTextModel
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import PaellaVQModel
-from ...utils import is_accelerate_available, logging, BaseOutput, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import DDPMScheduler
+from ...utils import BaseOutput, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from .modules import DiffNeXt, Prior
 
-from .modules import DiffNeXt, Prior, EfficientNetEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

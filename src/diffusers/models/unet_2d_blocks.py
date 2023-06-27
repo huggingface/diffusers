@@ -26,11 +26,11 @@ from .resnet import (
     Downsample2D,
     FirDownsample2D,
     FirUpsample2D,
+    GlobalResponseResidualBlock,
     KDownsample2D,
     KUpsample2D,
     ResnetBlock2D,
     Upsample2D,
-    GlobalResponseResidualBlock,
 )
 from .transformer_2d import Transformer2DModel
 
