@@ -525,7 +525,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size):
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
@@ -534,7 +534,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
 
-        add_time_ids = torch.tensor([add_time_ids], dtype=torch.long)
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
     @torch.no_grad()
@@ -710,7 +710,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # 7. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
-        add_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size)
+        add_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype)
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
