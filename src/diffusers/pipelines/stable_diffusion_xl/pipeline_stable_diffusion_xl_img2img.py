@@ -18,7 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-from pytorch_lightning import seed_everything
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
@@ -566,7 +565,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             init_latents = torch.cat([init_latents], dim=0)
 
         shape = init_latents.shape
-        seed_everything(0)
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         print("noise", noise.abs().sum())
         print("image", init_latents.abs().sum())
