@@ -115,6 +115,7 @@ def import_model_class_from_model_name_or_path(
         pretrained_model_name_or_path,
         subfolder=subfolder,
         revision=revision,
+        use_auth_token=True
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -664,6 +665,7 @@ def main(args):
                 torch_dtype=torch_dtype,
                 safety_checker=None,
                 revision=args.revision,
+                use_auth_token=True
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -706,12 +708,14 @@ def main(args):
         subfolder="tokenizer",
         revision=args.revision,
         use_fast=False,
+        use_auth_token=True,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
         revision=args.revision,
         use_fast=False,
+        use_auth_token=True
     )
 
     # import correct text encoder classes
@@ -723,17 +727,17 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, use_auth_token=True, use_auth_token=True
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, use_auth_token=True)
 
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
     )
 
     # We only train the additional adapter LoRA layers
@@ -839,6 +843,7 @@ def main(args):
             args.pretrained_model_name_or_path,
             revision=args.revision,
             torch_dtype=weight_dtype,
+            use_auth_token=True
         )
         temp_pipeline.load_lora_weights(input_dir)
 
@@ -1139,6 +1144,7 @@ def main(args):
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
+                    use_auth_token=True,
                 )
 
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
@@ -1207,7 +1213,7 @@ def main(args):
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype, use_auth_token=True
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
