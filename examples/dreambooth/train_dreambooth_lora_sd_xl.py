@@ -75,7 +75,6 @@ def save_model_card(
     train_text_encoder=False,
     prompt=str,
     repo_folder=None,
-    pipeline: DiffusionPipeline = None,
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -910,6 +909,7 @@ def main(args):
             prompt_embeds = prompt_embeds.to(accelerator.device)
             add_text_embeds = add_text_embeds.to(accelerator.device)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+        print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
         return prompt_embeds, unet_added_cond_kwargs
 
     instance_prompt_hidden_states, instance_unet_added_conditions = (
