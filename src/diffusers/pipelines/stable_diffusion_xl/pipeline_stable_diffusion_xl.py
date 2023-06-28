@@ -47,7 +47,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionXLPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
@@ -625,10 +627,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
+            element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
