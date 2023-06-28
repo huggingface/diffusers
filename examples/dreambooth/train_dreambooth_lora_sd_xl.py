@@ -912,12 +912,12 @@ def main(args):
         print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
         return prompt_embeds, unet_added_cond_kwargs
 
-    instance_prompt_hidden_states, instance_unet_added_conditions = (
+    (instance_prompt_hidden_states, instance_unet_added_conditions) = (
         compute_embeddings(args.instance_prompt, text_encoders, tokenizers),
     )
     class_prompt_hidden_states, class_unet_added_conditions = None, None
     if args.with_prior_preservation:
-        class_prompt_hidden_states, class_unet_added_conditions = compute_embeddings(
+        (class_prompt_hidden_states, class_unet_added_conditions) = compute_embeddings(
             args.class_prompt, text_encoders, tokenizers
         )
 
