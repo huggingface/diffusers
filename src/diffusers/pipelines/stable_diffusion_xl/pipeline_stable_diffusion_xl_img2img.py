@@ -368,9 +368,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ""
             uncond_tokens: List[str]
-            if prompt is not None and type(prompt) is not type(negative_prompt):
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
