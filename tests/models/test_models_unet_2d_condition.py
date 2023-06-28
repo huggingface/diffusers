@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+from dataclasses import dataclass
 import gc
 import os
 import tempfile
@@ -33,6 +35,7 @@ from diffusers.utils import (
     torch_all_close,
     torch_device,
 )
+from diffusers.utils import BaseOutput
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism
 
@@ -1088,3 +1091,13 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+    def test_pickle():
+        @dataclass
+        class NetParams(BaseOutput):
+            sample: torch.FloatTensor
+
+        m = NetParams(sample=torch.randn(1, 10))
+        n = copy.copy(m)
+
+        assert m == n
