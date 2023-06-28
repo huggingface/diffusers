@@ -8,6 +8,7 @@ import unittest
 from typing import Callable, Union
 
 import numpy as np
+import PIL
 import torch
 
 import diffusers
@@ -39,8 +40,27 @@ class PipelineLatentTesterMixin:
             "`image_params` are tested for if all accepted input image types (i.e. `pt`,`pil`,`np`) are producing same results"
         )
 
+    @property
+    def image_latents_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `image_latents_params` in the child test class. "
+            "`image_latents_params` are tested for if passing latents directly are producing same results"
+        )
+
     def get_dummy_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inputs(device, seed)
+
+        def convert_to_pt(image):
+            if isinstance(image, torch.Tensor):
+                input_image = image
+            elif isinstance(image, np.ndarray):
+                input_image = VaeImageProcessor.numpy_to_pt(image)
+            elif isinstance(image, PIL.Image.Image):
+                input_image = VaeImageProcessor.pil_to_numpy(image)
+                input_image = VaeImageProcessor.numpy_to_pt(input_image)
+            else:
+                raise ValueError(f"unsupported input_image_type {type(image)}")
+            return input_image
 
         def convert_pt_to_type(image, input_image_type):
             if input_image_type == "pt":
@@ -56,21 +76,32 @@ class PipelineLatentTesterMixin:
 
         for image_param in self.image_params:
             if image_param in inputs.keys():
-                inputs[image_param] = convert_pt_to_type(inputs[image_param], input_image_type)
+                inputs[image_param] = convert_pt_to_type(
+                    convert_to_pt(inputs[image_param]).to(device), input_image_type
+                )
 
         inputs["output_type"] = output_type
 
         return inputs
 
     def test_pt_np_pil_outputs_equivalent(self, expected_max_diff=1e-4):
+        self._test_pt_np_pil_outputs_equivalent(expected_max_diff=expected_max_diff)
+
+    def _test_pt_np_pil_outputs_equivalent(self, expected_max_diff=1e-4, input_image_type="pt"):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        output_pt = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="pt"))[0]
-        output_np = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="np"))[0]
-        output_pil = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="pil"))[0]
+        output_pt = pipe(
+            **self.get_dummy_inputs_by_type(torch_device, input_image_type=input_image_type, output_type="pt")
+        )[0]
+        output_np = pipe(
+            **self.get_dummy_inputs_by_type(torch_device, input_image_type=input_image_type, output_type="np")
+        )[0]
+        output_pil = pipe(
+            **self.get_dummy_inputs_by_type(torch_device, input_image_type=input_image_type, output_type="pil")
+        )[0]
 
         max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
         self.assertLess(
@@ -97,6 +128,31 @@ class PipelineLatentTesterMixin:
         self.assertLess(max_diff, 1e-4, "`input_type=='pt'` generate different result from `input_type=='np'`")
         max_diff = np.abs(out_input_pil - out_input_np).max()
         self.assertLess(max_diff, 1e-2, "`input_type=='pt'` generate different result from `input_type=='np'`")
+
+    def test_latents_input(self):
+        if len(self.image_latents_params) == 0:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
+
+        vae = components["vae"]
+        inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
+        generator = inputs["generator"]
+        for image_param in self.image_latents_params:
+            if image_param in inputs.keys():
+                inputs[image_param] = (
+                    vae.encode(inputs[image_param]).latent_dist.sample(generator) * vae.config.scaling_factor
+                )
+        out_latents_inputs = pipe(**inputs)[0]
+
+        max_diff = np.abs(out - out_latents_inputs).max()
+        self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
 
 
 @require_torch
@@ -584,7 +640,9 @@ class PipelineTesterMixin:
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass()
 
-    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True, expected_max_diff=1e-4):
+    def _test_xformers_attention_forwardGenerator_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
+    ):
         if not self.test_xformers_attention:
             return
 
@@ -604,7 +662,8 @@ class PipelineTesterMixin:
             max_diff = np.abs(output_with_offload - output_without_offload).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
-        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
@@ -650,7 +709,7 @@ class PipelineTesterMixin:
                     if key in self.batch_params:
                         inputs[key] = batch_size * [inputs[key]]
 
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
 

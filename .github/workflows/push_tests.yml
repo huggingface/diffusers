@@ -17,6 +17,7 @@ jobs:
   run_slow_tests:
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         config:
           - name: Slow PyTorch CUDA tests on Ubuntu

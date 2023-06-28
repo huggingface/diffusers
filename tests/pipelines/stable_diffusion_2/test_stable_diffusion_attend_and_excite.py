@@ -45,6 +45,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     # Attend and excite requires being able to run a backward pass at
     # inference time. There's no deterministic backward operator for pad

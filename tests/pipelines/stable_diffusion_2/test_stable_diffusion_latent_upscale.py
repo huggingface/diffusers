@@ -52,6 +52,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, P
     image_params = frozenset(
         []
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
 
     test_cpu_offload = True
 

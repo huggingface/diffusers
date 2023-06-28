@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import flax.linen as nn
@@ -81,6 +81,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of layers per block.
         attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
+        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+            The number of attention heads.
         cross_attention_dim (`int`, *optional*, defaults to 768):
             The dimension of the cross attention features.
         dropout (`float`, *optional*, defaults to 0):
@@ -107,6 +109,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = 8
+    num_attention_heads: Optional[Union[int, Tuple[int]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -131,6 +134,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 
+        # If `num_attention_heads` is not defined (which is the case for most models)
+        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        num_attention_heads = self.num_attention_heads or self.attention_head_dim
+
         # input
         self.conv_in = nn.Conv(
             block_out_channels[0],
@@ -150,9 +161,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(only_cross_attention, bool):
             only_cross_attention = (only_cross_attention,) * len(self.down_block_types)
 
-        attention_head_dim = self.attention_head_dim
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(self.down_block_types)
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
         # down
         down_blocks = []
@@ -168,7 +178,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
-                    attn_num_head_channels=attention_head_dim[i],
+                    num_attention_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
@@ -192,7 +202,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.mid_block = FlaxUNetMidBlock2DCrossAttn(
             in_channels=block_out_channels[-1],
             dropout=self.dropout,
-            attn_num_head_channels=attention_head_dim[-1],
+            num_attention_heads=num_attention_heads[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
             dtype=self.dtype,
@@ -201,7 +211,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         # up
         up_blocks = []
         reversed_block_out_channels = list(reversed(block_out_channels))
-        reversed_attention_head_dim = list(reversed(attention_head_dim))
+        reversed_num_attention_heads = list(reversed(num_attention_heads))
         only_cross_attention = list(reversed(only_cross_attention))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(self.up_block_types):
@@ -217,7 +227,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
                     num_layers=self.layers_per_block + 1,
-                    attn_num_head_channels=reversed_attention_head_dim[i],
+                    num_attention_heads=reversed_num_attention_heads[i],
                     add_upsample=not is_final_block,
                     dropout=self.dropout,
                     use_linear_projection=self.use_linear_projection,

@@ -15,7 +15,6 @@
 # This model implementation is heavily inspired by https://github.com/haofanwang/ControlNet-for-Diffusers/
 
 import inspect
-import os
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -26,11 +25,10 @@ import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    PIL_INTERPOLATION,
     is_accelerate_available,
     is_accelerate_version,
     is_compiled_module,
@@ -224,7 +222,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
     return mask, masked_image
 
 
-class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
@@ -316,6 +314,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.control_image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+        )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
@@ -432,6 +433,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -456,7 +458,14 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -637,6 +646,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         prompt_embeds=None,
         negative_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
+        control_guidance_start=0.0,
+        control_guidance_end=1.0,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -708,7 +719,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 raise ValueError("A single batch of multiple conditionings are supported at the moment.")
             elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
-                    "For multiple controlnets: `image` must have the same length as the number of controlnets."
+                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
 
             for image_ in image:
@@ -742,24 +753,51 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         else:
             assert False
 
+        if len(control_guidance_start) != len(control_guidance_end):
+            raise ValueError(
+                f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
+            )
+
+        if isinstance(self.controlnet, MultiControlNetModel):
+            if len(control_guidance_start) != len(self.controlnet.nets):
+                raise ValueError(
+                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(self.controlnet.nets)} controlnets available. Make sure to provide {len(self.controlnet.nets)}."
+                )
+
+        for start, end in zip(control_guidance_start, control_guidance_end):
+            if start >= end:
+                raise ValueError(
+                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
+                )
+            if start < 0.0:
+                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
+            if end > 1.0:
+                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
+
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
+        image_is_np = isinstance(image, np.ndarray)
         image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
         image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
+        image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
 
-        if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
+        if (
+            not image_is_pil
+            and not image_is_tensor
+            and not image_is_np
+            and not image_is_pil_list
+            and not image_is_tensor_list
+            and not image_is_np_list
+        ):
             raise TypeError(
-                "image must be passed and be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
+                f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image)}"
             )
 
         if image_is_pil:
             image_batch_size = 1
-        elif image_is_tensor:
-            image_batch_size = image.shape[0]
-        elif image_is_pil_list:
-            image_batch_size = len(image)
-        elif image_is_tensor_list:
+        else:
             image_batch_size = len(image)
 
         if prompt is not None and isinstance(prompt, str):
@@ -787,29 +825,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        if not isinstance(image, torch.Tensor):
-            if isinstance(image, PIL.Image.Image):
-                image = [image]
-
-            if isinstance(image[0], PIL.Image.Image):
-                images = []
-
-                for image_ in image:
-                    image_ = image_.convert("RGB")
-                    image_ = image_.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
-                    image_ = np.array(image_)
-                    image_ = image_[None, :]
-                    images.append(image_)
-
-                image = images
-
-                image = np.concatenate(image, axis=0)
-                image = np.array(image).astype(np.float32) / 255.0
-                image = image.transpose(0, 3, 1, 2)
-                image = torch.from_numpy(image)
-            elif isinstance(image[0], torch.Tensor):
-                image = torch.cat(image, dim=0)
-
+        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -868,8 +884,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             # if pure noise then scale the initial latents by the  Scheduler's init sigma
             latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
         else:
-            latents = latents.to(device)
-            latents = latents * self.scheduler.init_noise_sigma
+            noise = latents.to(device)
+            latents = noise * self.scheduler.init_noise_sigma
 
         outputs = (latents,)
 
@@ -963,18 +979,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         return image_latents
 
-    # override DiffusionPipeline
-    def save_pretrained(
-        self,
-        save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
-        variant: Optional[str] = None,
-    ):
-        if isinstance(self.controlnet, ControlNetModel):
-            super().save_pretrained(save_directory, safe_serialization, variant)
-        else:
-            raise NotImplementedError("Currently, the `save_pretrained()` is not implemented for Multi-ControlNet.")
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -983,7 +987,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         control_image: Union[
-            torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -1004,6 +1013,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 0.5,
         guess_mode: bool = False,
+        control_guidance_start: Union[float, List[float]] = 0.0,
+        control_guidance_end: Union[float, List[float]] = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1087,6 +1098,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             guess_mode (`bool`, *optional*, defaults to `False`):
                 In this mode, the ControlNet encoder will try best to recognize the content of the input image even if
                 you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the controlnet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the controlnet stops applying.
 
         Examples:
 
@@ -1097,8 +1112,21 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+
         # 0. Default height and width to unet
         height, width = self._default_height_width(height, width, image)
+
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
+                control_guidance_end
+            ]
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1111,6 +1139,8 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             prompt_embeds,
             negative_prompt_embeds,
             controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
         )
 
         # 2. Define call parameters
@@ -1127,8 +1157,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
-
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
@@ -1140,6 +1168,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         guess_mode = guess_mode or global_pool_conditions
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -1148,6 +1179,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Prepare image
@@ -1241,6 +1273,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 7.1 Create tensor stating which controlnets to keep
+        controlnet_keep = []
+        for i in range(num_inference_steps):
+            keeps = [
+                1.0 - float(i / num_inference_steps < s or (i + 1) / num_inference_steps > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1259,12 +1300,17 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
+                if isinstance(controlnet_keep[i], list):
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                else:
+                    cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
+
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=control_image,
-                    conditioning_scale=controlnet_conditioning_scale,
+                    conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
@@ -1303,7 +1349,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     init_mask = mask[:1]
 
                     if i < len(timesteps) - 1:
-                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([t]))
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 

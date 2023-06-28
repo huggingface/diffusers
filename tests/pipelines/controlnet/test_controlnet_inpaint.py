@@ -40,6 +40,7 @@ from diffusers.utils.testing_utils import enable_full_determinism, require_torch
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -51,7 +52,8 @@ class ControlNetInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
+    image_params = frozenset({"control_image"})  # skip `image` and `mask` for now, only test for control_image
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -253,6 +255,12 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             cross_attention_dim=32,
         )
         torch.manual_seed(0)
+
+        def init_weights(m):
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.normal(m.weight)
+                m.bias.data.fill_(1.0)
+
         controlnet1 = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -261,6 +269,8 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet1.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         controlnet2 = ControlNetModel(
             block_out_channels=(32, 64),
@@ -270,6 +280,8 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet2.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -355,6 +367,39 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         return inputs
 
+    def test_control_guidance_switch(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        scale = 10.0
+        steps = 4
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_1 = pipe(**inputs)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_2 = pipe(**inputs, control_guidance_start=0.1, control_guidance_end=0.2)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])[0]
+
+        # make sure that all outputs are different
+        assert np.sum(np.abs(output_1 - output_2)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_3)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_4)) > 1e-3
+
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
@@ -379,21 +424,6 @@ class MultiControlNetInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_float16(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_local(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_optional_components(self):
-        ...
 
 
 @slow

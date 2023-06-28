@@ -34,7 +34,7 @@ In order to leverage onnxruntime to accelerate training, please use train_uncond
 The command to train a DDPM UNet model on the Oxford Flowers dataset with onnxruntime:
 
 ```bash
-accelerate launch train_unconditional_ort.py \
+accelerate launch train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
   --resolution=64 --center_crop --random_flip \
   --output_dir="ddpm-ema-flowers-64" \
