@@ -71,14 +71,9 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
         self.additional_embeddings = additional_embeddings
 
-        if time_embed_dim is None:
-            time_embed_dim = inner_dim
-
-        if clip_embedding_dim is None:
-            clip_embedding_dim = embedding_dim
-
-        if out_dim is None:
-            out_dim = embedding_dim
+        time_embed_dim = time_embed_dim or inner_dim
+        embedding_proj_dim = embedding_proj_dim or embedding_dim
+        out_dim = out_dim or embedding_dim
 
         self.time_proj = Timesteps(inner_dim, True, 0)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, out_dim=inner_dim, act_fn=time_embed_act_fn)
