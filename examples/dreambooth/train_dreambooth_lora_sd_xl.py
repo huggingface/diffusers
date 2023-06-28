@@ -729,7 +729,7 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, use_auth_token=True, use_auth_token=True
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, use_auth_token=True,
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
