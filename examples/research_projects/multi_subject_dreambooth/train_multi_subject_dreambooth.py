@@ -11,25 +11,20 @@ from os.path import basename, join
 from pathlib import Path
 from typing import List
 
-import datasets
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import transformers
-from PIL import Image
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, upload_folder
 from torch import dtype
 from torch.nn import Module
 from torch.utils.data import Dataset
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
+import datasets
 import diffusers
+import transformers
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration, set_seed
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -40,6 +35,12 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from huggingface_hub import create_repo, upload_folder
+from PIL import Image
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
+
 
 if is_wandb_available():
     import wandb
@@ -81,7 +82,7 @@ def generate_validation_images(
     accelerator: Accelerator,
     weight_dtype: dtype,
 ):
-    logger.info(f"Running validation images.")
+    logger.info("Running validation images.")
 
     pipeline_args = {}
 
