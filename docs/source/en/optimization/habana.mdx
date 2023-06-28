@@ -16,8 +16,8 @@ specific language governing permissions and limitations under the License.
 
 ## Requirements
 
-- Optimum Habana 1.5 or later, [here](https://huggingface.co/docs/optimum/habana/installation) is how to install it.
-- SynapseAI 1.9.
+- Optimum Habana 1.6 or later, [here](https://huggingface.co/docs/optimum/habana/installation) is how to install it.
+- SynapseAI 1.10.
 
 
 ## Inference Pipeline
@@ -41,7 +41,7 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
     scheduler=scheduler,
     use_habana=True,
     use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion",
+    gaudi_config="Habana/stable-diffusion-2",
 )
 ```
 
@@ -62,18 +62,18 @@ For more information, check out Optimum Habana's [documentation](https://hugging
 
 ## Benchmark
 
-Here are the latencies for Habana first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) Gaudi configuration (mixed precision bf16/fp32):
+Here are the latencies for Habana first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) and [Habana/stable-diffusion-2](https://huggingface.co/Habana/stable-diffusion-2) Gaudi configurations (mixed precision bf16/fp32):
 
 - [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) (512x512 resolution):
 
 |                        | Latency (batch size = 1) | Throughput (batch size = 8) |
 | ---------------------- |:------------------------:|:---------------------------:|
-| first-generation Gaudi | 4.22s                    | 0.29 images/s               |
-| Gaudi2                 | 1.70s                    | 0.925 images/s              |
+| first-generation Gaudi | 3.80s                    | 0.308 images/s              |
+| Gaudi2                 | 1.33s                    | 1.081 images/s              |
 
 - [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (768x768 resolution):
 
 |                        | Latency (batch size = 1) | Throughput                      |
 | ---------------------- |:------------------------:|:-------------------------------:|
-| first-generation Gaudi | 23.3s                    | 0.045 images/s (batch size = 2) |
-| Gaudi2                 | 7.75s                    | 0.14 images/s (batch size = 5)  |
+| first-generation Gaudi | 10.2s                    | 0.108 images/s (batch size = 4) |
+| Gaudi2                 | 3.17s                    | 0.379 images/s (batch size = 8) |
