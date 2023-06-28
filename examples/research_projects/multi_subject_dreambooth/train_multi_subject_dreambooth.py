@@ -17,11 +17,11 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from PIL import Image
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
-from PIL import Image
 from torch import dtype
 from torch.nn import Module
 from torch.utils.data import Dataset
@@ -30,7 +30,13 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, DPMSolverMultistepScheduler, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -44,11 +50,10 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def log_validation_images_to_tracker(images: List[np.array], label: str, validation_prompt: str,
-                                     accelerator: Accelerator, epoch: int):
-    logger.info(
-        f"Logging images to tracker for validation prompt: {validation_prompt}."
-    )
+def log_validation_images_to_tracker(
+    images: List[np.array], label: str, validation_prompt: str, accelerator: Accelerator, epoch: int
+):
+    logger.info(f"Logging images to tracker for validation prompt: {validation_prompt}.")
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
@@ -58,8 +63,8 @@ def log_validation_images_to_tracker(images: List[np.array], label: str, validat
             tracker.log(
                 {
                     "validation": [
-                        wandb.Image(image, caption=f"{label}_{epoch}_{i}: {validation_prompt}") for i, image in
-                        enumerate(images)
+                        wandb.Image(image, caption=f"{label}_{epoch}_{i}: {validation_prompt}")
+                        for i, image in enumerate(images)
                     ]
                 }
             )
@@ -67,8 +72,15 @@ def log_validation_images_to_tracker(images: List[np.array], label: str, validat
 
 # TODO: Add `prompt_embeds` and `negative_prompt_embeds` parameters to the function when `pre_compute_text_embeddings`
 #  argument is implemented.
-def generate_validation_images(text_encoder: Module, tokenizer: Module, unet: Module, vae: Module,
-                               arguments: argparse.Namespace, accelerator: Accelerator, weight_dtype: dtype):
+def generate_validation_images(
+    text_encoder: Module,
+    tokenizer: Module,
+    unet: Module,
+    vae: Module,
+    arguments: argparse.Namespace,
+    accelerator: Accelerator,
+    weight_dtype: dtype,
+):
     logger.info(f"Running validation images.")
 
     pipeline_args = {}
@@ -105,13 +117,18 @@ def generate_validation_images(text_encoder: Module, tokenizer: Module, unet: Mo
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    generator = None if arguments.seed is None else torch.Generator(device=accelerator.device).manual_seed(
-        arguments.seed)
+    generator = (
+        None if arguments.seed is None else torch.Generator(device=accelerator.device).manual_seed(arguments.seed)
+    )
 
     images_sets = []
-    for vp, nvi, vnp, vis, vgs in zip(arguments.validation_prompt, arguments.validation_number_images,
-                                      arguments.validation_negative_prompt, arguments.validation_inference_steps,
-                                      arguments.validation_guidance_scale):
+    for vp, nvi, vnp, vis, vgs in zip(
+        arguments.validation_prompt,
+        arguments.validation_number_images,
+        arguments.validation_negative_prompt,
+        arguments.validation_inference_steps,
+        arguments.validation_guidance_scale,
+    ):
         images = []
         if vp is not None:
             logger.info(
@@ -119,11 +136,7 @@ def generate_validation_images(text_encoder: Module, tokenizer: Module, unet: Mo
                 f"guidance scale: {vgs}."
             )
 
-            pipeline_args = {"prompt": vp,
-                             "negative_prompt": vnp,
-                             "num_inference_steps": vis,
-                             "guidance_scale": vgs
-                             }
+            pipeline_args = {"prompt": vp, "negative_prompt": vnp, "num_inference_steps": vis, "guidance_scale": vgs}
 
             # run inference
             # TODO: it would be good to measure whether it's faster to run inference on all images at once, one at a
@@ -393,37 +406,37 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="A prompt that is used during validation to verify that the model is learning. You can use commas to "
-             "define multiple negative prompts. This parameter can be defined also within the file given by "
-             "`concepts_list` parameter in the respective subject.",
+        "define multiple negative prompts. This parameter can be defined also within the file given by "
+        "`concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_number_images",
         type=int,
         default=4,
         help="Number of images that should be generated during validation with the validation parameters given. This "
-             "can be defined within the file given by `concepts_list` parameter in the respective subject.",
+        "can be defined within the file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_negative_prompt",
         type=str,
         default=None,
         help="A negative prompt that is used during validation to verify that the model is learning. You can use commas"
-             " to define multiple negative prompts, each one corresponding to a validation prompt. This parameter can "
-             "be defined also within the file given by `concepts_list` parameter in the respective subject.",
+        " to define multiple negative prompts, each one corresponding to a validation prompt. This parameter can "
+        "be defined also within the file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_inference_steps",
         type=int,
         default=25,
         help="Number of inference steps (denoising steps) to run during validation. This can be defined within the "
-             "file given by `concepts_list` parameter in the respective subject.",
+        "file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--validation_guidance_scale",
         type=float,
         default=7.5,
         help="To control how much the image generation process follows the text prompt. This can be defined within the "
-             "file given by `concepts_list` parameter in the respective subject.",
+        "file given by `concepts_list` parameter in the respective subject.",
     )
     parser.add_argument(
         "--mixed_precision",
@@ -464,7 +477,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Path to json file containing a list of multiple concepts, will overwrite parameters like instance_prompt,"
-             " class_prompt, etc.",
+        " class_prompt, etc.",
     )
 
     if input_args:
@@ -473,22 +486,27 @@ def parse_args(input_args=None):
         args = parser.parse_args()
 
     if not args.concepts_list and (not args.instance_data_dir or not args.instance_prompt):
-        raise ValueError("You must specify either instance parameters (data directory, prompt, etc.) or use "
-                         "the `concept_list` parameter and specify them within the file.")
+        raise ValueError(
+            "You must specify either instance parameters (data directory, prompt, etc.) or use "
+            "the `concept_list` parameter and specify them within the file."
+        )
 
     if args.concepts_list:
         if args.instance_prompt:
             raise ValueError("If you are using `concepts_list` parameter, define the instance prompt within the file.")
         if args.instance_data_dir:
-            raise ValueError("If you are using `concepts_list` parameter, define the instance data directory within "
-                             "the file.")
+            raise ValueError(
+                "If you are using `concepts_list` parameter, define the instance data directory within " "the file."
+            )
         if args.validation_steps and (args.validation_prompt or args.validation_negative_prompt):
-            raise ValueError("If you are using `concepts_list` parameter, define validation parameters for "
-                             "each subject within the file:\n - `validation_prompt`."
-                             "\n - `validation_negative_prompt`.\n - `validation_guidance_scale`."
-                             "\n - `validation_number_images`.\n - `validation_prompt`."
-                             "\n - `validation_inference_steps`.\nThe `validation_steps` parameter is the only one "
-                             "that needs to be defined outside the file.")
+            raise ValueError(
+                "If you are using `concepts_list` parameter, define validation parameters for "
+                "each subject within the file:\n - `validation_prompt`."
+                "\n - `validation_negative_prompt`.\n - `validation_guidance_scale`."
+                "\n - `validation_number_images`.\n - `validation_prompt`."
+                "\n - `validation_inference_steps`.\nThe `validation_steps` parameter is the only one "
+                "that needs to be defined outside the file."
+            )
 
     env_local_rank = int(environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -502,19 +520,23 @@ def parse_args(input_args=None):
                 raise ValueError("You must specify prompt for class images.")
         else:
             if args.class_data_dir:
-                raise ValueError(f"If you are using `concepts_list` parameter, define the class data directory within "
-                                 f"the file.")
+                raise ValueError(
+                    f"If you are using `concepts_list` parameter, define the class data directory within " f"the file."
+                )
             if args.class_prompt:
-                raise ValueError(f"If you are using `concepts_list` parameter, define the class prompt within "
-                                 f"the file.")
+                raise ValueError(
+                    f"If you are using `concepts_list` parameter, define the class prompt within " f"the file."
+                )
     else:
         # logger is not available yet
         if not args.class_data_dir:
             warnings.warn(
-                "Ignoring `class_data_dir` parameter, you need to use it together with `with_prior_preservation`.")
+                "Ignoring `class_data_dir` parameter, you need to use it together with `with_prior_preservation`."
+            )
         if not args.class_prompt:
             warnings.warn(
-                "Ignoring `class_prompt` parameter, you need to use it together with `with_prior_preservation`.")
+                "Ignoring `class_prompt` parameter, you need to use it together with `with_prior_preservation`."
+            )
 
     return args
 
@@ -526,14 +548,14 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-            self,
-            instance_data_root,
-            instance_prompt,
-            tokenizer,
-            class_data_root=None,
-            class_prompt=None,
-            size=512,
-            center_crop=False,
+        self,
+        instance_data_root,
+        instance_prompt,
+        tokenizer,
+        class_data_root=None,
+        class_prompt=None,
+        size=512,
+        center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -699,30 +721,34 @@ def main(args):
             args.validation_guidance_scale = []
 
         for concept in concepts_list:
-            instance_data_dir.append(concept['instance_data_dir'])
-            instance_prompt.append(concept['instance_prompt'])
+            instance_data_dir.append(concept["instance_data_dir"])
+            instance_prompt.append(concept["instance_prompt"])
 
             if args.with_prior_preservation:
                 try:
-                    class_data_dir.append(concept['class_data_dir'])
-                    class_prompt.append(concept['class_prompt'])
+                    class_data_dir.append(concept["class_data_dir"])
+                    class_prompt.append(concept["class_prompt"])
                 except KeyError:
-                    raise KeyError("`class_data_dir` or `class_prompt` not found in concepts_list while using "
-                                   "`with_prior_preservation`.")
+                    raise KeyError(
+                        "`class_data_dir` or `class_prompt` not found in concepts_list while using "
+                        "`with_prior_preservation`."
+                    )
             else:
-                if 'class_data_dir' in concept:
-                    warnings.warn("Ignoring `class_data_dir` key, to use it you need to enable "
-                                  "`with_prior_preservation`.")
-                if 'class_prompt' in concept:
-                    warnings.warn("Ignoring `class_prompt` key, to use it you need to enable "
-                                  "`with_prior_preservation`.")
+                if "class_data_dir" in concept:
+                    warnings.warn(
+                        "Ignoring `class_data_dir` key, to use it you need to enable " "`with_prior_preservation`."
+                    )
+                if "class_prompt" in concept:
+                    warnings.warn(
+                        "Ignoring `class_prompt` key, to use it you need to enable " "`with_prior_preservation`."
+                    )
 
             if args.validation_steps:
-                args.validation_prompt.append(concept.get('validation_prompt', None))
-                args.validation_number_images.append(concept.get('validation_number_images', 4))
-                args.validation_negative_prompt.append(concept.get('validation_negative_prompt', None))
-                args.validation_inference_steps.append(concept.get('validation_inference_steps', 25))
-                args.validation_guidance_scale.append(concept.get('validation_guidance_scale', 7.5))
+                args.validation_prompt.append(concept.get("validation_prompt", None))
+                args.validation_number_images.append(concept.get("validation_number_images", 4))
+                args.validation_negative_prompt.append(concept.get("validation_negative_prompt", None))
+                args.validation_inference_steps.append(concept.get("validation_inference_steps", 25))
+                args.validation_guidance_scale.append(concept.get("validation_guidance_scale", 7.5))
     else:
         # Parse instance and class inputs, and double check that lengths match
         instance_data_dir = args.instance_data_dir.split(",")
@@ -752,8 +778,9 @@ def main(args):
                     negative_validation_prompts.append(None)
             args.validation_negative_prompt = negative_validation_prompts
 
-            assert num_of_validation_prompts == len(negative_validation_prompts), \
-                "The length of negative prompts for validation is greater than the number of validation prompts."
+            assert num_of_validation_prompts == len(
+                negative_validation_prompts
+            ), "The length of negative prompts for validation is greater than the number of validation prompts."
             args.validation_inference_steps = [args.validation_inference_steps] * num_of_validation_prompts
             args.validation_guidance_scale = [args.validation_guidance_scale] * num_of_validation_prompts
 
@@ -810,15 +837,15 @@ def main(args):
                 sample_dataloader = accelerator.prepare(sample_dataloader)
                 pipeline.to(accelerator.device)
 
-                for example in tqdm(sample_dataloader,
-                                    desc="Generating class images",
-                                    disable=not accelerator.is_local_main_process):
+                for example in tqdm(
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                ):
                     images = pipeline(example["prompt"]).images
 
                     for ii, image in enumerate(images):
                         hash_image = hashlib.sha1(image.tobytes()).hexdigest()
                         image_filename = (
-                                class_images_dir / f"{example['index'][ii] + cur_class_images}-{hash_image}.jpg"
+                            class_images_dir / f"{example['index'][ii] + cur_class_images}-{hash_image}.jpg"
                         )
                         image.save(image_filename)
 
@@ -886,7 +913,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -1047,7 +1074,9 @@ def main(args):
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                time_steps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                time_steps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+                )
                 time_steps = time_steps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
@@ -1107,22 +1136,20 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                    if args.validation_steps and any(args.validation_prompt) and \
-                            global_step % args.validation_steps == 0:
+                    if (
+                        args.validation_steps
+                        and any(args.validation_prompt)
+                        and global_step % args.validation_steps == 0
+                    ):
                         images_set = generate_validation_images(
-                            text_encoder,
-                            tokenizer,
-                            unet,
-                            vae,
-                            args,
-                            accelerator,
-                            weight_dtype
+                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype
                         )
                         for images, validation_prompt in zip(images_set, args.validation_prompt):
                             if len(images) > 0:
                                 label = str(uuid.uuid1())[:8]  # generate an id for different set of images
-                                log_validation_images_to_tracker(images, label, validation_prompt, accelerator,
-                                                                 global_step)
+                                log_validation_images_to_tracker(
+                                    images, label, validation_prompt, accelerator, global_step
+                                )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
