@@ -433,7 +433,6 @@ class DreamBoothDataset(Dataset):
         self,
         instance_data_root,
         instance_prompt,
-        tokenizer,
         class_data_root=None,
         class_prompt=None,
         class_num=None,
