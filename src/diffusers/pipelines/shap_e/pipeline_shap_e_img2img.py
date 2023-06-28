@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
@@ -205,11 +204,10 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         device,
         num_images_per_image,
         do_classifier_free_guidance,
-    ):  
-        
+    ):
         if not isinstance(images, PIL.Image.Image):
             images = [images]
-        
+
         images = (
             self.image_processor(images, return_tensors="pt")
             .pixel_values[0]
@@ -218,7 +216,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         )
 
         image_embeds = self.image_encoder(images)["last_hidden_state"]
-        image_embeds = image_embeds[:, 1:, :].contiguous().float() # batch_size, dim, 256
+        image_embeds = image_embeds[:, 1:, :].contiguous().float()  # batch_size, dim, 256
 
         image_embeds = image_embeds.repeat_interleave(num_images_per_image, dim=0)
 
@@ -230,7 +228,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
-        
         return image_embeds
 
     @torch.no_grad()

@@ -235,6 +235,7 @@ PRIOR_IMAGE_CONFIG = {
     "out_dim": 1024 * 2,
 }
 
+
 def prior_image_model_from_original_config():
     model = PriorTransformer(**PRIOR_IMAGE_CONFIG)
 
@@ -285,7 +286,9 @@ def prior_image_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     )
 
     # <original>.pos_emb -> <diffusers>.positional_embedding
-    diffusers_checkpoint.update({"positional_embedding": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.pos_emb"][None, :]})
+    diffusers_checkpoint.update(
+        {"positional_embedding": checkpoint[f"{PRIOR_IMAGE_ORIGINAL_PREFIX}.pos_emb"][None, :]}
+    )
 
     # <original>.ln_pre -> <diffusers>.norm_in
     diffusers_checkpoint.update(

@@ -89,7 +89,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             self.embedding_proj_norm = nn.LayerNorm(clip_embedding_dim)
         else:
             self.embedding_proj_norm = None
-            
+
         self.embedding_proj = nn.Linear(clip_embedding_dim, inner_dim)
 
         if self.config.clip_embedding_dim is None:
@@ -250,7 +250,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         # but time_embedding might be fp16, so we need to cast here.
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
-        
+
         if self.embedding_proj_norm is not None:
             proj_embedding = self.embedding_proj_norm(proj_embedding)
 
@@ -265,15 +265,15 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         positional_embeddings = self.positional_embedding.to(hidden_states.dtype)
 
         tokens = []
-        additional_embeddings =0 
+        additional_embeddings = 0
 
         if encoder_hidden_states is not None:
             tokens.append(encoder_hidden_states)
             additional_embeddings += encoder_hidden_states.shape[1]
-        
+
         if len(proj_embeddings.shape) == 2:
             proj_embeddings = proj_embeddings[:, None, :]
-        
+
         if len(hidden_states.shape) == 2:
             hidden_states = hidden_states[:, None, :]
 

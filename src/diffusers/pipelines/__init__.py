@@ -66,7 +66,7 @@ else:
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
-    from .shap_e import ShapEPipeline, ShapEImg2ImgPipeline
+    from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
