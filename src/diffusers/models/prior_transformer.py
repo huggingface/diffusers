@@ -60,7 +60,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         additional_embeddings=4,
         dropout: float = 0.0,
         time_embed_act_fn: str = "silu",
-        norm_embedding_proj: bool = False,
+        embedding_proj_norm: Optional[str] = None,
         time_embed_dim: Optional[int] = None,
         clip_embedding_dim: Optional[int] = None,
         out_dim: Optional[int] = None,
