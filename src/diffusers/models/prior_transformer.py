@@ -63,7 +63,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         embedding_proj_norm: Optional[str] = None,
         time_embed_dim: Optional[int] = None,
         embedding_proj_dim: Optional[int] = None,
-        out_dim: Optional[int] = None,
+        clip_embed_dim: Optional[int] = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
