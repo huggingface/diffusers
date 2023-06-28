@@ -1339,6 +1339,17 @@ class FromCkptMixin:
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
+            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
+                An instance of
+                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
+                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
+                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
+                needed.
+            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
+                An instance of
+                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
+                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
+                itself, if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1383,6 +1394,8 @@ class FromCkptMixin:
         upcast_attention = kwargs.pop("upcast_attention", None)
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
+        text_encoder = kwargs.pop("text_encoder", None)
+        tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
@@ -1463,6 +1476,8 @@ class FromCkptMixin:
             upcast_attention=upcast_attention,
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
         )
 
         if torch_dtype is not None:
