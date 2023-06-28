@@ -159,6 +159,11 @@ def kl_divergence(hidden_states):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
+    warnings.warn(
+        "The preprocess method is deprecated and will be removed in a future version. Please"
+        " use VaeImageProcessor.preprocess instead",
+        FutureWarning,
+    )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -482,6 +487,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -506,7 +512,14 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -799,19 +812,25 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         image = image.to(device=device, dtype=dtype)
 
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+        if image.shape[1] == 4:
+            latents = image
 
-        if isinstance(generator, list):
-            latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)]
-            latents = torch.cat(latents, dim=0)
         else:
-            latents = self.vae.encode(image).latent_dist.sample(generator)
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        latents = self.vae.config.scaling_factor * latents
+            if isinstance(generator, list):
+                latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
+                latents = torch.cat(latents, dim=0)
+            else:
+                latents = self.vae.encode(image).latent_dist.sample(generator)
+
+            latents = self.vae.config.scaling_factor * latents
 
         if batch_size != latents.shape[0]:
             if batch_size % latents.shape[0] == 0:
@@ -996,6 +1015,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
+        (cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None)
         target_prompt_embeds = self._encode_prompt(
             target_prompt,
             device,
@@ -1447,6 +1467,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -1455,6 +1478,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Preprocess mask

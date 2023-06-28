@@ -20,11 +20,12 @@ import torch
 from diffusers import UNet1DModel
 from diffusers.utils import floats_tensor, slow, torch_device
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
-class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
+class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -153,8 +154,9 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         assert (output_max - 0.0607).abs() < 4e-4
 
 
-class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
+class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):

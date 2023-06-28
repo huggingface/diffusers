@@ -61,6 +61,8 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             dot-product/softmax to float() when training with mixed precision.
     """
 
+    _keys_to_ignore_on_load_unexpected = [r"h\.\d+\.attn\.bias", r"h\.\d+\.attn\.masked_bias"]
+
     @register_to_config
     def __init__(
         self,

@@ -17,11 +17,12 @@
 import inspect
 import itertools
 import os
+import re
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor, device
+from torch import Tensor, device, nn
 
 from .. import __version__
 from ..utils import (
@@ -162,6 +163,7 @@ class ModelMixin(torch.nn.Module):
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
+    _keys_to_ignore_on_load_unexpected = None
 
     def __init__(self):
         super().__init__()
@@ -608,12 +610,17 @@ class ModelMixin(torch.nn.Module):
                             " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
+                    unexpected_keys = []
 
                     empty_state_dict = model.state_dict()
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
                         )
+
+                        if param_name not in empty_state_dict:
+                            unexpected_keys.append(param_name)
+                            continue
 
                         if empty_state_dict[param_name].shape != param.shape:
                             raise ValueError(
@@ -626,18 +633,60 @@ class ModelMixin(torch.nn.Module):
                             )
                         else:
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
+
+                    if cls._keys_to_ignore_on_load_unexpected is not None:
+                        for pat in cls._keys_to_ignore_on_load_unexpected:
+                            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+                    if len(unexpected_keys) > 0:
+                        logger.warn(
+                            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+                        )
+
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    accelerate.load_checkpoint_and_dispatch(
-                        model,
-                        model_file,
-                        device_map,
-                        max_memory=max_memory,
-                        offload_folder=offload_folder,
-                        offload_state_dict=offload_state_dict,
-                        dtype=torch_dtype,
-                    )
+                    try:
+                        accelerate.load_checkpoint_and_dispatch(
+                            model,
+                            model_file,
+                            device_map,
+                            max_memory=max_memory,
+                            offload_folder=offload_folder,
+                            offload_state_dict=offload_state_dict,
+                            dtype=torch_dtype,
+                        )
+                    except AttributeError as e:
+                        # When using accelerate loading, we do not have the ability to load the state
+                        # dict and rename the weight names manually. Additionally, accelerate skips
+                        # torch loading conventions and directly writes into `module.{_buffers, _parameters}`
+                        # (which look like they should be private variables?), so we can't use the standard hooks
+                        # to rename parameters on load. We need to mimic the original weight names so the correct
+                        # attributes are available. After we have loaded the weights, we convert the deprecated
+                        # names to the new non-deprecated names. Then we _greatly encourage_ the user to convert
+                        # the weights so we don't have to do this again.
+
+                        if "'Attention' object has no attribute" in str(e):
+                            logger.warn(
+                                f"Taking `{str(e)}` while using `accelerate.load_checkpoint_and_dispatch` to mean {pretrained_model_name_or_path}"
+                                " was saved with deprecated attention block weight names. We will load it with the deprecated attention block"
+                                " names and convert them on the fly to the new attention block format. Please re-save the model after this conversion,"
+                                " so we don't have to do the on the fly renaming in the future. If the model is from a hub checkpoint,"
+                                " please also re-upload it or open a PR on the original repository."
+                            )
+                            model._temp_convert_self_to_deprecated_attention_blocks()
+                            accelerate.load_checkpoint_and_dispatch(
+                                model,
+                                model_file,
+                                device_map,
+                                max_memory=max_memory,
+                                offload_folder=offload_folder,
+                                offload_state_dict=offload_state_dict,
+                                dtype=torch_dtype,
+                            )
+                            model._undo_temp_convert_self_to_deprecated_attention_blocks()
+                        else:
+                            raise e
 
                 loading_info = {
                     "missing_keys": [],
@@ -872,3 +921,53 @@ class ModelMixin(torch.nn.Module):
                 state_dict[f"{path}.to_out.0.weight"] = state_dict.pop(f"{path}.proj_attn.weight")
             if f"{path}.proj_attn.bias" in state_dict:
                 state_dict[f"{path}.to_out.0.bias"] = state_dict.pop(f"{path}.proj_attn.bias")
+
+    def _temp_convert_self_to_deprecated_attention_blocks(self):
+        deprecated_attention_block_modules = []
+
+        def recursive_find_attn_block(module):
+            if hasattr(module, "_from_deprecated_attn_block") and module._from_deprecated_attn_block:
+                deprecated_attention_block_modules.append(module)
+
+            for sub_module in module.children():
+                recursive_find_attn_block(sub_module)
+
+        recursive_find_attn_block(self)
+
+        for module in deprecated_attention_block_modules:
+            module.query = module.to_q
+            module.key = module.to_k
+            module.value = module.to_v
+            module.proj_attn = module.to_out[0]
+
+            # We don't _have_ to delete the old attributes, but it's helpful to ensure
+            # that _all_ the weights are loaded into the new attributes and we're not
+            # making an incorrect assumption that this model should be converted when
+            # it really shouldn't be.
+            del module.to_q
+            del module.to_k
+            del module.to_v
+            del module.to_out
+
+    def _undo_temp_convert_self_to_deprecated_attention_blocks(self):
+        deprecated_attention_block_modules = []
+
+        def recursive_find_attn_block(module):
+            if hasattr(module, "_from_deprecated_attn_block") and module._from_deprecated_attn_block:
+                deprecated_attention_block_modules.append(module)
+
+            for sub_module in module.children():
+                recursive_find_attn_block(sub_module)
+
+        recursive_find_attn_block(self)
+
+        for module in deprecated_attention_block_modules:
+            module.to_q = module.query
+            module.to_k = module.key
+            module.to_v = module.value
+            module.to_out = nn.ModuleList([module.proj_attn, nn.Dropout(module.dropout)])
+
+            del module.query
+            del module.key
+            del module.value
+            del module.proj_attn

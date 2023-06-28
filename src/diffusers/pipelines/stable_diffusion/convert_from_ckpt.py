@@ -288,7 +288,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
     }
 
-    if not controlnet:
+    if controlnet:
+        config["conditioning_channels"] = unet_params.hint_channels
+    else:
         config["out_channels"] = unet_params.out_channels
         config["up_block_types"] = tuple(up_block_types)
 
@@ -339,41 +341,46 @@ def create_ldm_bert_config(original_config):
     return config
 
 
-def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False, controlnet=False):
+def convert_ldm_unet_checkpoint(
+    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False
+):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
 
-    # extract state_dict for UNet
-    unet_state_dict = {}
-    keys = list(checkpoint.keys())
-
-    if controlnet:
-        unet_key = "control_model."
+    if skip_extract_state_dict:
+        unet_state_dict = checkpoint
     else:
-        unet_key = "model.diffusion_model."
+        # extract state_dict for UNet
+        unet_state_dict = {}
+        keys = list(checkpoint.keys())
 
-    # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
-    if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
-        print(f"Checkpoint {path} has both EMA and non-EMA weights.")
-        print(
-            "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
-            " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
-        )
-        for key in keys:
-            if key.startswith("model.diffusion_model"):
-                flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
-    else:
-        if sum(k.startswith("model_ema") for k in keys) > 100:
+        if controlnet:
+            unet_key = "control_model."
+        else:
+            unet_key = "model.diffusion_model."
+
+        # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
+        if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
+            print(f"Checkpoint {path} has both EMA and non-EMA weights.")
             print(
-                "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
-                " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
+                "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
+                " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
             )
+            for key in keys:
+                if key.startswith("model.diffusion_model"):
+                    flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
+                    unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+        else:
+            if sum(k.startswith("model_ema") for k in keys) > 100:
+                print(
+                    "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
+                    " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
+                )
 
-        for key in keys:
-            if key.startswith(unet_key):
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
+            for key in keys:
+                if key.startswith(unet_key):
+                    unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
 
     new_checkpoint = {}
 
@@ -727,8 +734,12 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
-    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
+def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
+    text_model = (
+        CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
+        if text_encoder is None
+        else text_encoder
+    )
 
     keys = list(checkpoint.keys())
 
@@ -956,17 +967,42 @@ def stable_unclip_image_noising_components(
 
 
 def convert_controlnet_checkpoint(
-    checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
+    checkpoint,
+    original_config,
+    checkpoint_path,
+    image_size,
+    upcast_attention,
+    extract_ema,
+    use_linear_projection=None,
+    cross_attention_dim=None,
 ):
     ctrlnet_config = create_unet_diffusers_config(original_config, image_size=image_size, controlnet=True)
     ctrlnet_config["upcast_attention"] = upcast_attention
 
     ctrlnet_config.pop("sample_size")
 
+    if use_linear_projection is not None:
+        ctrlnet_config["use_linear_projection"] = use_linear_projection
+
+    if cross_attention_dim is not None:
+        ctrlnet_config["cross_attention_dim"] = cross_attention_dim
+
     controlnet_model = ControlNetModel(**ctrlnet_config)
 
+    # Some controlnet ckpt files are distributed independently from the rest of the
+    # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
+    if "time_embed.0.weight" in checkpoint:
+        skip_extract_state_dict = True
+    else:
+        skip_extract_state_dict = False
+
     converted_ctrl_checkpoint = convert_ldm_unet_checkpoint(
-        checkpoint, ctrlnet_config, path=checkpoint_path, extract_ema=extract_ema, controlnet=True
+        checkpoint,
+        ctrlnet_config,
+        path=checkpoint_path,
+        extract_ema=extract_ema,
+        controlnet=True,
+        skip_extract_state_dict=skip_extract_state_dict,
     )
 
     controlnet_model.load_state_dict(converted_ctrl_checkpoint)
@@ -993,6 +1029,8 @@ def download_from_original_stable_diffusion_ckpt(
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
+    text_encoder=None,
+    tokenizer=None,
 ) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -1040,6 +1078,15 @@ def download_from_original_stable_diffusion_ckpt(
             The pipeline class to use. Pass `None` to determine automatically.
         local_files_only (`bool`, *optional*, defaults to `False`):
             Whether or not to only look at local files (i.e., do not try to download the model).
+        text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
+            An instance of [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)
+            to use, specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
+            variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+        tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
+            An instance of
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
+            to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by itself, if
+            needed.
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
@@ -1295,8 +1342,10 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor=feature_extractor,
         )
     elif model_type == "FrozenCLIPEmbedder":
-        text_model = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
-        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+        text_model = convert_ldm_clip_checkpoint(
+            checkpoint, local_files_only=local_files_only, text_encoder=text_encoder
+        )
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14") if tokenizer is None else tokenizer
 
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
@@ -1344,6 +1393,8 @@ def download_controlnet_from_original_ckpt(
     upcast_attention: Optional[bool] = None,
     device: str = None,
     from_safetensors: bool = False,
+    use_linear_projection: Optional[bool] = None,
+    cross_attention_dim: Optional[bool] = None,
 ) -> DiffusionPipeline:
     if not is_omegaconf_available():
         raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
@@ -1381,7 +1432,14 @@ def download_controlnet_from_original_ckpt(
         raise ValueError("`control_stage_config` not present in original config")
 
     controlnet_model = convert_controlnet_checkpoint(
-        checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
+        checkpoint,
+        original_config,
+        checkpoint_path,
+        image_size,
+        upcast_attention,
+        extract_ema,
+        use_linear_projection=use_linear_projection,
+        cross_attention_dim=cross_attention_dim,
     )
 
     return controlnet_model

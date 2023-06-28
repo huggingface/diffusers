@@ -88,6 +88,7 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     image_params = frozenset([])
     # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -230,6 +231,20 @@ class StableDiffusionInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_stable_diffusion_inpaint_strength_zero_test(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        # check that the pipeline raises value error when num_inference_steps is < 1
+        inputs["strength"] = 0.01
+        with self.assertRaises(ValueError):
+            sd_pipe(**inputs).images
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):

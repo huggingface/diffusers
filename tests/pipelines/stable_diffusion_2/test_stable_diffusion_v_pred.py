@@ -384,6 +384,29 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (768, 768, 3)
         assert np.abs(expected_image - image).max() < 9e-1
 
+    def test_stable_diffusion_text2img_pipeline_unflawed(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"
+            "sd2-text2img/lion_galaxy.npy"
+        )
+
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        pipe.scheduler = DDIMScheduler.from_config(
+            pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
+        )
+        pipe.to(torch_device)
+        pipe.enable_attention_slicing()
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
+
+        generator = torch.manual_seed(0)
+        output = pipe(prompt=prompt, guidance_scale=7.5, guidance_rescale=0.7, generator=generator, output_type="np")
+        image = output.images[0]
+
+        assert image.shape == (768, 768, 3)
+        assert np.abs(expected_image - image).max() < 5e-1
+
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"

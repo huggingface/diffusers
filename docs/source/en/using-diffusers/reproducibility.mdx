@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Create reproducible pipelines
 
+[[open-in-colab]]
+
 Reproducibility is important for testing, replicating results, and can even be used to [improve image quality](reusing_seeds). However, the randomness in diffusion models is a desired property because it allows the pipeline to generate different images every time it is run. While you can't expect to get the exact same results across platforms, you can expect results to be reproducible across releases and platforms within a certain tolerance range. Even then, tolerance varies depending on the diffusion pipeline and checkpoint.
 
 This is why it's important to understand how to control sources of randomness in diffusion models or use deterministic algorithms.
@@ -111,7 +113,7 @@ print(np.abs(image).sum())
 
 The result is not the same even though you're using an identical seed because the GPU uses a different random number generator than the CPU.
 
-To circumvent this problem, 🧨 Diffusers has a [`randn_tensor`](#diffusers.utils.randn_tensor) function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The `randn_tensor` function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU. 
+To circumvent this problem, 🧨 Diffusers has a [`~diffusers.utils.randn_tensor`] function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The `randn_tensor` function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU. 
 
 You'll see the results are much closer now!
 
@@ -146,9 +148,6 @@ Finally, for more complex pipelines such as [`UnCLIPPipeline`], these are often 
 susceptible to precision error propagation. Don't expect similar results across 
 different GPU hardware or PyTorch versions. In this case, you'll need to run 
 exactly the same hardware and PyTorch version for full reproducibility.
-
-### randn_tensor
-[[autodoc]] diffusers.utils.randn_tensor
 
 ## Deterministic algorithms
 
