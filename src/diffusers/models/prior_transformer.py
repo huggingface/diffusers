@@ -261,7 +261,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         positional_embeddings = self.positional_embedding.to(hidden_states.dtype)
 
-        tokens = []
+        additional_embeds = []
         additional_embeddings = 0
 
         if encoder_hidden_states is not None:
