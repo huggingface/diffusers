@@ -177,7 +177,7 @@ class Prior(ModelMixin, ConfigMixin):
         emb = torch.cat([emb.sin(), emb.cos()], dim=1)
         if self.c_r % 2 == 1:  # zero pad
             emb = nn.functional.pad(emb, (0, 1), mode="constant")
-        return emb
+        return emb.to(dtype=r.dtype)
 
     def forward(self, x, r, c):
         x_in = x

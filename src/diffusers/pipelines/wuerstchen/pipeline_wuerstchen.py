@@ -64,6 +64,21 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     text_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
+@dataclass
+class WuerstchenGeneratorPipelineOutput(BaseOutput):
+    """
+    Output class for WuerstchenPriorPipeline.
+
+    Args:
+        image_embeds (`torch.FloatTensor` or `np.ndarray`)
+            Prior image embeddings for text prompt
+        text_embeds (`torch.FloatTensor` or `np.ndarray`)
+            Clip text embeddings for unconditional tokens
+    """
+
+    image_embeds: Union[torch.FloatTensor, np.ndarray]
+
+
 class WuerstchenPriorPipeline(DiffusionPipeline):
     """
     Pipeline for generating image prior for Wuerstchen.
@@ -217,7 +232,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: int = 100,
+        num_inference_steps: int = 30,
         timesteps: List[int] = None,
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -247,7 +262,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-
+        dtype = text_encoder_hidden_states.dtype
         latent_height = 128 * (height // 128) // (1024 // 24)
         latent_width = 128 * (width // 128) // (1024 // 24)
         effnet_features_shape = (num_images_per_prompt, 16, latent_height, latent_width)
@@ -257,15 +272,18 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         latents = self.prepare_latents(
             effnet_features_shape,
-            text_encoder_hidden_states.dtype,
+            dtype,
             device,
             generator,
             latents,
             self.scheduler,
         )
-
+        print(prior_timesteps_tensor)
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-            ratio = t / prior_timesteps_tensor.max()
+            ratio = (t / prior_timesteps_tensor.max()).to(dtype=dtype)
+            # print(torch.cat([latents] * 2).shape, latents.dtype)
+            # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
+            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=ratio.expand(num_images_per_prompt * 2) if do_classifier_free_guidance else ratio,
@@ -278,17 +296,11 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
 
-            # if i + 1 == prior_timesteps_tensor.shape[0]:
-            #     prev_timestep = None
-            # else:
-            #     prev_timestep = prior_timesteps_tensor[i + 1]
-
             latents = self.scheduler.step(
                 predicted_image_embedding,
                 timestep=t,
                 sample=latents,
                 generator=generator,
-                # prev_timestep=prev_timestep,
             ).prev_sample
 
         # normalize the latents
@@ -305,3 +317,137 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             return (latents, text_encoder_hidden_states)
 
         return WuerstchenPriorPipelineOutput(latents, text_encoder_hidden_states)
+
+
+class WuerstchenGeneratorPipeline(DiffusionPipeline):
+    """
+    Pipeline for generating image prior for Wuerstchen.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        prior ([`Prior`]):
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
+        text_encoder ([`CLIPTextModelWithProjection`]):
+            Frozen text-encoder.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        scheduler ([`DDPMScheduler`]):
+            A scheduler to be used in combination with `prior` to generate image embedding.
+    """
+
+    def __init__(
+        self,
+        generator: DiffNeXt,
+        scheduler: DDPMScheduler,
+    ) -> None:
+        super().__init__()
+        self.multiple = 128
+        self.register_modules(
+            generator=generator,
+            scheduler=scheduler,
+        )
+        self.register_to_config()
+
+    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        latents = latents * scheduler.init_noise_sigma
+        return latents
+
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.text_encoder, "_hf_hook"):
+            return self.device
+        for module in self.text_encoder.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        predicted_image_embeddings: torch.Tensor,
+        text_encoder_hidden_states: torch.Tensor,
+        num_inference_steps: int = 30,
+        timesteps: List[int] = None,
+        guidance_scale: float = 7.0,
+        num_images_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pt",  # pt only
+        return_dict: bool = True,
+    ):
+        device = self._execution_device
+
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        check_inputs(text_encoder_hidden_states, predicted_image_embeddings, do_classifier_free_guidance)
+
+        dtype = text_encoder_hidden_states.dtype
+        latent_height = predicted_image_embeddings.size(2) * (1024 // 24)
+        latent_width = predicted_image_embeddings.size(2) * (1024 // 24)
+        effnet_features_shape = (num_images_per_prompt, 4, latent_height, latent_width)
+
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        generator_timesteps_tensor = self.scheduler.timesteps if timesteps is None else timesteps
+
+        latents = self.prepare_latents(
+            effnet_features_shape,
+            dtype,
+            device,
+            generator,
+            latents,
+            self.scheduler,
+        )
+        print(generator_timesteps_tensor)
+        for i, t in enumerate(self.progress_bar(generator_timesteps_tensor)):
+            ratio = (t / generator_timesteps_tensor.max()).to(dtype=dtype)
+            # print(torch.cat([latents] * 2).shape, latents.dtype)
+            # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
+            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
+            predicted_image_embedding = self.generator(
+                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
+                r=ratio.expand(num_images_per_prompt * 2) if do_classifier_free_guidance else ratio,
+                c=text_encoder_hidden_states,
+            )
+
+            if do_classifier_free_guidance:
+                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                )
+
+            latents = self.scheduler.step(
+                predicted_image_embedding,
+                timestep=t,
+                sample=latents,
+                generator=generator,
+            ).prev_sample
+
+        if output_type not in ["pt", "np"]:
+            raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
+
+        if output_type == "np":
+            latents = latents.cpu().numpy()
+
+        if not return_dict:
+            return (latents, text_encoder_hidden_states)
+
+        return WuerstchenGeneratorPipelineOutput(latents)
