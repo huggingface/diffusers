@@ -1,16 +1,30 @@
 ###ddpm_unet.sh PSEUDO###
-env_name=${1}
-model_name=${2:-"ddpm-unet"}
-batch_size=${3:-16}
-output_dir=${4:-"outputs"}
+output_dir=outputs
 current_dir=$(pwd)
-log_dir=${5:-"${current_dir}/logs/${model_name}.json"}
 
-# Check if batch_size is provided , if not use default value of 16
+while getopts t:m:b:o:l: flag
+do
+    case "${flag}" in
+        t) env_name=${OPTARG};;
+        m) model_name=${OPTARG};;
+        b) batch_size=${OPTARG};;
+        o) output_dir=${OPTARG};;
+        l) log_dir=${OPTARG};;
+    esac
+done
+
+# Check if log_dir is provided , if not use default value of current_dir/logs/${model_name}.json
+if [ -z "$log_dir" ]
+then
+    log_dir=${current_dir}/logs/${model_name}.json
+    mkdir -p ${current_dir}/logs
+fi
+
+# Check if $batch_size is provided , if not use default value of 4
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=16
+  batch_size=4
 fi
 
 # Run training script

@@ -1,57 +1,44 @@
 # Check input variables
 # ==================================
-
-if [[ "$@" == *"--task"* ]]; then # --task: task name
-  # If the flag is set, assign the value from the user prompt
-  task="$(echo "$@" | sed -n 's/.*--task \([^ ]*\).*/\1/p')"
-else
-  echo "Usage: $0 <declare --task task_name>"
-  exit 1
-fi
-
-if [[ "$@" == *"--model"* ]]; then # --model: model name
-  model="$(echo "$@" | sed -n 's/.*--model \([^ ]*\).*/\1/p')"
-  run_mode=1 # run single model
-else 
-  run_mode=2 # run all models in model_batchsize_file
-  echo "Note: --model not specified, will run all models in $model_batchsize_file"
-fi
-
-if [[ "$@" == *"--batch_size"* ]]; then # --batch_size: batch size
-  batch_size="$(echo "$@" | sed -n 's/.*--batch_size \([^ ]*\).*/\1/p')"
-fi
-
 train_script=train.sh
-if [[ "$@" == *"--train_script"* ]]; then # --train_script: training script
-  train_script="$(echo "$@" | sed -n 's/.*--train_script \([^ ]*\).*/\1/p')"
-fi
-
 model_batchsize_file=model_batchsize.txt
-if [[ "$@" == *"--model_batchsize_file"* ]]; then # --model_batchsize_file: file containing model name and batch size respectively
-  model_batchsize_file="$(echo "$@" | sed -n 's/.*--model_batchsize_file \([^ ]*\).*/\1/p')"
+
+while getopts t:m:b:s: flag
+do
+    case "${flag}" in
+        t) task=${OPTARG};;
+        m) model=${OPTARG};;
+        b) batch_size=${OPTARG};;
+        s) train_script=${OPTARG};;
+    esac
+done
+
+# If task is specified, setup env for task. Otherwise, set run_all_tasks=True, env for each task will be setup later
+if [[ "$@" == *"-t"* ]]; then 
+  bash setup.sh $task
+else
+  echo -e "*** Note: -t (task name) not specified, will run all tasks. \
+          \n To run single task, declare <-t task_name> \
+          \n - dreambooth \
+          \n - instruct_pix2pix \
+          \n - controlnet \
+          \n - text_to_image \
+          \n - unconditional_image_generation \
+          \n - textual_inversion \
+  "
+  run_all_tasks=True
+fi
+
+# If model is not specified, set run_all_model=True and warn user that all models in this task will be run
+if [[ ! "$@" == *"-m"* ]]; then  
+  echo "*** Note: -m (model name) not specified, will run all models in model_batchsize_file for task $task"
+  run_all_model=True
 fi
 
 
-# Check input files
+# Create functions to execute training and delete env
 # ==================================
-bash all_scripts/check_file_exist.sh $train_script $task
-bash all_scripts/check_file_exist.sh $model_batchsize_file $task
-
-# Create env for task
-# ==================================
-bash setup.sh $task
-
-# Create log and output dir inside examples folder
-# ==================================
-
-LOG_DIR=$(pwd)/logs/$task
-mkdir -p $LOG_DIR
-
-OUTPUT_DIR=$(pwd)/outputs/$task
-mkdir -p $OUTPUT_DIR
-
-# Go into task folder and run train script
-# ==================================
+# Function to execute training
 execute_training() {
             model=$1
             batch_size=$2
@@ -60,38 +47,56 @@ execute_training() {
 
             model_name=${model#*/}
 
-            terminal_log_file="${LOG_DIR}/${model_name}_terminal.log"
-            memory_log_file="${LOG_DIR}/${model_name}_memory.log"
-
-            output_dir="${OUTPUT_DIR}/${model_name}"
+            LOG_DIR=../logs/$task
+            mkdir -p $LOG_DIR
             log_dir="${LOG_DIR}/${model_name}.json"
 
-            commands_to_run="
-                cd $task
-                bash $train_script $task $model $batch_size $output_dir $log_dir                
-            " 
-            bash record.sh 0 $memory_log_file $terminal_log_file "$commands_to_run"
+            OUTPUT_DIR=../outputs/$task
+            mkdir -p $OUTPUT_DIR
+            output_dir="${OUTPUT_DIR}/${model_name}"            
 
-            echo Done training $model
+            mkdir -p ../log_terminal/${task}
+            bash $train_script -t $task -m $model -o $output_dir -l $log_dir -b $batch_size >> "../log_terminal/${task}/${model_name}.log" 2>&1             
+
+            echo Done training model $model for task $task
 }
 
-if [ "$run_mode" == "2" ]; then
-    echo Training all models in $model_batchsize_file
+# Function to delete env
+base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
+execute_deleting_env() {
+            task=$1
+            echo "deleting env for task $task.."
+            source ${base_env}/etc/profile.d/conda.sh
+            conda deactivate
+            conda env remove -n ${task}
+}
+
+# Check condition to run all tasks, all models in task, or specific model in task
+# ==================================
+if [[ "$run_all_tasks" == "True" ]]; then # Task is not provided, run all tasks
+    echo "Running all tasks.."
+    for task in dreambooth instruct_pix2pix controlnet text_to_image unconditional_image_generation textual_inversion; do
+        echo "Running task $task"
+        bash setup.sh $task
+        cd $task
+        while read model batch_size ; do
+            execute_training $model $batch_size
+        done < $model_batchsize_file
+        execute_deleting_env $task
+        cd ..
+    done
+elif [[ "$run_all_model" == "True" ]]; then # Task is provided, model is not provided, run all models in task
+    echo "Running all models in task $task"
+    cd $task
     while read model batch_size ; do
         execute_training $model $batch_size
-    done < $task/$model_batchsize_file
-else
-    echo Training the model $model
+    done < $model_batchsize_file
+    execute_deleting_env $task
+else # Task and model are provided, run specific model in task
+    echo Training the model $model in task $task
+    cd $task
     execute_training $model $batch_size
+    execute_deleting_env $task
 fi
-
-# Delete env for task
-# ==================================
-base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
-
-echo "deleting env.."
-source ${base_env}/etc/profile.d/conda.sh
-conda deactivate
-conda env remove -n ${task}
 
 echo Done

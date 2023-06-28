@@ -701,9 +701,6 @@ def main(args):
                    "loss": loss_dict}
     
     import json
-    logs_parent_folder = os.path.dirname(args.log_dir)
-    if not os.path.exists(logs_parent_folder):
-        os.makedirs(logs_parent_folder)
     with open(args.log_dir, "w") as f:
         json.dump(output_dict, f)
     logger.info(f"Output logs saved in {args.log_dir}")

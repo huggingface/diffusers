@@ -1,10 +1,26 @@
 ###controlnet.sh PSEUDO###
-env_name=${1}
-model_name=${2}
-batch_size=${3}
-output_dir=${4:-"outputs"}
+output_dir=outputs
 current_dir=$(pwd)
-log_dir=${5:-"${current_dir}/logs/${model_name}.json"}
+
+while getopts t:m:b:o:l: flag
+do
+    case "${flag}" in
+        t) env_name=${OPTARG};;
+        m) model_name=${OPTARG};;
+        b) batch_size=${OPTARG};;
+        o) output_dir=${OPTARG};;
+        l) log_dir=${OPTARG};;
+    esac
+done
+
+# Check if log_dir is provided , if not use default value of current_dir/logs/${model_name}.json
+if [ -z "$log_dir" ]
+then
+    log_dir=${current_dir}/logs/${model_name}.json
+    mkdir -p ${current_dir}/logs
+fi
+
+moreh-switch-model -M 1
 
 # Check if $batch_size is provided , if not use default value of 5
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
@@ -13,14 +29,12 @@ else
   batch_size=5
 fi
 
-moreh-switch-model -M 1 
-
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
 conda run -n ${env_name} python3 train_controlnet.py \
-    --pretrained_model_name_or_path ${model_name}  \
-    --controlnet_model_name_or_path lllyasviel/sd-controlnet-hed \
+    --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5  \
+    --controlnet_model_name_or_path ${model_name}  \
     --dataset_name fusing/fill50k \
     --output_dir ${output_dir} \
     --log_dir "${log_dir}" \
