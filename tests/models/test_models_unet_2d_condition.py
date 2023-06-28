@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+from dataclasses import dataclass
 import gc
 import os
 import tempfile
@@ -25,6 +27,7 @@ from pytest import mark
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
 from diffusers.utils import (
+    BaseOutput,
     floats_tensor,
     load_hf_numpy,
     logging,
@@ -1088,3 +1091,13 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+    def test_pickle():
+        @dataclass
+        class NetParams(BaseOutput):
+            sample: torch.FloatTensor
+
+        m = NetParams(sample=torch.randn(1, 10))
+        n = copy.copy(m)
+
+        assert m == n
