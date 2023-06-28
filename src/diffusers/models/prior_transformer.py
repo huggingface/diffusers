@@ -94,7 +94,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.positional_embedding = nn.Parameter(torch.zeros(1, num_embeddings + additional_embeddings, inner_dim))
 
-        if self.config.out_dim is None:
+        if added_emb_type is "prd":
             self.prd_embedding = nn.Parameter(torch.zeros(1, 1, inner_dim))
         else:
             self.prd_embedding = None
