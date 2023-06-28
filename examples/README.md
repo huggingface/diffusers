@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# How to train models in each task
+# How to train the models 
 From ../diffusers/examples repository, run the file run_tash.sh in terminal with the flags:
-1. --task [required]: task name
-2. --model [optional]: model name. If not provided, training for all models available in model_batchsize_file
-3. --batch_size [optional]: batch size
-4. --train_script [optional]: training script for specific task
-5. --model_batchsize_file [optional]: file containing model name and batch size respectively
+1. -t [optional]: task name. If not provided, training for all tasks
+2. -m [optional]: model name. If not provided, training for all models available in model_batchsize_file of the task
+3. -b [optional]: batch size. Default: value in training script of the task
+4. -s [optional]: training script for specific task. Default: `train.sh`
 
 E.g: 
-- Training all model: bash run_task --task unconditional_image_generation 
-- Training a single model: bash run_task --task unconditional_image_generation --model ddpm-unet
+- Training all tasks: bash run_task
+- Training all models: bash run_task -t unconditional_image_generation 
+- Training a single model: bash run_task -t unconditional_image_generation -m ddpm-unet
 
 # Record GPU usage
 While running a Python process, open **another terminal** and run:
