@@ -427,7 +427,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
             bs_embed * num_images_per_prompt, -1
         )
-
+        print(f"From encode_prompt: {prompt_embeds.shape}, {pooled_prompt_embeds.shape}")
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
