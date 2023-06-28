@@ -113,10 +113,12 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             ]
         )
 
-        if self.config.out_dim is not None:
+        if norm_in_type == "layer":
             self.norm_in = nn.LayerNorm(inner_dim)
-        else:
+        elif norm_in_type is None:
             self.norm_in = None
+       else:
+           raise ValueError(f"{norm_in_type} does not exist.")
 
         self.norm_out = nn.LayerNorm(inner_dim)
 
