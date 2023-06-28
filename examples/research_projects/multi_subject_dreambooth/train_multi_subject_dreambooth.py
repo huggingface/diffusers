@@ -496,7 +496,7 @@ def parse_args(input_args=None):
             raise ValueError("If you are using `concepts_list` parameter, define the instance prompt within the file.")
         if args.instance_data_dir:
             raise ValueError(
-                "If you are using `concepts_list` parameter, define the instance data directory within " "the file."
+                "If you are using `concepts_list` parameter, define the instance data directory within the file."
             )
         if args.validation_steps and (args.validation_prompt or args.validation_negative_prompt):
             raise ValueError(
@@ -521,11 +521,11 @@ def parse_args(input_args=None):
         else:
             if args.class_data_dir:
                 raise ValueError(
-                    f"If you are using `concepts_list` parameter, define the class data directory within " f"the file."
+                    "If you are using `concepts_list` parameter, define the class data directory within the file."
                 )
             if args.class_prompt:
                 raise ValueError(
-                    f"If you are using `concepts_list` parameter, define the class prompt within " f"the file."
+                    "If you are using `concepts_list` parameter, define the class prompt within the file."
                 )
     else:
         # logger is not available yet
@@ -544,7 +544,7 @@ def parse_args(input_args=None):
 class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
-    It pre-processes the images and the tokenizes prompts.
+    It pre-processes the images and then tokenizes prompts.
     """
 
     def __init__(
@@ -735,11 +735,11 @@ def main(args):
             else:
                 if "class_data_dir" in concept:
                     warnings.warn(
-                        "Ignoring `class_data_dir` key, to use it you need to enable " "`with_prior_preservation`."
+                        "Ignoring `class_data_dir` key, to use it you need to enable `with_prior_preservation`."
                     )
                 if "class_prompt" in concept:
                     warnings.warn(
-                        "Ignoring `class_prompt` key, to use it you need to enable " "`with_prior_preservation`."
+                        "Ignoring `class_prompt` key, to use it you need to enable `with_prior_preservation`."
                     )
 
             if args.validation_steps:
