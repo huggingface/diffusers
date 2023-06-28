@@ -214,7 +214,7 @@ class FlaxAttention(nn.Module):
 
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         hidden_states = self.proj_attn(hidden_states)
-        return hidden_states
+        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
 
 
 class FlaxBasicTransformerBlock(nn.Module):
@@ -280,7 +280,7 @@ class FlaxBasicTransformerBlock(nn.Module):
         hidden_states = self.ff(self.norm3(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
-        return hidden_states
+        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
 
 
 class FlaxTransformer2DModel(nn.Module):
@@ -378,7 +378,7 @@ class FlaxTransformer2DModel(nn.Module):
             hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states + residual
-        return hidden_states
+        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
 
 
 class FlaxFeedForward(nn.Module):
@@ -409,7 +409,7 @@ class FlaxFeedForward(nn.Module):
         self.net_2 = nn.Dense(self.dim, dtype=self.dtype)
 
     def __call__(self, hidden_states, deterministic=True):
-        hidden_states = self.net_0(hidden_states)
+        hidden_states = self.net_0(hidden_states, deterministic=deterministic)
         hidden_states = self.net_2(hidden_states)
         return hidden_states
 
@@ -438,4 +438,4 @@ class FlaxGEGLU(nn.Module):
     def __call__(self, hidden_states, deterministic=True):
         hidden_states = self.proj(hidden_states)
         hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
-        return hidden_linear * nn.gelu(hidden_gelu)
+        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_linear * nn.gelu(hidden_gelu))
