@@ -87,7 +87,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.embedding_proj = nn.Linear(clip_embedding_dim, inner_dim)
 
-        if self.config.clip_embedding_dim is None:
+        if encoder_hid_proj is not None:
             self.encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
         else:
             self.encoder_hidden_states_proj = None
