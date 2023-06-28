@@ -515,7 +515,7 @@ def collate_fn(examples, with_prior_preservation=False):
     input_ids = [example["instance_prompt_ids"] for example in examples]
     pixel_values = [example["instance_images"] for example in examples]
     add_text_embeds = [example["instance_added_cond_kwargs"]["text_embeds"] for example in examples]
-    add_time_ids = [example["instance_added_cond_kwargs"]["add_time_ids"] for example in examples]
+    add_time_ids = [example["instance_added_cond_kwargs"]["time_ids"] for example in examples]
     if has_attention_mask:
         attention_mask = [example["instance_attention_mask"] for example in examples]
 
@@ -525,7 +525,7 @@ def collate_fn(examples, with_prior_preservation=False):
         input_ids += [example["class_prompt_ids"] for example in examples]
         pixel_values += [example["class_images"] for example in examples]
         add_text_embeds += [example["class_added_cond_kwargs"]["text_embeds"] for example in examples]
-        add_time_ids += [example["class_added_cond_kwargs"]["add_time_ids"] for example in examples]
+        add_time_ids += [example["class_added_cond_kwargs"]["time_ids"] for example in examples]
 
         if has_attention_mask:
             attention_mask += [example["class_attention_mask"] for example in examples]
