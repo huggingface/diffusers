@@ -122,7 +122,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.norm_out = nn.LayerNorm(inner_dim)
 
-        self.proj_to_clip_embeddings = nn.Linear(inner_dim, out_dim)
+        self.proj_to_clip_embeddings = nn.Linear(inner_dim, clip_embed_dim)
 
         causal_attention_mask = torch.full(
             [num_embeddings + additional_embeddings, num_embeddings + additional_embeddings], -10000.0
