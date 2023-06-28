@@ -18,6 +18,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from .activations import get_activation
+
 
 def get_timestep_embedding(
     timesteps: torch.Tensor,
@@ -171,14 +173,7 @@ class TimestepEmbedding(nn.Module):
         else:
             self.cond_proj = None
 
-        if act_fn == "silu":
-            self.act = nn.SiLU()
-        elif act_fn == "mish":
-            self.act = nn.Mish()
-        elif act_fn == "gelu":
-            self.act = nn.GELU()
-        else:
-            raise ValueError(f"{act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+        self.act = get_activation(act_fn)
 
         if out_dim is not None:
             time_embed_dim_out = out_dim
@@ -188,14 +183,8 @@ class TimestepEmbedding(nn.Module):
 
         if post_act_fn is None:
             self.post_act = None
-        elif post_act_fn == "silu":
-            self.post_act = nn.SiLU()
-        elif post_act_fn == "mish":
-            self.post_act = nn.Mish()
-        elif post_act_fn == "gelu":
-            self.post_act = nn.GELU()
         else:
-            raise ValueError(f"{post_act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+            self.post_act = get_activation(post_act_fn)
 
     def forward(self, sample, condition=None):
         if condition is not None:

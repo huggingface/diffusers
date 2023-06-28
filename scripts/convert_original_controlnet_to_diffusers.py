@@ -75,6 +75,22 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
+
+    # small workaround to get argparser to parse a boolean input as either true _or_ false
+    def parse_bool(string):
+        if string == "True":
+            return True
+        elif string == "False":
+            return False
+        else:
+            raise ValueError(f"could not parse string as bool {string}")
+
+    parser.add_argument(
+        "--use_linear_projection", help="Override for use linear projection", required=False, type=parse_bool
+    )
+
+    parser.add_argument("--cross_attention_dim", help="Override for cross attention_dim", required=False, type=int)
+
     args = parser.parse_args()
 
     controlnet = download_controlnet_from_original_ckpt(
@@ -86,6 +102,8 @@ if __name__ == "__main__":
         upcast_attention=args.upcast_attention,
         from_safetensors=args.from_safetensors,
         device=args.device,
+        use_linear_projection=args.use_linear_projection,
+        cross_attention_dim=args.cross_attention_dim,
     )
 
     controlnet.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

@@ -33,6 +33,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.preprocess
 def preprocess(image):
+    warnings.warn(
+        "The preprocess method is deprecated and will be removed in a future version. Please"
+        " use VaeImageProcessor.preprocess instead",
+        FutureWarning,
+    )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -94,7 +99,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, resample="bicubic")
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -291,7 +296,14 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -308,7 +320,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image upscaling.
-            image (`PIL.Image.Image` or List[`PIL.Image.Image`] or `torch.FloatTensor`):
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch which will be upscaled. If it's a tensor, it can be
                 either a latent output from a stable diffusion model, or an image tensor in the range `[-1, 1]`. It
                 will be considered a `latent` if `image.shape[1]` is `4`; otherwise, it will be considered to be an
@@ -413,7 +425,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
         image = image.to(dtype=text_embeddings.dtype, device=device)
         if image.shape[1] == 3:
             # encode image if not in latent-space yet

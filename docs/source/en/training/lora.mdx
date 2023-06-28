@@ -12,8 +12,6 @@ specific language governing permissions and limitations under the License.
 
 # Low-Rank Adaptation of Large Language Models (LoRA)
 
-[[open-in-colab]]
-
 <Tip warning={true}>
 
 Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`]. We also 
@@ -260,6 +258,14 @@ pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
 ```
 
+<Tip>
+
+If your LoRA parameters involve the UNet as well as the Text Encoder, then passing
+`cross_attention_kwargs={"scale": 0.5}` will apply the `scale` value to both the UNet 
+and the Text Encoder. 
+
+</Tip>
+
 Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is preferred to [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`] for loading LoRA parameters. This is because
 [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] can handle the following situations:
 
@@ -273,3 +279,74 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
 
 **Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs,
 refer to the respective docstrings.
+
+## Supporting A1111 themed LoRA checkpoints from Diffusers
+
+To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted
+LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] in a limited capacity.
+In this section, we explain how to load an A1111 formatted LoRA checkpoint from [CivitAI](https://civitai.com/)
+in Diffusers and perform inference with it. 
+
+First, download a checkpoint. We'll use
+[this one](https://civitai.com/models/13239/light-and-shadow) for demonstration purposes. 
+
+```bash
+wget https://civitai.com/api/download/models/15603 -O light_and_shadow.safetensors
+```
+
+Next, we initialize a [`~DiffusionPipeline`]:
+
+```python 
+import torch
+
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+
+pipeline = StableDiffusionPipeline.from_pretrained(
+    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
+).to("cuda")
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+    pipeline.scheduler.config, use_karras_sigmas=True
+)
+```
+
+We then load the checkpoint downloaded from CivitAI: 
+
+```python 
+pipeline.load_lora_weights(".", weight_name="light_and_shadow.safetensors")
+```
+
+<Tip warning={true}>
+
+If you're loading a checkpoint in the `safetensors` format, please ensure you have `safetensors` installed.
+
+</Tip>
+
+And then it's time for running inference: 
+
+```python 
+prompt = "masterpiece, best quality, 1girl, at dusk"
+negative_prompt = ("(low quality, worst quality:1.4), (bad anatomy), (inaccurate limb:1.2), "
+                   "bad composition, inaccurate eyes, extra digit, fewer digits, (extra arms:1.2), large breasts")
+
+images = pipeline(prompt=prompt, 
+    negative_prompt=negative_prompt, 
+    width=512, 
+    height=768, 
+    num_inference_steps=15, 
+    num_images_per_prompt=4,
+    generator=torch.manual_seed(0)
+).images
+```
+
+Below is a comparison between the LoRA and the non-LoRA results:
+
+![lora_non_lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lora_non_lora_comparison.png)
+
+You have a similar checkpoint stored on the Hugging Face Hub, you can load it
+directly with [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] like so: 
+
+```python 
+lora_model_id = "sayakpaul/civitai-light-shadow-lora"
+lora_filename = "light_and_shadow.safetensors"
+pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
+```

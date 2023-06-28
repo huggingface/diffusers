@@ -261,12 +261,14 @@ def load_pt(url: str):
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
-    Args:
     Loads `image` to a PIL Image.
+
+    Args:
         image (`str` or `PIL.Image.Image`):
             The image to convert to the PIL Image format.
     Returns:
-        `PIL.Image.Image`: A PIL Image.
+        `PIL.Image.Image`:
+            A PIL Image.
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
@@ -577,3 +579,9 @@ def enable_full_determinism():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def disable_full_determinism():
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
+    torch.use_deterministic_algorithms(False)
