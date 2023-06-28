@@ -445,7 +445,6 @@ class DreamBoothDataset(Dataset):
     ):
         self.size = size
         self.center_crop = center_crop
-        self.tokenizer = tokenizer
         self.instance_prompt_hidden_states = instance_prompt_hidden_states
         self.class_prompt_hidden_states = class_prompt_hidden_states
         self.instance_unet_added_conditions = instance_unet_added_conditions
@@ -908,7 +907,7 @@ def main(args):
             prompt_embeds = prompt_embeds.to(accelerator.device)
             add_text_embeds = add_text_embeds.to(accelerator.device)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-        print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
+        # print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
         return prompt_embeds, unet_added_cond_kwargs
 
     instance_prompt_hidden_states, instance_unet_added_conditions = compute_embeddings(args.instance_prompt, text_encoders, tokenizers)
