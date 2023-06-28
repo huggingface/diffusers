@@ -243,6 +243,10 @@ class ShapEPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        
+        # Rescale the features to have unit variance
+        prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
+
 
         return prompt_embeds
 
@@ -390,8 +394,6 @@ class ShapEPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
         prompt_embeds = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
-        # Rescale the features to have unit variance
-        prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         # prior
 
