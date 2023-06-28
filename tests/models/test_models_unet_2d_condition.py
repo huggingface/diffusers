@@ -18,7 +18,6 @@ import gc
 import os
 import tempfile
 import unittest
-from dataclasses import dataclass
 
 import torch
 from parameterized import parameterized
@@ -27,7 +26,6 @@ from pytest import mark
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
 from diffusers.utils import (
-    BaseOutput,
     floats_tensor,
     load_hf_numpy,
     logging,
@@ -1092,12 +1090,17 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
-    def test_pickle():
-        @dataclass
-        class NetParams(BaseOutput):
-            sample: torch.FloatTensor
+    @require_torch_gpu
+    def test_pickle(self, seed, timestep):
+        model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
+        latents = self.get_latents(seed)
+        encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
-        m = NetParams(sample=torch.randn(1, 10))
-        n = copy.copy(m)
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
-        assert m == n
+        with torch.no_grad():
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        sample_copy = copy.copy(sample)
+
+        assert sample == sample_copy
