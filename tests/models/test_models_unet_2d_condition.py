@@ -14,11 +14,11 @@
 # limitations under the License.
 
 import copy
-from dataclasses import dataclass
 import gc
 import os
 import tempfile
 import unittest
+from dataclasses import dataclass
 
 import torch
 from parameterized import parameterized
