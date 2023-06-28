@@ -773,6 +773,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        aug_emb = None
 
         if self.class_embedding is not None:
             if class_labels is None:
@@ -823,7 +824,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             add_embeds = add_embeds.to(emb.dtype)
             aug_emb = self.add_embedding(add_embeds)
 
-        emb = emb + aug_emb
+        emb = emb + aug_emb if aug_emb is not None else emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
