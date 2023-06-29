@@ -637,10 +637,11 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         Examples:
 
         Returns:
-            [`~pipelines.alt_diffusion.AltDiffusionPipelineOutput`] or `tuple`: If `return_dict` is `True`,
-            [`~pipelines.alt_diffusion.AltDiffusionPipelineOutput`] is returned, otherwise a `tuple` is returned where
-            the first element is a list with the generated images and the second element is a list of `bool`s
-            indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
+            [`~pipelines.alt_diffusion.AltDiffusionPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.alt_diffusion.AltDiffusionPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images and the
+                second element is a list of `bool`s indicating whether the corresponding generated image contains
+                "not-safe-for-work" (nsfw) content.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
