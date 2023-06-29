@@ -1172,17 +1172,11 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                if args.validation_images is None:
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
-                else:
-                    images = []
-                    for image in args.validation_images:
-                        image = Image.open(image)
-                        image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
-                        images.append(image)
+                images = []
+                for image in args.validation_images:
+                    image = Image.open(image)
+                    image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                    images.append(image)
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
