@@ -22,7 +22,7 @@ $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
       --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e/prior_image \
+      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e-img2img/prior\
       --debug prior_image
 ```
 """
@@ -32,7 +32,6 @@ $ python scripts/convert_shap_e_to_diffusers.py \
 
 PRIOR_ORIGINAL_PREFIX = "wrapped"
 
-# Uses default arguments
 PRIOR_CONFIG = {
     "num_attention_heads": 16,
     "attention_head_dim": 1024 // 16,
@@ -41,9 +40,12 @@ PRIOR_CONFIG = {
     "num_embeddings": 1024,
     "additional_embeddings": 0,
     "time_embed_act_fn": "gelu",
+    "norm_in_type": "layer",
+    "encoder_hid_proj_type": None,
+    "added_emb_type": None,
     "time_embed_dim": 1024 * 4,
-    "clip_embedding_dim": 768,
-    "out_dim": 1024 * 2,
+    "embedding_proj_dim": 768,
+    "clip_embed_dim": 1024 * 2,
 }
 
 
@@ -229,10 +231,13 @@ PRIOR_IMAGE_CONFIG = {
     "num_embeddings": 1024,
     "additional_embeddings": 0,
     "time_embed_act_fn": "gelu",
-    "norm_embedding_proj": True,
+    "norm_in_type": "layer",
+    "embedding_proj_norm_type": "layer",
+    "encoder_hid_proj_type": None,
+    "added_emb_type": None,
     "time_embed_dim": 1024 * 4,
-    "clip_embedding_dim": 1024,
-    "out_dim": 1024 * 2,
+    "embedding_proj_dim": 1024,
+    "clip_embed_dim": 1024 * 2,
 }
 
 
@@ -454,7 +459,7 @@ def prior(*, args, checkpoint_map_location):
 
     del prior_checkpoint
 
-    load_checkpoint_to_model(prior_diffusers_checkpoint, prior_model, strict=True)
+    load_prior_checkpoint_to_model(prior_diffusers_checkpoint, prior_model)
 
     print("done loading prior")
 
@@ -473,7 +478,7 @@ def prior_image(*, args, checkpoint_map_location):
 
     del prior_checkpoint
 
-    load_checkpoint_to_model(prior_diffusers_checkpoint, prior_model, strict=True)
+    load_prior_checkpoint_to_model(prior_diffusers_checkpoint, prior_model)
 
     print("done loading prior_image")
 
@@ -518,6 +523,22 @@ def renderer(*, args, checkpoint_map_location):
     print("done loading renderer")
 
     return renderer_model
+
+
+# prior model will expect clip_mean and clip_std, whic are missing from the state_dict
+PRIOR_EXPECTED_MISSING_KEYS = ["clip_mean", "clip_std"]
+
+def load_prior_checkpoint_to_model(checkpoint, model):
+    with tempfile.NamedTemporaryFile() as file:
+        torch.save(checkpoint, file.name)
+        del checkpoint
+        missing_keys, unexpected_keys = model.load_state_dict(torch.load(file.name), strict=False)
+        missing_keys = list(set(missing_keys) - set(PRIOR_EXPECTED_MISSING_KEYS))
+        
+        if len(unexpected_keys) > 0:
+            raise ValueError(f"Unexpected keys when loading prior model: {unexpected_keys}")
+        if len(missing_keys) > 0:
+            raise ValueError(f"Missing keys when loading prior model: {missing_keys}")        
 
 
 def load_checkpoint_to_model(checkpoint, model, strict=False):
