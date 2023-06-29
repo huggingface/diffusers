@@ -13,7 +13,14 @@ Resources:
 
 Available Checkpoints are:
 - *cd_imagenet64_l2 (64x64 resolution)* [dg845/consistency-model-pipelines](https://huggingface.co/dg845/consistency-model-pipelines)
-- TODO: add more checkpoints from original release?
+- *cd_imagenet64_lpips (64x64 resolution)* [dg845/diffusers-cd_imagenet64_lpips](https://huggingface.co/dg845/diffusers-cd_imagenet64_lpips)
+- *ct_imagenet64 (64x64 resolution)* [dg845/diffusers-ct_imagenet64](https://huggingface.co/dg845/diffusers-ct_imagenet64)
+- *cd_bedroom256_l2 (256x256 resolution)* [dg845/diffusers-cd_bedroom256_l2](https://huggingface.co/dg845/diffusers-cd_bedroom256_l2)
+- *cd_bedroom256_lpips (256x256 resolution)* [dg845/diffusers-cd_bedroom256_lpips](https://huggingface.co/dg845/diffusers-cd_bedroom256_lpips)
+- *ct_bedroom256 (256x256 resolution)* [dg845/diffusers-ct_bedroom256](https://huggingface.co/dg845/diffusers-ct_bedroom256)
+- *cd_cat256_l2 (256x256 resolution)* [dg845/diffusers-cd_cat256_l2](https://huggingface.co/dg845/diffusers-cd_cat256_l2)
+- *cd_cat256_lpips (256x256 resolution)* [dg845/diffusers-cd_cat256_lpips](https://huggingface.co/dg845/diffusers-cd_cat256_lpips)
+- *ct_cat256 (256x256 resolution)* [dg845/diffusers-ct_cat256](https://huggingface.co/dg845/diffusers-ct_cat256)
 
 ## Available Pipelines
 
@@ -44,7 +51,9 @@ image = pipe(num_inference_steps=1, class_labels=145).images[0]
 image.save("consistency_model_onestep_sample_penguin.png")
 
 # Multistep sampling, class-conditional image generation
-image = pipe(num_inference_steps=2, class_labels=145).images[0]
+# Timesteps can be explicitly specified; the particular timesteps below are from the original Github repo.
+# https://github.com/openai/consistency_models/blob/main/scripts/launch.sh#L77
+image = pipe(num_inference_steps=None, timesteps=[22, 0], class_labels=145).images[0]
 image.save("consistency_model_multistep_sample_penguin.png")
 ```
 

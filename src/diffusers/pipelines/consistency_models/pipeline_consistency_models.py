@@ -1,4 +1,3 @@
-import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
@@ -6,11 +5,16 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
+    logging,
     randn_tensor,
 )
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class ConsistencyModelPipeline(DiffusionPipeline):
@@ -113,24 +117,6 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
     def prepare_latents(self, batch_size, num_channels, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels, height, width)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -146,6 +132,34 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
+    # Follows diffusers.VaeImageProcessor.postprocess
+    def postprocess_image(self, latents: torch.FloatTensor, output_type: str = "pil"):
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+
+        if output_type == "latent":
+            # Return latents without modification
+            return latents
+
+        # Equivalent to diffusers.VaeImageProcessor.denormalize
+        latents = (latents / 2 + 0.5).clamp(0, 1)
+        if output_type == "pt":
+            return latents
+
+        # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
+        latents = latents.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "np":
+            return latents
+
+        # Output_type must be 'pil'
+        latents = self.numpy_to_pil(latents)
         return latents
 
     def prepare_class_labels(self, batch_size, device, class_labels=None):
@@ -169,7 +183,10 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
 
         if num_inference_steps is not None and timesteps is not None:
-            raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
+            logger.warning(
+                f"Both `num_inference_steps`: {num_inference_steps} and `timesteps`: {timesteps} are supplied;"
+                " `timesteps` will be used over `num_inference_steps`."
+            )
 
         if latents is not None:
             expected_shape = (batch_size, 3, img_size, img_size)
@@ -189,9 +206,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         class_labels: Optional[Union[torch.Tensor, List[int], int]] = None,
-        num_inference_steps: int = 40,
+        num_inference_steps: int = 1,
         timesteps: List[int] = None,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -206,15 +222,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             class_labels (`torch.Tensor` or `List[int]` or `int`, *optional*):
                 Optional class labels for conditioning class-conditional consistency models. Will not be used if the
                 model is not class-conditional.
-            num_inference_steps (`int`, *optional*, defaults to 40):
+            num_inference_steps (`int`, *optional*, defaults to 1):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -248,7 +261,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # Sample image latents x_0 ~ N(0, sigma_0^2 * I)
         sample = self.prepare_latents(
             batch_size=batch_size,
-            num_channels=3,
+            num_channels=self.unet.config.in_channels,
             height=img_size,
             width=img_size,
             dtype=self.unet.dtype,
@@ -269,42 +282,31 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             self.scheduler.set_timesteps(num_inference_steps)
             timesteps = self.scheduler.timesteps
 
-        # 5. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
-        # 6. Denoising loop
+        # 5. Denoising loop
         # Multistep sampling: implements Algorithm 1 in the paper
-        # Onestep sampling does not use random noise
-        use_noise = False if num_inference_steps == 1 else True
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        use_noise = False if num_inference_steps == 1 else True  # Onestep sampling does not use random noise
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
-                scaled_t = self.scheduler.scale_timestep(t)
-                model_output = self.unet(scaled_sample, scaled_t, class_labels=class_labels).sample
+                model_output = self.unet(scaled_sample, t, class_labels=class_labels).sample
 
                 sample = self.scheduler.step(
-                    model_output, t, sample, use_noise=use_noise, **extra_step_kwargs
+                    model_output, t, sample, use_noise=use_noise, generator=generator
                 ).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, sample)
+                progress_bar.update()
+                if callback is not None and i % callback_steps == 0:
+                    callback(i, t, sample)
 
-        # 7. Post-process image sample
-        sample = (sample / 2 + 0.5).clamp(0, 1)
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
-
-        if output_type == "pil":
-            sample = self.numpy_to_pil(sample)
-
-        if not return_dict:
-            return (sample,)
+        # 6. Post-process image sample
+        image = self.postprocess_image(sample, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
-        return ImagePipelineOutput(images=sample)
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
