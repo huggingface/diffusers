@@ -169,6 +169,7 @@ class FlaxAttention(nn.Module):
         tensor = tensor.reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
+    @nn.compact
     def __call__(self, hidden_states, context=None, deterministic=True):
         context = hidden_states if context is None else context
 
@@ -261,6 +262,7 @@ class FlaxBasicTransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm3 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
 
+    @nn.compact
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
@@ -356,6 +358,7 @@ class FlaxTransformer2DModel(nn.Module):
                 dtype=self.dtype,
             )
 
+    @nn.compact
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
         residual = hidden_states
@@ -435,6 +438,7 @@ class FlaxGEGLU(nn.Module):
         inner_dim = self.dim * 4
         self.proj = nn.Dense(inner_dim * 2, dtype=self.dtype)
 
+    @nn.compact
     def __call__(self, hidden_states, deterministic=True):
         hidden_states = self.proj(hidden_states)
         hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
