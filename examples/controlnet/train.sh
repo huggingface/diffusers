@@ -26,7 +26,7 @@ moreh-switch-model -M 1
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=5
+  batch_size=8
 fi
 
 # Run training script
