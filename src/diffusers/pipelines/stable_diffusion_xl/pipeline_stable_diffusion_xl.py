@@ -427,7 +427,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, LoraLoaderMixin):
         negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
             bs_embed * num_images_per_prompt, -1
         )
-        print(f"From encode_prompt: {prompt_embeds.shape}, {pooled_prompt_embeds.shape}")
+        # print(f"From encode_prompt: {prompt_embeds.shape}, {pooled_prompt_embeds.shape}")
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
@@ -535,7 +535,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, LoraLoaderMixin):
             raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
-        print(f"From _get_add_time_ids: {add_time_ids.shape}")
+        # print(f"From _get_add_time_ids: {add_time_ids.shape}")
         return add_time_ids
 
     @torch.no_grad()
@@ -721,7 +721,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
-        print(f"From pipeline: {add_time_ids.shape}, {add_text_embeds.shape}")
+        # print(f"From pipeline: {add_time_ids.shape}, {add_text_embeds.shape}")
         
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
