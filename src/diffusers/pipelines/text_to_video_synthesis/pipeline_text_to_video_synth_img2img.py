@@ -131,7 +131,7 @@ def preprocess_video(video):
 
 
 
-class TextToVideoSDImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation.
 
