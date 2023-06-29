@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -29,7 +30,6 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-import PIL
 from ..pipeline_utils import DiffusionPipeline
 from . import TextToVideoSDPipelineOutput
 
@@ -56,7 +56,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cpu")
 
         >>> # and load the image-to-image model
-        >>> pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16, revision="refs/pr/15")
+        >>> pipe = DiffusionPipeline.from_pretrained(
+        ...     "cerspense/zeroscope_v2_XL", torch_dtype=torch.float16, revision="refs/pr/15"
+        ... )
         >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         >>> pipe.enable_model_cpu_offload()
 
@@ -112,7 +114,7 @@ def preprocess_video(video):
             video = np.array(video).astype(np.float32) / 255.0
 
         if video.ndim == 4:
-                video = video[None, ...]
+            video = video[None, ...]
 
         video = torch.from_numpy(video.transpose(0, 4, 1, 2, 3))
 
@@ -124,11 +126,13 @@ def preprocess_video(video):
         if channel == 4:
             return video
 
+        # move channels before num_frames
+        video = video.permute(0, 2, 1, 3, 4)
+
     # normalize video
     video = 2.0 * video - 1.0
 
     return video
-
 
 
 class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):

@@ -163,7 +163,6 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
-        VideoToVideoSDPipeline,
         TextToVideoZeroPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
@@ -174,6 +173,7 @@ else:
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
+        VideoToVideoSDPipeline,
         VQDiffusionPipeline,
     )
 
