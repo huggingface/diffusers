@@ -1256,7 +1256,6 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
-                pipeline=pipeline,
             )
             upload_folder(
                 repo_id=repo_id,
