@@ -1021,12 +1021,13 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
-                pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                # pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
                 # Convert images to latent space
-                model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = vae.encode(batch["pixel_values"]).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
-                print(f"Model input dtype: {model_input.dtype}")
+                print(f"Model input dtype: {model_input.dtype}. Casting...")
+                model_input = model_input.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
