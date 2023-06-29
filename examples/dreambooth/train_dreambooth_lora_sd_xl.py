@@ -900,12 +900,14 @@ def main(args):
         with torch.no_grad():
             prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
             add_text_embeds = pooled_prompt_embeds
+            
             crops_coords_top_left = (0, 0)
-            add_time_ids = torch.tensor(
-                [list((args.resolution, args.resolution) + crops_coords_top_left + (args.resolution, args.resolution))], dtype=torch.long
-            )
+            add_time_ids = list((args.resolution, args.resolution) + crops_coords_top_left + (args.resolution, args.resolution))
+            add_time_ids = torch.tensor([add_time_ids])
+            
             prompt_embeds = prompt_embeds.to(accelerator.device)
             add_text_embeds = add_text_embeds.to(accelerator.device)
+            add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
         # print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
         return prompt_embeds, unet_added_cond_kwargs
