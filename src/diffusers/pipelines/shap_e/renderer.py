@@ -567,6 +567,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         n_hidden_layers: int = 6,
         act_fn: str = "swish",
         insert_direction_at: int = 4,
+        background: Tuple[float] = (0.0, 0.0, 0.0,),
     ):
         super().__init__()
 
@@ -576,7 +577,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
             d_latent=d_latent,
         )
         self.mlp = MLPNeRSTFModel(d_hidden, n_output, n_hidden_layers, act_fn, insert_direction_at)
-        self.void = VoidNeRFModel(background=[0.0, 0.0, 0.0], channel_scale=255.0)
+        self.void = VoidNeRFModel(background=background, channel_scale=255.0)
         self.volume = BoundingBoxVolume(bbox_max=[1.0, 1.0, 1.0], bbox_min=[-1.0, -1.0, -1.0])
 
     @torch.no_grad()
