@@ -998,10 +998,11 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    loss_dict = {}
+    output_list = []
     start_time = time.time()
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
+        start_time_epoch = time.time()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
@@ -1091,8 +1092,13 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+        elapsed_time = time.time() - start_time_epoch
+        throughput = (len(train_dataset)) / elapsed_time
+        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
+        output_list.append(output_dict)
+        
+    elapsed_time = time.time() - start_time
     # Create the pipeline using using the trained modules and save it.
-    loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
@@ -1111,14 +1117,14 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-    elapsed_time = time.time() - start_time
+
     throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-    output_dict = {"throughput": throughput,
-                   "loss": loss_dict}
+    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
+    output_list.append(output_dict)
     
     import json
     with open(args.log_dir, "w") as f:
-        json.dump(output_dict, f)
+        json.dump(output_list, f, indent=4)
     logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 

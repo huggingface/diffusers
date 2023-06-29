@@ -821,9 +821,10 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data.clone()
 
-    loss_dict = {}
+    output_list = []
     start_time = time.time()
     for epoch in range(first_epoch, args.num_train_epochs):
+        start_time_epoch = time.time()
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
@@ -905,7 +906,12 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-        loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
+        elapsed_time = time.time() - start_time_epoch
+        throughput = (len(train_dataset)) / elapsed_time
+        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
+        output_list.append(output_dict)
+    
+    elapsed_time = time.time() - start_time
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -940,14 +946,14 @@ def main():
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-    elapsed_time = time.time() - start_time
+    
     throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-    output_dict = {"throughput": throughput,
-                   "loss": loss_dict}
+    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
+    output_list.append(output_dict)
     
     import json
     with open(args.log_dir, "w") as f:
-        json.dump(output_dict, f)
+        json.dump(output_list, f, indent=4)
     logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 

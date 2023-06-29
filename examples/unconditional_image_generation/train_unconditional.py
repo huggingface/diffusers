@@ -557,9 +557,10 @@ def main(args):
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Train!
-    loss_dict = {}
+    output_list = []
     start_time = time.time()
     for epoch in range(first_epoch, args.num_epochs):
+        start_time_epoch = time.time()
         model.train()
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
@@ -628,8 +629,11 @@ def main(args):
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         
-        loss_dict["loss_epoch_"+str(epoch)]= loss.detach().item()
         progress_bar.close()
+        elapsed_time = time.time() - start_time_epoch
+        throughput = (len(dataset)) / elapsed_time
+        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
+        output_list.append(output_dict)
 
         accelerator.wait_for_everyone()
 
@@ -697,12 +701,12 @@ def main(args):
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
     elapsed_time = time.time() - start_time
     throughput = (len(dataset)*args.num_epochs) / elapsed_time
-    output_dict = {"throughput": throughput,
-                   "loss": loss_dict}
+    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
+    output_list.append(output_dict)
     
     import json
     with open(args.log_dir, "w") as f:
-        json.dump(output_dict, f)
+        json.dump(output_list, f, indent=4)
     logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
