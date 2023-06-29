@@ -534,6 +534,8 @@ def collate_fn(examples, with_prior_preservation=False):
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     input_ids = torch.cat(input_ids, dim=0)
+    add_text_embeds = torch.stack(add_text_embeds)
+    add_time_ids = torch.stack(add_time_ids)
 
     batch = {
         "input_ids": input_ids,
