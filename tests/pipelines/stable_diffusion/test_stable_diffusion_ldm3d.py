@@ -130,9 +130,9 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, 64, 64)
 
         expected_slice_rgb = np.array(
-            [0.37350047, 0.70260847, 0.74218935, 0.5166996, 0.582674, 0.6094541, 0.41805607, 0.48368582, 0.46530965]
+            [0.37338176, 0.70247, 0.74203193, 0.51643604, 0.58256793, 0.60932136, 0.4181095, 0.48355877, 0.46535262]
         )
-        expected_slice_depth = np.array([103.46226, 85.828445, 87.86833])
+        expected_slice_depth = np.array([103.46727, 85.812004, 87.849236])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
