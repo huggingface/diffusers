@@ -909,7 +909,7 @@ def main(args):
             add_text_embeds = add_text_embeds.to(accelerator.device)
             add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-        # print(prompt_embeds.shape, unet_added_cond_kwargs.keys())
+        
         return prompt_embeds, unet_added_cond_kwargs
 
     instance_prompt_hidden_states, instance_unet_added_conditions = compute_embeddings(args.instance_prompt, text_encoders, tokenizers)
@@ -1055,6 +1055,8 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Predict the noise residual
+                for k in batch["unet_added_conditions"]:
+                    print(k, batch["unet_added_conditions"][k].shape)
                 model_pred = unet(
                     noisy_model_input, timesteps, batch["input_ids"], added_cond_kwargs=batch["unet_added_conditions"]
                 ).sample
