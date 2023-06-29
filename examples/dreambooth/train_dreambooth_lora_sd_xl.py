@@ -46,16 +46,13 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    EulerDiscreteScheduler,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
 from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    SlicedAttnAddedKVProcessor,
+    LoRAAttnProcessor2_0
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
@@ -730,7 +727,7 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
+    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, use_auth_token=True,
     )
@@ -890,12 +887,16 @@ def main(args):
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(prompt, text_encoders, tokenizers):
+        original_size = (args.resolution, args.resolution)
+        target_size = (args.resolution, args.resolution)
+        crops_coords_top_left = (0, 0)
+
         with torch.no_grad():
             prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
             add_text_embeds = pooled_prompt_embeds
             
-            crops_coords_top_left = (0, 0)
-            add_time_ids = list((args.resolution, args.resolution) + crops_coords_top_left + (args.resolution, args.resolution))
+            # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
+            add_time_ids = list(original_size + crops_coords_top_left + target_size)
             add_time_ids = torch.tensor([add_time_ids])
             
             prompt_embeds = prompt_embeds.to(accelerator.device)
@@ -1036,7 +1037,7 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
-                bsz, channels, height, width = model_input.shape
+                bsz = model_input.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
