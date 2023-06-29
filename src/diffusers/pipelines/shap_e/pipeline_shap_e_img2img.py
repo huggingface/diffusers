@@ -30,8 +30,6 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-from .camera import create_pan_cameras
-from .params_proj import ShapEParamsProjModel
 from .renderer import ShapERenderer
 
 
@@ -299,7 +297,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         # YiYi testing only: I don't think we need to return latent for this pipeline
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
-        
+
         images = self.renderer.decode(
             latents,
             device,
