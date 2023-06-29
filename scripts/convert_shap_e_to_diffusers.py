@@ -22,7 +22,7 @@ $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
       --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/test-shap-e-renderer\
+      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e/renderer\
       --debug renderer
 ```
 """
@@ -389,13 +389,16 @@ RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX = "encoder.params_proj"
 def renderer_model_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
     
     diffusers_checkpoint = {}
+    diffusers_checkpoint.update(
+        {f"mlp.{k}": checkpoint[f"{RENDERER_MLP_ORIGINAL_PREFIX}.{k}"] for k in model.mlp.state_dict().keys()}
+    )
+            
+    diffusers_checkpoint.update(
+        {f"params_proj.{k}": checkpoint[f"{RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.params_proj.state_dict().keys()}
+    )
 
     diffusers_checkpoint.update(
-        { 
-            "mlp": {k: checkpoint[f"{RENDERER_MLP_ORIGINAL_PREFIX}.{k}"] for k in model.mlp.state_dict().keys()},
-            "params_proj": {k: checkpoint[f"{RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.params_proj.state_dict().keys()},
-
-        }
+        {"void.background": torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32)}
     )
 
     return diffusers_checkpoint
@@ -494,7 +497,6 @@ def renderer(*, args, checkpoint_map_location):
 
 # prior model will expect clip_mean and clip_std, whic are missing from the state_dict
 PRIOR_EXPECTED_MISSING_KEYS = ["clip_mean", "clip_std"]
-
 
 def load_prior_checkpoint_to_model(checkpoint, model):
     with tempfile.NamedTemporaryFile() as file:

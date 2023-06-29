@@ -317,7 +317,14 @@ class ShapEPipeline(DiffusionPipeline):
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
-        images = self.renderer.decode(latents)
+        images = self.renderer.decode(
+            latents, 
+            device,
+            size=size, 
+            ray_batch_size=ray_batch_size, 
+            n_coarse_samples=n_coarse_samples,
+            n_fine_samples=n_fine_samples,
+            )
 
         if output_type not in ["np", "pil"]:
             raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")

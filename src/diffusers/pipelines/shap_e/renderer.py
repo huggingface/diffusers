@@ -658,7 +658,15 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         return channels, weighted_sampler, model_out
     
     @torch.no_grad()
-    def decode(self, latents: torch.FloatTensor):
+    def decode(
+        self, 
+        latents, 
+        device, 
+        size: int = 64,
+        ray_batch_size: int = 4096,
+        n_coarse_samples=64,
+        n_fine_samples=128,
+        ):
 
         # project the the paramters from the generated latents
         projected_params = self.params_proj(latents)
