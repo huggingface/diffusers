@@ -5,7 +5,7 @@ import torch
 from accelerate import load_checkpoint_and_dispatch
 
 from diffusers.models.prior_transformer import PriorTransformer
-from diffusers.pipelines.shap_e import MLPNeRSTFModel, ShapEParamsProjModel, ShapERenderer
+from diffusers.pipelines.shap_e import ShapERenderer
 
 
 """
@@ -371,7 +371,7 @@ def prior_image_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
 # done prior_image
 
 
-# renderer 
+# renderer
 
 RENDERER_CONFIG = {}
 
@@ -386,22 +386,24 @@ RENDERER_MLP_ORIGINAL_PREFIX = "renderer.nerstf"
 
 RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX = "encoder.params_proj"
 
+
 def renderer_model_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
-    
     diffusers_checkpoint = {}
     diffusers_checkpoint.update(
         {f"mlp.{k}": checkpoint[f"{RENDERER_MLP_ORIGINAL_PREFIX}.{k}"] for k in model.mlp.state_dict().keys()}
     )
-            
-    diffusers_checkpoint.update(
-        {f"params_proj.{k}": checkpoint[f"{RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.params_proj.state_dict().keys()}
-    )
 
     diffusers_checkpoint.update(
-        {"void.background": torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32)}
+        {
+            f"params_proj.{k}": checkpoint[f"{RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"]
+            for k in model.params_proj.state_dict().keys()
+        }
     )
+
+    diffusers_checkpoint.update({"void.background": torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32)})
 
     return diffusers_checkpoint
+
 
 # done renderer
 
@@ -477,17 +479,18 @@ def prior_image(*, args, checkpoint_map_location):
 
 
 def renderer(*, args, checkpoint_map_location):
-
     print(" loading renderer")
 
     renderer_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
 
     renderer_model = renderer_model_from_original_config()
 
-    renderer_diffusers_checkpoint = renderer_model_original_checkpoint_to_diffusers_checkpoint(renderer_model, renderer_checkpoint)
+    renderer_diffusers_checkpoint = renderer_model_original_checkpoint_to_diffusers_checkpoint(
+        renderer_model, renderer_checkpoint
+    )
 
     del renderer_checkpoint
-    
+
     load_checkpoint_to_model(renderer_diffusers_checkpoint, renderer_model, strict=True)
 
     print("done loading renderer")
@@ -497,6 +500,7 @@ def renderer(*, args, checkpoint_map_location):
 
 # prior model will expect clip_mean and clip_std, whic are missing from the state_dict
 PRIOR_EXPECTED_MISSING_KEYS = ["clip_mean", "clip_std"]
+
 
 def load_prior_checkpoint_to_model(checkpoint, model):
     with tempfile.NamedTemporaryFile() as file:
@@ -583,9 +587,6 @@ if __name__ == "__main__":
     elif args.debug == "prior_image":
         prior_model = prior_image(args=args, checkpoint_map_location=checkpoint_map_location)
         prior_model.save_pretrained(args.dump_path)
-    elif args.debug == "params_proj":
-        params_proj_model = params_proj(args=args, checkpoint_map_location=checkpoint_map_location)
-        params_proj_model.save_pretrained(args.dump_path)
     elif args.debug == "renderer":
         renderer_model = renderer(args=args, checkpoint_map_location=checkpoint_map_location)
         renderer_model.save_pretrained(args.dump_path)

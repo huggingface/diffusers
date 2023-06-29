@@ -31,7 +31,6 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-
 from .renderer import ShapERenderer
 
 
@@ -43,6 +42,7 @@ EXAMPLE_DOC_STRING = """
 
         ```
 """
+
 
 @dataclass
 class ShapEPipelineOutput(BaseOutput):
@@ -318,13 +318,13 @@ class ShapEPipeline(DiffusionPipeline):
             return ShapEPipelineOutput(images=latents)
 
         images = self.renderer.decode(
-            latents, 
+            latents,
             device,
-            size=size, 
-            ray_batch_size=ray_batch_size, 
+            size=size,
+            ray_batch_size=ray_batch_size,
             n_coarse_samples=n_coarse_samples,
             n_fine_samples=n_fine_samples,
-            )
+        )
 
         if output_type not in ["np", "pil"]:
             raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")

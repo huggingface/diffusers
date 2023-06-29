@@ -20,8 +20,8 @@ else:
         ImportanceRaySampler,
         MLPNeRFModelOutput,
         MLPNeRSTFModel,
-        StratifiedRaySampler,
         ShapEParamsProjModel,
-        VoidNeRFModel,
         ShapERenderer,
+        StratifiedRaySampler,
+        VoidNeRFModel,
     )

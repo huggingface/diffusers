@@ -26,8 +26,6 @@ from ...models import ModelMixin
 from ...utils import BaseOutput
 from .camera import create_pan_cameras
 
-from transformers import PreTrainedModel
-
 
 def sample_pmf(pmf: torch.Tensor, n_samples: int) -> torch.Tensor:
     r"""
@@ -377,6 +375,7 @@ class MLPNeRFModelOutput(BaseOutput):
     channels: torch.Tensor
     ts: torch.Tensor
 
+
 class MLPNeRSTFModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
@@ -546,7 +545,6 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
 
 
 class ShapERenderer(ModelMixin, ConfigMixin):
-    
     @register_to_config
     def __init__(
         self,
@@ -568,14 +566,14 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         n_output: int = 12,
         n_hidden_layers: int = 6,
         act_fn: str = "swish",
-        insert_direction_at: int = 4,):
-
+        insert_direction_at: int = 4,
+    ):
         super().__init__()
 
         self.params_proj = ShapEParamsProjModel(
-            param_names = param_names,
-            param_shapes = param_shapes,
-            d_latent = d_latent,
+            param_names=param_names,
+            param_shapes=param_shapes,
+            d_latent=d_latent,
         )
         self.mlp = MLPNeRSTFModel(d_hidden, n_output, n_hidden_layers, act_fn, insert_direction_at)
         self.void = VoidNeRFModel(background=[0.0, 0.0, 0.0], channel_scale=255.0)
@@ -656,18 +654,17 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         weighted_sampler = ImportanceRaySampler(vrange, ts=model_out.ts, weights=weights)
 
         return channels, weighted_sampler, model_out
-    
+
     @torch.no_grad()
     def decode(
-        self, 
-        latents, 
-        device, 
+        self,
+        latents,
+        device,
         size: int = 64,
         ray_batch_size: int = 4096,
         n_coarse_samples=64,
         n_fine_samples=128,
-        ):
-
+    ):
         # project the the paramters from the generated latents
         projected_params = self.params_proj(latents)
 
@@ -675,7 +672,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         for name, param in self.mlp.state_dict().items():
             if f"nerstf.{name}" in projected_params.keys():
                 param.copy_(projected_params[f"nerstf.{name}"].squeeze(0))
-        
+
         # create cameras object
         camera = create_pan_cameras(size)
         rays = camera.camera_rays
@@ -702,6 +699,3 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         images = images.view(*camera.shape, camera.height, camera.width, -1).squeeze(0)
 
         return images
-
-
-    
