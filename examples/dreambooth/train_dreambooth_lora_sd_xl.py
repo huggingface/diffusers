@@ -46,7 +46,6 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
-    EulerDiscreteScheduler,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
@@ -721,7 +720,7 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True)
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, use_auth_token=True,
     )
