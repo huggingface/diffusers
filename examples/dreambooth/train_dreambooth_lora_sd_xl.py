@@ -780,9 +780,9 @@ def main(args):
     unet_lora_attn_procs = {}
     for name, attn_processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-        if name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
+        # if name.startswith("mid_block"):
+        #     hidden_size = unet.config.block_out_channels[-1]
+        if name.startswith("up_blocks"):
             block_id = int(name[len("up_blocks.")])
             hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
         elif name.startswith("down_blocks"):
@@ -1192,8 +1192,8 @@ def main(args):
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=None,
         )
-        checkpoint = torch.load(os.path.join(args.output_dir, "pytorch_lora_weights.bin"))
-        dump_keys(checkpoint)
+        # checkpoint = torch.load(os.path.join(args.output_dir, "pytorch_lora_weights.bin"))
+        # dump_keys(checkpoint)
 
         # Final inference
         # Load previous pipeline
