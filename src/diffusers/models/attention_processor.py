@@ -355,7 +355,6 @@ class Attention(nn.Module):
             beta=beta,
             alpha=self.scale,
         )
-        assert not attention_scores.isnan().any().item()
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
@@ -740,7 +739,6 @@ class AttnAddedKVProcessor2_0:
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
-        assert not hidden_states.isnan().any().item()
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
