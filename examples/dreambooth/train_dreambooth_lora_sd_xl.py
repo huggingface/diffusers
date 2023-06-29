@@ -565,7 +565,7 @@ class PromptDataset(Dataset):
         example["index"] = index
         return example
 
-
+# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(text_encoders, tokenizers, prompt):
     prompt_embeds_list = []
 
@@ -621,8 +621,6 @@ def main(args):
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
 
-    # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
-    # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     if args.train_text_encoder:
         raise NotImplementedError("Text encoder training not yet supported.")
 
@@ -701,7 +699,7 @@ def main(args):
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # Load the tokenizer
+    # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
@@ -734,7 +732,6 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, use_auth_token=True)
-
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
     )
@@ -898,6 +895,8 @@ def main(args):
     tokenizers = [tokenizer_one, tokenizer_two]
     text_encoders = [text_encoder_one, text_encoder_two]
 
+    # Here, we compute not just the text embeddings but also the additional embeddings
+    # needed for the SD XL UNet to operate.
     def compute_embeddings(prompt, text_encoders, tokenizers):
         with torch.no_grad():
             prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
@@ -912,8 +911,6 @@ def main(args):
             add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
         
-        for k in unet_added_cond_kwargs:
-            print(f"From compute_embeddings: {k}: {unet_added_cond_kwargs[k].shape}")
         return prompt_embeds, unet_added_cond_kwargs
 
     instance_prompt_hidden_states, instance_unet_added_conditions = compute_embeddings(args.instance_prompt, text_encoders, tokenizers)
@@ -1059,8 +1056,6 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Predict the noise residual
-                for k in batch["unet_added_conditions"]:
-                    print(k, batch["unet_added_conditions"][k].shape)
                 model_pred = unet(
                     noisy_model_input, timesteps, batch["input_ids"], added_cond_kwargs=batch["unet_added_conditions"]
                 ).sample
