@@ -39,24 +39,30 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_layers (`int`, *optional*, defaults to 20): The number of layers of Transformer blocks to use.
         embedding_dim (`int`, *optional*, defaults to 768): The dimension of the model input `hidden_states`
-        num_embeddings (`int`, *optional*, defaults to 77): the number of embeddings of the model input `hidden_states`
+        num_embeddings (`int`, *optional*, defaults to 77):
+            the number of embeddings of the model input `hidden_states`
         additional_embeddings (`int`, *optional*, defaults to 4): The number of additional tokens appended to the
             projected hidden_states. The actual length of the used hidden_states is `num_embeddings +
             additional_embeddings`.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        time_embed_act_fn (`str`, *optional*, defaults to 'silu'): the activation function to use to create timestep embedding
-        norm_in_type (`str`, *optional*, defaults to None): the normalization layer to apply on hidden states before 
-            passing to Transformer blocks. Set it to `None` if normalization is not needed. 
-        embedding_proj_norm_type (`str`, *optional*, defaults to None): the normalization layer to apply on the input `proj_embedding`.
-            Set it to `None` if normalization is not needed.
-        encoder_hid_proj_type (`str`, *optional*, defaults to `linear`): the projection layer to apply on the input `encoder_hidden_states`.
-            Set it to `None` if `encoder_hidden_states` is `None`.
-        added_emb_type (`str`, *optional*, defaults to `prd`): the additional embedding to condition model. 
+        time_embed_act_fn (`str`, *optional*, defaults to 'silu'):
+            the activation function to use to create timestep embedding
+        norm_in_type (`str`, *optional*, defaults to None): the normalization layer to apply on hidden states before
+            passing to Transformer blocks. Set it to `None` if normalization is not needed.
+        embedding_proj_norm_type (`str`, *optional*, defaults to None):
+            the normalization layer to apply on the input `proj_embedding`. Set it to `None` if normalization is not
+            needed.
+        encoder_hid_proj_type (`str`, *optional*, defaults to `linear`):
+            the projection layer to apply on the input `encoder_hidden_states`. Set it to `None` if
+            `encoder_hidden_states` is `None`.
+        added_emb_type (`str`, *optional*, defaults to `prd`): the additional embedding to condition model.
             `prd` indicating higher text-image dot products. if it is `None`, will not prepend additional embedding.
         time_embed_dim (`int, *optional*, defaults to None): the dimension of timestep embedding.
             If None, will set to `num_attention_heads * attention_head_dim`
-        embedding_proj_dim (`int`, *optional*, default to None): the dimension of `proj_embedding`. If None, will set to `embedding_dim`
-        clip_embed_dim (`int`, *optional*, default to None): the dimension of output. If None, will set to `embedding_dim`
+        embedding_proj_dim (`int`, *optional*, default to None):
+            the dimension of `proj_embedding`. If None, will set to `embedding_dim`
+        clip_embed_dim (`int`, *optional*, default to None):
+            the dimension of output. If None, will set to `embedding_dim`
     """
 
     @register_to_config
@@ -70,10 +76,10 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         additional_embeddings=4,
         dropout: float = 0.0,
         time_embed_act_fn: str = "silu",
-        norm_in_type: Optional[str] = None, # layer
-        embedding_proj_norm_type: Optional[str] = None, # layer
-        encoder_hid_proj_type: Optional[str] = "linear", # linear 
-        added_emb_type: Optional[str] = "prd", # prd
+        norm_in_type: Optional[str] = None,  # layer
+        embedding_proj_norm_type: Optional[str] = None,  # layer
+        encoder_hid_proj_type: Optional[str] = "linear",  # linear
+        added_emb_type: Optional[str] = "prd",  # prd
         time_embed_dim: Optional[int] = None,
         embedding_proj_dim: Optional[int] = None,
         clip_embed_dim: Optional[int] = None,
@@ -135,7 +141,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         elif norm_in_type is None:
             self.norm_in = None
         else:
-           raise ValueError(f"{norm_in_type} does not exist.")
+            raise ValueError(f"{norm_in_type} does not exist.")
 
         self.norm_out = nn.LayerNorm(inner_dim)
 
@@ -308,7 +314,12 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         if positional_embeddings.shape[1] < hidden_states.shape[1]:
             positional_embeddings = F.pad(
                 positional_embeddings,
-                (0, 0, additional_embeddings_len, self.prd_embedding.shape[1] if self.prd_embedding is not None else 0),
+                (
+                    0,
+                    0,
+                    additional_embeddings_len,
+                    self.prd_embedding.shape[1] if self.prd_embedding is not None else 0,
+                ),
                 value=0.0,
             )
 
