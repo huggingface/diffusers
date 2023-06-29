@@ -1,4 +1,3 @@
-import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
@@ -134,7 +133,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     # Follows diffusers.VaeImageProcessor.postprocess
     def postprocess_image(self, latents: torch.FloatTensor, output_type: str = "pil"):
         if output_type not in ["latent", "pt", "np", "pil"]:
@@ -144,21 +143,21 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             )
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
-        
+
         if output_type == "latent":
             # Return latents without modification
             return latents
-        
+
         # Equivalent to diffusers.VaeImageProcessor.denormalize
         latents = (latents / 2 + 0.5).clamp(0, 1)
         if output_type == "pt":
             return latents
-        
+
         # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
         latents = latents.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "np":
             return latents
-        
+
         # Output_type must be 'pil'
         latents = self.numpy_to_pil(latents)
         return latents
@@ -306,7 +305,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
-        
+
         if not return_dict:
             return (image,)
 
