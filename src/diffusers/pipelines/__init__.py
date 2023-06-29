@@ -63,6 +63,15 @@ else:
         KandinskyPipeline,
         KandinskyPriorPipeline,
     )
+    from .kandinsky2_2 import (
+        Kandinsky2_2_DecoderControlnetImg2ImgPipeline,
+        Kandinsky2_2_DecoderControlnetPipeline,
+        Kandinsky2_2_DecoderImg2ImgPipeline,
+        Kandinsky2_2_DecoderPipeline,
+        Kandinsky2_2PriorEmb2EmbPipeline,
+        Kandinsky2_2PriorPipeline,
+        Kandinsky2_2_DecoderInpaintPipeline
+    )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
