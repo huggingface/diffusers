@@ -29,6 +29,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+import PIL
 from ..pipeline_utils import DiffusionPipeline
 from . import TextToVideoSDPipelineOutput
 
@@ -39,17 +40,35 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import TextToVideoSDPipeline
+        >>> from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoSDPipeline.from_pretrained(
-        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
-        ... )
+        >>> pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        >>> pipe.to("cuda")
+
+        >>> prompt = "spiderman running in the desert"
+        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames
+        >>> # safe low-res video
+        >>> video_path = export_to_video(video_frames, output_video_path="./video_576_spiderman.mp4")
+
+        >>> # let's offload the text-to-image model
+        >>> pipe.to("cpu")
+
+        >>> # and load the image-to-image model
+        >>> pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16, revision="refs/pr/15")
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         >>> pipe.enable_model_cpu_offload()
 
-        >>> prompt = "Spiderman is surfing"
-        >>> video_frames = pipe(prompt).frames
-        >>> video_path = export_to_video(video_frames)
+        >>> # The VAE consumes A LOT of memory, let's make sure we run it in sliced mode
+        >>> pipe.vae.enable_slicing()
+
+        >>> # now let's upscale it
+        >>> video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
+
+        >>> # and denoise it
+        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames
+        >>> video_path = export_to_video(video_frames, output_video_path="./video_1024_spiderman.mp4")
         >>> video_path
         ```
 """
@@ -73,8 +92,8 @@ def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -
     return images
 
 
-def preprocess_video(self, video):
-    supported_formats = (np.ndarray, torch.Tensor)
+def preprocess_video(video):
+    supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image)
 
     if isinstance(video, supported_formats):
         video = [video]
@@ -83,6 +102,9 @@ def preprocess_video(self, video):
             f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(supported_formats)}"
         )
 
+    if isinstance(video[0], PIL.Image.Image):
+        video = [np.array(frame) for frame in video]
+
     if isinstance(video[0], np.ndarray):
         video = np.concatenate(video, axis=0) if video[0].ndim == 5 else np.stack(video, axis=0)
 
@@ -90,28 +112,17 @@ def preprocess_video(self, video):
             video = np.array(video).astype(np.float32) / 255.0
 
         if video.ndim == 4:
-                video = video[..., None]
+                video = video[None, ...]
 
         video = torch.from_numpy(video.transpose(0, 4, 1, 2, 3))
 
     elif isinstance(video[0], torch.Tensor):
-        image = torch.cat(video, axis=0) if video[0].ndim == 5 else torch.stack(video, axis=0)
-
-        _, channel, _, height, width = image.shape
+        video = torch.cat(video, axis=0) if video[0].ndim == 5 else torch.stack(video, axis=0)
 
         # don't need any preprocess if the video is latents
+        channel = video.shape[1]
         if channel == 4:
             return video
-
-    _, _, _, height, width = image.shape
-
-    if self.config.do_resize and (
-        height % self.config.vae_scale_factor != 0 or width % self.config.vae_scale_factor != 0
-    ):
-        raise ValueError(
-            f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.config.vae_scale_factor}"
-            f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
-        )
 
     # normalize video
     video = 2.0 * video - 1.0
@@ -129,7 +140,7 @@ class TextToVideoSDImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder. Same as Stable Diffusion 2.
         tokenizer (`CLIPTokenizer`):
@@ -476,6 +487,10 @@ class TextToVideoSDImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixi
     def prepare_latents(self, video, timestep, batch_size, dtype, device, generator=None):
         video = video.to(device=device, dtype=dtype)
 
+        # change from (b, c, f, h, w) -> (b * f, c, w, h)
+        bsz, channel, frames, width, height = video.shape
+        video = video.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
+
         if video.shape[1] == 4:
             init_latents = video
         else:
@@ -508,6 +523,8 @@ class TextToVideoSDImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
+
+        latents = latents[None, :].reshape((bsz, frames, latents.shape[1]) + latents.shape[2:]).permute(0, 2, 1, 3, 4)
 
         return latents
 
@@ -689,6 +706,9 @@ class TextToVideoSDImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixi
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        if output_type == "latent":
+            return latents
 
         video_tensor = self.decode_latents(latents)
 
