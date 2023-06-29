@@ -904,6 +904,7 @@ def main(args):
             add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
             unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
         
+        print(f"From compute_embeddings: {prompt_embeds.dtype}, {add_text_embeds.dtype}, {add_time_ids.dtype}")
         return prompt_embeds, unet_added_cond_kwargs
 
     instance_prompt_hidden_states, instance_unet_added_conditions = compute_embeddings(args.instance_prompt, text_encoders, tokenizers)
