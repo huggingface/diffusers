@@ -100,7 +100,7 @@ def preprocess(image):
 
 class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
     r"""
-    Pipeline for text-guided image-to-image generation using Stable Diffusion.
+    Pipeline for text-guided image-to-image generation using StableDiffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.)
