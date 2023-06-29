@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # 스케줄러
 
-디퓨전 파이프라인은 디퓨전 모델, 스케줄러 등의 컴포넌트들로 구성됩니다. 그리고 파이프라인 안의 일부 컴포넌트를 다른 컴포넌트로 교체하는 식의 커스터마이징 역시 가능합니다.  이와 같은 컴포넌트 커스터마이징의 가장 대표적인 예시가 바로 [스케줄러](../api/schedulers/overview.mdx)를 교체하는 것입니다.
+diffusion 파이프라인은 diffusion 모델, 스케줄러 등의 컴포넌트들로 구성됩니다. 그리고 파이프라인 안의 일부 컴포넌트를 다른 컴포넌트로 교체하는 식의 커스터마이징 역시 가능합니다.  이와 같은 컴포넌트 커스터마이징의 가장 대표적인 예시가 바로 [스케줄러](../api/schedulers/overview.mdx)를 교체하는 것입니다.
 
 
 
-스케쥴러는 다음과 같이 디퓨전 시스템의 전반적인 디노이징 프로세스를 정의합니다.
+스케쥴러는 다음과 같이 diffusion 시스템의 전반적인 디노이징 프로세스를 정의합니다.
 
 - 디노이징 스텝을 얼마나 가져가야 할까?
 - 확률적으로(stochastic) 혹은 확정적으로(deterministic)?
@@ -30,7 +30,7 @@ specific language governing permissions and limitations under the License.
 
 ## 파이프라인 불러오기
 
-먼저 스테이블 디퓨전 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 디퓨전을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/runwayml/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요. 
+먼저 스테이블 diffusion 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 diffusion을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/runwayml/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요. 
 
 *역자 주: 다만, 현재 신규로 생성한 허깅페이스 계정에 대해서는 라이센스 동의를 요구하지 않는 것으로 보입니다!*
 
@@ -326,5 +326,4 @@ images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images
 - `FlaxDDPMScheduler`
 
 </Tip>
-
 
