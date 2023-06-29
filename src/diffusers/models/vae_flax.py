@@ -396,7 +396,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             Number of Resnet layer block
         resnet_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for the Resnet and Attention block group norm
-        attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
+        num_attention_heads (:obj:`int`, *optional*, defaults to `1`):
             Number of attention heads for each attention block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
@@ -405,7 +405,7 @@ class FlaxUNetMidBlock2D(nn.Module):
     dropout: float = 0.0
     num_layers: int = 1
     resnet_groups: int = 32
-    attn_num_head_channels: int = 1
+    num_attention_heads: int = 1
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -427,7 +427,7 @@ class FlaxUNetMidBlock2D(nn.Module):
         for _ in range(self.num_layers):
             attn_block = FlaxAttentionBlock(
                 channels=self.in_channels,
-                num_head_channels=self.attn_num_head_channels,
+                num_head_channels=self.num_attention_heads,
                 num_groups=resnet_groups,
                 dtype=self.dtype,
             )
@@ -532,7 +532,7 @@ class FlaxEncoder(nn.Module):
         self.mid_block = FlaxUNetMidBlock2D(
             in_channels=block_out_channels[-1],
             resnet_groups=self.norm_num_groups,
-            attn_num_head_channels=None,
+            num_attention_heads=None,
             dtype=self.dtype,
         )
 
@@ -625,7 +625,7 @@ class FlaxDecoder(nn.Module):
         self.mid_block = FlaxUNetMidBlock2D(
             in_channels=block_out_channels[-1],
             resnet_groups=self.norm_num_groups,
-            attn_num_head_channels=None,
+            num_attention_heads=None,
             dtype=self.dtype,
         )
 
