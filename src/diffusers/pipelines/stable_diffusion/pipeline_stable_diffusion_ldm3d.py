@@ -160,17 +160,15 @@ class StableDiffusionLDM3DPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
@@ -178,17 +176,16 @@ class StableDiffusionLDM3DPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
-        Enable tiled VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
-        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
         """
         self.vae.enable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_tiling()
@@ -196,10 +193,10 @@ class StableDiffusionLDM3DPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
+        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
+        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
+        iterative execution of the `unet`.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
