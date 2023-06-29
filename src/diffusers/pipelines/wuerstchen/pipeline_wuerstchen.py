@@ -42,6 +42,10 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+default_inference_steps = {
+    2/3: 20,
+    0.0: 10
+    }
 
 class WuerstchenPipeline(DiffusionPipeline):
     unet: DiffNeXt
@@ -227,13 +231,42 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         return self.device
 
     @torch.no_grad()
+    def inference_loop(self, latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator):
+        for t in self.progress_bar(steps):
+            # print(torch.cat([latents] * 2).shape, latents.dtype)
+            # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
+            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
+            predicted_image_embedding = self.prior(
+                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
+                r=t.expand(latents.size(0) * 2) if do_classifier_free_guidance else t,
+                c=text_encoder_hidden_states,
+            )
+
+            if do_classifier_free_guidance:
+                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                )
+            print(t)
+            timestep = (t * 999).cpu().int()
+            print(timestep)
+            latents = self.scheduler.step(
+                predicted_image_embedding,
+                timestep=timestep,
+                sample=latents,
+                generator=generator,
+            ).prev_sample
+
+        return latents
+
+    @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 30,
-        timesteps: List[int] = None,
+        inference_steps: dict = None,
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -245,6 +278,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         device = self._execution_device
 
         do_classifier_free_guidance = guidance_scale > 1.0
+
+        if inference_steps is None:
+            inference_steps = default_inference_steps
 
         if negative_prompt is None:
             negative_prompt = ""
@@ -268,7 +304,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         effnet_features_shape = (num_images_per_prompt, 16, latent_height, latent_width)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        prior_timesteps_tensor = self.scheduler.timesteps if timesteps is None else timesteps
 
         latents = self.prepare_latents(
             effnet_features_shape,
@@ -278,30 +313,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-        print(prior_timesteps_tensor)
-        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-            ratio = (t / prior_timesteps_tensor.max()).to(dtype=dtype)
-            # print(torch.cat([latents] * 2).shape, latents.dtype)
-            # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
-            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
-            predicted_image_embedding = self.prior(
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-                r=ratio.expand(num_images_per_prompt * 2) if do_classifier_free_guidance else ratio,
-                c=text_encoder_hidden_states,
-            )
 
-            if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
-                )
-
-            latents = self.scheduler.step(
-                predicted_image_embedding,
-                timestep=t,
-                sample=latents,
-                generator=generator,
-            ).prev_sample
+        t_start = 1.0
+        for t_end, steps in inference_steps.items():
+            steps = torch.linspace(t_start, t_end, steps, dtype=dtype, device=device)
+            latents = self.inference_loop(latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator)
+            t_start = t_end
 
         # normalize the latents
         latents = latents * 42.0 - 1.0
