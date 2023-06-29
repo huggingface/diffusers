@@ -548,6 +548,12 @@ def collate_fn(examples, with_prior_preservation=False):
 
     return batch
 
+def dump_keys(parent, suffix=''):
+    for k in sorted(parent.keys()):
+        if isinstance(parent[k], torch.Tensor):
+            print(f'{suffix}{k} {list(parent[k].shape)} mean={torch.mean(parent[k]):.3g} std={torch.std(parent[k]):.3g}')
+        else:
+            dump_keys(parent[k], f'{suffix}{k}.')
 
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
@@ -770,18 +776,6 @@ def main(args):
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # now we will add new LoRA weights to the attention layers
-    # It's important to realize here how many attention weights will be added and of which sizes
-    # The sizes of the attention layers consist only of two different variables:
-    # 1) - the "hidden_size", which is increased according to `unet.config.block_out_channels`.
-    # 2) - the "cross attention size", which is set to `unet.config.cross_attention_dim`.
-
-    # Let's first see how many attention processors we will have to set.
-    # For Stable Diffusion, it should be equal to:
-    # - down blocks (2x attention layers) * (2x transformer layers) * (3x down blocks) = 12
-    # - mid blocks (2x attention layers) * (1x transformer layers) * (1x mid blocks) = 2
-    # - up blocks (2x attention layers) * (3x transformer layers) * (3x down blocks) = 18
-    # => 32 layers
-
     # Set correct lora layers
     unet_lora_attn_procs = {}
     for name, attn_processor in unet.attn_processors.items():
@@ -795,18 +789,16 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
-            lora_attn_processor_class = LoRAAttnAddedKVProcessor
-        else:
-            lora_attn_processor_class = (
-                LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-            )
+        lora_attn_processor_class = (
+            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+        )
         unet_lora_attn_procs[name] = lora_attn_processor_class(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
         )
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
+    print(f"UNet LoRA dict: {len(unet_lora_layers.state_dict())}")
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -1200,6 +1192,8 @@ def main(args):
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=None,
         )
+        checkpoint = torch.load(os.path.join(args.output_dir, "pytorch_lora_weights.bin"))
+        dump_keys(checkpoint)
 
         # Final inference
         # Load previous pipeline
