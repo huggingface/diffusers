@@ -28,5 +28,5 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
-    from .pipeline_text_to_video_synth import TextToVideoSDPipeline  # noqa: F401
+    from .pipeline_text_to_video_synth import TextToVideoSDPipeline, TextToVideoSDImg2ImgPipeline  # noqa: F401
     from .pipeline_text_to_video_zero import TextToVideoZeroPipeline
