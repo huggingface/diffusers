@@ -31,15 +31,8 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-from .camera import create_pan_cameras
-from .params_proj import ShapEParamsProjModel
-from .renderer import (
-    BoundingBoxVolume,
-    ImportanceRaySampler,
-    MLPNeRSTFModel,
-    StratifiedRaySampler,
-    VoidNeRFModel,
-)
+
+from .renderer import ShapERenderer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -50,52 +43,6 @@ EXAMPLE_DOC_STRING = """
 
         ```
 """
-
-
-def merge_results(self, a: [torch.Tensor], b: torch.Tensor, dim: int, indices: torch.Tensor):
-    """
-    :param a: [..., n_a, ...]. The other dictionary containing the b's may
-        contain extra tensors from earlier calculations, so a can be None.
-    :param b: [..., n_b, ...] :param dim: dimension to merge :param indices: how the merged results should be sorted at
-    the end :return: a concatted and sorted tensor of size [..., n_a + n_b, ...]
-    """
-    merged = torch.cat([a, b], dim=dim)
-    return torch.gather(merged, dim=dim, index=torch.broadcast_to(indices, merged.shape))
-
-
-def integrate_samples(volume_range, ts, density, channels):
-    r"""
-    Function integrating the model output.
-
-    Args:
-        volume_range: Specifies the integral range [t0, t1]
-        ts: timesteps
-        density: torch.Tensor [batch_size, *shape, n_samples, 1]
-        channels: torch.Tensor [batch_size, *shape, n_samples, n_channels]
-    returns:
-        channels: integrated rgb output weights: torch.Tensor [batch_size, *shape, n_samples, 1] (density
-        *transmittance)[i] weight for each rgb output at [..., i, :]. transmittance: transmittance of this volume
-    )
-    """
-
-    # 1. Calculate the weights
-    _, _, dt = volume_range.partition(ts)
-    ddensity = density * dt
-
-    mass = torch.cumsum(ddensity, dim=-2)
-    transmittance = torch.exp(-mass[..., -1, :])
-
-    alphas = 1.0 - torch.exp(-ddensity)
-    Ts = torch.exp(torch.cat([torch.zeros_like(mass[..., :1, :]), -mass[..., :-1, :]], dim=-2))
-    # This is the probability of light hitting and reflecting off of
-    # something at depth [..., i, :].
-    weights = alphas * Ts
-
-    # 2. Integrate channels
-    channels = torch.sum(channels * weights, dim=-2)
-
-    return channels, weights, transmittance
-
 
 @dataclass
 class ShapEPipelineOutput(BaseOutput):
@@ -135,8 +82,7 @@ class ShapEPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: HeunDiscreteScheduler,
-        params_proj: ShapEParamsProjModel,
-        renderer: MLPNeRSTFModel,
+        renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -145,11 +91,8 @@ class ShapEPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=scheduler,
-            params_proj=params_proj,
             renderer=renderer,
         )
-        self.void = VoidNeRFModel(background=[0.0, 0.0, 0.0], channel_scale=255.0)
-        self.volume = BoundingBoxVolume(bbox_max=[1.0, 1.0, 1.0], bbox_min=[-1.0, -1.0, -1.0])
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -248,82 +191,6 @@ class ShapEPipeline(DiffusionPipeline):
         prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         return prompt_embeds
-
-    @torch.no_grad()
-    def render_rays(self, rays, sampler, n_samples, prev_model_out=None, render_with_direction=False):
-        """
-        Perform volumetric rendering over a partition of possible t's in the union of rendering volumes (written below
-        with some abuse of notations)
-
-            C(r) := sum(
-                transmittance(t[i]) * integrate(
-                    lambda t: density(t) * channels(t) * transmittance(t), [t[i], t[i + 1]],
-                ) for i in range(len(parts))
-            ) + transmittance(t[-1]) * void_model(t[-1]).channels
-
-        where
-
-        1) transmittance(s) := exp(-integrate(density, [t[0], s])) calculates the probability of light passing through
-        the volume specified by [t[0], s]. (transmittance of 1 means light can pass freely) 2) density and channels are
-        obtained by evaluating the appropriate part.model at time t. 3) [t[i], t[i + 1]] is defined as the range of t
-        where the ray intersects (parts[i].volume \\ union(part.volume for part in parts[:i])) at the surface of the
-        shell (if bounded). If the ray does not intersect, the integral over this segment is evaluated as 0 and
-        transmittance(t[i + 1]) := transmittance(t[i]). 4) The last term is integration to infinity (e.g. [t[-1],
-        math.inf]) that is evaluated by the void_model (i.e. we consider this space to be empty).
-
-        args:
-            rays: [batch_size x ... x 2 x 3] origin and direction. sampler: disjoint volume integrals. n_samples:
-            number of ts to sample. prev_model_outputs: model outputs from the previous rendering step, including
-
-        :return: A tuple of
-            - `channels`
-            - A importance samplers for additional fine-grained rendering
-            - raw model output
-        """
-        origin, direction = rays[..., 0, :], rays[..., 1, :]
-
-        # Integrate over [t[i], t[i + 1]]
-
-        # 1 Intersect the rays with the current volume and sample ts to integrate along.
-        vrange = self.volume.intersect(origin, direction, t0_lower=None)
-        ts = sampler.sample(vrange.t0, vrange.t1, n_samples)
-        ts = ts.to(rays.dtype)
-
-        if prev_model_out is not None:
-            # Append the previous ts now before fprop because previous
-            # rendering used a different model and we can't reuse the output.
-            ts = torch.sort(torch.cat([ts, prev_model_out.ts], dim=-2), dim=-2).values
-
-        batch_size, *_shape, _t0_dim = vrange.t0.shape
-        _, *ts_shape, _ts_dim = ts.shape
-
-        # 2. Get the points along the ray and query the model
-        directions = torch.broadcast_to(direction.unsqueeze(-2), [batch_size, *ts_shape, 3])
-        positions = origin.unsqueeze(-2) + ts * directions
-
-        optional_directions = directions if render_with_direction else None
-
-        model_out = self.renderer(
-            position=positions,
-            direction=optional_directions,
-            ts=ts,
-            nerf_level="coarse" if prev_model_out is None else "fine",
-        )
-
-        # 3. Integrate the model results
-        channels, weights, transmittance = integrate_samples(
-            vrange, model_out.ts, model_out.density, model_out.channels
-        )
-
-        # 4. Clean up results that do not intersect with the volume.
-        transmittance = torch.where(vrange.intersected, transmittance, torch.ones_like(transmittance))
-        channels = torch.where(vrange.intersected, channels, torch.zeros_like(channels))
-        # 5. integration to infinity (e.g. [t[-1], math.inf]) that is evaluated by the void_model (i.e. we consider this space to be empty).
-        channels = channels + transmittance * self.void(origin)
-
-        weighted_sampler = ImportanceRaySampler(vrange, ts=model_out.ts, weights=weights)
-
-        return channels, weighted_sampler, model_out
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -450,39 +317,7 @@ class ShapEPipeline(DiffusionPipeline):
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
-        # project the the paramters from the generated latents
-        projected_params = self.params_proj(latents)
-
-        # update the mlp layers of the renderer
-        for name, param in self.renderer.state_dict().items():
-            if f"nerstf.{name}" in projected_params.keys():
-                param.copy_(projected_params[f"nerstf.{name}"].squeeze(0))
-
-        # create cameras object
-        camera = create_pan_cameras(size)
-        rays = camera.camera_rays
-        rays = rays.to(device)
-        n_batches = rays.shape[1] // ray_batch_size
-
-        coarse_sampler = StratifiedRaySampler()
-
-        images = []
-        with self.progress_bar(total=n_batches) as progress_bar:
-            for idx in range(n_batches):
-                rays_batch = rays[:, idx * ray_batch_size : (idx + 1) * ray_batch_size]
-
-                # render rays with coarse, stratified samples.
-                _, fine_sampler, coarse_model_out = self.render_rays(rays_batch, coarse_sampler, n_coarse_samples)
-                # Then, render with additional importance-weighted ray samples.
-                channels, _, _ = self.render_rays(
-                    rays_batch, fine_sampler, n_fine_samples, prev_model_out=coarse_model_out
-                )
-
-                images.append(channels)
-                progress_bar.update()
-
-        images = torch.cat(images, dim=1)
-        images = images.view(*camera.shape, camera.height, camera.width, -1).squeeze(0)
+        images = self.renderer.decode(latents)
 
         if output_type not in ["np", "pil"]:
             raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")

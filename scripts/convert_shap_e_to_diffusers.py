@@ -5,7 +5,7 @@ import torch
 from accelerate import load_checkpoint_and_dispatch
 
 from diffusers.models.prior_transformer import PriorTransformer
-from diffusers.pipelines.shap_e import MLPNeRSTFModel, ShapEParamsProjModel
+from diffusers.pipelines.shap_e import MLPNeRSTFModel, ShapEParamsProjModel, ShapERenderer
 
 
 """
@@ -22,8 +22,8 @@ $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
       --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e-img2img/prior\
-      --debug prior_image
+      --dump_path /home/yiyi_huggingface_co/model_repo/test-shap-e-renderer\
+      --debug renderer
 ```
 """
 
@@ -371,46 +371,34 @@ def prior_image_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
 # done prior_image
 
 
-# params_proj
-
-PARAMS_PROJ_ORIGINAL_PREFIX = "encoder.params_proj"
-
-PARAMS_PROJ_CONFIG = {}
-
-
-def params_proj_model_from_original_config():
-    model = ShapEParamsProjModel(**PARAMS_PROJ_CONFIG)
-
-    return model
-
-
-def params_proj_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
-    diffusers_checkpoint = {k: checkpoint[f"{PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()}
-
-    return diffusers_checkpoint
-
-
-# done params_proj
-
-
-# renderer
-
-RENDERER_ORIGINAL_PREFIX = "renderer.nerstf"
+# renderer 
 
 RENDERER_CONFIG = {}
 
 
 def renderer_model_from_original_config():
-    model = MLPNeRSTFModel(**RENDERER_CONFIG)
+    model = ShapERenderer(**RENDERER_CONFIG)
 
     return model
 
 
-def renderer_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
-    diffusers_checkpoint = {k: checkpoint[f"{RENDERER_ORIGINAL_PREFIX}.{k}"] for k in model.state_dict().keys()}
+RENDERER_MLP_ORIGINAL_PREFIX = "renderer.nerstf"
+
+RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX = "encoder.params_proj"
+
+def renderer_model_original_checkpoint_to_diffusers_checkpoint(model, checkpoint):
+    
+    diffusers_checkpoint = {}
+
+    diffusers_checkpoint.update(
+        { 
+            "mlp": {k: checkpoint[f"{RENDERER_MLP_ORIGINAL_PREFIX}.{k}"] for k in model.mlp.state_dict().keys()},
+            "params_proj": {k: checkpoint[f"{RENDERER_PARAMS_PROJ_ORIGINAL_PREFIX}.{k}"] for k in model.params_proj.state_dict().keys()},
+
+        }
+    )
 
     return diffusers_checkpoint
-
 
 # done renderer
 
@@ -485,39 +473,18 @@ def prior_image(*, args, checkpoint_map_location):
     return prior_model
 
 
-def params_proj(*, args, checkpoint_map_location):
-    print("loading params_proj")
-
-    params_proj_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
-
-    params_proj_model = params_proj_model_from_original_config()
-
-    params_proj_diffusers_checkpoint = params_proj_original_checkpoint_to_diffusers_checkpoint(
-        params_proj_model, params_proj_checkpoint
-    )
-
-    del params_proj_checkpoint
-
-    load_checkpoint_to_model(params_proj_diffusers_checkpoint, params_proj_model, strict=True)
-
-    print("done loading params_proj")
-
-    return params_proj_model
-
-
 def renderer(*, args, checkpoint_map_location):
+
     print(" loading renderer")
 
     renderer_checkpoint = torch.load(args.transmitter_checkpoint_path, map_location=checkpoint_map_location)
 
     renderer_model = renderer_model_from_original_config()
 
-    renderer_diffusers_checkpoint = renderer_original_checkpoint_to_diffusers_checkpoint(
-        renderer_model, renderer_checkpoint
-    )
+    renderer_diffusers_checkpoint = renderer_model_original_checkpoint_to_diffusers_checkpoint(renderer_model, renderer_checkpoint)
 
     del renderer_checkpoint
-
+    
     load_checkpoint_to_model(renderer_diffusers_checkpoint, renderer_model, strict=True)
 
     print("done loading renderer")
