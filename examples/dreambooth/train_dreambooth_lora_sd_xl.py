@@ -545,12 +545,6 @@ def collate_fn(examples, with_prior_preservation=False):
 
     return batch
 
-def dump_keys(parent, suffix=''):
-    for k in sorted(parent.keys()):
-        if isinstance(parent[k], torch.Tensor):
-            print(f'{suffix}{k} {list(parent[k].shape)} mean={torch.mean(parent[k]):.3g} std={torch.std(parent[k]):.3g}')
-        else:
-            dump_keys(parent[k], f'{suffix}{k}.')
 
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
@@ -754,8 +748,9 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
+    # The VAE is in float32 to avoid NaN losses. 
     unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=torch.float32)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -795,7 +790,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
     unet_lora_layers = AttnProcsLayers(unet.attn_processors)
-    print(f"UNet LoRA dict: {len(unet_lora_layers.state_dict())}")
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -1029,12 +1023,10 @@ def main(args):
             with accelerator.accumulate(unet):
                 pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
-                if vae is not None:
-                    # Convert images to latent space
-                    model_input = vae.encode(pixel_values).latent_dist.sample()
-                    model_input = model_input * vae.config.scaling_factor
-                else:
-                    model_input = pixel_values
+                # Convert images to latent space
+                model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = model_input * vae.config.scaling_factor
+                print(f"Model input dtype: {model_input.dtype}")
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
