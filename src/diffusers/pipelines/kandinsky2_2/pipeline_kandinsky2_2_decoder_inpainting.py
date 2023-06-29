@@ -448,12 +448,7 @@ class Kandinsky2_2_DecoderInpaintPipeline(DiffusionPipeline):
                 noise_pred,
                 t,
                 latents,
-                # YiYi notes: only reason this pipeline can't work with unclip scheduler is that can't pass down this argument
-                #             need to use DDPM scheduler instead
-                # prev_timestep=prev_timestep,
                 generator=generator,
-                orig_sample=masked_image,
-                mask=mask_image
             )[0]
             init_latents_proper = image[:1]
             init_mask = mask_image[:1]
@@ -466,7 +461,6 @@ class Kandinsky2_2_DecoderInpaintPipeline(DiffusionPipeline):
 
             latents = init_mask * init_latents_proper + (1 - init_mask) * latents
         # post-processing
-        print(mask_image)
         latents = mask_image[:1] * image[:1] + (1 - mask_image[:1]) * latents
         image = self.vae.decode(latents, force_not_quantize=True)["sample"]
 
