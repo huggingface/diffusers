@@ -82,7 +82,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": None,
             "timesteps": [22, 0],
             "generator": generator,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -174,7 +174,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
             "timesteps": [22, 0],
             "class_labels": 0,
             "generator": generator,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         if get_fixed_latents:

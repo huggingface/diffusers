@@ -128,22 +128,18 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def scale_timestep(self, timestep: Union[float, torch.FloatTensor]):
+    def _sigma_to_t(self, sigmas: np.ndarray):
         """
-        Scales the timestep based on the associated Karras sigma, for input to the consistency model.
+        Gets scaled timesteps from the Karras sigmas, for input to the consistency model.
 
         Args:
-            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+            sigmas (`np.ndarray`, *optional*): array of Karras sigmas
         Returns:
-            `torch.FloatTensor`: scaled input timestep
+            `np.ndarray`: scaled input timestep
         """
-        # Get sigma corresponding to timestep
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_idx = self.index_for_timestep(timestep)
-        sigma = self.sigmas[step_idx]
+        timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
 
-        return 1000 * 0.25 * torch.log(sigma + 1e-44)
+        return timesteps
 
     def set_timesteps(
         self,
@@ -159,6 +155,10 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            timesteps (`List[int]`, optional):
+                custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of equal spacing between timesteps is used. If passed, `num_inference_steps`
+                must be `None`.
         """
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Exactly one of `num_inference_steps` or `timesteps` must be supplied.")
@@ -194,22 +194,22 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             self.custom_timesteps = False
 
+        # Map timesteps to Karras sigmas directly for multistep sampling
+        # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
+        num_train_timesteps = self.config.num_train_timesteps
+        ramp = timesteps[::-1].copy()
+        ramp = ramp / (num_train_timesteps - 1)
+        sigmas = self._convert_to_karras(ramp)
+        timesteps = self._sigma_to_t(sigmas)
+
+        sigmas = np.concatenate([sigmas, [self.sigma_min]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas).to(device=device)
+
         if str(device).startswith("mps"):
             # mps does not support float64
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
-            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float64)
-
-        # Map timesteps to Karras sigmas directly for multistep sampling
-        # See https://github.com/openai/consistency_models/blob/main/cm/karras_diffusion.py#L675
-        num_train_timesteps = self.config.num_train_timesteps
-        # Append num_train_timesteps - 1 so sigmas[-1] == sigma_min
-        ramp = np.append(timesteps[::-1].copy(), [num_train_timesteps - 1])
-        ramp = ramp / (num_train_timesteps - 1)
-        sigmas = self._convert_to_karras(ramp)
-
-        sigmas = sigmas.astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas).to(device=device)
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
