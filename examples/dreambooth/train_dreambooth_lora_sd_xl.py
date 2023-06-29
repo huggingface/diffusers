@@ -905,6 +905,10 @@ def main(args):
     if args.with_prior_preservation:
         class_prompt_hidden_states, class_unet_added_conditions = compute_embeddings(args.class_prompt, text_encoders, tokenizers)
 
+    validation_prompt_hidden_states = None
+    if args.validation_prompt is not None:
+        validation_prompt_hidden_states, _ = compute_embeddings(args.validation_prompt, text_encoders, tokenizers)
+
     del tokenizers, text_encoders
 
     gc.collect()
@@ -1128,6 +1132,9 @@ def main(args):
                     torch_dtype=weight_dtype,
                     use_auth_token=True,
                 )
+                if validation_prompt_hidden_states is not None:
+                    pipeline.text_encoder = None
+                    pipeline.text_encoder_2 = None
 
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
                 scheduler_args = {}
@@ -1149,7 +1156,10 @@ def main(args):
 
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                pipeline_args = {"prompt": args.validation_prompt}
+                if validation_prompt_hidden_states is not None:
+                    pipeline_args = {"prompt_embeds": validation_prompt_hidden_states}
+                else:
+                    pipeline_args = {"prompt": args.validation_prompt}
 
                 images = [
                     pipeline(**pipeline_args, generator=generator).images[0]
