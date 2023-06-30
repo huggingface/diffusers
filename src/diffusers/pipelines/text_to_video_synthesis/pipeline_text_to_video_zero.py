@@ -38,12 +38,12 @@ def rearrange_4(tensor):
 
 class CrossFrameAttnProcessor:
     """
-    Cross frame attention processor. For each frame the self-attention is replaced with attention with first frame
+    Cross frame attention processor. Each frame attends the first frame.
 
     Args:
         batch_size: The number that represents actual batch size, other than the frames.
-            For example, using calling unet with a single prompt and num_images_per_prompt=1, batch_size should be
-            equal to 2, due to classifier-free guidance.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
     """
 
     def __init__(self, batch_size=2):
@@ -63,7 +63,7 @@ class CrossFrameAttnProcessor:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        # Sparse Attention
+        # Cross Frame Attention
         if not is_cross_attention:
             video_length = key.size()[0] // self.batch_size
             first_frame_index = [0] * video_length
@@ -92,6 +92,81 @@ class CrossFrameAttnProcessor:
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        return hidden_states
+
+
+class CrossFrameAttnProcessor2_0:
+    """
+    Cross frame attention processor with scaled_dot_product attention of Pytorch 2.0.
+
+    Args:
+        batch_size: The number that represents actual batch size, other than the frames.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
+    """
+
+    def __init__(self, batch_size=2):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+        self.batch_size = batch_size
+
+    def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        inner_dim = hidden_states.shape[-1]
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        query = attn.to_q(hidden_states)
+
+        is_cross_attention = encoder_hidden_states is not None
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        # Cross Frame Attention
+        if not is_cross_attention:
+            video_length = key.size()[0] // self.batch_size
+            first_frame_index = [0] * video_length
+
+            # rearrange keys to have batch and frames in the 1st and 2nd dims respectively
+            key = rearrange_3(key, video_length)
+            key = key[:, first_frame_index]
+            # rearrange values to have batch and frames in the 1st and 2nd dims respectively
+            value = rearrange_3(value, video_length)
+            value = value[:, first_frame_index]
+
+            # rearrange back to original shape
+            key = rearrange_4(key)
+            value = rearrange_4(value)
+
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 
@@ -227,7 +302,12 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
         )
-        self.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+        processor = (
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
+        )
+        self.unet.set_attn_processor(processor)
 
     def forward_loop(self, x_t0, t0, t1, generator):
         """
@@ -338,6 +418,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         callback_steps: Optional[int] = 1,
         t0: int = 44,
         t1: int = 47,
+        frame_ids: Optional[List[int]] = None,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -399,6 +480,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             t1 (`int`, *optional*, defaults to 47):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
                 [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            frame_ids (`List[int]`, *optional*):
+                Indexes of the frames that are being generated. This is used when generating longer videos
+                chunk-by-chunk.
 
         Returns:
             [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
@@ -407,7 +491,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 likely represents "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         assert video_length > 0
-        frame_ids = list(range(video_length))
+        if frame_ids is None:
+            frame_ids = list(range(video_length))
+        assert len(frame_ids) == video_length
 
         assert num_videos_per_prompt == 1
 

@@ -141,5 +141,6 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision="fp16" \
-  --logger="wandb"
+  --logger="wandb" \
+  --push_to_hub
 ```

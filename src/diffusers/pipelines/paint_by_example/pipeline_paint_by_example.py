@@ -328,17 +328,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        if isinstance(generator, list):
-            masked_image_latents = [
-                self.vae.encode(masked_image[i : i + 1]).latent_dist.sample(generator=generator[i])
-                for i in range(batch_size)
-            ]
-            masked_image_latents = torch.cat(masked_image_latents, dim=0)
-        else:
-            masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
+        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -366,6 +356,21 @@ class PaintByExamplePipeline(DiffusionPipeline):
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_vae_image
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents
 
     def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype

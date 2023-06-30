@@ -20,6 +20,7 @@ import itertools
 import logging
 import math
 import os
+import shutil
 import warnings
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
+from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -54,20 +56,29 @@ from diffusers.models.attention_processor import (
     AttnAddedKVProcessor2_0,
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
     SlicedAttnAddedKVProcessor,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
+from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.18.0.dev0")
 
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
+def save_model_card(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    train_text_encoder=False,
+    prompt=str,
+    repo_folder=None,
+    pipeline: DiffusionPipeline = None,
+):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -79,8 +90,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- stable-diffusion
-- stable-diffusion-diffusers
+- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
+- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
 - text-to-image
 - diffusers
 - lora
@@ -266,11 +277,7 @@ def parse_args(input_args=None):
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=(
-            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
-            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
-        ),
+        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -416,6 +423,19 @@ def parse_args(input_args=None):
         required=False,
         help="Whether to use attention mask for the text encoder",
     )
+    parser.add_argument(
+        "--validation_images",
+        required=False,
+        default=None,
+        nargs="+",
+        help="Optional set of images to use for validation. Used when the target pipeline takes an initial image as input such as when training image variation or superresolution.",
+    )
+    parser.add_argument(
+        "--class_labels_conditioning",
+        required=False,
+        default=None,
+        help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -508,6 +528,8 @@ class DreamBoothDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = exif_transpose(instance_image)
+
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -523,6 +545,8 @@ class DreamBoothDataset(Dataset):
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = exif_transpose(class_image)
+
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -626,13 +650,12 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -762,8 +785,8 @@ def main(args):
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
+    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -818,8 +841,9 @@ def main(args):
         if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
             lora_attn_processor_class = LoRAAttnAddedKVProcessor
         else:
-            lora_attn_processor_class = LoRAAttnProcessor
-
+            lora_attn_processor_class = (
+                LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+            )
         unet_lora_attn_procs[name] = lora_attn_processor_class(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
         )
@@ -834,12 +858,12 @@ def main(args):
     if args.train_text_encoder:
         text_lora_attn_procs = {}
         for name, module in text_encoder.named_modules():
-            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
                 text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_features, cross_attention_dim=None
+                    hidden_size=module.out_proj.out_features, cross_attention_dim=None
                 )
         text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = StableDiffusionPipeline.from_pretrained(
+        temp_pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, text_encoder=text_encoder
         )
         temp_pipeline._modify_text_encoder(text_lora_attn_procs)
@@ -1108,7 +1132,7 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
-                bsz = model_input.shape[0]
+                bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
@@ -1130,8 +1154,18 @@ def main(args):
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                     )
 
+                if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
+                    noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
+
+                if args.class_labels_conditioning == "timesteps":
+                    class_labels = timesteps
+                else:
+                    class_labels = None
+
                 # Predict the noise residual
-                model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
+                model_pred = unet(
+                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
+                ).sample
 
                 # if model predicts variance, throw away the prediction. we will only train on the
                 # simplified training objective. This means that all schedulers using the fine tuned
@@ -1182,6 +1216,26 @@ def main(args):
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
@@ -1235,9 +1289,18 @@ def main(args):
                     }
                 else:
                     pipeline_args = {"prompt": args.validation_prompt}
-                images = [
-                    pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)
-                ]
+
+                if args.validation_images is None:
+                    images = [
+                        pipeline(**pipeline_args, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
+                else:
+                    images = []
+                    for image in args.validation_images:
+                        image = Image.open(image)
+                        image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                        images.append(image)
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -1327,6 +1390,7 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
+                pipeline=pipeline,
             )
             upload_folder(
                 repo_id=repo_id,

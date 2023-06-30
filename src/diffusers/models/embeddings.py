@@ -18,6 +18,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from .activations import get_activation
+
 
 def get_timestep_embedding(
     timesteps: torch.Tensor,
@@ -171,14 +173,7 @@ class TimestepEmbedding(nn.Module):
         else:
             self.cond_proj = None
 
-        if act_fn == "silu":
-            self.act = nn.SiLU()
-        elif act_fn == "mish":
-            self.act = nn.Mish()
-        elif act_fn == "gelu":
-            self.act = nn.GELU()
-        else:
-            raise ValueError(f"{act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+        self.act = get_activation(act_fn)
 
         if out_dim is not None:
             time_embed_dim_out = out_dim
@@ -188,14 +183,8 @@ class TimestepEmbedding(nn.Module):
 
         if post_act_fn is None:
             self.post_act = None
-        elif post_act_fn == "silu":
-            self.post_act = nn.SiLU()
-        elif post_act_fn == "mish":
-            self.post_act = nn.Mish()
-        elif post_act_fn == "gelu":
-            self.post_act = nn.GELU()
         else:
-            raise ValueError(f"{post_act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+            self.post_act = get_activation(post_act_fn)
 
     def forward(self, sample, condition=None):
         if condition is not None:
@@ -352,12 +341,39 @@ class LabelEmbedding(nn.Module):
         labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
-    def forward(self, labels, force_drop_ids=None):
+    def forward(self, labels: torch.LongTensor, force_drop_ids=None):
         use_dropout = self.dropout_prob > 0
         if (self.training and use_dropout) or (force_drop_ids is not None):
             labels = self.token_drop(labels, force_drop_ids)
         embeddings = self.embedding_table(labels)
         return embeddings
+
+
+class TextImageProjection(nn.Module):
+    def __init__(
+        self,
+        text_embed_dim: int = 1024,
+        image_embed_dim: int = 768,
+        cross_attention_dim: int = 768,
+        num_image_text_embeds: int = 10,
+    ):
+        super().__init__()
+
+        self.num_image_text_embeds = num_image_text_embeds
+        self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
+        self.text_proj = nn.Linear(text_embed_dim, cross_attention_dim)
+
+    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+        batch_size = text_embeds.shape[0]
+
+        # image
+        image_text_embeds = self.image_embeds(image_embeds)
+        image_text_embeds = image_text_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
+
+        # text
+        text_embeds = self.text_proj(text_embeds)
+
+        return torch.cat([image_text_embeds, text_embeds], dim=1)
 
 
 class CombinedTimestepLabelEmbeddings(nn.Module):
@@ -393,6 +409,24 @@ class TextTimeEmbedding(nn.Module):
         hidden_states = self.proj(hidden_states)
         hidden_states = self.norm2(hidden_states)
         return hidden_states
+
+
+class TextImageTimeEmbedding(nn.Module):
+    def __init__(self, text_embed_dim: int = 768, image_embed_dim: int = 768, time_embed_dim: int = 1536):
+        super().__init__()
+        self.text_proj = nn.Linear(text_embed_dim, time_embed_dim)
+        self.text_norm = nn.LayerNorm(time_embed_dim)
+        self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
+
+    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+        # text
+        time_text_embeds = self.text_proj(text_embeds)
+        time_text_embeds = self.text_norm(time_text_embeds)
+
+        # image
+        time_image_embeds = self.image_proj(image_embeds)
+
+        return time_image_embeds + time_text_embeds
 
 
 class AttentionPooling(nn.Module):

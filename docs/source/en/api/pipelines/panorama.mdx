@@ -52,6 +52,14 @@ image = pipe(prompt).images[0]
 image.save("dolomites.png")
 ```
 
+<Tip>
+
+While calling this pipeline, it's possible to specify the `view_batch_size` to have a >1 value. 
+For some GPUs with high performance, higher a `view_batch_size`, can speedup the generation
+and increase the VRAM usage.
+
+</Tip>
+
 ## StableDiffusionPanoramaPipeline
 [[autodoc]] StableDiffusionPanoramaPipeline
 	- __call__

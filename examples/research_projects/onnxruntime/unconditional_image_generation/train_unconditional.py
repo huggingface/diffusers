@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import accelerate
 import datasets
 import torch
 import torch.nn.functional as F
@@ -14,7 +15,9 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
 from onnxruntime.training.ortmodule import ORTModule
+from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 
@@ -22,11 +25,12 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.17.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -34,6 +38,7 @@ logger = get_logger(__name__, log_level="INFO")
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
+
     :param arr: the 1-D numpy array.
     :param timesteps: a tensor of indices into the array to extract.
     :param broadcast_shape: a larger shape of K dimensions with the batch
@@ -65,6 +70,12 @@ def parse_args():
         type=str,
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--model_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
     )
     parser.add_argument(
         "--train_data_dir",
@@ -251,6 +262,9 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -275,14 +289,14 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(
+        total_limit=args.checkpoints_total_limit, project_dir=args.output_dir, logging_dir=logging_dir
+    )
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with=args.logger,
-        logging_dir=logging_dir,
+        log_with=args.report_to,
         project_config=accelerator_project_config,
     )
 
@@ -294,6 +308,40 @@ def main(args):
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
+
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "unet"))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
+
+            for i in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # load diffusers style into model
+                load_model = UNet2DModel.from_pretrained(input_dir, subfolder="unet")
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -328,29 +376,33 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
-    model = UNet2DModel(
-        sample_size=args.resolution,
-        in_channels=3,
-        out_channels=3,
-        layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
-        down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=(
-            "UpBlock2D",
-            "AttnUpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-        ),
-    )
+    if args.model_config_name_or_path is None:
+        model = UNet2DModel(
+            sample_size=args.resolution,
+            in_channels=3,
+            out_channels=3,
+            layers_per_block=2,
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=(
+                "UpBlock2D",
+                "AttnUpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+            ),
+        )
+    else:
+        config = UNet2DModel.load_config(args.model_config_name_or_path)
+        model = UNet2DModel.from_config(config)
 
     # Create EMA for the model.
     if args.use_ema:
@@ -360,7 +412,22 @@ def main(args):
             use_ema_warmup=True,
             inv_gamma=args.ema_inv_gamma,
             power=args.ema_power,
+            model_cls=UNet2DModel,
+            model_config=model.config,
         )
+
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            model.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # Initialize the scheduler
     accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
@@ -381,6 +448,8 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+
+    optimizer = ORT_FP16_Optimizer(optimizer)
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
@@ -434,10 +503,7 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
-    model = ORTModule(model)
-
     if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model)
         ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
@@ -445,6 +511,8 @@ def main(args):
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
+
+    model = ORTModule(model)
 
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -552,7 +620,7 @@ def main(args):
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             if args.use_ema:
-                logs["ema_decay"] = ema_model.decay
+                logs["ema_decay"] = ema_model.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -563,8 +631,11 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 unet = accelerator.unwrap_model(model)
+
                 if args.use_ema:
+                    ema_model.store(unet.parameters())
                     ema_model.copy_to(unet.parameters())
+
                 pipeline = DDPMPipeline(
                     unet=unet,
                     scheduler=noise_scheduler,
@@ -575,18 +646,24 @@ def main(args):
                 images = pipeline(
                     generator=generator,
                     batch_size=args.eval_batch_size,
-                    output_type="numpy",
                     num_inference_steps=args.ddpm_num_inference_steps,
+                    output_type="numpy",
                 ).images
+
+                if args.use_ema:
+                    ema_model.restore(unet.parameters())
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
                 if args.logger == "tensorboard":
-                    accelerator.get_tracker("tensorboard").add_images(
-                        "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-                    )
+                    if is_accelerate_version(">=", "0.17.0.dev0"):
+                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+                    else:
+                        tracker = accelerator.get_tracker("tensorboard")
+                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
                 elif args.logger == "wandb":
+                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
                     accelerator.get_tracker("wandb").log(
                         {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
                         step=global_step,
@@ -594,7 +671,22 @@ def main(args):
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
+                unet = accelerator.unwrap_model(model)
+
+                if args.use_ema:
+                    ema_model.store(unet.parameters())
+                    ema_model.copy_to(unet.parameters())
+
+                pipeline = DDPMPipeline(
+                    unet=unet,
+                    scheduler=noise_scheduler,
+                )
+
                 pipeline.save_pretrained(args.output_dir)
+
+                if args.use_ema:
+                    ema_model.restore(unet.parameters())
+
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
 
