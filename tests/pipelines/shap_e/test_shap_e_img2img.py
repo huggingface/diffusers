@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPVisionConfig, CLIPVisionModel, CLIPImageProcessor
+from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
@@ -169,7 +169,6 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-
         input_image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
 
         if str(device).startswith("mps"):
@@ -256,8 +255,7 @@ class ShapEImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
     def test_shap_e_img2img(self):
         input_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/shap_e/corgi.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/shap_e/corgi.png"
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"

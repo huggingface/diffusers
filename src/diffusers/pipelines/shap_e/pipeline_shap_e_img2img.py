@@ -148,15 +148,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt,
         do_classifier_free_guidance,
     ):
-
         if isinstance(image, PIL.Image.Image):
+            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)
 
-            image = (
-                self.image_processor(image, return_tensors="pt")
-                .pixel_values[0]
-                .unsqueeze(0)
-            )
-        
         image = image.to(dtype=self.image_encoder.dtype, device=device)
 
         image_embeds = self.image_encoder(image)["last_hidden_state"]
@@ -245,10 +239,11 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         elif isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
             batch_size = len(image)
         elif isinstance(image, torch.Tensor):
-            batch_size = image.shape[0]         
+            batch_size = image.shape[0]
         else:
-            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image` or `torch.Tensor` but is {type(image)}")
-
+            raise ValueError(
+                f"`image` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image` or `torch.Tensor` but is {type(image)}"
+            )
 
         device = self._execution_device
 
@@ -317,7 +312,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         for i, latent in enumerate(latents):
             print()
             image = self.renderer.decode(
-                latent[None,:],
+                latent[None, :],
                 device,
                 size=size,
                 ray_batch_size=ray_batch_size,
@@ -326,7 +321,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             )
 
             images.append(image)
-        
+
         images = torch.stack(images)
 
         if output_type not in ["np", "pil"]:
