@@ -18,19 +18,17 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, CLIPTextConfig
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
+    DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
+from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -61,8 +59,8 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             use_linear_projection=True,
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
-            num_transformer_blocks=(1, 2),
-            projection_class_embeddings_input_dim=80, # 6 * 8 + 32
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
         scheduler = EulerDiscreteScheduler(

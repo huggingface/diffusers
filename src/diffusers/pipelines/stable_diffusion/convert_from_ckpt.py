@@ -257,13 +257,13 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         resolution //= 2
 
     if unet_params.transformer_depth is not None:
-        num_transformer_blocks = (
+        transformer_layers_per_block = (
             unet_params.transformer_depth
             if isinstance(unet_params.transformer_depth, int)
             else list(unet_params.transformer_depth)
         )
     else:
-        num_transformer_blocks = 1
+        transformer_layers_per_block = 1
 
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
@@ -314,7 +314,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "addition_embed_type": addition_embed_type,
         "addition_time_embed_dim": addition_time_embed_dim,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
-        "num_transformer_blocks": num_transformer_blocks,
+        "transformer_layers_per_block": transformer_layers_per_block,
     }
 
     if controlnet:
