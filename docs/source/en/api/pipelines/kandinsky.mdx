@@ -55,6 +55,20 @@ t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1"
 t2i_pipe.to("cuda")
 ```
 
+<Tip warning={true}>
+
+By default, the text-to-image pipeline use [`DDIMScheduler`], you can change the scheduler to [`DDPMScheduler`]
+
+```py
+scheduler = DDPMScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="ddpm_scheduler")
+t2i_pipe = DiffusionPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-1", scheduler=scheduler, torch_dtype=torch.float16
+)
+t2i_pipe.to("cuda")
+```
+
+</Tip>
+
 Now we pass the prompt through the prior to generate image embeddings. The prior
 returns both the image embeddings corresponding to the prompt and negative/unconditional image 
 embeddings corresponding to an empty string.

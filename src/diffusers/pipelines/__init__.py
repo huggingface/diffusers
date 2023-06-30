@@ -80,6 +80,7 @@ else:
         StableDiffusionLDM3DPipeline,
         StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
+        StableDiffusionParadigmsPipeline,
         StableDiffusionPipeline,
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,

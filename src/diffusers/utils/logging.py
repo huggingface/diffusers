@@ -124,22 +124,19 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
 def get_verbosity() -> int:
     """
-    Return the current level for the 🤗 Diffusers' root logger as an int.
+    Return the current level for the 🤗 Diffusers' root logger as an `int`.
 
     Returns:
-        `int`: The logging level.
+        `int`:
+            Logging level integers which can be one of:
 
-    <Tip>
+            - `50`: `diffusers.logging.CRITICAL` or `diffusers.logging.FATAL`
+            - `40`: `diffusers.logging.ERROR`
+            - `30`: `diffusers.logging.WARNING` or `diffusers.logging.WARN`
+            - `20`: `diffusers.logging.INFO`
+            - `10`: `diffusers.logging.DEBUG`
 
-    🤗 Diffusers has following logging levels:
-
-    - 50: `diffusers.logging.CRITICAL` or `diffusers.logging.FATAL`
-    - 40: `diffusers.logging.ERROR`
-    - 30: `diffusers.logging.WARNING` or `diffusers.logging.WARN`
-    - 20: `diffusers.logging.INFO`
-    - 10: `diffusers.logging.DEBUG`
-
-    </Tip>"""
+    """
 
     _configure_library_root_logger()
     return _get_library_root_logger().getEffectiveLevel()
@@ -151,7 +148,7 @@ def set_verbosity(verbosity: int) -> None:
 
     Args:
         verbosity (`int`):
-            Logging level, e.g., one of:
+            Logging level which can be one of:
 
             - `diffusers.logging.CRITICAL` or `diffusers.logging.FATAL`
             - `diffusers.logging.ERROR`
@@ -185,7 +182,7 @@ def set_verbosity_error():
 
 
 def disable_default_handler() -> None:
-    """Disable the default handler of the HuggingFace Diffusers' root logger."""
+    """Disable the default handler of the 🤗 Diffusers' root logger."""
 
     _configure_library_root_logger()
 
@@ -194,7 +191,7 @@ def disable_default_handler() -> None:
 
 
 def enable_default_handler() -> None:
-    """Enable the default handler of the HuggingFace Diffusers' root logger."""
+    """Enable the default handler of the 🤗 Diffusers' root logger."""
 
     _configure_library_root_logger()
 
@@ -241,9 +238,9 @@ def enable_propagation() -> None:
 
 def enable_explicit_format() -> None:
     """
-    Enable explicit formatting for every HuggingFace Diffusers' logger. The explicit formatter is as follows:
+    Enable explicit formatting for every 🤗 Diffusers' logger. The explicit formatter is as follows:
     ```
-        [LEVELNAME|FILENAME|LINE NUMBER] TIME >> MESSAGE
+    [LEVELNAME|FILENAME|LINE NUMBER] TIME >> MESSAGE
     ```
     All handlers currently bound to the root logger are affected by this method.
     """
@@ -256,7 +253,7 @@ def enable_explicit_format() -> None:
 
 def reset_format() -> None:
     """
-    Resets the formatting for HuggingFace Diffusers' loggers.
+    Resets the formatting for 🤗 Diffusers' loggers.
 
     All handlers currently bound to the root logger are affected by this method.
     """

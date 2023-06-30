@@ -55,11 +55,11 @@ With `gradient_checkpointing` and `mixed_precision` it should be possible to fin
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
@@ -133,11 +133,11 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
@@ -274,11 +274,11 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
   --mixed_precision="fp16" \

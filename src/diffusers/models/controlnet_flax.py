@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import flax.linen as nn
@@ -32,6 +32,14 @@ from .unet_2d_blocks_flax import (
 
 @flax.struct.dataclass
 class FlaxControlNetOutput(BaseOutput):
+    """
+    The output of [`FlaxControlNetModel`].
+
+    Args:
+        down_block_res_samples (`jnp.ndarray`):
+        mid_block_res_sample (`jnp.ndarray`):
+    """
+
     down_block_res_samples: jnp.ndarray
     mid_block_res_sample: jnp.ndarray
 
@@ -95,21 +103,17 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
 @flax_register_to_config
 class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    Quoting from https://arxiv.org/abs/2302.05543: "Stable Diffusion uses a pre-processing method similar to VQ-GAN
-    [11] to convert the entire dataset of 512 × 512 images into smaller 64 × 64 “latent images” for stabilized
-    training. This requires ControlNets to convert image-based conditions to 64 × 64 feature space to match the
-    convolution size. We use a tiny network E(·) of four convolution layers with 4 × 4 kernels and 2 × 2 strides
-    (activated by ReLU, channels are 16, 32, 64, 128, initialized with Gaussian weights, trained jointly with the full
-    model) to encode image-space conditions ... into feature maps ..."
+    A ControlNet model.
 
-    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the models (such as downloading or saving, etc.)
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it’s generic methods
+    implemented for all models (such as downloading or saving).
 
-    Also, this model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
-    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    This model is also a Flax Linen [`flax.linen.Module`](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax Linen module and refer to the Flax documentation for all matters related to its
     general usage and behavior.
 
-    Finally, this model supports inherent JAX features such as:
+    Inherent JAX features such as the following are supported:
+
     - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
     - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
     - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
@@ -120,15 +124,16 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The size of the input sample.
         in_channels (`int`, *optional*, defaults to 4):
             The number of channels in the input sample.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
-            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
+            The tuple of downsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
+        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+            The number of attention heads.
         cross_attention_dim (`int`, *optional*, defaults to 768):
             The dimension of the cross attention features.
         dropout (`float`, *optional*, defaults to 0):
@@ -137,11 +142,9 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         controlnet_conditioning_channel_order (`str`, *optional*, defaults to `rgb`):
-            The channel order of conditional image. Will convert it to `rgb` if it's `bgr`
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
-            The tuple of output channel for each block in conditioning_embedding layer
-
-
+            The tuple of output channel for each block in the `conditioning_embedding` layer.
     """
     sample_size: int = 32
     in_channels: int = 4
@@ -155,6 +158,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: Union[int, Tuple[int]] = 8
+    num_attention_heads: Optional[Union[int, Tuple[int]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -182,6 +186,14 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 
+        # If `num_attention_heads` is not defined (which is the case for most models)
+        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        num_attention_heads = self.num_attention_heads or self.attention_head_dim
+
         # input
         self.conv_in = nn.Conv(
             block_out_channels[0],
@@ -206,9 +218,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(only_cross_attention, bool):
             only_cross_attention = (only_cross_attention,) * len(self.down_block_types)
 
-        attention_head_dim = self.attention_head_dim
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(self.down_block_types)
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
         # down
         down_blocks = []
@@ -237,7 +248,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
-                    attn_num_head_channels=attention_head_dim[i],
+                    num_attention_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
@@ -285,7 +296,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.mid_block = FlaxUNetMidBlock2DCrossAttn(
             in_channels=mid_block_channel,
             dropout=self.dropout,
-            attn_num_head_channels=attention_head_dim[-1],
+            num_attention_heads=num_attention_heads[-1],
             use_linear_projection=self.use_linear_projection,
             dtype=self.dtype,
         )

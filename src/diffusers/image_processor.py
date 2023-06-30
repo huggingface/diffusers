@@ -26,19 +26,18 @@ from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 class VaeImageProcessor(ConfigMixin):
     """
-    Image Processor for VAE
+    Image processor for VAE.
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
-            `height` and `width` arguments from `preprocess` method
+            `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
-            VAE scale factor. If `do_resize` is True, the image will be automatically resized to multiples of this
-            factor.
+            VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
-            Whether to normalize the image to [-1,1]
+            Whether to normalize the image to [-1,1].
         do_convert_rgb (`bool`, *optional*, defaults to be `False`):
             Whether to convert the images to RGB format.
     """
@@ -75,7 +74,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
         """
-        Convert a PIL image or a list of PIL images to numpy arrays.
+        Convert a PIL image or a list of PIL images to NumPy arrays.
         """
         if not isinstance(images, list):
             images = [images]
@@ -87,7 +86,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
         """
-        Convert a numpy image to a pytorch tensor
+        Convert a NumPy image to a PyTorch tensor.
         """
         if images.ndim == 3:
             images = images[..., None]
@@ -98,7 +97,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pt_to_numpy(images: torch.FloatTensor) -> np.ndarray:
         """
-        Convert a pytorch tensor to a numpy image
+        Convert a PyTorch tensor to a NumPy image.
         """
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()
         return images
@@ -106,14 +105,14 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def normalize(images):
         """
-        Normalize an image array to [-1,1]
+        Normalize an image array to [-1,1].
         """
         return 2.0 * images - 1.0
 
     @staticmethod
     def denormalize(images):
         """
-        Denormalize an image array to [0,1]
+        Denormalize an image array to [0,1].
         """
         return (images / 2 + 0.5).clamp(0, 1)
 
@@ -132,7 +131,7 @@ class VaeImageProcessor(ConfigMixin):
         width: Optional[int] = None,
     ) -> PIL.Image.Image:
         """
-        Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
+        Resize a PIL image. Both height and width are downscaled to the next integer multiple of `vae_scale_factor`.
         """
         if height is None:
             height = image.height
@@ -152,7 +151,7 @@ class VaeImageProcessor(ConfigMixin):
         width: Optional[int] = None,
     ) -> torch.Tensor:
         """
-        Preprocess the image input, accepted formats are PIL images, numpy arrays or pytorch tensors"
+        Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
         if isinstance(image, supported_formats):
@@ -255,18 +254,17 @@ class VaeImageProcessor(ConfigMixin):
 
 class VaeImageProcessorLDM3D(VaeImageProcessor):
     """
-    Image Processor for VAE LDM3D.
+    Image processor for VAE LDM3D.
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
-            VAE scale factor. If `do_resize` is True, the image will be automatically resized to multiples of this
-            factor.
+            VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
-            Whether to normalize the image to [-1,1]
+            Whether to normalize the image to [-1,1].
     """
 
     config_name = CONFIG_NAME
@@ -284,7 +282,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
     @staticmethod
     def numpy_to_pil(images):
         """
-        Convert a numpy image or a batch of images to a PIL image.
+        Convert a NumPy image or a batch of images to a PIL image.
         """
         if images.ndim == 3:
             images = images[None, ...]
@@ -310,7 +308,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     def numpy_to_depth(self, images):
         """
-        Convert a numpy depth image or a batch of images to a PIL image.
+        Convert a NumPy depth image or a batch of images to a PIL image.
         """
         if images.ndim == 3:
             images = images[None, ...]
