@@ -22,7 +22,6 @@ from .models.attention_processor import LoRAAttnProcessor
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
-    TEXT_ENCODER_TARGET_MODULES,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -40,7 +39,7 @@ if is_transformers_available():
 
 logger = logging.get_logger(__name__)
 
-
+TEXT_ENCODER_TARGET_MODULES = ["q_proj", "v_proj"]
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 

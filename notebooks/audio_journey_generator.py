@@ -16,8 +16,12 @@ import csv
 import torchvision.transforms as transforms
 from PIL import Image
 import pandas as pd
+import sys
 
 print("Modules Imported")
+
+def get_prompts(n_prompts):
+    pass
 
 def gen_caption(classes):
     # Generate a caption
@@ -31,6 +35,10 @@ def gen_caption(classes):
         else:
             caption += f", a {c}"
     return caption
+
+def enc_to_wav(latent, enc):
+    wav = enc.decoder(latent)
+    return wav
 
 def get_pipe_aud(device):
     pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm-l-full", torch_dtype=torch.float16)
@@ -46,9 +54,8 @@ def generate_audio_aud(chunk, prompts, device, folder="/u/li19/data_folder/audio
     encodec.set_target_bandwidth(6.0)
     encodec = encodec.to(device)
     print(f'{device}: encodec loaded')
-    # print(pipe.progress_bar())
-    pipe.set_progress_bar_config(disable=True)
     
+    pipe.set_progress_bar_config(disable=True)
     logging.disable_progress_bar()
     
     batches = torch.split(chunk, batch_size)
@@ -57,26 +64,25 @@ def generate_audio_aud(chunk, prompts, device, folder="/u/li19/data_folder/audio
         pbar.set_description(f'Processing Slice: {device}')
         chunk_idx = batches[i]
         batch_prompts = [prompts[idx].replace("/", " ") for idx in chunk_idx]        
-        gens = pipe(prompt=batch_prompts, num_inference_steps=200, audio_length_in_s=10)
+        
+        gens = pipe(
+            prompt=batch_prompts, 
+            width=504, 
+            height=128, 
+            num_inference_steps=50, 
+            guidance_scale=5.0, 
+            output_type="latent", 
+            unet_mask=False, 
+            debug=False
+        ).images
                 
-        for j in range(batch_size):
+        for j, sample in enumerate(gens):
             prompt = batch_prompts[j]
-            out_name = prompt+".png"
+            wav = enc_to_wav(sample, encodec)
+            out_name = prompt+".wav"
             out_name = out_name.replace("/", "")
             out_path = os.path.join(folder, out_name)
-            # gen = rescale(gens[j], device)
-            audio = torch.from_numpy(gens[j][None, :, :]).to(device, dtype=torch.float32)
-            codes = encodec.encode(audio)[0][0]
-            codes = codes.transpose(0, 1)
-            gen = encodec.quantizer.decode(codes)
-            # plt.imshow(gen.detach().cpu().numpy()[0])
-            # plt.show()
-            
-            # Convert the Torch tensor to a PIL image
-            tensor_to_pil = transforms.ToPILImage()
-            image = tensor_to_pil(gen)
-            image.save(out_path)
-
+            torchaudio.save(out_path, wav, 16_000)
             
 def gen_set(nk, target):
     logging.disable_progress_bar()
@@ -118,13 +124,17 @@ def gen_set(nk, target):
         
 
 if __name__ == "__main__":
-    targs = ["/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_40k",
-            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_60k",
-            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_80k",
-            "/u/li19/data_folder/audioSetAudio/audio_journey_generated/audio_journey_100k"]
+    n_machines = int(sys.argv[1])
     
+    this_machine = int(sys.argv[2])
     
-    for targ in targs:
-        print(f'STARTING {targ}')
+    prompts = get_prompts()
+    
+    all_idx = torch.arange(len(prompts))
+    
+    chunks = all_idx.chunk(n_machines)
+    
+    if len(sys.argv) != 3:
+        print("please use correctly with num machines and machine num")
         
-        gen_set(20_000, targ)
+    print(str(sys.argv))
