@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Text, Union
 
 import numpy as np
 import PIL
@@ -576,7 +576,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         video: Union[List[np.ndarray], torch.FloatTensor] = None,
         strength: float = 0.6,
         num_inference_steps: int = 50,
-        guidance_scale: float = 9.0,
+        guidance_scale: float = 15.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -748,7 +748,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
                         callback(i, t, latents)
 
         if output_type == "latent":
-            return latents
+            return TextToVideoSDPipelineOutput(frames=latents)
 
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")

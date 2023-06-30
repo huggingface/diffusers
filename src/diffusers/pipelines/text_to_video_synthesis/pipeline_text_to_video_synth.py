@@ -673,7 +673,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                         callback(i, t, latents)
 
         if output_type == "latent":
-            return latents
+            return TextToVideoSDPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
 
