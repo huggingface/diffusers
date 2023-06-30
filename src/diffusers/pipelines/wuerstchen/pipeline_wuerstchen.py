@@ -23,7 +23,7 @@ from ...models import PaellaVQModel
 from ...schedulers import DDPMScheduler
 from ...utils import BaseOutput, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .modules import DiffNeXt, Prior
+from .modules import DiffNeXt, Prior, EfficientNetEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -361,12 +361,16 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         self,
         generator: DiffNeXt,
         scheduler: DDPMScheduler,
+        vqgan: PaellaVQModel,
+        efficient_net: EfficientNetEncoder,
     ) -> None:
         super().__init__()
         self.multiple = 128
         self.register_modules(
             generator=generator,
             scheduler=scheduler,
+            vqgan=vqgan,
+            efficient_net=efficient_net,
         )
         self.register_to_config()
 
