@@ -12,22 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import random
 import unittest
 
 import numpy as np
 import torch
-
-from diffusers import ShapEPipeline, HeunDiscreteScheduler, PriorTransformer
-from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
-
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
+from diffusers.pipelines.shap_e import ShapERenderer
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+
+from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
+
 
 class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = ShapEPipeline
@@ -47,11 +46,11 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "return_dict",
     ]
     test_xformers_attention = False
-    
+
     @property
     def text_embedder_hidden_size(self):
         return 32
-    
+
     @property
     def time_input_dim(self):
         return 32
@@ -63,7 +62,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def renderer_dim(self):
         return 8
-    
+
     @property
     def dummy_tokenizer(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -124,7 +123,11 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "d_latent": self.time_input_dim,
             "d_hidden": self.renderer_dim,
             "n_output": 12,
-            "background": (0.1, 0.1, 0.1,),
+            "background": (
+                0.1,
+                0.1,
+                0.1,
+            ),
         }
         model = ShapERenderer(**model_kwargs)
         return model
@@ -136,10 +139,10 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         renderer = self.dummy_renderer
 
         scheduler = HeunDiscreteScheduler(
-              beta_schedule="exp",
-              num_train_timesteps=1024,
-              prediction_type="sample",
-              use_karras_sigmas=False,
+            beta_schedule="exp",
+            num_train_timesteps=1024,
+            prediction_type="sample",
+            use_karras_sigmas=False,
         )
         components = {
             "prior": prior,
@@ -160,10 +163,10 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "horse",
             "generator": generator,
             "num_inference_steps": 4,
-            "size":64,
+            "size": 64,
             "output_type": "np",
-            "sigma_max": 16.,
-            "sigma_min": 15.,
+            "sigma_max": 16.0,
+            "sigma_min": 15.0,
         }
         return inputs
 
@@ -185,15 +188,16 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_slice = np.array(
             [
-                0.00039216, 
-                0.00039216, 
-                0.00039216, 
-                0.00039216, 
-                0.00039216, 
                 0.00039216,
-                0.00039216, 
-                0.00039216, 
-                0.00039216]
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+            ]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -210,7 +214,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     #  1. this pipeline support num_images_per_prompt but does not support batching
     #  2. this pipeline outputs 3d images, i.e a list of N lists of images, where N is our num_image_per_prompts
     def test_num_images_per_prompt(self):
-        
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -219,7 +222,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         batch_size = 1
         num_images_per_prompts = [1, 2]
 
-        
         for num_images_per_prompt in num_images_per_prompts:
             inputs = self.get_dummy_inputs(torch_device)
             images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images

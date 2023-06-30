@@ -191,16 +191,16 @@ class ShapEPipeline(DiffusionPipeline):
         prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         return prompt_embeds
-    
+
     @staticmethod
-    def save_gif(images:List[PIL.Image.Image], image_name: int, save_all=True, optimize=False, duration=100, loop=0):
+    def save_gif(images: List[PIL.Image.Image], image_name: int, save_all=True, optimize=False, duration=100, loop=0):
         images[0].save(
             f"{image_name}.gif",
-            save_all=save_all, 
-            append_images=images[1:], 
-            optimize=optimize, 
-            duration=duration, 
-            loop=loop
+            save_all=save_all,
+            append_images=images[1:],
+            optimize=optimize,
+            duration=duration,
+            loop=loop,
         )
 
     @torch.no_grad()
@@ -258,10 +258,10 @@ class ShapEPipeline(DiffusionPipeline):
             [`ShapEPipelineOutput`] or `tuple`
         """
 
-        if isinstance(prompt, str) or isinstance(prompt, list) and len(prompt) ==1:
+        if isinstance(prompt, str) or isinstance(prompt, list) and len(prompt) == 1:
             batch_size = 1
         elif isinstance(prompt, list) and len(prompt) > 1:
-            raise ValueError(f"this pipeline does not support more than one prompt")
+            raise ValueError("this pipeline does not support more than one prompt")
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -327,12 +327,11 @@ class ShapEPipeline(DiffusionPipeline):
         # YiYi testing only: I don't think we need to return latent for this pipeline
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
-        
+
         images = []
         for i, latent in enumerate(latents):
-
             image = self.renderer.decode(
-                latent[None,:],
+                latent[None, :],
                 device,
                 size=size,
                 ray_batch_size=ray_batch_size,

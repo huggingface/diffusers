@@ -567,7 +567,11 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         n_hidden_layers: int = 6,
         act_fn: str = "swish",
         insert_direction_at: int = 4,
-        background: Tuple[float] = (0.0, 0.0, 0.0,),
+        background: Tuple[float] = (
+            0.0,
+            0.0,
+            0.0,
+        ),
     ):
         super().__init__()
 
@@ -631,10 +635,10 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         # 2. Get the points along the ray and query the model
         directions = torch.broadcast_to(direction.unsqueeze(-2), [batch_size, *ts_shape, 3])
         positions = origin.unsqueeze(-2) + ts * directions
-        
+
         directions = directions.to(self.mlp.dtype)
         positions = positions.to(self.mlp.dtype)
-        
+
         optional_directions = directions if render_with_direction else None
 
         model_out = self.mlp(
