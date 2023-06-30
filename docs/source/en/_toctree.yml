@@ -132,8 +132,6 @@
   title: Conceptual Guides
 - sections:
   - sections:
-    - local: api/models
-      title: Models
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/diffusion_pipeline
@@ -151,6 +149,30 @@
     - local: api/image_processor
       title: VAE Image Processor
     title: Main Classes
+  - sections:
+    - local: api/models/overview
+      title: Overview
+    - local: api/models/unet
+      title: UNet1DModel
+    - local: api/models/unet2d
+      title: UNet2DModel
+    - local: api/models/unet2d-cond
+      title: UNet2DConditionModel
+    - local: api/models/unet3d-cond
+      title: UNet3DConditionModel
+    - local: api/models/vq
+      title: VQModel
+    - local: api/models/autoencoderkl
+      title: AutoencoderKL
+    - local: api/models/transformer2d
+      title: Transformer2D
+    - local: api/models/transformer_temporal
+      title: Transformer Temporal
+    - local: api/models/prior_transformer
+      title: Prior Transformer
+    - local: api/models/controlnet
+      title: ControlNet
+    title: Models
   - sections:
     - local: api/pipelines/overview
       title: Overview
