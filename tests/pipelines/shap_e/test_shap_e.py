@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import gc
+import unittest
 
 import numpy as np
 import torch
@@ -21,7 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils import load_numpy, nightly, slow
+from diffusers.utils import load_numpy, slow
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -252,12 +252,8 @@ class ShapEPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
 
         images = pipe(
-            "a shark", 
-            generator=generator, 
-            guidance_scale=15.0,
-            num_inference_steps= 64, 
-            size = 64, 
-            output_type='np').images[0]
+            "a shark", generator=generator, guidance_scale=15.0, num_inference_steps=64, size=64, output_type="np"
+        ).images[0]
 
         assert images.shape == (20, 64, 64, 3)
 
