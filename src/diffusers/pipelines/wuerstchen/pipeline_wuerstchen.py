@@ -340,19 +340,18 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
     """
-    Pipeline for generating image prior for Wuerstchen.
+    Pipeline for generating images from the  Wuerstchen model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        prior ([`Prior`]):
-            The canonical unCLIP prior to approximate the image embedding from the text embedding.
-        text_encoder ([`CLIPTextModelWithProjection`]):
-            Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        generator ([`DiffNeXt`]):
+            The DiffNeXt unet generator.
+        vqgan ([`PaellaVQModel`]):
+            The VQGAN model.
+        efficient_net ([`EfficientNetEncoder`]):
+            The EfficientNet encoder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
