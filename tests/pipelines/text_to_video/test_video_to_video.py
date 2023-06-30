@@ -13,28 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import unittest
 
 import numpy as np
 import torch
-import random
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers.utils import floats_tensor
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    VideoToVideoSDPipeline,
     UNet3DConditionModel,
+    VideoToVideoSDPipeline,
 )
-from diffusers.utils import load_numpy, skip_mps, slow
+from diffusers.utils import floats_tensor, skip_mps
 from diffusers.utils.testing_utils import enable_full_determinism
+
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -118,7 +116,6 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_inputs(self, device, seed=0):
         # 3 frames
         video = floats_tensor((1, 3, 3, 32, 32), rng=random.Random(seed)).to(device)
-
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
