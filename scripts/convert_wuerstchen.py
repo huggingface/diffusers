@@ -3,7 +3,6 @@ import os
 import torch
 from transformers import AutoTokenizer, CLIPTextModel
 from vqgan import VQModel
-from modules import DiffNeXt, EfficientNetEncoder
 
 from diffusers import (
     DDPMScheduler,
@@ -11,7 +10,7 @@ from diffusers import (
     WuerstchenPriorPipeline,
     WuerstchenGeneratorPipeline,
 )
-from diffusers.pipelines.wuerstchen import Prior
+from diffusers.pipelines.wuerstchen import Prior, DiffNeXt, EfficientNetEncoder
 
 
 model_path = "models/"

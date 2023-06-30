@@ -201,7 +201,8 @@ class Prior(ModelMixin, ConfigMixin):
             self_params.data = self_params.data * beta + src_params.data * (1 - beta)
 
 
-class DiffNeXt(nn.Module):
+class DiffNeXt(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         c_in=4,
