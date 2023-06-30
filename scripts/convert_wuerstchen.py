@@ -1,16 +1,18 @@
-import argparse
-import inspect
 import os
 
-import numpy as np
 import torch
-import torch.nn as nn
-
-from diffusers import PaellaVQModel, WuerstchenPipeline, WuerstchenPriorPipeline, DDPMScheduler
-from diffusers.pipelines.wuerstchen import Prior
-from transformers import CLIPTextModel, AutoTokenizer
-
+from transformers import AutoTokenizer, CLIPTextModel
 from vqgan import VQModel
+from modules import DiffNeXt, EfficientNetEncoder
+
+from diffusers import (
+    DDPMScheduler,
+    PaellaVQModel,
+    WuerstchenPriorPipeline,
+    WuerstchenGeneratorPipeline,
+)
+from diffusers.pipelines.wuerstchen import Prior
+
 
 model_path = "models/"
 device = "cpu"
@@ -33,7 +35,13 @@ text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b
 tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
 # EfficientNet
-state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)["effnet_state_dict"]
+state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)
+efficient_net = EfficientNetEncoder()
+efficient_net.load_state_dict(state_dict["effnet_state_dict"])
+
+# Generator
+generator = DiffNeXt()
+generator.load_state_dict(state_dict["state_dict"])
 
 # Prior
 state_dict = torch.load(os.path.join(model_path, "model_v2_stage_c.pt"), map_location=device)
@@ -44,6 +52,8 @@ prior_model.load_state_dict(state_dict["ema_state_dict"])
 # scheduler
 scheduler = DDPMScheduler(
     beta_schedule="linear",
+    beta_start=0.0001,
+    beta_end=0.02,
 )
 
 # Prior pipeline
@@ -55,6 +65,14 @@ prior_pipeline = WuerstchenPriorPipeline(
 )
 
 prior_pipeline.save_pretrained("kashif/WuerstchenPriorPipeline")
+
+generator_pipeline = WuerstchenGeneratorPipeline(
+    vae=vqmodel,
+    generator=generator,
+    efficient_net=efficient_net,
+    scheduler=scheduler,
+)
+
 
 # WuerstchenPipeline(
 #     vae=VQGan()
