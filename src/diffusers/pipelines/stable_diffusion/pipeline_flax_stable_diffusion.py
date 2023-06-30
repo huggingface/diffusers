@@ -93,7 +93,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             A [`~transformers.CLIPTokenizer`] to tokenize text.
         unet ([`FlaxUNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A [`FlaxUNet2DConditionModel`] to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
@@ -327,8 +327,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.

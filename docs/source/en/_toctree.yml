@@ -244,7 +244,7 @@
       - local: api/pipelines/stable_diffusion/depth2img
         title: Depth-to-Image
       - local: api/pipelines/stable_diffusion/image_variation
-        title: Image-Variation
+        title: Image Variation
       - local: api/pipelines/stable_diffusion/stable_diffusion_safe
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
@@ -252,9 +252,9 @@
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler
+        title: Latent Upscaler
       - local: api/pipelines/stable_diffusion/upscale
-        title: Super-Resolution
+        title: Super Resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
