@@ -203,7 +203,6 @@ class ShapEPipeline(DiffusionPipeline):
             loop=loop
         )
 
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(

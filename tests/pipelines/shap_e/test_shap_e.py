@@ -220,7 +220,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         
         for num_images_per_prompt in num_images_per_prompts:
-            print(f"num: {num_images_per_prompt}")
             inputs = self.get_dummy_inputs(torch_device)
             images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
