@@ -26,8 +26,8 @@ from diffusers import (
     UNet3DConditionModel,
     VideoToVideoSDPipeline,
 )
-from diffusers.utils import floats_tensor, skip_mps
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils import floats_tensor, is_xformers_available, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -151,6 +151,10 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=5e-3)
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False, expected_max_diff=5e-3)
 
