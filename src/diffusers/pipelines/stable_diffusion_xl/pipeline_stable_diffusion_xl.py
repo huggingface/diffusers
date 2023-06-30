@@ -213,12 +213,18 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
+        model_sequence = (
+            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+        )
+        model_sequence.extend([self.unet, self.vae])
+
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+        for cpu_offloaded_model in model_sequence:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+        # TODO: safety_checker
+        # if self.safety_checker is not None:
+        #     _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
