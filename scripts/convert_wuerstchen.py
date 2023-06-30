@@ -67,11 +67,12 @@ prior_pipeline = WuerstchenPriorPipeline(
 prior_pipeline.save_pretrained("kashif/WuerstchenPriorPipeline")
 
 generator_pipeline = WuerstchenGeneratorPipeline(
-    vae=vqmodel,
+    vqgan=vqmodel,
     generator=generator,
     efficient_net=efficient_net,
     scheduler=scheduler,
 )
+generator_pipeline.save_pretrained("kashif/WuerstchenGeneratorPipeline")
 
 
 # WuerstchenPipeline(

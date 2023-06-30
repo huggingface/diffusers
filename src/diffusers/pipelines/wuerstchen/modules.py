@@ -110,7 +110,8 @@ class AttnBlock(nn.Module):
         return x
 
 
-class EfficientNetEncoder(nn.Module):
+class EfficientNetEncoder(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, c_latent=16, effnet="efficientnet_v2_s"):
         super().__init__()
         if effnet == "efficientnet_v2_s":
