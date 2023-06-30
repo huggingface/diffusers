@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+import gc
 
 import numpy as np
 import torch
@@ -20,9 +21,10 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils import load_numpy, nightly, slow
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 enable_full_determinism()
@@ -227,3 +229,36 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
             assert len(images) == batch_size * num_images_per_prompt
+
+
+@slow
+@require_torch_gpu
+class ShapEPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_shap_e(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/shap_e/test_shap_e_np_out.npy"
+        )
+        pipe = ShapEPipeline.from_pretrained("YiYiXu/shap-e")
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        images = pipe(
+            "a shark", 
+            generator=generator, 
+            guidance_scale=15.0,
+            num_inference_steps= 64, 
+            size = 64, 
+            output_type='np').images[0]
+
+        assert images.shape == (20, 64, 64, 3)
+
+        assert_mean_pixel_difference(images, expected_image)
