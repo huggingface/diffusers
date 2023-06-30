@@ -339,9 +339,9 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         self.decoder_scheduler.set_timesteps(decoder_num_inference_steps, device=device)
         decoder_timesteps_tensor = self.decoder_scheduler.timesteps
 
-        num_channels_latents = self.decoder.in_channels
-        height = self.decoder.sample_size
-        width = self.decoder.sample_size
+        num_channels_latents = self.decoder.config.in_channels
+        height = self.decoder.config.sample_size
+        width = self.decoder.config.sample_size
 
         if decoder_latents is None:
             decoder_latents = self.prepare_latents(
@@ -393,9 +393,9 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         self.super_res_scheduler.set_timesteps(super_res_num_inference_steps, device=device)
         super_res_timesteps_tensor = self.super_res_scheduler.timesteps
 
-        channels = self.super_res_first.in_channels // 2
-        height = self.super_res_first.sample_size
-        width = self.super_res_first.sample_size
+        channels = self.super_res_first.config.in_channels // 2
+        height = self.super_res_first.config.sample_size
+        width = self.super_res_first.config.sample_size
 
         if super_res_latents is None:
             super_res_latents = self.prepare_latents(

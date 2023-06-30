@@ -129,3 +129,59 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 202.0296) < 1e-2
         assert abs(result_mean.item() - 0.2631) < 1e-3
+
+    def test_custom_timesteps(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 1, 0]
+
+        scheduler.set_timesteps(timesteps=timesteps)
+
+        scheduler_timesteps = scheduler.timesteps
+
+        for i, timestep in enumerate(scheduler_timesteps):
+            if i == len(timesteps) - 1:
+                expected_prev_t = -1
+            else:
+                expected_prev_t = timesteps[i + 1]
+
+            prev_t = scheduler.previous_timestep(timestep)
+            prev_t = prev_t.item()
+
+            self.assertEqual(prev_t, expected_prev_t)
+
+    def test_custom_timesteps_increasing_order(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 51, 0]
+
+        with self.assertRaises(ValueError, msg="`custom_timesteps` must be in descending order."):
+            scheduler.set_timesteps(timesteps=timesteps)
+
+    def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 1, 0]
+        num_inference_steps = len(timesteps)
+
+        with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `custom_timesteps`."):
+            scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
+
+    def test_custom_timesteps_too_large(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [scheduler.config.num_train_timesteps]
+
+        with self.assertRaises(
+            ValueError,
+            msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
+        ):
+            scheduler.set_timesteps(timesteps=timesteps)

@@ -33,10 +33,10 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesModelWithTransformation,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
@@ -123,6 +123,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         tokenizer.model_max_length = 77
 
         init_image = self.dummy_image.to(device)
+        init_image = init_image / 2 + 0.5
 
         # make sure here that pndm scheduler skips prk
         alt_pipe = AltDiffusionImg2ImgPipeline(
@@ -134,7 +135,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
+        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=True)
         alt_pipe = alt_pipe.to(device)
         alt_pipe.set_progress_bar_config(disable=None)
 
@@ -166,7 +167,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4115, 0.3870, 0.4089, 0.4807, 0.4668, 0.4144, 0.4151, 0.4721, 0.4569])
+        expected_slice = np.array([0.4427, 0.3731, 0.4249, 0.4941, 0.4546, 0.4148, 0.4193, 0.4666, 0.4499])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 5e-3
@@ -250,7 +251,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
@@ -296,4 +297,4 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-2

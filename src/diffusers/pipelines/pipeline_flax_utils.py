@@ -83,8 +83,8 @@ class FlaxImagePipelineOutput(BaseOutput):
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
-            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
@@ -296,6 +296,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         from_pt = kwargs.pop("from_pt", False)
+        use_memory_efficient_attention = kwargs.pop("use_memory_efficient_attention", False)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -451,7 +452,12 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = cached_folder
 
                 if issubclass(class_obj, FlaxModelMixin):
-                    loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
+                    loaded_sub_model, loaded_params = load_method(
+                        loadable_folder,
+                        from_pt=from_pt,
+                        use_memory_efficient_attention=use_memory_efficient_attention,
+                        dtype=dtype,
+                    )
                     params[name] = loaded_params
                 elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
                     if from_pt:

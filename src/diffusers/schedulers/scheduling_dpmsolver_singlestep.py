@@ -21,7 +21,11 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -113,6 +117,21 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps. For singlestep schedulers, we recommend to enable
             this to use up all the function evaluations.
+        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
+             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
+             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
+             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        lambda_min_clipped (`float`, default `-inf`):
+            the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
+            cosine (squaredcos_cap_v2) noise schedule.
+        variance_type (`str`, *optional*):
+            Set to "learned" or "learned_range" for diffusion models that predict variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs. whether the model's output contains the predicted Gaussian variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs.
 
     """
 
@@ -135,6 +154,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
+        use_karras_sigmas: Optional[bool] = False,
+        lambda_min_clipped: float = -float("inf"),
+        variance_type: Optional[str] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -180,6 +202,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.sample = None
         self.order_list = self.get_order_list(num_train_timesteps)
+        self.use_karras_sigmas = use_karras_sigmas
 
     def get_order_list(self, num_inference_steps: int) -> List[int]:
         """
@@ -226,16 +249,34 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
+        # Clipping the minimum of all lambda(t) for numerical stability.
+        # This is critical for cosine (squaredcos_cap_v2) noise schedule.
+        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
         timesteps = (
-            np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+            np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
             .round()[::-1][:-1]
             .copy()
             .astype(np.int64)
         )
+
+        if self.use_karras_sigmas:
+            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+            log_sigmas = np.log(sigmas)
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps = np.flip(timesteps).copy().astype(np.int64)
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
-        self.orders = self.get_order_list(num_inference_steps)
+
+        if not self.config.lower_order_final and num_inference_steps % self.config.solver_order != 0:
+            logger.warn(
+                "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=True`."
+            )
+            self.register_to_config(lower_order_final=True)
+
+        self.order_list = self.get_order_list(num_inference_steps)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -272,6 +313,44 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
+    def _sigma_to_t(self, sigma, log_sigmas):
+        # get log sigma
+        log_sigma = np.log(sigma)
+
+        # get distribution
+        dists = log_sigma - log_sigmas[:, np.newaxis]
+
+        # get sigmas range
+        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
+
+        low = log_sigmas[low_idx]
+        high = log_sigmas[high_idx]
+
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = np.clip(w, 0, 1)
+
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.reshape(sigma.shape)
+        return t
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+        """Constructs the noise schedule of Karras et al. (2022)."""
+
+        sigma_min: float = in_sigmas[-1].item()
+        sigma_max: float = in_sigmas[0].item()
+
+        rho = 7.0  # 7.0 is the value used in the paper
+        ramp = np.linspace(0, 1, num_inference_steps)
+        min_inv_rho = sigma_min ** (1 / rho)
+        max_inv_rho = sigma_max ** (1 / rho)
+        sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
+        return sigmas
+
     def convert_model_output(
         self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
     ) -> torch.FloatTensor:
@@ -297,6 +376,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
             if self.config.prediction_type == "epsilon":
+                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                if self.config.variance_type in ["learned_range"]:
+                    model_output = model_output[:, :3]
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
@@ -317,6 +399,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
             if self.config.prediction_type == "epsilon":
+                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                if self.config.variance_type in ["learned_range"]:
+                    model_output = model_output[:, :3]
                 return model_output
             elif self.config.prediction_type == "sample":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
@@ -575,6 +660,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs[-1] = model_output
 
         order = self.order_list[step_index]
+
+        #  For img2img denoising might start with order>1 which is not possible
+        #  In this case make sure that the first two steps are both order=1
+        while self.model_outputs[-order] is None:
+            order -= 1
+
         # For single-step solvers, we use the initial value at each time with order = 1.
         if order == 1:
             self.sample = sample

@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Improve image quality with deterministic generation
 
+[[open-in-colab]]
+
 A common way to improve the quality of generated images is with *deterministic batch generation*, generate a batch of images and select one image to improve with a more detailed prompt in a second round of inference. The key is to pass a list of [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html#generator)'s to the pipeline for batched image generation, and tie each `Generator` to a seed so you can reuse it for an image.
 
 Let's use [`runwayml/stable-diffusion-v1-5`](runwayml/stable-diffusion-v1-5) for example, and generate several versions of the following prompt:

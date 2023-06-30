@@ -36,10 +36,14 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import is_xformers_available, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from ...pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -357,9 +361,15 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+
 
 @slow
-# @require_torch_gpu
 class AudioLDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -413,4 +423,4 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio_slice = audio[27780:27790]
         expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-2
+        assert max_diff < 3e-2

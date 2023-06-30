@@ -45,14 +45,15 @@ else:
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
     from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
-    from .pipeline_stable_diffusion_controlnet import StableDiffusionControlNetPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
     from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
     from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
+    from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
     from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
     from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
+    from .pipeline_stable_diffusion_paradigms import StableDiffusionParadigmsPipeline
     from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
     from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
     from .pipeline_stable_unclip import StableUnCLIPPipeline
@@ -75,10 +76,12 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         StableDiffusionDepth2ImgPipeline,
+        StableDiffusionDiffEditPipeline,
         StableDiffusionPix2PixZeroPipeline,
     )
 else:
     from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+    from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
     from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
 
 
@@ -128,7 +131,6 @@ if is_transformers_available() and is_flax_available():
 
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
     from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
-    from .pipeline_flax_stable_diffusion_controlnet import FlaxStableDiffusionControlNetPipeline
     from .pipeline_flax_stable_diffusion_img2img import FlaxStableDiffusionImg2ImgPipeline
     from .pipeline_flax_stable_diffusion_inpaint import FlaxStableDiffusionInpaintPipeline
     from .safety_checker_flax import FlaxStableDiffusionSafetyChecker

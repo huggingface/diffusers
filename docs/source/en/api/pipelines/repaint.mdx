@@ -60,7 +60,7 @@ pipe = pipe.to("cuda")
 
 generator = torch.Generator(device="cuda").manual_seed(0)
 output = pipe(
-    original_image=original_image,
+    image=original_image,
     mask_image=mask_image,
     num_inference_steps=250,
     eta=0.0,

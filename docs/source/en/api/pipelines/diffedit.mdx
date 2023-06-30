@@ -1,0 +1,360 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Zero-shot Diffusion-based Semantic Image Editing with Mask Guidance
+
+## Overview
+
+[DiffEdit: Diffusion-based semantic image editing with mask guidance](https://arxiv.org/abs/2210.11427) by Guillaume Couairon, Jakob Verbeek, Holger Schwenk, and Matthieu Cord.
+
+The abstract of the paper is the following:
+
+*Image generation has recently seen tremendous advances, with diffusion models allowing to synthesize convincing images for a large variety of text prompts. In this article, we propose DiffEdit, a method to take advantage of text-conditioned diffusion models for the task of semantic image editing, where the goal is to edit an image based on a text query. Semantic image editing is an extension of image generation, with the additional constraint that the generated image should be as similar as possible to a given input image. Current editing methods based on diffusion models usually require to provide a mask, making the task much easier by treating it as a conditional inpainting task. In contrast, our main contribution is able to automatically generate a mask highlighting regions of the input image that need to be edited, by contrasting predictions of a diffusion model conditioned on different text prompts. Moreover, we rely on latent inference to preserve content in those regions of interest and show excellent synergies with mask-based diffusion. DiffEdit achieves state-of-the-art editing performance on ImageNet. In addition, we evaluate semantic image editing in more challenging settings, using images from the COCO dataset as well as text-based generated images.*
+
+Resources:
+
+* [Paper](https://arxiv.org/abs/2210.11427).
+* [Blog Post with Demo](https://blog.problemsolversguild.com/technical/research/2022/11/02/DiffEdit-Implementation.html).
+* [Implementation on Github](https://github.com/Xiang-cd/DiffEdit-stable-diffusion/).
+
+## Tips 
+
+* The pipeline can generate masks that can be fed into other inpainting pipelines. Check out the code examples below to know more.
+* In order to generate an image using this pipeline, both an image mask (manually specified or generated using `generate_mask`)
+and a set of partially inverted latents (generated using `invert`) _must_ be provided as arguments when calling the pipeline to generate the final edited image.
+Refer to the code examples below for more details.
+* The function `generate_mask` exposes two prompt arguments, `source_prompt` and `target_prompt`,
+that let you control the locations of the semantic edits in the final image to be generated. Let's say,
+you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
+this in the generated mask, you simply have to set the embeddings related to the phrases including "cat" to
+`source_prompt_embeds` and "dog" to `target_prompt_embeds`. Refer to the code example below for more details.
+* When generating partially inverted latents using `invert`, assign a caption or text embedding describing the
+overall image to the `prompt` argument to help guide the inverse latent sampling process. In most cases, the
+source concept is sufficently descriptive to yield good results, but feel free to explore alternatives.
+Please refer to [this code example](#generating-image-captions-for-inversion) for more details.
+* When calling the pipeline to generate the final edited image, assign the source concept to `negative_prompt`
+and the target concept to `prompt`. Taking the above example, you simply have to set the embeddings related to
+the phrases including "cat" to `negative_prompt_embeds` and "dog" to `prompt_embeds`. Refer to the code example
+below for more details.
+* If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
+    * Swap the `source_prompt` and `target_prompt` in the arguments to `generate_mask`.
+    * Change the input prompt for `invert` to include "dog".
+    * Swap the `prompt` and `negative_prompt` in the arguments to call the pipeline to generate the final edited image.
+* Note that the source and target prompts, or their corresponding embeddings, can also be automatically generated. Please, refer to [this discussion](#generating-source-and-target-embeddings) for more details.
+
+## Available Pipelines:
+
+| Pipeline | Tasks
+|---|---|
+| [StableDiffusionDiffEditPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_diffedit.py) | *Text-Based Image Editing*
+
+<!-- TODO: add Colab -->
+
+## Usage example
+
+### Based on an input image with a caption
+
+When the pipeline is conditioned on an input image, we first obtain partially inverted latents from the input image using a
+`DDIMInverseScheduler` with the help of a caption. Then we generate an editing mask to identify relevant regions in the image using the source and target prompts. Finally, 
+the inverted noise and generated mask is used to start the generation process. 
+
+First, let's load our pipeline: 
+
+```py
+import torch
+from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionPix2PixZeroPipeline
+
+sd_model_ckpt = "stabilityai/stable-diffusion-2-1"
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
+    sd_model_ckpt,
+    torch_dtype=torch.float16,
+    safety_checker=None,
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+generator = torch.manual_seed(0)
+```
+
+Then, we load an input image to edit using our method: 
+
+```py
+from diffusers.utils import load_image
+
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+```
+
+Then, we employ the source and target prompts to generate the editing mask:
+
+```py
+# See the "Generating source and target embeddings" section below to
+# automate the generation of these captions with a pre-trained model like Flan-T5 as explained below.
+
+source_prompt = "a bowl of fruits"
+target_prompt = "a basket of fruits"
+mask_image = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt=source_prompt,
+    target_prompt=target_prompt,
+    generator=generator,
+)
+```
+
+Then, we employ the caption and the input image to get the inverted latents: 
+
+```py 
+inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
+```
+
+Now, generate the image with the inverted latents and semantically generated mask: 
+
+```py
+image = pipeline(
+    prompt=target_prompt,
+    mask_image=mask_image,
+    image_latents=inv_latents,
+    generator=generator,
+    negative_prompt=source_prompt,
+).images[0]
+image.save("edited_image.png")
+```
+
+## Generating image captions for inversion
+
+The authors originally used the source concept prompt as the caption for generating the partially inverted latents. However, we can also leverage open source and public image captioning models for the same purpose.
+Below, we provide an end-to-end example with the [BLIP](https://huggingface.co/docs/transformers/model_doc/blip) model
+for generating captions.
+
+First, let's load our automatic image captioning model:
+
+```py
+import torch
+from transformers import BlipForConditionalGeneration, BlipProcessor
+
+captioner_id = "Salesforce/blip-image-captioning-base"
+processor = BlipProcessor.from_pretrained(captioner_id)
+model = BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+```
+
+Then, we define a utility to generate captions from an input image using the model:
+
+```py
+@torch.no_grad()
+def generate_caption(images, caption_generator, caption_processor):
+    text = "a photograph of"
+
+    inputs = caption_processor(images, text, return_tensors="pt").to(device="cuda", dtype=caption_generator.dtype)
+    caption_generator.to("cuda")
+    outputs = caption_generator.generate(**inputs, max_new_tokens=128)
+
+    # offload caption generator
+    caption_generator.to("cpu")
+
+    caption = caption_processor.batch_decode(outputs, skip_special_tokens=True)[0]
+    return caption
+```
+
+Then, we load an input image for conditioning and obtain a suitable caption for it: 
+
+```py
+from diffusers.utils import load_image
+
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+caption = generate_caption(raw_image, model, processor)
+```
+
+Then, we employ the generated caption and the input image to get the inverted latents: 
+
+```py
+from diffusers import DDIMInverseScheduler, DDIMScheduler
+
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+)
+pipeline = pipeline.to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+
+generator = torch.manual_seed(0)
+inv_latents = pipeline.invert(prompt=caption, image=raw_image, generator=generator).latents
+```
+
+Now, generate the image with the inverted latents and semantically generated mask from our source and target prompts: 
+
+```py
+source_prompt = "a bowl of fruits"
+target_prompt = "a basket of fruits"
+
+mask_image = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt=source_prompt,
+    target_prompt=target_prompt,
+    generator=generator,
+)
+
+image = pipeline(
+    prompt=target_prompt,
+    mask_image=mask_image,
+    image_latents=inv_latents,
+    generator=generator,
+    negative_prompt=source_prompt,
+).images[0]
+image.save("edited_image.png")
+```
+
+## Generating source and target embeddings 
+
+The authors originally required the user to manually provide the source and target prompts for discovering
+edit directions. However, we can also leverage open source and public models for the same purpose.
+Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
+for generating source an target embeddings.
+
+**1. Load the generation model**:
+
+```py
+import torch
+from transformers import AutoTokenizer, T5ForConditionalGeneration
+
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-xl")
+model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto", torch_dtype=torch.float16)
+```
+
+**2. Construct a starting prompt**: 
+
+```py
+source_concept = "bowl"
+target_concept = "basket"
+
+source_text = f"Provide a caption for images containing a {source_concept}. "
+"The captions should be in English and should be no longer than 150 characters."
+
+target_text = f"Provide a caption for images containing a {target_concept}. "
+"The captions should be in English and should be no longer than 150 characters."
+```
+
+Here, we're interested in the "bowl -> basket" direction. 
+
+**3. Generate prompts**:
+
+We can use a utility like so for this purpose. 
+
+```py
+@torch.no_grad
+def generate_prompts(input_prompt):
+    input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to("cuda")
+
+    outputs = model.generate(
+        input_ids, temperature=0.8, num_return_sequences=16, do_sample=True, max_new_tokens=128, top_k=10
+    )
+    return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+```
+
+And then we just call it to generate our prompts:
+
+```py
+source_prompts = generate_prompts(source_text)
+target_prompts = generate_prompts(target_text)
+```
+
+We encourage you to play around with the different parameters supported by the
+`generate()` method ([documentation](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.generation_tf_utils.TFGenerationMixin.generate)) for the generation quality you are looking for.
+
+**4. Load the embedding model**: 
+
+Here, we need to use the same text encoder model used by the subsequent Stable Diffusion model.
+
+```py 
+from diffusers import StableDiffusionDiffEditPipeline 
+
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+)
+pipeline = pipeline.to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+
+generator = torch.manual_seed(0)
+```
+
+**5. Compute embeddings**:
+
+```py 
+import torch 
+
+@torch.no_grad()
+def embed_prompts(sentences, tokenizer, text_encoder, device="cuda"):
+    embeddings = []
+    for sent in sentences:
+        text_inputs = tokenizer(
+            sent,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=None)[0]
+        embeddings.append(prompt_embeds)
+    return torch.concatenate(embeddings, dim=0).mean(dim=0).unsqueeze(0)
+
+source_embeddings = embed_prompts(source_prompts, pipeline.tokenizer, pipeline.text_encoder)
+target_embeddings = embed_prompts(target_captions, pipeline.tokenizer, pipeline.text_encoder)
+```
+
+And you're done! Now, you can use these embeddings directly while calling the pipeline: 
+
+```py
+from diffusers import DDIMInverseScheduler, DDIMScheduler
+from diffusers.utils import load_image
+
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+
+
+mask_image = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt_embeds=source_embeds,
+    target_prompt_embeds=target_embeds,
+    generator=generator,
+)
+
+inv_latents = pipeline.invert(
+    prompt_embeds=source_embeds,
+    image=raw_image,
+    generator=generator,
+).latents
+
+images = pipeline(
+    mask_image=mask_image,
+    image_latents=inv_latents,
+    prompt_embeds=target_embeddings,
+    negative_prompt_embeds=source_embeddings,
+    generator=generator,
+).images
+images[0].save("edited_image.png")
+```
+
+## StableDiffusionDiffEditPipeline
+[[autodoc]] StableDiffusionDiffEditPipeline
+    - all
+    - generate_mask
+    - invert
+	- __call__

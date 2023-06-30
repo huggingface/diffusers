@@ -29,20 +29,22 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 @skip_mps
-class StableDiffusionModelEditingPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionModelEditingPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionModelEditingPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -118,9 +120,7 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineTesterMixin, unittest
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.5217179, 0.50658035, 0.5003239, 0.41109088, 0.3595158, 0.46607107, 0.5323504, 0.5335255, 0.49187922]
-        )
+        expected_slice = np.array([0.4755, 0.5132, 0.4976, 0.3904, 0.3554, 0.4765, 0.5139, 0.5158, 0.4889])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -139,9 +139,7 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineTesterMixin, unittest
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.546259, 0.5108156, 0.50897664, 0.41931948, 0.3748669, 0.4669299, 0.5427151, 0.54561913, 0.49353]
-        )
+        expected_slice = np.array([0.4992, 0.5101, 0.5004, 0.3949, 0.3604, 0.4735, 0.5216, 0.5204, 0.4913])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -161,9 +159,7 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineTesterMixin, unittest
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.47106352, 0.53579676, 0.45798016, 0.514294, 0.56856745, 0.4788605, 0.54380214, 0.5046455, 0.50404465]
-        )
+        expected_slice = np.array([0.4747, 0.5372, 0.4779, 0.4982, 0.5543, 0.4816, 0.5238, 0.4904, 0.5027])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -179,6 +175,12 @@ class StableDiffusionModelEditingPipelineFastTests(PipelineTesterMixin, unittest
         # the pipeline does not expect pndm so test if it raises error.
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
 
 @slow

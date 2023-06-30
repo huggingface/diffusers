@@ -6,6 +6,7 @@ on:
       - main
       - doc-builder*
       - v*-release
+      - v*-patch
 
 jobs:
    build:
@@ -14,6 +15,7 @@ jobs:
       commit_sha: ${{ github.sha }}
       package: diffusers
       notebook_folder: diffusers_doc
-      languages: en ko
+      languages: en ko zh
     secrets:
       token: ${{ secrets.HUGGINGFACE_PUSH }}
+      hf_token: ${{ secrets.HF_DOC_BUILD_PUSH }}

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -28,7 +29,8 @@ from transformers import (
     CLIPTokenizer,
 )
 
-from ...loaders import TextualInversionLoaderMixin
+from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
@@ -36,6 +38,7 @@ from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
     PIL_INTERPOLATION,
     BaseOutput,
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -174,6 +177,11 @@ EXAMPLE_INVERT_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
+    warnings.warn(
+        "The preprocess method is deprecated and will be removed in a future version. Please"
+        " use VaeImageProcessor.preprocess instead",
+        FutureWarning,
+    )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -243,8 +251,8 @@ class Pix2PixZeroAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -357,6 +365,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             inverse_scheduler=inverse_scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
@@ -438,6 +447,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -462,7 +472,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -519,7 +536,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -577,19 +594,28 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        else:
-            has_nsfw_concept = None
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -616,7 +642,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        image,
         source_embeds,
         target_embeds,
         callback_steps,
@@ -714,30 +739,44 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         image = image.to(device=device, dtype=dtype)
 
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+        if image.shape[1] == 4:
+            latents = image
 
-        if isinstance(generator, list):
-            init_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
-            ]
-            init_latents = torch.cat(init_latents, dim=0)
         else:
-            init_latents = self.vae.encode(image).latent_dist.sample(generator)
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        init_latents = self.vae.config.scaling_factor * init_latents
+            if isinstance(generator, list):
+                latents = [
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
+                latents = torch.cat(latents, dim=0)
+            else:
+                latents = self.vae.encode(image).latent_dist.sample(generator)
 
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
+            latents = self.vae.config.scaling_factor * latents
+
+        if batch_size != latents.shape[0]:
+            if batch_size % latents.shape[0] == 0:
+                # expand image_latents for batch_size
+                deprecation_message = (
+                    f"You have passed {batch_size} text prompts (`prompt`), but only {latents.shape[0]} initial"
+                    " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
+                    " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                    " your script to pass as many initial images as text prompts to suppress this warning."
+                )
+                deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+                additional_latents_per_image = batch_size // latents.shape[0]
+                latents = torch.cat([latents] * additional_latents_per_image, dim=0)
+            else:
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {latents.shape[0]} to {batch_size} text prompts."
+                )
         else:
-            init_latents = torch.cat([init_latents], dim=0)
-
-        latents = init_latents
+            latents = torch.cat([latents], dim=0)
 
         return latents
 
@@ -759,23 +798,18 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             )
 
     def auto_corr_loss(self, hidden_states, generator=None):
-        batch_size, channel, height, width = hidden_states.shape
-        if batch_size > 1:
-            raise ValueError("Only batch_size 1 is supported for now")
-
-        hidden_states = hidden_states.squeeze(0)
-        # hidden_states must be shape [C,H,W] now
         reg_loss = 0.0
         for i in range(hidden_states.shape[0]):
-            noise = hidden_states[i][None, None, :, :]
-            while True:
-                roll_amount = torch.randint(noise.shape[2] // 2, (1,), generator=generator).item()
-                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=2)).mean() ** 2
-                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=3)).mean() ** 2
+            for j in range(hidden_states.shape[1]):
+                noise = hidden_states[i : i + 1, j : j + 1, :, :]
+                while True:
+                    roll_amount = torch.randint(noise.shape[2] // 2, (1,), generator=generator).item()
+                    reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=2)).mean() ** 2
+                    reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=3)).mean() ** 2
 
-                if noise.shape[2] <= 8:
-                    break
-                noise = F.avg_pool2d(noise, kernel_size=2)
+                    if noise.shape[2] <= 8:
+                        break
+                    noise = F.avg_pool2d(noise, kernel_size=2)
         return reg_loss
 
     def kl_divergence(self, hidden_states):
@@ -788,7 +822,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
         height: Optional[int] = None,
@@ -889,7 +922,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            image,
             source_embeds,
             target_embeds,
             callback_steps,
@@ -1041,31 +1073,42 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        # 11. Post-process the latents.
-        edited_image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
 
-        # 12. Run the safety checker.
-        edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        # 13. Convert to PIL.
-        if output_type == "pil":
-            edited_image = self.numpy_to_pil(edited_image)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (edited_image, has_nsfw_concept)
+            return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=edited_image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
         prompt: Optional[str] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -1089,8 +1132,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`, *optional*):
-                `Image`, or tensor representing an image batch which will be used for conditioning.
+            image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, or tensor representing an image batch which will be used for conditioning. Can also accpet
+                image latents as `image`, if passing latents directly, it will not be encoded again.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1159,7 +1203,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 4. Prepare latent variables
         latents = self.prepare_image_latents(image, batch_size, self.vae.dtype, device, generator)
@@ -1247,15 +1291,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         inverted_latents = latents.detach().clone()
 
         # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
-
-        # 9. Convert to PIL.
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (inverted_latents, image)

@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union
 from packaging import version
 
 
-def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn=True):
+def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn=True, stacklevel=2):
     from .. import __version__
 
     deprecated_kwargs = take_from
@@ -32,7 +32,7 @@ def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn
 
         if warning is not None:
             warning = warning + " " if standard_warn else ""
-            warnings.warn(warning + message, FutureWarning, stacklevel=2)
+            warnings.warn(warning + message, FutureWarning, stacklevel=stacklevel)
 
     if isinstance(deprecated_kwargs, dict) and len(deprecated_kwargs) > 0:
         call_frame = inspect.getouterframes(inspect.currentframe())[1]

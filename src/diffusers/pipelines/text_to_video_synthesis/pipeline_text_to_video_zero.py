@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
@@ -37,12 +38,12 @@ def rearrange_4(tensor):
 
 class CrossFrameAttnProcessor:
     """
-    Cross frame attention processor. For each frame the self-attention is replaced with attention with first frame
+    Cross frame attention processor. Each frame attends the first frame.
 
     Args:
         batch_size: The number that represents actual batch size, other than the frames.
-            For example, using calling unet with a single prompt and num_images_per_prompt=1, batch_size should be
-            equal to 2, due to classifier-free guidance.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
     """
 
     def __init__(self, batch_size=2):
@@ -56,13 +57,13 @@ class CrossFrameAttnProcessor:
         is_cross_attention = encoder_hidden_states is not None
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        # Sparse Attention
+        # Cross Frame Attention
         if not is_cross_attention:
             video_length = key.size()[0] // self.batch_size
             first_frame_index = [0] * video_length
@@ -91,6 +92,81 @@ class CrossFrameAttnProcessor:
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        return hidden_states
+
+
+class CrossFrameAttnProcessor2_0:
+    """
+    Cross frame attention processor with scaled_dot_product attention of Pytorch 2.0.
+
+    Args:
+        batch_size: The number that represents actual batch size, other than the frames.
+            For example, calling unet with a single prompt and num_images_per_prompt=1, batch_size should be equal to
+            2, due to classifier-free guidance.
+    """
+
+    def __init__(self, batch_size=2):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+        self.batch_size = batch_size
+
+    def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        inner_dim = hidden_states.shape[-1]
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        query = attn.to_q(hidden_states)
+
+        is_cross_attention = encoder_hidden_states is not None
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        # Cross Frame Attention
+        if not is_cross_attention:
+            video_length = key.size()[0] // self.batch_size
+            first_frame_index = [0] * video_length
+
+            # rearrange keys to have batch and frames in the 1st and 2nd dims respectively
+            key = rearrange_3(key, video_length)
+            key = key[:, first_frame_index]
+            # rearrange values to have batch and frames in the 1st and 2nd dims respectively
+            value = rearrange_3(value, video_length)
+            value = value[:, first_frame_index]
+
+            # rearrange back to original shape
+            key = rearrange_4(key)
+            value = rearrange_4(value)
+
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 
@@ -226,7 +302,12 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
         )
-        self.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+        processor = (
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
+        )
+        self.unet.set_attn_processor(processor)
 
     def forward_loop(self, x_t0, t0, t1, generator):
         """
@@ -285,7 +366,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             latents: latents of backward process output at time timesteps[-1]
         """
         do_classifier_free_guidance = guidance_scale > 1.0
-        with self.progress_bar(total=len(timesteps)) as progress_bar:
+        num_steps = (len(timesteps) - num_warmup_steps) // self.scheduler.order
+        with self.progress_bar(total=num_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -336,6 +418,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         callback_steps: Optional[int] = 1,
         t0: int = 44,
         t1: int = 47,
+        frame_ids: Optional[List[int]] = None,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -374,9 +457,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            output_type (`str`, *optional*, defaults to `"numpy"`):
+                The output format of the generated image. Choose between `"latent"` and `"numpy"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -398,6 +480,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             t1 (`int`, *optional*, defaults to 47):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
                 [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            frame_ids (`List[int]`, *optional*):
+                Indexes of the frames that are being generated. This is used when generating longer videos
+                chunk-by-chunk.
 
         Returns:
             [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
@@ -406,7 +491,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 likely represents "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         assert video_length > 0
-        frame_ids = list(range(video_length))
+        if frame_ids is None:
+            frame_ids = list(range(video_length))
+        assert len(frame_ids) == video_length
 
         assert num_videos_per_prompt == 1
 
@@ -440,7 +527,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -466,6 +553,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             extra_step_kwargs=extra_step_kwargs,
             num_warmup_steps=num_warmup_steps,
         )
+        scheduler_copy = copy.deepcopy(self.scheduler)
 
         # Perform the second backward process up to time T_0
         x_1_t0 = self.backward_loop(
@@ -476,7 +564,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
             extra_step_kwargs=extra_step_kwargs,
-            num_warmup_steps=num_warmup_steps,
+            num_warmup_steps=0,
         )
 
         # Propagate first frame latents at time T_0 to remaining frames
@@ -503,7 +591,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         b, l, d = prompt_embeds.size()
         prompt_embeds = prompt_embeds[:, None].repeat(1, video_length, 1, 1).reshape(b * video_length, l, d)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler = scheduler_copy
         x_1k_0 = self.backward_loop(
             timesteps=timesteps[-t1 - 1 :],
             prompt_embeds=prompt_embeds,
@@ -512,7 +600,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
             extra_step_kwargs=extra_step_kwargs,
-            num_warmup_steps=num_warmup_steps,
+            num_warmup_steps=0,
         )
         latents = x_1k_0
 

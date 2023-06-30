@@ -21,16 +21,19 @@ import torch
 
 from diffusers import UNet2DModel
 from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
+
+enable_full_determinism()
 
 
-class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
+class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -56,7 +59,7 @@ class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
             "block_out_channels": (32, 64),
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
             "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
-            "attention_head_dim": None,
+            "attention_head_dim": 3,
             "out_channels": 3,
             "in_channels": 3,
             "layers_per_block": 2,
@@ -66,8 +69,9 @@ class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
 
-class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
+class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -180,8 +184,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-3))
 
 
-class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
+class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):
@@ -246,10 +251,6 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
         batch_size = 4
         num_channels = 3
         sizes = (256, 256)
@@ -262,7 +263,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([-4836.2231, -6487.1387, -3816.7969, -7964.9253, -10966.2842, -20043.6016, 8137.0571, 2340.3499, 544.6114])
+        expected_output_slice = torch.tensor([-4842.8691, -6499.6631, -3800.1953, -7978.2686, -10980.7129, -20028.8535, 8148.2822, 2342.2905, 567.7608])
         # fmt: on
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
@@ -270,10 +271,6 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained_ve_large(self):
         model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
         model.to(torch_device)
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
 
         batch_size = 4
         num_channels = 3

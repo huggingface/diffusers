@@ -50,7 +50,6 @@ from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -60,8 +59,10 @@ image = pipe(prompt).images[0]
 ```
 
 <Tip warning={true}>
+
   It is strongly discouraged to make use of [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast) in any of the pipelines as it can lead to black images and is always slower than using pure 
   float16 precision.
+  
 </Tip>
 
 ## Sliced attention for additional memory savings
@@ -83,7 +84,6 @@ from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -110,7 +110,6 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -164,7 +163,6 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    
     torch_dtype=torch.float16,
 )
 
@@ -189,7 +187,6 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    
     torch_dtype=torch.float16,
 )
 
@@ -201,6 +198,8 @@ image = pipe(prompt).images[0]
 ```
 
 **Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
+
+**Note**: `enable_sequential_cpu_offload()` is a stateful operation that installs hooks on the models.
 
 
 <a name="model_offloading"></a>
@@ -250,6 +249,11 @@ image = pipe(prompt).images[0]
 <Tip>
 This feature requires `accelerate` version 0.17.0 or larger.
 </Tip>
+
+**Note**: `enable_model_cpu_offload()` is a stateful operation that installs hooks on the models and state on the pipeline. In order to properly offload
+models after they are called, it is required that the entire pipeline is run and models are called in the order the pipeline expects them to be. Exercise caution
+if models are re-used outside the context of the pipeline after hooks have been installed. See [accelerate](https://huggingface.co/docs/accelerate/v0.18.0/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
+for further docs on removing hooks.
 
 ## Using Channels Last memory format
 
@@ -400,7 +404,14 @@ Here are the speedups we obtain on a few Nvidia GPUs when running the inference 
 | A100-SXM4-40GB    	| 18.6it/s            	| 29.it/s                        	|
 | A100-SXM-80GB    	| 18.7it/s            	| 29.5it/s                        	|
 
-To leverage it just make sure you have: 
+To leverage it just make sure you have:
+
+<Tip warning={true}>
+
+If you have PyTorch 2.0 installed, you shouldn't use xFormers!
+
+</Tip>
+
  - PyTorch > 1.12
  - Cuda available
  - [Installed the xformers library](xformers).

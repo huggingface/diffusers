@@ -19,15 +19,17 @@ import torch
 
 from diffusers import VQModel
 from diffusers.utils import floats_tensor, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..test_modeling_common import ModelTesterMixin
-
-
-torch.backends.cuda.matmul.allow_tf32 = False
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
-class VQModelTests(ModelTesterMixin, unittest.TestCase):
+enable_full_determinism()
+
+
+class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = VQModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self, sizes=(32, 32)):

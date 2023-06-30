@@ -1,4 +1,7 @@
-## Multi Token Textual Inversion
+## [Deprecated] Multi Token Textual Inversion
+
+**IMPORTART: This research project is deprecated. Multi Token Textual Inversion is now supported natively in [the officail textual inversion example](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion#running-locally-with-pytorch).**
+
 The author of this project is [Isamu Isozaki](https://github.com/isamu-isozaki) - please make sure to tag the author for issue and PRs as well as @patrickvonplaten.
 
 We add multi token support to textual inversion. I added

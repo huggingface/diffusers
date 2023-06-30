@@ -55,11 +55,11 @@ With `gradient_checkpointing` and `mixed_precision` it should be possible to fin
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
@@ -110,6 +110,46 @@ pipe.to("cuda")
 image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
+
+Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
+```python
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+
+model_path = "path_to_saved_model"
+
+unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
+
+pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(prompt="yoda").images[0]
+image.save("yoda-pokemon.png")
+```
+
+#### Training with multiple GPUs
+
+`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
+for running distributed training with `accelerate`. Here is an example command:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+
+accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$DATASET_NAME \
+  --use_ema \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --max_train_steps=15000 \ 
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --output_dir="sd-pokemon-model" 
+```
+
 
 #### Training with Min-SNR weighting
 
@@ -204,6 +244,21 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
 image.save("pokemon.png")
 ```
 
+If you are loading the LoRA parameters from the Hub and if the Hub repository has
+a `base_model` tag (such as [this](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/README.md?code=true#L4)), then
+you can do: 
+
+```py 
+from huggingface_hub.repocard import RepoCard
+
+lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+...
+```
+
 ## Training with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
@@ -219,11 +274,11 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
   --mixed_precision="fp16" \
