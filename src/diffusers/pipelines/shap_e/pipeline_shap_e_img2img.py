@@ -147,9 +147,12 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-    ):
-        if isinstance(image, PIL.Image.Image):
-            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)
+    ):  
+        if isinstance(image, List) and isinstance(image[0], torch.Tensor):
+            image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
+
+        if not isinstance(image, torch.Tensor):
+            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)      
 
         image = image.to(dtype=self.image_encoder.dtype, device=device)
 
@@ -233,16 +236,16 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         Returns:
             [`ShapEPipelineOutput`] or `tuple`
         """
-
+               
         if isinstance(image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
-            batch_size = len(image)
         elif isinstance(image, torch.Tensor):
             batch_size = image.shape[0]
+        elif isinstance(image, list) and isinstance(image[0], (torch.Tensor, PIL.Image.Image)):
+            batch_size = len(image)
         else:
             raise ValueError(
-                f"`image` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image` or `torch.Tensor` but is {type(image)}"
+                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `List[PIL.Image.Image]` or `List[torch.Tensor]` but is {type(image)}"
             )
 
         device = self._execution_device

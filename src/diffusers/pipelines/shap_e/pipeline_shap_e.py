@@ -258,10 +258,10 @@ class ShapEPipeline(DiffusionPipeline):
             [`ShapEPipelineOutput`] or `tuple`
         """
 
-        if isinstance(prompt, str) or isinstance(prompt, list) and len(prompt) == 1:
+        if isinstance(prompt, str):
             batch_size = 1
-        elif isinstance(prompt, list) and len(prompt) > 1:
-            raise ValueError("this pipeline does not support more than one prompt")
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 

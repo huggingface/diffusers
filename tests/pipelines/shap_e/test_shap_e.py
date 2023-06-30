@@ -33,7 +33,7 @@ enable_full_determinism()
 class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = ShapEPipeline
     params = ["prompt"]
-    batch_params = []
+    batch_params = ["prompt"]
     required_optional_params = [
         "num_images_per_prompt",
         "num_inference_steps",
@@ -203,32 +203,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @unittest.skip(reason="Batching is not supported for this pipeline.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @unittest.skip(reason="Batching is not supported for this pipeline.")
-    def test_inference_batch_single_identical(self):
-        pass
-
-    # overwrite because:
-    #  1. this pipeline support num_images_per_prompt but does not support batching
-    #  2. this pipeline outputs 3d images, i.e a list of N lists of images, where N is our num_image_per_prompts
-    def test_num_images_per_prompt(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        batch_size = 1
-        num_images_per_prompts = [1, 2]
-
-        for num_images_per_prompt in num_images_per_prompts:
-            inputs = self.get_dummy_inputs(torch_device)
-            images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-            assert len(images) == batch_size * num_images_per_prompt
 
 
 @slow
