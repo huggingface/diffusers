@@ -88,6 +88,12 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
+    
+    from .audio_journey import (
+        AudioJourneyPipeline,
+    )
+    
+    
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline

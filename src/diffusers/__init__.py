@@ -174,6 +174,7 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
+        AudioJourneyPipeline,
     )
 
 try:
