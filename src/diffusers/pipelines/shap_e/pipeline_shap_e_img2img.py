@@ -117,7 +117,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         models = [
-            self.text_encoder,
+            self.image_encoder,
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
@@ -130,9 +130,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.text_encoder, "_hf_hook"):
+        if self.device != torch.device("meta") or not hasattr(self.image_encoder, "_hf_hook"):
             return self.device
-        for module in self.text_encoder.modules():
+        for module in self.image_encoder.modules():
             if (
                 hasattr(module, "_hf_hook")
                 and hasattr(module._hf_hook, "execution_device")
@@ -143,25 +143,26 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
     def _encode_image(
         self,
-        images,
+        image,
         device,
-        num_images_per_image,
+        num_images_per_prompt,
         do_classifier_free_guidance,
     ):
-        if not isinstance(images, PIL.Image.Image):
-            images = [images]
 
-        images = (
-            self.image_processor(images, return_tensors="pt")
-            .pixel_values[0]
-            .unsqueeze(0)
-            .to(dtype=self.image_encoder.dtype, device=device)
-        )
+        if isinstance(image, PIL.Image.Image):
 
-        image_embeds = self.image_encoder(images)["last_hidden_state"]
-        image_embeds = image_embeds[:, 1:, :].contiguous().float()  # batch_size, dim, 256
+            image = (
+                self.image_processor(image, return_tensors="pt")
+                .pixel_values[0]
+                .unsqueeze(0)
+            )
+        
+        image = image.to(dtype=self.image_encoder.dtype, device=device)
 
-        image_embeds = image_embeds.repeat_interleave(num_images_per_image, dim=0)
+        image_embeds = self.image_encoder(image)["last_hidden_state"]
+        image_embeds = image_embeds[:, 1:, :].contiguous()  # batch_size, dim, 256
+
+        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
             negative_image_embeds = torch.zeros_like(image_embeds)
@@ -173,12 +174,23 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         return image_embeds
 
+    @staticmethod
+    def save_gif(images: List[PIL.Image.Image], image_name: int, save_all=True, optimize=False, duration=100, loop=0):
+        images[0].save(
+            f"{image_name}.gif",
+            save_all=save_all,
+            append_images=images[1:],
+            optimize=optimize,
+            duration=duration,
+            loop=loop,
+        )
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image]],
-        num_images_per_image: int = 1,
+        num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -230,17 +242,20 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         if isinstance(image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(image, list):
+        elif isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
             batch_size = len(image)
+        elif isinstance(image, torch.Tensor):
+            batch_size = image.shape[0]         
         else:
-            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `list` but is {type(image)}")
+            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image` or `torch.Tensor` but is {type(image)}")
+
 
         device = self._execution_device
 
-        batch_size = batch_size * num_images_per_image
+        batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
-        image_embeds = self._encode_image(image, device, num_images_per_image, do_classifier_free_guidance)
+        image_embeds = self._encode_image(image, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # prior
 
@@ -298,14 +313,21 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
-        images = self.renderer.decode(
-            latents,
-            device,
-            size=size,
-            ray_batch_size=ray_batch_size,
-            n_coarse_samples=n_coarse_samples,
-            n_fine_samples=n_fine_samples,
-        )
+        images = []
+        for i, latent in enumerate(latents):
+            print()
+            image = self.renderer.decode(
+                latent[None,:],
+                device,
+                size=size,
+                ray_batch_size=ray_batch_size,
+                n_coarse_samples=n_coarse_samples,
+                n_fine_samples=n_fine_samples,
+            )
+
+            images.append(image)
+        
+        images = torch.stack(images)
 
         if output_type not in ["np", "pil"]:
             raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")
@@ -313,7 +335,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         images = images.cpu().numpy()
 
         if output_type == "pil":
-            images = self.numpy_to_pil(images)
+            images = [self.numpy_to_pil(image) for image in images]
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
