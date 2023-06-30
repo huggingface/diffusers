@@ -47,13 +47,20 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> import requests
+        >>> from PIL import Image
+        >>> from io import BytesIO
+        >>> from diffusers import StableDiffusionXLImg2ImgPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        >>> pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
+         >>> url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
+
+        >>> response = requests.get(url)
+        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
         ```
