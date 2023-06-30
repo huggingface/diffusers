@@ -147,12 +147,12 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-    ):  
+    ):
         if isinstance(image, List) and isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)      
+            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)
 
         image = image.to(dtype=self.image_encoder.dtype, device=device)
 
@@ -236,7 +236,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         Returns:
             [`ShapEPipelineOutput`] or `tuple`
         """
-               
+
         if isinstance(image, PIL.Image.Image):
             batch_size = 1
         elif isinstance(image, torch.Tensor):
