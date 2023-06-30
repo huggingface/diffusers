@@ -175,7 +175,7 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
-        WuerstchenPipeline,
+        WuerstchenGeneratorPipeline,
         WuerstchenPriorPipeline,
     )
 
