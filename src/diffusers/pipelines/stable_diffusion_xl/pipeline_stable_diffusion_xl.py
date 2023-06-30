@@ -768,7 +768,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         else:
             image = latents
             has_nsfw_concept = None
-            return image
+            return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=None)
 
         if has_nsfw_concept is None:
             do_denormalize = [True] * image.shape[0]
