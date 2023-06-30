@@ -83,6 +83,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         time_embed_dim: Optional[int] = None,
         embedding_proj_dim: Optional[int] = None,
         clip_embed_dim: Optional[int] = None,
+        upcast_softmax: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -131,6 +132,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
                     dropout=dropout,
                     activation_fn="gelu",
                     attention_bias=True,
+                    upcast_softmax=upcast_softmax,
                 )
                 for d in range(num_layers)
             ]

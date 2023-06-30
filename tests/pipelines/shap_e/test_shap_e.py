@@ -38,7 +38,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "num_inference_steps",
         "generator",
         "latents",
-        "guidance_scale"
+        "guidance_scale",
         "size",
         "ray_batch_size",
         "n_coarse_samples",
@@ -104,6 +104,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "norm_in_type": "layer",
             "encoder_hid_proj_type": None,
             "added_emb_type": None,
+            "upcast_softmax": True,
         }
 
         model = PriorTransformer(**model_kwargs)
@@ -123,7 +124,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "d_latent": self.time_input_dim,
             "d_hidden": self.renderer_dim,
             "n_output": 12,
-            "background": (1.0, 1.0, 1.0,),
+            "background": (1e-8, 1e-8, 1e-8,),
         }
         model = ShapERenderer(**model_kwargs)
         return model
