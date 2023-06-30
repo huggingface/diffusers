@@ -42,10 +42,8 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-default_inference_steps = {
-    2/3: 20,
-    0.0: 10
-    }
+default_inference_steps = {2 / 3: 20, 0.0: 10}
+
 
 class WuerstchenPipeline(DiffusionPipeline):
     unet: DiffNeXt
@@ -231,7 +229,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         return self.device
 
     @torch.no_grad()
-    def inference_loop(self, latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator):
+    def inference_loop(
+        self, latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
+    ):
         for t in self.progress_bar(steps):
             # print(torch.cat([latents] * 2).shape, latents.dtype)
             # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
@@ -247,12 +247,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
-            print(t)
+            # print(t)
             timestep = (t * 999).cpu().int()
-            print(timestep)
+            # print(timestep)
             latents = self.scheduler.step(
                 predicted_image_embedding,
-                timestep=timestep,
+                timestep=timestep - 1,
                 sample=latents,
                 generator=generator,
             ).prev_sample
@@ -317,7 +317,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         t_start = 1.0
         for t_end, steps in inference_steps.items():
             steps = torch.linspace(t_start, t_end, steps, dtype=dtype, device=device)
-            latents = self.inference_loop(latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator)
+            latents = self.inference_loop(
+                latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
+            )
             t_start = t_end
 
         # normalize the latents
@@ -433,7 +435,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-        print(generator_timesteps_tensor)
+        # print(generator_timesteps_tensor)
         for i, t in enumerate(self.progress_bar(generator_timesteps_tensor)):
             ratio = (t / generator_timesteps_tensor.max()).to(dtype=dtype)
             # print(torch.cat([latents] * 2).shape, latents.dtype)
