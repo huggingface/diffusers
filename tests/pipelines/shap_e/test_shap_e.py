@@ -124,7 +124,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "d_latent": self.time_input_dim,
             "d_hidden": self.renderer_dim,
             "n_output": 12,
-            "background": (1e-8, 1e-8, 1e-8,),
+            "background": (0.1, 0.1, 0.1,),
         }
         model = ShapERenderer(**model_kwargs)
         return model
@@ -159,9 +159,11 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "prompt": "horse",
             "generator": generator,
-            "num_inference_steps": 2,
+            "num_inference_steps": 4,
             "size":64,
             "output_type": "np",
+            "sigma_max": 16.,
+            "sigma_min": 15.,
         }
         return inputs
 
@@ -183,16 +185,15 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_slice = np.array(
             [
-                0.00392157,
-                0.00392157,
-                0.00392157,
-                0.00392157, 
-                0.00392157, 
-                0.00392157,
-                0.00392157, 
-                0.00392157, 
-                0.00392157
-            ]
+                0.00039216, 
+                0.00039216, 
+                0.00039216, 
+                0.00039216, 
+                0.00039216, 
+                0.00039216,
+                0.00039216, 
+                0.00039216, 
+                0.00039216]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
