@@ -112,7 +112,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
@@ -357,7 +357,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "SkipUpBlock2D":
@@ -862,7 +862,7 @@ class AttnDownsampleBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
@@ -890,8 +890,8 @@ class AttnDownsampleBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
+                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -2066,7 +2066,7 @@ class AttnUpsampleBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         add_upsample=True,
     ):
@@ -2095,8 +2095,8 @@ class AttnUpsampleBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim if attention_head_dim is not None else 1,
+                    dim_head=attention_head_dim if attention_head_dim is not None else out_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
