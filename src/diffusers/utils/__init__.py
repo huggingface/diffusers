@@ -58,6 +58,7 @@ from .import_utils import (
     is_flax_available,
     is_ftfy_available,
     is_inflect_available,
+    is_invisible_watermark_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,

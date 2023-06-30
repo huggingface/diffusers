@@ -39,6 +39,7 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
+from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -47,11 +48,19 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> import requests
+        >>> from PIL import Image
+        >>> from io import BytesIO
+        >>> from diffusers import StableDiffusionXLImg2ImgPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
+        >>> url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
 
+        >>> response = requests.get(url)
+        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
         ```
@@ -120,26 +129,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
-        # safety_checker: StableDiffusionSafetyChecker,
-        # feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
-
-        # if safety_checker is None and requires_safety_checker:
-        #     logger.warning(
-        #         f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-        #         " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-        #         " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-        #         " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-        #         " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-        #         " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-        #     )
-
-        # if safety_checker is not None and feature_extractor is None:
-        #     raise ValueError(
-        #         "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
-        #         " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
-        #     )
 
         self.register_modules(
             vae=vae,
@@ -149,14 +140,14 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
             unet=unet,
             scheduler=scheduler,
-            # safety_checker=safety_checker,
-            # feature_extractor=feature_extractor,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.vae_scale_factor = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+        self.watermark = StableDiffusionXLWatermarker()
 
     def enable_vae_slicing(self):
         r"""
@@ -374,9 +365,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ""
             uncond_tokens: List[str]
-            if prompt is not None and type(prompt) is not type(negative_prompt):
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -586,7 +578,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype):
+    def _get_add_time_ids(
+        self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
+    ):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
             add_neg_time_ids = list(original_size + crops_coords_top_left + (negative_aesthetic_score,))
@@ -594,15 +588,29 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
             add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
-        if expected_add_embed_dim > passed_add_embed_dim and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to enable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=True)` to make sure `aesthetic_score` {aesthetic_score} and `negative_aesthetic_score` {negative_aesthetic_score} is correctly used by the model.")
-        elif expected_add_embed_dim < passed_add_embed_dim and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size} is correctly used by the model.")
+        if (
+            expected_add_embed_dim > passed_add_embed_dim
+            and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim
+        ):
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to enable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=True)` to make sure `aesthetic_score` {aesthetic_score} and `negative_aesthetic_score` {negative_aesthetic_score} is correctly used by the model."
+            )
+        elif (
+            expected_add_embed_dim < passed_add_embed_dim
+            and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim
+        ):
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size} is correctly used by the model."
+            )
         elif expected_add_embed_dim != passed_add_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=dtype)
@@ -725,10 +733,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
+            element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
@@ -786,7 +794,14 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
         # 8. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
-        add_time_ids, add_neg_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype=prompt_embeds.dtype)
+        add_time_ids, add_neg_time_ids = self._get_add_time_ids(
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            aesthetic_score,
+            negative_aesthetic_score,
+            dtype=prompt_embeds.dtype,
+        )
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)

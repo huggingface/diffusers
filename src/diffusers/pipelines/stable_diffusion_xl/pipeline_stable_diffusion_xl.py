@@ -37,6 +37,7 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
+from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -47,7 +48,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionXLPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
@@ -117,26 +120,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
-        # safety_checker: StableDiffusionSafetyChecker,
-        # feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
-
-        # if safety_checker is None and requires_safety_checker:
-        #     logger.warning(
-        #         f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-        #         " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-        #         " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-        #         " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-        #         " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-        #         " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-        #     )
-
-        # if safety_checker is not None and feature_extractor is None:
-        #     raise ValueError(
-        #         "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
-        #         " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
-        #     )
 
         self.register_modules(
             vae=vae,
@@ -146,12 +131,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
             unet=unet,
             scheduler=scheduler,
-            # safety_checker=safety_checker,
-            # feature_extractor=feature_extractor,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+        self.watermark = StableDiffusionXLWatermarker()
 
     def enable_vae_slicing(self):
         r"""
@@ -534,11 +519,15 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
     def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
-            raise ValueError(f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`.")
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
@@ -644,10 +633,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
+            element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -716,7 +705,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
 
         # 7. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
-        add_time_ids = self._get_add_time_ids(original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype)
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -791,12 +782,14 @@ class StableDiffusionXLPipeline(DiffusionPipeline):
         else:
             image = latents
             has_nsfw_concept = None
+            return image
 
         if has_nsfw_concept is None:
             do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
+        image = self.watermark.apply_watermark(image)
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
