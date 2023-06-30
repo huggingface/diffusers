@@ -27,7 +27,7 @@ from diffusers import (
     VideoToVideoSDPipeline,
 )
 from diffusers.utils import floats_tensor, is_xformers_available, skip_mps
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, slow, torch_device
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -174,3 +174,23 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_progress_bar(self):
         return super().test_progress_bar()
+
+
+@slow
+@skip_mps
+class VideoToVideoSDPipelineSlowTests(unittest.TestCase):
+    def test_two_step_model(self):
+        pipe = VideoToVideoSDPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        # 10 frames
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        video = torch.randn((1, 10, 3, 1024, 576), generator=generator)
+        video = video.to("cuda")
+
+        prompt = "Spiderman is surfing"
+
+        video_frames = pipe(prompt, video=video, generator=generator, num_inference_steps=3, output_type="pt").frames
+
+        expected_array = np.array([-1.0458984, -1.1279297, -0.9663086, -0.91503906, -0.75097656])
+        assert np.abs(video_frames.cpu().numpy()[0, 0, 0, 0, -5:] - expected_array).sum() < 1e-2

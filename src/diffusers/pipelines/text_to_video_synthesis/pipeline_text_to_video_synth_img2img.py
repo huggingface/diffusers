@@ -251,7 +251,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+        for cpu_offloaded_model in [self.text_encoder, self.vae, self.unet]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
@@ -749,6 +749,9 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
 
         if output_type == "latent":
             return latents
+
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.unet.to("cpu")
 
         video_tensor = self.decode_latents(latents)
 
