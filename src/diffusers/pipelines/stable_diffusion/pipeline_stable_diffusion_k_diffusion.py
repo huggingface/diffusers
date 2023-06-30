@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import importlib
+import inspect
 import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
-from k_diffusion.sampling import get_sigmas_karras
+from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
@@ -464,6 +465,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         use_karras_sigmas: Optional[bool] = False,
+        noise_sampler_seed: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -524,6 +526,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
                 Use karras sigmas. For example, specifying `sample_dpmpp_2m` to `set_scheduler` will be equivalent to
                 `DPM++2M` in stable-diffusion-webui. On top of that, setting this option to True will make it `DPM++2M
                 Karras`.
+            noise_sampler_seed (`int`, *optional*, defaults to `None`):
+                The random seed to use for the noise sampler. If `None`, a random seed will be generated.
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -608,7 +612,14 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             return noise_pred
 
         # 8. Run k-diffusion solver
-        latents = self.sampler(model_fn, latents, sigmas)
+        sampler_kwargs = {}
+
+        if "noise_sampler" in inspect.signature(self.sampler).parameters:
+            min_sigma, max_sigma = sigmas[sigmas > 0].min(), sigmas.max()
+            noise_sampler = BrownianTreeNoiseSampler(latents, min_sigma, max_sigma, noise_sampler_seed)
+            sampler_kwargs["noise_sampler"] = noise_sampler
+
+        latents = self.sampler(model_fn, latents, sigmas, **sampler_kwargs)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
