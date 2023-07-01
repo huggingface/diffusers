@@ -45,6 +45,8 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"video"}) - {"image", "width", "height"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS.union({"video"}) - {"image"}
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    test_attention_slicing = False
+
     # No `output_type`.
     required_optional_params = frozenset(
         [
@@ -147,9 +149,6 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([106, 117, 113, 174, 137, 112, 148, 151, 131])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=5e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
