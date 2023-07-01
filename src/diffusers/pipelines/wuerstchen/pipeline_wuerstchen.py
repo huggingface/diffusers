@@ -265,7 +265,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: int = 30,
         inference_steps: dict = None,
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -303,7 +302,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         latent_width = 128 * (width // 128) // (1024 // 24)
         effnet_features_shape = (num_images_per_prompt, 16, latent_height, latent_width)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        total_num_inference_steps = sum(inference_steps.values())
+        self.scheduler.set_timesteps(total_num_inference_steps, device=device)
 
         latents = self.prepare_latents(
             effnet_features_shape,
@@ -402,13 +402,58 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def check_inputs(self, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device):
+        if not isinstance(text_encoder_hidden_states, torch.Tensor):
+            raise TypeError(f"'text_encoder_hidden_states' must be of type 'torch.Tensor', but got {type(predicted_image_embeddings)}.")
+        if isinstance(predicted_image_embeddings, np.ndarray):
+            predicted_image_embeddings = torch.Tensor(predicted_image_embeddings, device=device).to(dtype=text_encoder_hidden_states.dtype)
+        if not isinstance(predicted_image_embeddings, torch.Tensor):
+            raise TypeError(f"'predicted_image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(predicted_image_embeddings)}.")
+
+        if do_classifier_free_guidance:
+            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0) // 2, f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+        else:
+            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0), f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+
+        return predicted_image_embeddings, text_encoder_hidden_states
+
+    @torch.no_grad()
+    def inference_loop(
+        self, latents, steps, predicted_effnet_latents, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
+    ):
+        for t in self.progress_bar(steps):
+            print(torch.cat([latents] * 2).shape, latents.dtype)
+            print(t.expand(latents.size(0) * 2).shape, t.dtype)
+            print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
+            predicted_image_embedding = self.generator(
+                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
+                r=t.expand(latents.size(0) * 2) if do_classifier_free_guidance else t,
+                effnet=predicted_effnet_latents, clip=text_encoder_hidden_states,
+            )
+
+            if do_classifier_free_guidance:
+                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                )
+            # print(t)
+            timestep = (t * 999).cpu().int()
+            # print(timestep)
+            latents = self.scheduler.step(
+                predicted_image_embedding,
+                timestep=timestep - 1,
+                sample=latents,
+                generator=generator,
+            ).prev_sample
+
+        return latents
+
     @torch.no_grad()
     def __call__(
         self,
         predicted_image_embeddings: torch.Tensor,
         text_encoder_hidden_states: torch.Tensor,
-        num_inference_steps: int = 30,
-        timesteps: List[int] = None,
+        inference_steps: dict = None,
         guidance_scale: float = 7.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -420,15 +465,18 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        check_inputs(text_encoder_hidden_states, predicted_image_embeddings, do_classifier_free_guidance)
+        if inference_steps is None:
+            inference_steps = default_inference_steps
+
+        predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device)
 
         dtype = text_encoder_hidden_states.dtype
-        latent_height = predicted_image_embeddings.size(2) * (1024 // 24)
-        latent_width = predicted_image_embeddings.size(2) * (1024 // 24)
+        latent_height = int(predicted_image_embeddings.size(2) * (256 / 24))
+        latent_width = int(predicted_image_embeddings.size(3) * (256 / 24))
         effnet_features_shape = (num_images_per_prompt, 4, latent_height, latent_width)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        generator_timesteps_tensor = self.scheduler.timesteps if timesteps is None else timesteps
+        total_num_inference_steps = sum(inference_steps.values())
+        self.scheduler.set_timesteps(total_num_inference_steps, device=device)
 
         latents = self.prepare_latents(
             effnet_features_shape,
@@ -439,29 +487,13 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             self.scheduler,
         )
         # print(generator_timesteps_tensor)
-        for i, t in enumerate(self.progress_bar(generator_timesteps_tensor)):
-            ratio = (t / generator_timesteps_tensor.max()).to(dtype=dtype)
-            # print(torch.cat([latents] * 2).shape, latents.dtype)
-            # print(ratio.expand(num_images_per_prompt * 2).shape, ratio.dtype)
-            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
-            predicted_image_embedding = self.generator(
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-                r=ratio.expand(num_images_per_prompt * 2) if do_classifier_free_guidance else ratio,
-                c=text_encoder_hidden_states,
+        t_start = 1.0
+        for t_end, steps in inference_steps.items():
+            steps = torch.linspace(t_start, t_end, steps, dtype=dtype, device=device)
+            latents = self.inference_loop(
+                latents, steps, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
             )
-
-            if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
-                )
-
-            latents = self.scheduler.step(
-                predicted_image_embedding,
-                timestep=t,
-                sample=latents,
-                generator=generator,
-            ).prev_sample
+            t_start = t_end
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
