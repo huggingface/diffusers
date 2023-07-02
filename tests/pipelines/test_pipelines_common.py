@@ -652,11 +652,11 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_without_offload = pipe(**inputs)[0]
+        output_without_offload = pipe(**inputs)[0].cpu()
 
         pipe.enable_xformers_memory_efficient_attention()
         inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = pipe(**inputs)[0]
+        output_with_offload = pipe(**inputs)[0].cpu()
 
         if test_max_difference:
             max_diff = np.abs(output_with_offload - output_without_offload).max()
