@@ -229,7 +229,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
             return self.tiled_encode(x, return_dict=return_dict)
 
-        h = self.encoder(x)
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self.encoder(x_slice) for x_slice in x.split(1)]
+            h = torch.cat(encoded_slices)
+        else:
+            h = self.encoder(x)
+
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
 
