@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 import math
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -185,7 +185,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
 
-
         timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
@@ -202,15 +201,17 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 use_log_sigmas = False
         else:
             use_log_sigmas = True
-                
-        if self.config.use_karras_sigmas:
 
+        if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(
-                sigma_min= sigmas[-1].item() if self.config.sigma_min is None else self.config.sigma_min,
-                sigma_max= sigmas[0].item() if self.config.sigma_max is None else self.config.sigma_max, 
-                num_inference_steps=self.num_inference_steps)
-    
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas = log_sigmas if use_log_sigmas else None) for sigma in sigmas])
+                sigma_min=sigmas[-1].item() if self.config.sigma_min is None else self.config.sigma_min,
+                sigma_max=sigmas[0].item() if self.config.sigma_max is None else self.config.sigma_max,
+                num_inference_steps=self.num_inference_steps,
+            )
+
+            timesteps = np.array(
+                [self._sigma_to_t(sigma, log_sigmas=log_sigmas if use_log_sigmas else None) for sigma in sigmas]
+            )
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
