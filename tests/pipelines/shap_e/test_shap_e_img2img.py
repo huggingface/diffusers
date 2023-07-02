@@ -218,6 +218,38 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_inference_batch_consistent(self):
+        # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
+        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+
+    def test_inference_batch_single_identical(self):
+        test_max_difference = torch_device == "cpu"
+        relax_max_difference = True
+        self._test_inference_batch_single_identical(
+            batch_size=2,
+            test_max_difference=test_max_difference,
+            relax_max_difference=relax_max_difference,
+        )
+
+    def test_num_images_per_prompt(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_size = 1
+        num_images_per_prompt = 2
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        for key in inputs.keys():
+            if key in self.batch_params:
+                inputs[key] = batch_size * [inputs[key]]
+
+        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
+
+        assert images.shape[0] == batch_size * num_images_per_prompt
+
 
 @slow
 @require_torch_gpu
