@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -105,6 +106,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -168,9 +171,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         device: Union[str, torch.device] = None,
         num_train_timesteps: Optional[int] = None,
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
-        use_karras_sigmas: Optional[bool] = None,  # overwrite the self.config.use_karras_sigma
     ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -185,28 +185,32 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
 
-        if use_karras_sigmas is None:
-            use_karras_sigmas = self.use_karras_sigmas
 
-        if sigma_min is not None and sigma_max is not None:
-            if use_karras_sigmas is not None:
-                sigmas = torch.tensor([sigma_max, sigma_min])
-                log_sigmas = None
-            else:
-                raise ValueError(
-                    "`sigma_min` and `sigma_max` arguments are only supported when `use_karras_sigma` is not None"
+        timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        log_sigmas = np.log(sigmas)
+        sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+
+        if self.config.sigma_min is not None or self.config.sigma_max is not None:
+            if not self.config.use_karras_sigmas:
+                warnings.warn(
+                    "`sigma_min` and `sigma_max` will be ignored when `use_karras_sigmas` is set to `False` "
                 )
-
+                use_log_sigmas = True
+            else:
+                use_log_sigmas = False
         else:
-            timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+            use_log_sigmas = True
+                
+        if self.config.use_karras_sigmas:
 
-            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-            log_sigmas = np.log(sigmas)
-            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-
-        if use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = self._convert_to_karras(
+                sigma_min= sigmas[-1].item() if self.config.sigma_min is None else self.config.sigma_min,
+                sigma_max= sigmas[0].item() if self.config.sigma_max is None else self.config.sigma_max, 
+                num_inference_steps=self.num_inference_steps)
+    
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas = log_sigmas if use_log_sigmas else None) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -272,12 +276,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return t
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    def _convert_to_karras(self, sigma_min, sigma_max, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
-
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)

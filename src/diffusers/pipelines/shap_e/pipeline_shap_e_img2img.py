@@ -192,8 +192,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        sigma_min: float = 1e-3,
-        sigma_max: float = 160.0,
         size: int = 64,
         ray_batch_size: int = 4096,
         n_coarse_samples=64,
@@ -257,9 +255,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         # prior
 
-        self.scheduler.set_timesteps(
-            num_inference_steps, device=device, sigma_min=sigma_min, sigma_max=sigma_max, use_karras_sigmas=True
-        )
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         num_embeddings = self.prior.config.num_embeddings
