@@ -144,7 +144,9 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             beta_schedule="exp",
             num_train_timesteps=1024,
             prediction_type="sample",
-            use_karras_sigmas=False,
+            use_karras_sigmas=True,
+            sigma_max= 16.0,
+            sigma_min= 15.0,
         )
         components = {
             "prior": prior,
@@ -167,8 +169,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 4,
             "size": 64,
             "output_type": "np",
-            "sigma_max": 16.0,
-            "sigma_min": 15.0,
         }
         return inputs
 
