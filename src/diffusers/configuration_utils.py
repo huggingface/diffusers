@@ -423,6 +423,10 @@ class ConfigMixin:
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
+        # Skip keys that were not present in the original config, so default __init__ values were used
+        used_defaults = config_dict.get("_use_default_values", [])
+        config_dict = {k: v for k, v in config_dict.items() if k not in used_defaults and k != "_use_default_values"}
+
         # 0. Copy origin config dict
         original_dict = dict(config_dict.items())
 
@@ -449,6 +453,10 @@ class ConfigMixin:
             compatible_classes = [c for c in cls._get_compatibles() if not isinstance(c, DummyObject)]
         else:
             compatible_classes = []
+
+        # Keys not present in the config - default values were used
+        # TODO: remove the ones passed in kwargs?
+        used_default_keys = set(expected_keys) - set(original_dict.keys())
 
         expected_keys_comp_cls = set()
         for c in compatible_classes:
@@ -502,6 +510,9 @@ class ConfigMixin:
 
         # 7. Define "hidden" config parameters that were saved for compatible classes
         hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict}
+
+        # 8. Take note of the parameters that were not present in the loaded config
+        hidden_config_dict["_use_default_values"] = used_default_keys
 
         return init_dict, unused_kwargs, hidden_config_dict
 
