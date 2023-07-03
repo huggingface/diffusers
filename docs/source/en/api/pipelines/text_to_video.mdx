@@ -138,6 +138,7 @@ pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dt
 pipe.enable_model_cpu_offload()
 
 # memory optimization
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
@@ -150,9 +151,12 @@ Now the video can be upscaled:
 
 ```py
 pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
-pipe.vae.enable_slicing()
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
+
+# memory optimization
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
+pipe.enable_vae_slicing()
 
 video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
 
@@ -174,6 +178,28 @@ Here are some sample outputs:
         </center></td>
     </tr>
 </table>
+
+### Memory optimizations
+
+Text-guided video generation with [`~TextToVideoSDPipeline`] and [`~VideoToVideoSDPipeline`] is very memory intensive both
+when denoising with [`~UNet3DConditionModel`] and when decoding with [`~AutoencoderKL`]. It is possible though to reduce 
+memory usage at the cost of increased runtime to achieve the exact same result. To do so, it is recommended to enable
+**forward chunking** and **vae slicing**:
+
+Forward chunking via [`~UNet3DConditionModel.enable_forward_chunking`]is explained in [this blog post](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers) and 
+allows to significantly reduce the required memory for the unet. You can chunk the feed forward layer over the `num_frames`
+dimension by doing:
+
+```py
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
+```
+
+Vae slicing via [`~TextToVideoSDPipeline.enable_vae_slicing`] and [`~VideoToVideoSDPipeline.enable_vae_slicing`] also 
+gives significant memory savings since the two pipelines decode all image frames at once.
+
+```py
+pipe.enable_vae_slicing()
+```
 
 ## Available checkpoints 
 
