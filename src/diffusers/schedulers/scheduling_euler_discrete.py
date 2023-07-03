@@ -47,7 +47,7 @@ class EulerDiscreteSchedulerOutput(BaseOutput):
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(
     num_diffusion_timesteps,
     max_beta=0.999,
     alpha_transform_type="cosine",  # cosine, exp
