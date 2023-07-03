@@ -49,7 +49,7 @@ enable_full_determinism()
 
 
 class ControlNetInpaintPipelineFastTests(
-    PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
