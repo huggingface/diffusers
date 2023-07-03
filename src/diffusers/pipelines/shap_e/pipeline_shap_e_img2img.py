@@ -41,7 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> import torch
         >>> from diffusers import ShapEImg2ImgPipeline
-        >>> diffusers.utils import export_to_gif
+        >>> from diffusers.utils import export_to_gif
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -61,7 +61,6 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> gif_path = export_to_gif(images, "corgi_3d")
-        >>> print(f" output saved to folder: {gif_path}")
         ```
 """
 
@@ -193,7 +192,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         return image_embeds
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

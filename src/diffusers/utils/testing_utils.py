@@ -300,14 +300,14 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     return 2.0 * image - 1.0
 
 
-def export_to_gif(images: List[List[PIL.Image.Image]], output_gif_path: str=None) -> str:
+def export_to_gif(images: List[List[PIL.Image.Image]], output_gif_path: str = None) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.TemporaryDirectory().name
-    
+
     output_gif_path = Path(output_gif_path)
 
     output_gif_path.mkdir(exist_ok=True, parents=True)
-    
+
     for i, image in enumerate(images):
         image[0].save(
             output_gif_path / f"out_{i}.gif",
@@ -318,7 +318,7 @@ def export_to_gif(images: List[List[PIL.Image.Image]], output_gif_path: str=None
             loop=0,
         )
     return output_gif_path
-    
+
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():

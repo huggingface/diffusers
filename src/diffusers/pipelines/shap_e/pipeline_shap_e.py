@@ -60,7 +60,6 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> gif_path = export_to_gif(images, "shark_3d")
-        >>> print(f"output saved to folder: {gif_path}")
         ```
 """
 
