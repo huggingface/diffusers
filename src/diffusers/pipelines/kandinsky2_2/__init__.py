@@ -5,4 +5,3 @@ from .pipeline_kandinsky2_2_decoder_inpainting import KandinskyV22InpaintPipelin
 from .pipeline_kandinsky2_2_decoder import KandinskyV22Pipeline
 from .pipeline_kandinsky2_2_prior_emb2emb import KandinskyV22PriorEmb2EmbPipeline
 from .pipeline_kandinsky2_2_prior import KandinskyV22PriorPipeline
-

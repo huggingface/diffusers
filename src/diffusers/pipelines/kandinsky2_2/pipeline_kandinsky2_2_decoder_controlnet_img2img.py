@@ -59,10 +59,6 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
-        text_encoder ([`MultilingualCLIP`]):
-            Frozen text-encoder.
-        tokenizer ([`XLMRobertaTokenizer`]):
-            Tokenizer of class
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
