@@ -185,7 +185,7 @@ class BasicTransformerBlock(nn.Module):
             # "feed_forward_chunk_size" can be used to save memory
             if norm_hidden_states.shape[self._chunk_dim] % self._chunk_size != 0:
                 raise ValueError(
-                    f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to change `self._chunk_size` accordingly by calling `unet.enable_forward_chunking`."
+                    f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
                 )
 
             num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
