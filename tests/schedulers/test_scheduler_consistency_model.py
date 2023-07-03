@@ -18,15 +18,15 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         config.update(**kwargs)
         return config
-    
+
     def test_timesteps(self):
         for timesteps in [10, 50, 100, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
-    
+
     def test_clip_denoised(self):
         for clip_denoised in [True, False]:
             self.check_over_configs(clip_denoised=clip_denoised)
-    
+
     def test_full_loop_no_noise_onestep(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -52,13 +52,13 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
             pred_prev_sample = scheduler.step(residual, t, sample, use_noise=False, generator=generator).prev_sample
 
             sample = pred_prev_sample
-        
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_sum.item() - 192.7614) < 1e-2
         assert abs(result_mean.item() - 0.2510) < 1e-3
-    
+
     def test_full_loop_no_noise_multistep(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -84,13 +84,13 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
             pred_prev_sample = scheduler.step(residual, t, sample, use_noise=True, generator=generator).prev_sample
 
             sample = pred_prev_sample
-        
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_sum.item() - 347.6357) < 1e-2
         assert abs(result_mean.item() - 0.4527) < 1e-3
-    
+
     def test_custom_timesteps_increasing_order(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -100,7 +100,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         with self.assertRaises(ValueError, msg="`timesteps` must be in descending order."):
             scheduler.set_timesteps(timesteps=timesteps)
-    
+
     def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -111,7 +111,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `timesteps`."):
             scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
-    
+
     def test_custom_timesteps_too_large(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -124,4 +124,3 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
             msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
         ):
             scheduler.set_timesteps(timesteps=timesteps)
-
