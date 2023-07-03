@@ -33,14 +33,14 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
 class StableDiffusionImageVariationPipelineFastTests(
-    PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionImageVariationPipeline
     params = IMAGE_VARIATION_PARAMS

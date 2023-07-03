@@ -39,7 +39,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class StableUnCLIPImg2ImgPipelineFastTests(PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableUnCLIPImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
