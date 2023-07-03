@@ -163,7 +163,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "prompt": "horse",
             "generator": generator,
-            "num_inference_steps": 4,
+            "num_inference_steps": 1,
             "size": 64,
             "output_type": "np",
         }

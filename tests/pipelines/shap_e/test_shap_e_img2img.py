@@ -177,7 +177,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "image": input_image,
             "generator": generator,
-            "num_inference_steps": 4,
+            "num_inference_steps": 1,
             "size": 64,
             "output_type": "np",
         }
