@@ -344,7 +344,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
-            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
