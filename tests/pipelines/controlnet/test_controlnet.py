@@ -46,7 +46,11 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()

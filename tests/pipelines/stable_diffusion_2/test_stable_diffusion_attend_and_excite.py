@@ -30,7 +30,7 @@ from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

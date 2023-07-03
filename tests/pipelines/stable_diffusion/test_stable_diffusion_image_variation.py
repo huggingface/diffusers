@@ -33,7 +33,7 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
