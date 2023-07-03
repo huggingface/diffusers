@@ -504,7 +504,7 @@ TORCHSDE_IMPORT_ERROR = """
 
 # docstyle-ignore
 INVISIBLE_WATERMARK_IMPORT_ERROR = """
-{0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install "numpy>=1.17" "PyWavelets>=1.1.1" "opencv-python>=4.1.0.25"` followed by `pip install --no-deps invisible-watermark`.
+{0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install "numpy>=1.17" "PyWavelets>=1.1.1" "opencv-python>=4.1.0.25" onnxruntime` followed by `pip install --no-deps invisible-watermark`.
 """
 
 
