@@ -342,10 +342,11 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             for block in down_block:
                 if isinstance(block, ResBlockStageB):
                     if effnet_c is None and self.effnet_mappers[i] is not None:
+                        dtype = effnet.dtype
                         effnet_c = self.effnet_mappers[i](
                             nn.functional.interpolate(
                                 effnet.float(), size=x.shape[-2:], mode="bicubic", antialias=True, align_corners=True
-                            )
+                            ).to(dtype)
                         )
                     skip = effnet_c if self.effnet_mappers[i] is not None else None
                     x = block(x, skip)
@@ -365,10 +366,11 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             for j, block in enumerate(up_block):
                 if isinstance(block, ResBlockStageB):
                     if effnet_c is None and self.effnet_mappers[len(self.down_blocks) + i] is not None:
+                        dtype = effnet.dtype
                         effnet_c = self.effnet_mappers[len(self.down_blocks) + i](
                             nn.functional.interpolate(
                                 effnet.float(), size=x.shape[-2:], mode="bicubic", antialias=True, align_corners=True
-                            )
+                            ).to(dtype)
                         )
                     skip = level_outputs[i] if j == 0 and i > 0 else None
                     if effnet_c is not None:

@@ -119,7 +119,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
         return VQEncoderOutput(latents=h)
 
     def decode(
-        self, h: torch.FloatTensor, force_not_quantize: bool = False, return_dict: bool = True
+        self, h: torch.FloatTensor, force_not_quantize: bool = True, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         if not force_not_quantize:
             quant, _, _ = self.quantize(h)
