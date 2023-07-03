@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         ...     size=256,
         ... ).images
 
-        >>> gif_path = export_to_gif(images, "shark_3d")
+        >>> gif_path = export_to_gif(images, "shark_3d.gif")
         ```
 """
 
@@ -311,9 +311,6 @@ class ShapEPipeline(DiffusionPipeline):
             noise_pred, _ = noise_pred.split(
                 scaled_model_input.shape[2], dim=2
             )  # batch_size, num_embeddings, embedding_dim
-
-            # clip between -1 and 1
-            noise_pred = noise_pred.clamp(-1, 1)
 
             if do_classifier_free_guidance is not None:
                 noise_pred_uncond, noise_pred = noise_pred.chunk(2)

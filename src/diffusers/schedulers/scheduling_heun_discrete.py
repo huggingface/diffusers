@@ -88,6 +88,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf).
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
@@ -107,6 +111,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
+        clip_sample: Optional[bool] = False,
+        clip_sample_range: float = 1.0,
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
     ):
@@ -344,6 +350,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
+
+        if self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
         if self.state_in_first_order:
