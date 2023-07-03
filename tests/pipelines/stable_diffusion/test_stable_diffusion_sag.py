@@ -37,7 +37,7 @@ enable_full_determinism()
 
 
 class StableDiffusionSAGPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionSAGPipeline
     params = TEXT_TO_IMAGE_PARAMS

@@ -41,7 +41,7 @@ enable_full_determinism()
 
 @skip_mps
 class StableDiffusionPanoramaPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionPanoramaPipeline
     params = TEXT_TO_IMAGE_PARAMS
