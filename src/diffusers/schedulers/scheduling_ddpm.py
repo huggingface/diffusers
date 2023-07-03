@@ -45,10 +45,10 @@ class DDPMSchedulerOutput(BaseOutput):
 
 
 def betas_for_alpha_bar(
-    num_diffusion_timesteps, 
+    num_diffusion_timesteps,
     max_beta=0.999,
     alpha_transform_type="cosine",  # cosine, exp
-    ):
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].

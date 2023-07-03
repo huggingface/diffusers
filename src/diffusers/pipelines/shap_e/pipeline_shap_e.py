@@ -232,7 +232,7 @@ class ShapEPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        size: int = 64, 
+        size: int = 64,
         output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
