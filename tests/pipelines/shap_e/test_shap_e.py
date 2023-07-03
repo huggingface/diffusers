@@ -164,7 +164,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "horse",
             "generator": generator,
             "num_inference_steps": 1,
-            "size": 64,
+            "size": 32,
             "output_type": "np",
         }
         return inputs
@@ -183,7 +183,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = output.images[0]
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (20, 64, 64, 3)
+        assert image.shape == (20, 32, 32, 3)
 
         expected_slice = np.array(
             [
