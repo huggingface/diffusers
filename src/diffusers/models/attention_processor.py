@@ -161,6 +161,7 @@ class Attention(nn.Module):
                 AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
             )
         self.set_processor(processor)
+        
 
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
