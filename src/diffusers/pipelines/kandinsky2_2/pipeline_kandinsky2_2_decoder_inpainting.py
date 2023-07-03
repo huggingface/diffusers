@@ -182,7 +182,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
     return mask, image
 
-class Kandinsky2_2_DecoderInpaintPipeline(DiffusionPipeline):
+class KandinskyV22InpaintPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

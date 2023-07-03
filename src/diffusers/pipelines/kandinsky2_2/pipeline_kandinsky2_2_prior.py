@@ -23,15 +23,15 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import Kandinsky2_2_DecoderPipeline, Kandinsky2_2PriorPipeline
+        >>> from diffusers import KandinskyV22Pipeline, KandinskyV22PriorPipeline
         >>> import torch
-        >>> pipe_prior = Kandinsky2_2PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior")
+        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior")
         >>> pipe_prior.to("cuda")
         >>> prompt = "red cat, 4k photo"
         >>> out = pipe_prior(prompt)
         >>> image_emb = out.image_embeds
         >>> zero_image_emb = out.negative_image_embeds
-        >>> pipe = Kandinsky2_2_DecoderPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder")
+        >>> pipe = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder")
         >>> pipe.to("cuda")
         >>> image = pipe(
         ...     image_embeds=image_emb,
@@ -47,12 +47,12 @@ EXAMPLE_DOC_STRING = """
 EXAMPLE_INTERPOLATE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import Kandinsky2_2PriorPipeline, Kandinsky2_2_DecoderPipeline
+        >>> from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
         >>> from diffusers.utils import load_image
         >>> import PIL
         >>> import torch
         >>> from torchvision import transforms
-        >>> pipe_prior = Kandinsky2_2PriorPipeline.from_pretrained(
+        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
         ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
@@ -67,7 +67,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> images_texts = ["a cat", img1, img2]
         >>> weights = [0.3, 0.3, 0.4]
         >>> out = pipe_prior.interpolate(images_texts, weights)
-        >>> pipe = Kandinsky2_2_DecoderPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+        >>> pipe = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
         >>> image = pipe(
         ...     image_embeds=out.image_embeds,
@@ -96,7 +96,7 @@ class KandinskyPriorPipelineOutput(BaseOutput):
     negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
-class Kandinsky2_2PriorPipeline(DiffusionPipeline):
+class KandinskyV22PriorPipeline(DiffusionPipeline):
     """
     Pipeline for generating image prior for Kandinsky
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

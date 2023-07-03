@@ -64,13 +64,13 @@ else:
         KandinskyPriorPipeline,
     )
     from .kandinsky2_2 import (
-        Kandinsky2_2_DecoderControlnetImg2ImgPipeline,
-        Kandinsky2_2_DecoderControlnetPipeline,
-        Kandinsky2_2_DecoderImg2ImgPipeline,
-        Kandinsky2_2_DecoderPipeline,
-        Kandinsky2_2PriorEmb2EmbPipeline,
-        Kandinsky2_2PriorPipeline,
-        Kandinsky2_2_DecoderInpaintPipeline
+        KandinskyV22ControlnetImg2ImgPipeline,
+        KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgPipeline,
+        KandinskyV22Pipeline,
+        KandinskyV22PriorEmb2EmbPipeline,
+        KandinskyV22PriorPipeline,
+        KandinskyV22InpaintPipeline,
     )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline

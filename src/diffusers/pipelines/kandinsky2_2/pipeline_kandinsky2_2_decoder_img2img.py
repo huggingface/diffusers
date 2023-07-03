@@ -53,7 +53,7 @@ def prepare_image(pil_image, w=512, h=512):
     return image
 
 
-class Kandinsky2_2_DecoderImg2ImgPipeline(DiffusionPipeline):
+class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

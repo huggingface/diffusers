@@ -42,7 +42,7 @@ def get_new_h_w(h, w, scale_factor=8):
     return new_h * scale_factor, new_w * scale_factor
 
 
-class Kandinsky2_2_DecoderControlnetPipeline(DiffusionPipeline):
+class KandinskyV22ControlnetPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

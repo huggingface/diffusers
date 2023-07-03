@@ -34,7 +34,7 @@ class KandinskyPriorPipelineOutput(BaseOutput):
     negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
-class Kandinsky2_2PriorEmb2EmbPipeline(DiffusionPipeline):
+class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     """
     Pipeline for generating image prior for Kandinsky
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
