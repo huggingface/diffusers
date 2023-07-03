@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -39,17 +40,37 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import TextToVideoSDPipeline
+        >>> from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoSDPipeline.from_pretrained(
-        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
+        >>> pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        >>> pipe.to("cuda")
+
+        >>> prompt = "spiderman running in the desert"
+        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames
+        >>> # safe low-res video
+        >>> video_path = export_to_video(video_frames, output_video_path="./video_576_spiderman.mp4")
+
+        >>> # let's offload the text-to-image model
+        >>> pipe.to("cpu")
+
+        >>> # and load the image-to-image model
+        >>> pipe = DiffusionPipeline.from_pretrained(
+        ...     "cerspense/zeroscope_v2_XL", torch_dtype=torch.float16, revision="refs/pr/15"
         ... )
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         >>> pipe.enable_model_cpu_offload()
 
-        >>> prompt = "Spiderman is surfing"
-        >>> video_frames = pipe(prompt).frames
-        >>> video_path = export_to_video(video_frames)
+        >>> # The VAE consumes A LOT of memory, let's make sure we run it in sliced mode
+        >>> pipe.vae.enable_slicing()
+
+        >>> # now let's upscale it
+        >>> video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
+
+        >>> # and denoise it
+        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames
+        >>> video_path = export_to_video(video_frames, output_video_path="./video_1024_spiderman.mp4")
         >>> video_path
         ```
 """
@@ -73,7 +94,48 @@ def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -
     return images
 
 
-class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+def preprocess_video(video):
+    supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image)
+
+    if isinstance(video, supported_formats):
+        video = [video]
+    elif not (isinstance(video, list) and all(isinstance(i, supported_formats) for i in video)):
+        raise ValueError(
+            f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(supported_formats)}"
+        )
+
+    if isinstance(video[0], PIL.Image.Image):
+        video = [np.array(frame) for frame in video]
+
+    if isinstance(video[0], np.ndarray):
+        video = np.concatenate(video, axis=0) if video[0].ndim == 5 else np.stack(video, axis=0)
+
+        if video.dtype == np.uint8:
+            video = np.array(video).astype(np.float32) / 255.0
+
+        if video.ndim == 4:
+            video = video[None, ...]
+
+        video = torch.from_numpy(video.transpose(0, 4, 1, 2, 3))
+
+    elif isinstance(video[0], torch.Tensor):
+        video = torch.cat(video, axis=0) if video[0].ndim == 5 else torch.stack(video, axis=0)
+
+        # don't need any preprocess if the video is latents
+        channel = video.shape[1]
+        if channel == 4:
+            return video
+
+        # move channels before num_frames
+        video = video.permute(0, 2, 1, 3, 4)
+
+    # normalize video
+    video = 2.0 * video - 1.0
+
+    return video
+
+
+class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation.
 
@@ -82,7 +144,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder. Same as Stable Diffusion 2.
         tokenizer (`CLIPTokenizer`):
@@ -189,7 +251,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+        for cpu_offloaded_model in [self.text_encoder, self.vae, self.unet]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
@@ -369,6 +431,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
 
@@ -410,19 +473,12 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
     def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+        self, prompt, strength, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -458,29 +514,58 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
+
+    def prepare_latents(self, video, timestep, batch_size, dtype, device, generator=None):
+        video = video.to(device=device, dtype=dtype)
+
+        # change from (b, c, f, h, w) -> (b * f, c, w, h)
+        bsz, channel, frames, width, height = video.shape
+        video = video.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
+
+        if video.shape[1] == 4:
+            init_latents = video
         else:
-            latents = latents.to(device)
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+            elif isinstance(generator, list):
+                init_latents = [
+                    self.vae.encode(video[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                ]
+                init_latents = torch.cat(init_latents, dim=0)
+            else:
+                init_latents = self.vae.encode(video).latent_dist.sample(generator)
+
+            init_latents = self.vae.config.scaling_factor * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `video` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        shape = init_latents.shape
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        # get latents
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+
+        latents = latents[None, :].reshape((bsz, frames, latents.shape[1]) + latents.shape[2:]).permute(0, 2, 1, 3, 4)
+
         return latents
 
     @torch.no_grad()
@@ -488,11 +573,10 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_frames: int = 16,
+        video: Union[List[np.ndarray], torch.FloatTensor] = None,
+        strength: float = 0.6,
         num_inference_steps: int = 50,
-        guidance_scale: float = 9.0,
+        guidance_scale: float = 15.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -512,13 +596,16 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated video.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated video.
-            num_frames (`int`, *optional*, defaults to 16):
-                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
-                amounts to 2 seconds of video.
+            video: (`List[np.ndarray]` or `torch.FloatTensor`):
+                `video` frames or tensor representing a video batch, that will be used as the starting point for the
+                process. Can also accpet video latents as `image`, if passing latents directly, it will not be encoded
+                again.
+            strength (`float`, *optional*, defaults to 0.8):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
                 expense of slower inference.
@@ -574,15 +661,10 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             When returning a tuple, the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         num_images_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -613,23 +695,16 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             lora_scale=text_encoder_lora_scale,
         )
 
-        # 4. Prepare timesteps
+        # 4. Preprocess video
+        video = preprocess_video(video)
+
+        # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            num_frames,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
+        latents = self.prepare_latents(video, latent_timestep, batch_size, prompt_embeds.dtype, device, generator)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -674,6 +749,9 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
 
         if output_type == "latent":
             return TextToVideoSDPipelineOutput(frames=latents)
+
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.unet.to("cpu")
 
         video_tensor = self.decode_latents(latents)
 
