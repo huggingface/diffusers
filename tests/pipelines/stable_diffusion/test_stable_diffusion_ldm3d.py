@@ -130,9 +130,9 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, 64, 64)
 
         expected_slice_rgb = np.array(
-            [0.37301102, 0.7023895, 0.7418312, 0.5163375, 0.5825485, 0.60929704, 0.4188174, 0.48407027, 0.46555096]
+            [0.37338176, 0.70247, 0.74203193, 0.51643604, 0.58256793, 0.60932136, 0.4181095, 0.48355877, 0.46535262]
         )
-        expected_slice_depth = np.array([103.4673, 85.81202, 87.84926])
+        expected_slice_depth = np.array([103.46727, 85.812004, 87.849236])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
@@ -280,10 +280,30 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         output = ldm3d_pipe(**inputs)
         rgb, depth = output.rgb, output.depth
 
-        expected_rgb_mean = 0.54461557
-        expected_rgb_std = 0.2806707
-        expected_depth_mean = 143.64595
-        expected_depth_std = 83.491776
+        expected_rgb_mean = 0.495586
+        expected_rgb_std = 0.33795515
+        expected_depth_mean = 112.48518
+        expected_depth_std = 98.489746
+        assert np.abs(expected_rgb_mean - rgb.mean()) < 1e-3
+        assert np.abs(expected_rgb_std - rgb.std()) < 1e-3
+        assert np.abs(expected_depth_mean - depth.mean()) < 1e-3
+        assert np.abs(expected_depth_std - depth.std()) < 1e-3
+
+    def test_ldm3d_v2(self):
+        ldm3d_pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c").to(torch_device)
+        ldm3d_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        output = ldm3d_pipe(**inputs)
+        rgb, depth = output.rgb, output.depth
+
+        expected_rgb_mean = 0.4194127
+        expected_rgb_std = 0.35375586
+        expected_depth_mean = 0.5638502
+        expected_depth_std = 0.34686103
+
+        assert rgb.shape == (1, 512, 512, 3)
+        assert depth.shape == (1, 512, 512, 1)
         assert np.abs(expected_rgb_mean - rgb.mean()) < 1e-3
         assert np.abs(expected_rgb_std - rgb.std()) < 1e-3
         assert np.abs(expected_depth_mean - depth.mean()) < 1e-3
