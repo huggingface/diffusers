@@ -217,7 +217,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # Clipping the minimum of all lambda(t) for numerical stability.
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
         clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-        last_timestep = self.config.num_train_timesteps - clipped_idx
+        last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
