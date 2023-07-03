@@ -135,6 +135,7 @@ class BasicTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         timestep: Optional[torch.LongTensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
     ):
         # Notice that normalization is always applied before the real computation in the following blocks.
