@@ -121,7 +121,7 @@ class BasicTransformerBlock(nn.Module):
 
         # let chunk size default to None
         self._chunk_size = None
-        self._chuck_dim = 0
+        self._chunk_dim = 0
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
         # Sets chunk feed-forward
