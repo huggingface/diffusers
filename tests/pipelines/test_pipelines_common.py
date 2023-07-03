@@ -6,7 +6,6 @@ import re
 import tempfile
 import unittest
 from typing import Callable, Union
-from jax._src.lax.lax import check_same_dtypes
 
 import numpy as np
 import PIL
