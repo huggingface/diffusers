@@ -213,6 +213,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
+        size: int = 64,
         output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
@@ -331,9 +332,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 latent[None, :],
                 device,
                 size=size,
-                ray_batch_size=ray_batch_size,
-                n_coarse_samples=n_coarse_samples,
-                n_fine_samples=n_fine_samples,
+                ray_batch_size=4096,
+                n_coarse_samples=64,
+                n_fine_samples=128,
             )
 
             images.append(image)

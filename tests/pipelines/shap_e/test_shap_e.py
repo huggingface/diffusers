@@ -41,9 +41,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "latents",
         "guidance_scale",
         "size",
-        "ray_batch_size",
-        "n_coarse_samples",
-        "n_fine_samples",
         "output_type",
         "return_dict",
     ]
