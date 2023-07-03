@@ -6,7 +6,6 @@ import re
 import tempfile
 import unittest
 from typing import Callable, Union
-from jax._src.lax.lax import check_same_dtypes
 
 import numpy as np
 import PIL
@@ -15,10 +14,10 @@ import torch
 import diffusers
 from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
-from diffusers.schedulers import KarrasDiffusionSchedulers
 
 
 def to_np(tensor):
@@ -169,19 +168,26 @@ class PipelineKarrasSchedulerTesterMixin:
     It provides a set of common tests for each PyTorch pipeline that makes use of KarrasDiffusionSchedulers
     equivalence of dict and tuple outputs, etc.
     """
+
     def test_karras_schedulers_shape(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+
+        # make sure that PNDM does not need warm-up
+        pipe.scheduler.register_to_config(skip_prk_steps=True)
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 2
 
         outputs = []
-        for scheduler_cls in KarrasDiffusionSchedulers:
+        for scheduler_enum in KarrasDiffusionSchedulers:
+            scheduler_cls = getattr(diffusers, scheduler_enum.name)
             pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
             output = pipe(**inputs)[0]
             outputs.append(output)
-        
+
         assert check_same_shape(outputs)
 
 
