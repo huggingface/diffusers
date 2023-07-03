@@ -14,6 +14,7 @@ import torch
 import diffusers
 from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
@@ -24,6 +25,11 @@ def to_np(tensor):
         tensor = tensor.detach().cpu().numpy()
 
     return tensor
+
+
+def check_same_shape(tensor_list):
+    shapes = [tensor.shape for tensor in tensor_list]
+    return all(shape == shapes[0] for shape in shapes[1:])
 
 
 class PipelineLatentTesterMixin:
@@ -153,6 +159,46 @@ class PipelineLatentTesterMixin:
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
+
+@require_torch
+class PipelineKarrasSchedulerTesterMixin:
+    """
+    This mixin is designed to be used with unittest.TestCase classes.
+    It provides a set of common tests for each PyTorch pipeline that makes use of KarrasDiffusionSchedulers
+    equivalence of dict and tuple outputs, etc.
+    """
+
+    def test_karras_schedulers_shape(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        # make sure that PNDM does not need warm-up
+        pipe.scheduler.register_to_config(skip_prk_steps=True)
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 2
+
+        if "strength" in inputs:
+            inputs["num_inference_steps"] = 4
+            inputs["strength"] = 0.5
+
+        outputs = []
+        for scheduler_enum in KarrasDiffusionSchedulers:
+            if "KDPM2" in scheduler_enum.name:
+                inputs["num_inference_steps"] = 5
+
+            scheduler_cls = getattr(diffusers, scheduler_enum.name)
+            pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
+            output = pipe(**inputs)[0]
+            outputs.append(output)
+
+            if "KDPM2" in scheduler_enum.name:
+                inputs["num_inference_steps"] = 2
+
+        assert check_same_shape(outputs)
 
 
 @require_torch
