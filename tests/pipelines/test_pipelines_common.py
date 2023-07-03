@@ -6,6 +6,7 @@ import re
 import tempfile
 import unittest
 from typing import Callable, Union
+from jax._src.lax.lax import check_same_dtypes
 
 import numpy as np
 import PIL
@@ -17,6 +18,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
+from diffusers.schedulers import KarrasDiffusionSchedulers
 
 
 def to_np(tensor):
@@ -24,6 +26,11 @@ def to_np(tensor):
         tensor = tensor.detach().cpu().numpy()
 
     return tensor
+
+
+def check_same_shape(tensor_list):
+    shapes = [tensor.shape for tensor in tensor_list]
+    return all(shape == shapes[0] for shape in shapes[1:])
 
 
 class PipelineLatentTesterMixin:
@@ -153,6 +160,29 @@ class PipelineLatentTesterMixin:
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
+
+@require_torch
+class PipelineKarrasSchedulerTesterMixin:
+    """
+    This mixin is designed to be used with unittest.TestCase classes.
+    It provides a set of common tests for each PyTorch pipeline that makes use of KarrasDiffusionSchedulers
+    equivalence of dict and tuple outputs, etc.
+    """
+    def test_karras_schedulers_shape(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        outputs = []
+        for scheduler_cls in KarrasDiffusionSchedulers:
+            pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
+            output = pipe(**inputs)[0]
+            outputs.append(output)
+        
+        assert check_same_shape(outputs)
 
 
 @require_torch
