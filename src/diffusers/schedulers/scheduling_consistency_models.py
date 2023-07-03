@@ -92,9 +92,14 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 
+        ramp = np.linspace(0, 1, num_train_timesteps)
+        sigmas = self._convert_to_karras(ramp)
+        timesteps = self._sigma_to_t(sigmas)
+
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+        self.sigmas = torch.from_numpy(sigmas)
+        self.timesteps = torch.from_numpy(timesteps)
         self.custom_timesteps = False
         self.is_scale_input_called = False
 
