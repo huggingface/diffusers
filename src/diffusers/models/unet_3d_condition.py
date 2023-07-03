@@ -391,13 +391,16 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
     def enable_forward_chunking(self, chunk_size=None, dim=0):
         """
-        Sets the attention processor to use [feed forward chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
+        Sets the attention processor to use [feed forward
+        chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
 
         Parameters:
             chunk_size (`int`, *optional*):
-                The chunk size of the feed-forward layers. If not specified, will run feed-forward layer individually over each tensor of dim=`dim`.
+                The chunk size of the feed-forward layers. If not specified, will run feed-forward layer individually
+                over each tensor of dim=`dim`.
             dim (`int`, *optional*, defaults to `0`):
-                The dimension over which the feed-forward computation should be chunked. Choose between dim=0 (batch) or dim=1 (sequence length).
+                The dimension over which the feed-forward computation should be chunked. Choose between dim=0 (batch)
+                or dim=1 (sequence length).
         """
         if dim not in [0, 1]:
             raise ValueError(f"Make sure to set `dim` to either 0 or 1, not {dim}")
@@ -424,7 +427,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 fn_recursive_feed_forward(child, chunk_size, dim)
 
         for module in self.children():
-            fn_recursive_feed_forward(module, None, dim)
+            fn_recursive_feed_forward(module, None, 0)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
