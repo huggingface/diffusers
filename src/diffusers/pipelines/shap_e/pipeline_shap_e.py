@@ -41,6 +41,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import ShapEPipeline
+        >>> from diffusers.utils import export_to_gif
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -58,7 +59,8 @@ EXAMPLE_DOC_STRING = """
         ...     size=256,
         ... ).images
 
-        >>> pipe.save_gif(images[0], "shark.png")
+        >>> gif_path = export_to_gif(images, "shark_3d")
+        >>> print(f"output saved to folder: {gif_path}")
         ```
 """
 
@@ -210,17 +212,6 @@ class ShapEPipeline(DiffusionPipeline):
         prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
 
         return prompt_embeds
-
-    @staticmethod
-    def save_gif(images: List[PIL.Image.Image], image_name: int, save_all=True, optimize=False, duration=100, loop=0):
-        images[0].save(
-            f"{image_name}.gif",
-            save_all=save_all,
-            append_images=images[1:],
-            optimize=optimize,
-            duration=duration,
-            loop=loop,
-        )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
