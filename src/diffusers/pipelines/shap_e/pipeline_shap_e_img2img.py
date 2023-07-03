@@ -213,10 +213,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        size: int = 64,
-        ray_batch_size: int = 4096,
-        n_coarse_samples=64,
-        n_fine_samples=128,
         output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
