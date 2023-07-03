@@ -138,7 +138,7 @@ pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dt
 pipe.enable_model_cpu_offload()
 
 # memory optimization
-self.unet.enable_forward_chunking(chunk_size=1, dim=1)
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
@@ -155,7 +155,7 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
 
 # memory optimization
-self.unet.enable_forward_chunking(chunk_size=1, dim=1)
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 pipe.enable_vae_slicing()
 
 video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
@@ -196,6 +196,9 @@ pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 
 Vae slicing via [`~TextToVideoSDPipeline.enable_vae_slicing`] and [`~VideoToVideoSDPipeline.enable_vae_slicing`] also 
 gives significant memory savings since the two pipelines decode all image frames at once.
+
+```py
+pipe.enable_vae_slicing()
 
 ## Available checkpoints 
 
