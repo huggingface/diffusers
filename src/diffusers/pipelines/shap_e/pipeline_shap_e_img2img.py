@@ -38,7 +38,28 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> from PIL import Image
+        >>> import torch
+        >>> from diffusers import ShapEImg2ImgPipeline
 
+        >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        >>> repo = "YiYiXu/shap-e-img2img"
+        >>> pipe = ShapEImg2ImgPipeline.from_pretrained(repo)
+        >>> pipe = pipe.to(device)
+
+        >>> guidance_scale = 3.0
+        >>> image = Image.open("corgi.png")
+
+
+        >>> images = pipe(
+        ...     image,
+        ...     guidance_scale=guidance_scale,
+        ...     num_inference_steps=64,
+        ...     size=256,
+        ... ).images
+
+        >>> pipe.save_gif(images[0], "corgi_out")
         ```
 """
 
