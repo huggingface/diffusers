@@ -203,7 +203,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
-        self.use_karras_sigmas = use_karras_sigmas
 
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
@@ -225,12 +224,14 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             .astype(np.int64)
         )
 
-        if self.use_karras_sigmas:
-            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        if self.config.use_karras_sigmas:
             log_sigmas = np.log(sigmas)
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = np.flip(timesteps).copy().astype(np.int64)
+
+        self.sigmas = torch.from_numpy(sigmas)
 
         # when num_inference_steps == num_train_timesteps, we can end up with
         # duplicates in timesteps.
