@@ -374,7 +374,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 # predicted_original_sample instead of the noise_pred. So we need to compute the
                 # predicted_original_sample here if we are using a karras style scheduler.
                 if scheduler_is_in_sigma_space:
-                    step_index = (self.scheduler.timesteps == t).nonzero().item()
+                    step_index = (self.scheduler.timesteps == t).nonzero()[0].item()
                     sigma = self.scheduler.sigmas[step_index]
                     noise_pred = latent_model_input - sigma * noise_pred
 
