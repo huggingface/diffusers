@@ -30,13 +30,13 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class CycleDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class CycleDiffusionPipelineFastTests(PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CycleDiffusionPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
         "negative_prompt",
