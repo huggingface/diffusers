@@ -5,3 +5,4 @@ protobuf<4,>=3.19.6
 tensorboard
 matplotlib
 opencv-python
+mlflow
