@@ -15,6 +15,7 @@
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -140,23 +141,33 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self.use_karras_sigmas = use_karras_sigmas
 
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
+
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
         indices = (schedule_timesteps == timestep).nonzero()
 
+        # exp beta schedules might have more than twice the same consecutive timestep
+        # to make sure we select the correct index, let's keep track of counts
+        self._index_counter[int(timestep)] += 1
+
+        if self._index_counter[int(timestep)] > 2:
+            pos = self._index_counter[int(timestep)] - 1
         if self.state_in_first_order:
             pos = -1
         else:
             pos = 0
+
         return indices[pos].item()
 
     def scale_model_input(
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
-        step_index: Optional[int] = None,
     ) -> torch.FloatTensor:
         """
         Args:
@@ -166,8 +177,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        if step_index is None:
-            step_index = self.index_for_timestep(timestep)
+        step_index = self.index_for_timestep(timestep)
 
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -303,7 +313,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: Union[float, torch.FloatTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
-        step_index: Optional[int] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -319,8 +328,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        if step_index is None:
-            step_index = self.index_for_timestep(timestep)
+        step_index = self.index_for_timestep(timestep)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
