@@ -235,10 +235,10 @@ class KandinskyV22Pipeline(DiffusionPipeline):
 
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
-        batch_size = image_embeds.shape[0]
+        batch_size = image_embeds.shape[0] * num_images_per_prompt
         if isinstance(negative_image_embeds, list):
             negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
-
+        
         if do_classifier_free_guidance:
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)

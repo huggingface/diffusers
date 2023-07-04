@@ -138,7 +138,7 @@ else:
         KandinskyPriorPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
-        KandinskyV22Img2ImgPipelinee,
+        KandinskyV22Img2ImgPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
