@@ -24,6 +24,7 @@ import torch
 
 import diffusers
 from diffusers import (
+    CMStochasticIterativeScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
@@ -261,6 +262,11 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                time_step = scaled_sigma_max
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -281,7 +287,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Make sure `scale_model_input` is invoked to prevent a warning
-            if scheduler_class != VQDiffusionScheduler:
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                _ = scheduler.scale_model_input(sample, scaled_sigma_max)
+                _ = new_scheduler.scale_model_input(sample, scaled_sigma_max)
+            elif scheduler_class != VQDiffusionScheduler:
                 _ = scheduler.scale_model_input(sample, 0)
                 _ = new_scheduler.scale_model_input(sample, 0)
 
@@ -350,6 +360,10 @@ class SchedulerCommonTest(unittest.TestCase):
 
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
+
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
 
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
@@ -432,6 +446,11 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_min/sigma_max, which should always be in timestep schedule.
+                timestep_0 = scheduler.sigma_to_t(scheduler.config.sigma_min)
+                timestep_1 = scheduler.sigma_to_t(scheduler.config.sigma_max)
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -493,6 +512,10 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -548,7 +571,12 @@ class SchedulerCommonTest(unittest.TestCase):
 
             if scheduler_class != VQDiffusionScheduler:
                 sample = self.dummy_sample
-                scaled_sample = scheduler.scale_model_input(sample, 0.0)
+                if scheduler_class == CMStochasticIterativeScheduler:
+                    # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                    scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                    scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+                else:
+                    scaled_sample = scheduler.scale_model_input(sample, 0.0)
                 self.assertEqual(sample.shape, scaled_sample.shape)
 
     def test_add_noise_device(self):
@@ -560,7 +588,12 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler.set_timesteps(100)
 
             sample = self.dummy_sample.to(torch_device)
-            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+            else:
+                scaled_sample = scheduler.scale_model_input(sample, 0.0)
             self.assertEqual(sample.shape, scaled_sample.shape)
 
             noise = torch.randn_like(scaled_sample).to(torch_device)
@@ -591,7 +624,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def test_trained_betas(self):
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class == VQDiffusionScheduler:
+            if scheduler_class in (VQDiffusionScheduler, CMStochasticIterativeScheduler):
                 continue
 
             scheduler_config = self.get_scheduler_config()

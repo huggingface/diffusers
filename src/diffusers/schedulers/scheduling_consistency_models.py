@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -94,7 +95,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         ramp = np.linspace(0, 1, num_train_timesteps)
         sigmas = self._convert_to_karras(ramp)
-        timesteps = self._sigma_to_t(sigmas)
+        timesteps = self.sigma_to_t(sigmas)
 
         # setable values
         self.num_inference_steps = None
@@ -106,8 +107,15 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
+        
+        if isinstance(timestep, float):
+            timestep = torch.tensor([timestep], dtype=schedule_timesteps.dtype, device=schedule_timesteps.device)
 
-        indices = (schedule_timesteps == timestep).nonzero()
+        # indices = (schedule_timesteps == timestep).nonzero()
+        # For some reason using the == operator sometimes misses some timesteps that should be in the schedule
+        # (perhaps due to floating point error?)
+        indices = (torch.isclose(schedule_timesteps, timestep)).nonzero()
+        print(f"Indices: {indices}")
         return indices.item()
 
     def scale_model_input(
@@ -133,16 +141,19 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def _sigma_to_t(self, sigmas: np.ndarray):
+    def sigma_to_t(self, sigmas: Union[float, np.ndarray]):
         """
         Gets scaled timesteps from the Karras sigmas, for input to the consistency model.
 
         Args:
-            sigmas (`np.ndarray`, *optional*): array of Karras sigmas
+            sigmas (`float` or `np.ndarray`): single Karras sigma or array of Karras sigmas
         Returns:
-            `np.ndarray`: scaled input timestep
+            `float` or `np.ndarray`: scaled input timestep or scaled input timestep array
         """
-        timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
+        if isinstance(sigmas, np.ndarray):
+            timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
+        else:
+            timesteps = 1000 * 0.25 * math.log(sigmas + 1e-44)
 
         return timesteps
 
@@ -205,7 +216,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         ramp = timesteps[::-1].copy()
         ramp = ramp / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
-        timesteps = self._sigma_to_t(sigmas)
+        timesteps = self.sigma_to_t(sigmas)
 
         sigmas = np.concatenate([sigmas, [self.sigma_min]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -315,7 +326,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         # sigma_next corresponds to next_t in original implementation
         sigma = self.sigmas[step_index]
-        sigma_next = self.sigmas[step_index + 1]
+        if step_index + 1 < self.config.num_train_timesteps:
+            sigma_next = self.sigmas[step_index + 1]
+        else:
+            # Set sigma_next to sigma_min
+            sigma_next = self.sigmas[-1]
 
         # Get scalings for boundary conditions
         c_skip, c_out = self.get_scalings_for_boundary_condition(sigma)
