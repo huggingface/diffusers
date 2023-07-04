@@ -107,7 +107,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
-        
+
         if isinstance(timestep, float):
             timestep = torch.tensor([timestep], dtype=schedule_timesteps.dtype, device=schedule_timesteps.device)
 
