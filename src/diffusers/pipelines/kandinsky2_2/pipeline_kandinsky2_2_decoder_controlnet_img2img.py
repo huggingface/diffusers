@@ -55,10 +55,10 @@ def prepare_image(pil_image, w=512, h=512):
 
 class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using Kandinsky
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
+    Pipeline for text-to-image generation using Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
+    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
+    or saving, running on a particular device, etc.)
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
@@ -127,10 +127,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        try:
-            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
-        except:
-            pass
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
 
         return latents
@@ -221,8 +218,8 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
@@ -262,8 +259,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         device = self._execution_device
@@ -333,19 +329,14 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             # compute the previous noisy sample x_t -> x_t-1
-            try:
-                latents = self.scheduler.step(
-                    noise_pred,
-                    t,
-                    latents,
-                    generator=generator,
-                )[0]
-            except:
-                latents = self.scheduler.step(
-                    noise_pred,
-                    t,
-                    latents,
-                )[0]
+
+            latents = self.scheduler.step(
+                noise_pred,
+                t,
+                latents,
+                generator=generator,
+            )[0]
+
         # post-processing
         image = self.vae.decode(latents, force_not_quantize=True)["sample"]
 

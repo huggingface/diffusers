@@ -23,8 +23,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class KandinskyPriorPipelineOutput(BaseOutput):
     """
-    Output class for KandinskyPriorPipeline.
     Args:
+    Output class for KandinskyPriorPipeline.
         image_embeds (`torch.FloatTensor`)
             clip image embeddings for text prompt
         negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
@@ -37,10 +37,10 @@ class KandinskyPriorPipelineOutput(BaseOutput):
 
 class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     """
-    Pipeline for generating image prior for Kandinsky
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
+    Pipeline for generating image prior for Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
+    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
+    or saving, running on a particular device, etc.)
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -98,8 +98,8 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         device=None,
     ):
         """
-        Function invoked when using the prior pipeline for interpolation.
         Args:
+        Function invoked when using the prior pipeline for interpolation.
             images_and_prompts (`List[Union[str, PIL.Image.Image, torch.FloatTensor]]`):
                 list of prompts and images to guide the image generation.
             weights: (`List[float]`):
@@ -128,8 +128,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
@@ -373,8 +372,8 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             strength (`float`, *optional*, defaults to 0.8):
@@ -409,8 +408,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 

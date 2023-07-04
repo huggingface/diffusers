@@ -188,10 +188,10 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
 class KandinskyV22InpaintPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using Kandinsky
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
+    Pipeline for text-to-image generation using Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
+    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
+    or saving, running on a particular device, etc.)
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
@@ -312,18 +312,18 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
             mask_image (`np.array`):
-                Tensor representing an image batch, to mask `image`. Black pixels in the mask will be
-                repainted, while white pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
+                Tensor representing an image batch, to mask `image`. Black pixels in the mask will be repainted, while
+                white pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
+                channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3,
+                so the expected shape would be `(B, H, W, 1)`.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             height (`int`, *optional*, defaults to 512):
@@ -353,8 +353,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         device = self._execution_device

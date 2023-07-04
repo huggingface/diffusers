@@ -36,6 +36,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> from diffusers import KandinskyV22Pipeline, KandinskyV22PriorPipeline
         >>> import torch
+
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior")
         >>> pipe_prior.to("cuda")
         >>> prompt = "red cat, 4k photo"
@@ -68,10 +69,10 @@ def get_new_h_w(h, w, scale_factor=8):
 
 class KandinskyV22Pipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using Kandinsky
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
+    Pipeline for text-to-image generation using Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
+    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
+    or saving, running on a particular device, etc.)
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
@@ -191,8 +192,8 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
@@ -224,8 +225,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         device = self._execution_device

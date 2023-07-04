@@ -43,10 +43,10 @@ def get_new_h_w(h, w, scale_factor=8):
 
 class KandinskyV22ControlnetPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using Kandinsky
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
+    Pipeline for text-to-image generation using Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
+    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
+    or saving, running on a particular device, etc.)
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
@@ -166,8 +166,8 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             hint (`torch.FloatTensor`):
@@ -206,8 +206,7 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         device = self._execution_device
