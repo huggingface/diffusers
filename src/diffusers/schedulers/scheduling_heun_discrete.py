@@ -113,8 +113,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         clip_sample: Optional[bool] = False,
         clip_sample_range: float = 1.0,
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -197,13 +195,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
         if self.config.use_karras_sigmas:
-            sigmas = self._convert_to_karras(
-                sigma_min=sigmas[-1].item(),
-                sigma_max=sigmas[0].item(),
-                num_inference_steps=self.num_inference_steps,
-            )
-
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas=log_sigmas) for sigma in sigmas])
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -253,8 +246,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    def _convert_to_karras(self, sigma_min, sigma_max, num_inference_steps) -> torch.FloatTensor:
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
+
+        sigma_min: float = in_sigmas[-1].item()
+        sigma_max: float = in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
