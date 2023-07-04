@@ -111,7 +111,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
         h = self.in_block(x)
-        h = self.down_blocks(h)
+        h = self.down_blocks(h) / self.config.scale_factor
 
         if not return_dict:
             return (h,)
@@ -122,9 +122,10 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
         self, h: torch.FloatTensor, force_not_quantize: bool = True, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         if not force_not_quantize:
-            quant, _, _ = self.quantize(h)
+            quant, _, _ = self.vquantizer(h * self.config.scale_factor)
         else:
-            quant = h
+            quant = h * self.config.scale_factor
+
         x = self.up_blocks(quant)
         dec = self.out_block(x)
         if not return_dict:
