@@ -25,11 +25,13 @@ import torch
 import diffusers
 from diffusers import (
     DDIMScheduler,
+    DEISMultistepScheduler,
     DiffusionPipeline,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
+    UniPCMultistepScheduler,
     VQDiffusionScheduler,
     logging,
 )
@@ -228,6 +230,19 @@ class SchedulerBaseTests(unittest.TestCase):
         # And stick
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+    def test_default_solver_type_after_switch(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+        )
+        assert pipe.scheduler.__class__ == DDIMScheduler
+
+        pipe.scheduler = DEISMultistepScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.solver_type == "logrho"
+
+        # Switch to UniPC, verify the solver is the default
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.solver_type == "bh2"
 
 
 class SchedulerCommonTest(unittest.TestCase):
