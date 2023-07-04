@@ -360,7 +360,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
 
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
-        batch_size = image_embeds.shape[0]
+        batch_size = image_embeds.shape[0] * num_images_per_prompt
         if isinstance(negative_image_embeds, list):
             negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
 
