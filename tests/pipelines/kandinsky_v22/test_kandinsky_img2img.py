@@ -265,6 +265,5 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        np.save("kandinskyv22_img2img_frog.npy", image)
 
         assert_mean_pixel_difference(image, expected_image)
