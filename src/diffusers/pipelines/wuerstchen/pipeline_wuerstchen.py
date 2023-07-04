@@ -28,7 +28,6 @@ from ..pipeline_utils import DiffusionPipeline
 from .modules import DiffNeXt, Prior, EfficientNetEncoder
 
 from .diffuzz import Diffuzz
-from .vqgan import VQModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -264,7 +263,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 )
             # print(t)
 
-            latents = self.diffuzz.undiffuse(latents, t[None], steps[i+1][None], predicted_image_embedding).to(dtype=t.dtype)
+            latents = self.diffuzz.undiffuse(latents, t[None], steps[i + 1][None], predicted_image_embedding).to(
+                dtype=t.dtype
+            )
             # timestep = (t * 999).cpu().int()
             # # print(timestep)
             # latents = self.scheduler.step(
@@ -328,7 +329,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             import torch
 
             random.seed(seed)
-            os.environ['PYTHONHASHSEED'] = str(seed)
+            os.environ["PYTHONHASHSEED"] = str(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed(seed)
@@ -352,7 +353,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         t_start = 1.0
         for t_end, steps in inference_steps.items():
-            steps = torch.linspace(t_start, t_end, steps+1, dtype=dtype, device=device)
+            steps = torch.linspace(t_start, t_end, steps + 1, dtype=dtype, device=device)
             latents = self.inference_loop(
                 latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
             )
@@ -409,11 +410,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         )
         self.diffuzz = Diffuzz(device="cuda")
 
-        self.vqmodel = VQModel()
-        state_dict = torch.load(r"C:\Users\d6582\Documents\ml\diffusers\scripts\models\vqgan_f4_v1_500k.pt")["state_dict"]
-        self.vqmodel.load_state_dict(state_dict)
-        self.vqmodel.to("cuda").to(torch.float16)
-
         self.register_to_config()
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -445,26 +441,45 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def check_inputs(self, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device):
+    def check_inputs(
+        self, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
+    ):
         if not isinstance(text_encoder_hidden_states, torch.Tensor):
-            raise TypeError(f"'text_encoder_hidden_states' must be of type 'torch.Tensor', but got {type(predicted_image_embeddings)}.")
+            raise TypeError(
+                f"'text_encoder_hidden_states' must be of type 'torch.Tensor', but got {type(predicted_image_embeddings)}."
+            )
         if isinstance(predicted_image_embeddings, np.ndarray):
-            predicted_image_embeddings = torch.Tensor(predicted_image_embeddings, device=device).to(dtype=text_encoder_hidden_states.dtype)
+            predicted_image_embeddings = torch.Tensor(predicted_image_embeddings, device=device).to(
+                dtype=text_encoder_hidden_states.dtype
+            )
         if not isinstance(predicted_image_embeddings, torch.Tensor):
-            raise TypeError(f"'predicted_image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(predicted_image_embeddings)}.")
+            raise TypeError(
+                f"'predicted_image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(predicted_image_embeddings)}."
+            )
 
         if do_classifier_free_guidance:
-            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0) // 2, f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+            assert (
+                predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0) // 2
+            ), f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
         else:
             if predicted_image_embeddings.size(0) * 2 == text_encoder_hidden_states.size(0):
                 text_encoder_hidden_states = text_encoder_hidden_states.chunk(2)[0]
-            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0), f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(
+                0
+            ), f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
 
         return predicted_image_embeddings, text_encoder_hidden_states
 
     @torch.no_grad()
     def inference_loop(
-        self, latents, steps, predicted_effnet_latents, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
+        self,
+        latents,
+        steps,
+        predicted_effnet_latents,
+        text_encoder_hidden_states,
+        do_classifier_free_guidance,
+        guidance_scale,
+        generator,
     ):
         for i, t in enumerate(self.progress_bar(steps[:-1])):
             # print(torch.cat([latents] * 2).shape, latents.dtype, latents.device)
@@ -474,7 +489,9 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             predicted_image_embedding = self.generator(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=t.expand(latents.size(0) * 2) if do_classifier_free_guidance else t[None],
-                effnet=torch.cat([predicted_effnet_latents, torch.zeros_like(predicted_effnet_latents)]) if do_classifier_free_guidance else predicted_effnet_latents,
+                effnet=torch.cat([predicted_effnet_latents, torch.zeros_like(predicted_effnet_latents)])
+                if do_classifier_free_guidance
+                else predicted_effnet_latents,
                 clip=text_encoder_hidden_states,
             )
 
@@ -484,7 +501,9 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
             # print(t)
-            latents = self.diffuzz.undiffuse(latents, t[None], steps[i+1][None], predicted_image_embedding).to(dtype=t.dtype)
+            latents = self.diffuzz.undiffuse(latents, t[None], steps[i + 1][None], predicted_image_embedding).to(
+                dtype=t.dtype
+            )
 
             # timestep = (t * 999).cpu().int()
             # # print(timestep)
@@ -503,7 +522,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         predicted_image_embeddings: torch.Tensor,
         text_encoder_hidden_states: torch.Tensor,
         inference_steps: dict = None,
-        guidance_scale: float = 0.,
+        guidance_scale: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pt",  # pt only
@@ -516,7 +535,9 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         if inference_steps is None:
             inference_steps = default_inference_steps_b
 
-        predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device)
+        predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
+            predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
+        )
 
         dtype = text_encoder_hidden_states.dtype
         latent_height = int(predicted_image_embeddings.size(2) * (256 / 24))
@@ -537,14 +558,19 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         # print(generator_timesteps_tensor)
         t_start = 1.0
         for t_end, steps in inference_steps.items():
-            steps = torch.linspace(t_start, t_end, steps+1, dtype=dtype, device=device)
+            steps = torch.linspace(t_start, t_end, steps + 1, dtype=dtype, device=device)
             latents = self.inference_loop(
-                latents, steps, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
+                latents,
+                steps,
+                predicted_image_embeddings,
+                text_encoder_hidden_states,
+                do_classifier_free_guidance,
+                guidance_scale,
+                generator,
             )
             t_start = t_end
 
-        images = self.vqmodel.decode(latents).clamp(0, 1)
-        # images = self.vqgan.decode(latents).sample
+        images = self.vqgan.decode(latents).sample
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
