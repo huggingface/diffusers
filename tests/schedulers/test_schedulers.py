@@ -210,7 +210,7 @@ class SchedulerBaseTests(unittest.TestCase):
         )
         assert pipe.scheduler.__class__ == DDIMScheduler
 
-        # Default for PNDMScheduler
+        # Default for DDIMScheduler
         assert pipe.scheduler.config.timestep_spacing == "leading"
 
         # Switch to a different one, verify we use the default for that class
