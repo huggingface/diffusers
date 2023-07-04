@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -145,7 +144,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         if not isinstance(sigmas, np.ndarray):
             sigmas = np.array(sigmas, dtype=np.float64)
-        
+
         timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
 
         return timesteps

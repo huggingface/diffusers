@@ -18,7 +18,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         config.update(**kwargs)
         return config
-    
+
     # Override test_step_shape to add CMStochasticIterativeScheduler-specific logic regarding timesteps
     # Problem is that we don't know two timesteps that will always be in the timestep schedule from only the scheduler
     # config; scaled sigma_max is always in the timestep schedule, but sigma_min is in the sigma schedule while scaled
