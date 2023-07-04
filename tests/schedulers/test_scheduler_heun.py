@@ -38,7 +38,7 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(clip_sample_range=clip_sample_range, clip_sample=True)
 
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "v_prediction"]:
+        for prediction_type in ["epsilon", "v_prediction", "sample"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_full_loop_no_noise(self):
