@@ -20,11 +20,15 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, KandinskyV22ControlnetPipeline, KandinskyV22PriorPipeline, UNet2DConditionModel, VQModel
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device, load_image
+from diffusers import (
+    DDIMScheduler,
+    KandinskyV22ControlnetPipeline,
+    KandinskyV22PriorPipeline,
+    UNet2DConditionModel,
+    VQModel,
+)
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
-
-from transformers import pipeline
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -34,11 +38,7 @@ enable_full_determinism()
 
 class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22ControlnetPipeline
-    params = [
-        "image_embeds",
-        "negative_image_embeds",
-        "hint"
-    ]
+    params = ["image_embeds", "negative_image_embeds", "hint"]
     batch_params = ["image_embeds", "negative_image_embeds", "hint"]
     required_optional_params = [
         "generator",
@@ -105,10 +105,11 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
         return {
             "block_out_channels": [32, 32, 64, 64],
             "down_block_types": [
-                "DownEncoderBlock2D", 
                 "DownEncoderBlock2D",
                 "DownEncoderBlock2D",
-                "AttnDownEncoderBlock2D"],
+                "DownEncoderBlock2D",
+                "AttnDownEncoderBlock2D",
+            ],
             "in_channels": 3,
             "latent_channels": 4,
             "layers_per_block": 1,
@@ -116,12 +117,7 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
             "norm_type": "spatial",
             "num_vq_embeddings": 12,
             "out_channels": 3,
-            "up_block_types": [
-                "AttnUpDecoderBlock2D",
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D"
-            ],
+            "up_block_types": ["AttnUpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             "vq_embed_dim": 4,
         }
 
@@ -226,7 +222,6 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_kandinsky_controlnet(self):
-
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/kandinskyv22/kandinskyv22_controlnet_robotcat_fp16.npy"
@@ -250,7 +245,7 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        prompt = 'A robot, 4k photo'
+        prompt = "A robot, 4k photo"
 
         generator = torch.Generator(device="cuda").manual_seed(0)
         image_emb, zero_image_emb = pipe_prior(
@@ -264,7 +259,7 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         output = pipeline(
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
-            hint = hint,
+            hint=hint,
             generator=generator,
             num_inference_steps=100,
             output_type="np",

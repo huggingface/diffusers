@@ -278,14 +278,14 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             hint = torch.cat(hint, dim=0)
 
         batch_size = image_embeds.shape[0] * num_images_per_prompt
-        
+
         if do_classifier_free_guidance:
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             hint = hint.repeat_interleave(num_images_per_prompt, dim=0)
 
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
-        hint = torch.cat([hint, hint],dim=0).to(dtype=self.unet.dtype, device=device)
+        hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
 
         if not isinstance(image, list):
             image = [image]

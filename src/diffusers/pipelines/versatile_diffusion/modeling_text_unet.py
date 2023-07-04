@@ -18,6 +18,9 @@ from ...models.attention_processor import (
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import (
     GaussianFourierProjection,
+    ImageHintTimeEmbedding,
+    ImageProjection,
+    ImageTimeEmbedding,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,
