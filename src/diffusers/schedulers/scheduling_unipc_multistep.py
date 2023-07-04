@@ -177,7 +177,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if solver_type not in ["bh1", "bh2"]:
             if solver_type in ["midpoint", "heun", "logrho"]:
-                self.register_to_config(solver_type="bh1")
+                self.register_to_config(solver_type="bh2")
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
