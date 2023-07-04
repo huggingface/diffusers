@@ -151,7 +151,6 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_train_timesteps=1024,
             prediction_type="sample",
             use_karras_sigmas=True,
-            sigma_min=15.0,
             clip_sample=True,
             clip_sample_range=1.0,
         )
