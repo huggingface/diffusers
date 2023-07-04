@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import random
-from PIL import Image
+import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from torch import nn
 from transformers import (
     CLIPImageProcessor,
@@ -30,7 +30,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils import torch_device, floats_tensor
+from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -177,11 +177,11 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
-        
+
         inputs = {
             "prompt": "horse",
             "image": init_image,
@@ -217,9 +217,19 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         assert image.shape == (1, 32)
 
         expected_slice = np.array(
-            [0.1071284, 1.3330271, 0.61260223, -0.6691065, -0.3846852, -1.0303661, 0.22716111, 0.03348901, 0.30040675, -0.24805029]
+            [
+                0.1071284,
+                1.3330271,
+                0.61260223,
+                -0.6691065,
+                -0.3846852,
+                -1.0303661,
+                0.22716111,
+                0.03348901,
+                0.30040675,
+                -0.24805029,
+            ]
         )
-
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2

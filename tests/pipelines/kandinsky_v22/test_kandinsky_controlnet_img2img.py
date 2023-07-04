@@ -24,7 +24,6 @@ from PIL import Image
 from diffusers import (
     DDIMScheduler,
     KandinskyV22ControlnetImg2ImgPipeline,
-    KandinskyV22PriorPipeline,
     KandinskyV22PriorEmb2EmbPipeline,
     UNet2DConditionModel,
     VQModel,
@@ -41,12 +40,7 @@ enable_full_determinism()
 class KandinskyV22ControlnetImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22ControlnetImg2ImgPipeline
     params = ["image_embeds", "negative_image_embeds", "image", "hint"]
-    batch_params = [
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-        "hint"
-    ]
+    batch_params = ["image_embeds", "negative_image_embeds", "image", "hint"]
     required_optional_params = [
         "generator",
         "height",
@@ -215,7 +209,7 @@ class KandinskyV22ControlnetImg2ImgPipelineFastTests(PipelineTesterMixin, unitte
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.54985034, 0.55509365, 0.52561504, 0.5570494,  0.5593818,  0.5263979, 0.50285643, 0.5069846,  0.51196736]
+            [0.54985034, 0.55509365, 0.52561504, 0.5570494, 0.5593818, 0.5263979, 0.50285643, 0.5069846, 0.51196736]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -243,8 +237,8 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
         )
-        init_image = init_image.resize((512,512))
-        
+        init_image = init_image.resize((512, 512))
+
         hint = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/kandinskyv22/hint_image_cat.png"
@@ -253,7 +247,6 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         hint = hint.permute(2, 0, 1).unsqueeze(0)
 
         prompt = "A robot, 4k photo"
-        
 
         pipe_prior = KandinskyV22PriorEmb2EmbPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
@@ -268,14 +261,10 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        
-        clip_img_emb = pipe_prior.interpolate(
-            images_and_prompts=[init_image], 
-            weights=[1]).image_embeds
 
         image_emb, zero_image_emb = pipe_prior(
             prompt,
-            emb=clip_img_emb,
+            image=init_image,
             strength=0.85,
             generator=generator,
             negative_prompt="",

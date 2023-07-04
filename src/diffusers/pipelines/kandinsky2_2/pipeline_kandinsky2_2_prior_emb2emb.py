@@ -154,7 +154,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 ).image_embeds.unsqueeze(0)
 
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
-                image_emb = self._encode_image(cond, device=device, num_images_per_prompt=num_images_per_prompt).unsqueeze(0)
+                image_emb = self._encode_image(
+                    cond, device=device, num_images_per_prompt=num_images_per_prompt
+                ).unsqueeze(0)
 
             else:
                 raise ValueError(
@@ -166,22 +168,19 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         image_emb = torch.cat(image_embeddings).sum(dim=0)
 
         return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=torch.randn_like(image_emb))
-    
+
     def _encode_image(
-        self, 
+        self,
         image: Union[torch.Tensor, List[PIL.Image.Image]],
         device,
         num_images_per_prompt,
-        ):
-        
+    ):
         if not isinstance(image, torch.Tensor):
-            image = (
-                self.image_processor(image, return_tensors="pt")
-                .pixel_values
-                .to(dtype=self.image_encoder.dtype, device=device)
+            image = self.image_processor(image, return_tensors="pt").pixel_values.to(
+                dtype=self.image_encoder.dtype, device=device
             )
 
-        image_emb = self.image_encoder(image)["image_embeds"] # B, D
+        image_emb = self.image_encoder(image)["image_embeds"]  # B, D
         image_emb = image_emb.repeat_interleave(num_images_per_prompt, dim=0)
         image_emb.to(device=device)
 
@@ -440,25 +439,26 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        
+
         if not isinstance(image, List):
             image = [image]
-        
+
         if isinstance(image[0], torch.Tensor):
             image = torch.cat(image, dim=0)
-        
+
         if isinstance(image, torch.Tensor) and image.ndim == 2:
             # allow user to pass image_embeds directly
             image_embeds = image.repeat_interleave(num_images_per_prompt, dim=0)
         elif isinstance(image, torch.Tensor) and image.ndim != 4:
-            raise ValueError(f" if pass `image` as pytorch tensor, or a list of pytorch tensor, please make sure each tensor has shape [batch_size, channels, height, width], currently {image[0].unsqueeze(0).shape}")
+            raise ValueError(
+                f" if pass `image` as pytorch tensor, or a list of pytorch tensor, please make sure each tensor has shape [batch_size, channels, height, width], currently {image[0].unsqueeze(0).shape}"
+            )
         else:
-            image_embeds = self._encode_image(image,device,num_images_per_prompt)
-
+            image_embeds = self._encode_image(image, device, num_images_per_prompt)
 
         # prior
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        
+
         latents = image_embeds
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size)
