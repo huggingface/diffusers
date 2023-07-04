@@ -508,7 +508,7 @@ class ConfigMixin:
         hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict}
 
         # 8. Take note of the parameters that were not present in the loaded config
-        hidden_config_dict["_use_default_values"] = expected_keys - set(init_dict) 
+        hidden_config_dict["_use_default_values"] = expected_keys - set(init_dict)
 
         return init_dict, unused_kwargs, hidden_config_dict
 

@@ -164,7 +164,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            self._timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps).round().astype(np.int64)
+            self._timesteps = (
+                np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps).round().astype(np.int64)
+            )
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
@@ -175,7 +177,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             step_ratio = self.config.num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            self._timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio))[::-1].astype(np.int64)
+            self._timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio))[::-1].astype(
+                np.int64
+            )
             self._timesteps -= 1
         else:
             raise ValueError(

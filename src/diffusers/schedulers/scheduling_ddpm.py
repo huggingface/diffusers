@@ -241,9 +241,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
             # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
             if self.config.timestep_spacing == "linspace":
-                timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps).round()[
-                    ::-1
-                ].copy().astype(np.int64)
+                timesteps = (
+                    np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
+                    .round()[::-1]
+                    .copy()
+                    .astype(np.int64)
+                )
             elif self.config.timestep_spacing == "leading":
                 step_ratio = self.config.num_train_timesteps // self.num_inference_steps
                 # creates integer timesteps by multiplying by ratio
@@ -260,7 +263,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 raise ValueError(
                     f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
                 )
-
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
