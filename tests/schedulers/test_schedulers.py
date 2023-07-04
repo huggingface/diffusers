@@ -446,11 +446,6 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            if scheduler_class == CMStochasticIterativeScheduler:
-                # Get valid timestep based on sigma_min/sigma_max, which should always be in timestep schedule.
-                timestep_0 = scheduler.sigma_to_t(scheduler.config.sigma_min)
-                timestep_1 = scheduler.sigma_to_t(scheduler.config.sigma_max)
-
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)

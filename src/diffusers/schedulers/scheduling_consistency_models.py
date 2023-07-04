@@ -108,14 +108,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
-        if isinstance(timestep, float):
-            timestep = torch.tensor([timestep], dtype=schedule_timesteps.dtype, device=schedule_timesteps.device)
-
-        # indices = (schedule_timesteps == timestep).nonzero()
-        # For some reason using the == operator sometimes misses some timesteps that should be in the schedule
-        # (perhaps due to floating point error?)
-        indices = (torch.isclose(schedule_timesteps, timestep)).nonzero()
-        print(f"Indices: {indices}")
+        indices = (schedule_timesteps == timestep).nonzero()
         return indices.item()
 
     def scale_model_input(
@@ -150,10 +143,10 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `float` or `np.ndarray`: scaled input timestep or scaled input timestep array
         """
-        if isinstance(sigmas, np.ndarray):
-            timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
-        else:
-            timesteps = 1000 * 0.25 * math.log(sigmas + 1e-44)
+        if not isinstance(sigmas, np.ndarray):
+            sigmas = np.array(sigmas, dtype=np.float64)
+        
+        timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
 
         return timesteps
 
