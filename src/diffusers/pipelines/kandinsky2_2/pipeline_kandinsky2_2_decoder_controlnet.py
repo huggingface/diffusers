@@ -216,16 +216,20 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
 
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
-        batch_size = image_embeds.shape[0]
         if isinstance(negative_image_embeds, list):
             negative_image_embeds = torch.cat(negative_image_embeds, dim=0)
+        if isinstance(hint, list):
+            hint = torch.cat(hint, dim=0)
+
+        batch_size = image_embeds.shape[0] * num_images_per_prompt
 
         if do_classifier_free_guidance:
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            hint = hint.repeat_interleave(num_images_per_prompt, dim=0)
 
         image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
-
+        hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
@@ -242,6 +246,8 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
+        print(f" h, w: {height}, {width}")
+        print(f" latents : {latents.shape}")
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
