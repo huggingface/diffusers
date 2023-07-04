@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import math
-import warnings
-from typing import List, Optional, Tuple, Union
 from collections import defaultdict
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -153,14 +152,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # exp beta schedules might have more than twice the same consecutive timestep
         # to make sure we select the correct index, let's keep track of counts
-        self._index_counter[int(timestep)] += 1
-
-        if self._index_counter[int(timestep)] > 2:
-            pos = self._index_counter[int(timestep)] - 1
-        if self.state_in_first_order:
-            pos = -1
-        else:
-            pos = 0
+        pos = self._index_counter[timestep.cpu().item()]
 
         return indices[pos].item()
 
@@ -208,27 +200,14 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         log_sigmas = np.log(sigmas)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
-        if self.config.sigma_min is not None or self.config.sigma_max is not None:
-            if not self.config.use_karras_sigmas:
-                warnings.warn(
-                    "`sigma_min` and `sigma_max` will be ignored when `use_karras_sigmas` is set to `False` "
-                )
-                use_log_sigmas = True
-            else:
-                use_log_sigmas = False
-        else:
-            use_log_sigmas = True
-
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(
-                sigma_min=sigmas[-1].item() if self.config.sigma_min is None else self.config.sigma_min,
-                sigma_max=sigmas[0].item() if self.config.sigma_max is None else self.config.sigma_max,
+                sigma_min=sigmas[-1].item(),
+                sigma_max=sigmas[0].item(),
                 num_inference_steps=self.num_inference_steps,
             )
 
-            timesteps = np.array(
-                [self._sigma_to_t(sigma, log_sigmas=log_sigmas if use_log_sigmas else None) for sigma in sigmas]
-            )
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas=log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -250,48 +229,28 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.prev_derivative = None
         self.dt = None
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
-        # perform interpolation on sigmas if log_sigmas is not None
-        if log_sigmas is not None:
-            # get log sigma
-            log_sigma = np.log(sigma)
+        # get log sigma
+        log_sigma = np.log(sigma)
 
-            # get distribution
-            dists = log_sigma - log_sigmas[:, np.newaxis]
+        # get distribution
+        dists = log_sigma - log_sigmas[:, np.newaxis]
 
-            # get sigmas range
-            low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
-            high_idx = low_idx + 1
+        # get sigmas range
+        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
 
-            low = log_sigmas[low_idx]
-            high = log_sigmas[high_idx]
+        low = log_sigmas[low_idx]
+        high = log_sigmas[high_idx]
 
-            # interpolate sigmas
-            w = (low - log_sigma) / (low - high)
-            w = np.clip(w, 0, 1)
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = np.clip(w, 0, 1)
 
-            # transform interpolation to time range
-            t = (1 - w) * low_idx + w * high_idx
-            t = t.reshape(sigma.shape)
-
-        else:
-            # perform interpolation on alphas_cumprod
-
-            alpha_cumprod = 1.0 / (sigma**2 + 1)
-            if alpha_cumprod > self.alphas_cumprod[0]:
-                t = 0
-
-            elif alpha_cumprod <= self.alphas_cumprod[-1]:
-                t = len(self.alphas_cumprod) - 1
-
-            else:
-                t = np.interp(
-                    alpha_cumprod,
-                    self.alphas_cumprod.numpy()[::-1].copy(),
-                    np.arange(0, len(self.alphas_cumprod))[::-1],
-                )
-                t = int(t)
-
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.reshape(sigma.shape)
         return t
 
     def _convert_to_karras(self, sigma_min, sigma_max, num_inference_steps) -> torch.FloatTensor:
@@ -329,6 +288,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         step_index = self.index_for_timestep(timestep)
+
+        # advance index counter by 1
+        self._index_counter[timestep.cpu().item()] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]

@@ -194,10 +194,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
 
-        if self.state_in_first_order:
-            pos = -1
-        else:
-            pos = 0
+        # exp beta schedules might have more than twice the same consecutive timestep
+        # to make sure we select the correct index, let's keep track of counts
+        pos = self._index_counter[timestep.cpu().item()]
+
         return indices[pos].item()
 
     def scale_model_input(
