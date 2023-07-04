@@ -140,10 +140,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self.use_karras_sigmas = use_karras_sigmas
 
-        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
-        # we need an index counter
-        self._index_counter = defaultdict(int)
-
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -228,6 +224,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # empty dt and derivative
         self.prev_derivative = None
         self.dt = None
+
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
