@@ -47,13 +47,11 @@ state_dict = torch.load(os.path.join(model_path, "model_v2_stage_c.pt"), map_loc
 prior_model = Prior(c_in=16, c=1536, c_cond=1024, c_r=64, depth=32, nhead=24).to(device)
 prior_model.load_state_dict(state_dict["ema_state_dict"])
 
+# Trained betas for scheduler via cosine
+trained_betas = []
 
 # scheduler
-scheduler = DDPMScheduler(
-    beta_schedule="linear",
-    beta_start=0.0001,
-    beta_end=0.02,
-)
+scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2")
 
 # Prior pipeline
 prior_pipeline = WuerstchenPriorPipeline(
