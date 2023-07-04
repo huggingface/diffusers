@@ -174,3 +174,13 @@ tags
 .ruff_cache
 
 wandb
+
+#files and folders to ignore
+dummy
+controlnet-model/
+mlruns/
+dreambooth-model/
+instruct-pix2pix-model/
+text-inversion-model/
+text-to-image-model/
+unconditional-image-generation-model/
