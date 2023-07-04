@@ -23,12 +23,9 @@ from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
-
-
-enable_full_determinism()
 
 
 class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -154,8 +151,9 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_train_timesteps=1024,
             prediction_type="sample",
             use_karras_sigmas=True,
-            sigma_max=16.0,
             sigma_min=15.0,
+            clip_sample=True,
+            clip_sample_range=1.0,
         )
         components = {
             "prior": prior,
