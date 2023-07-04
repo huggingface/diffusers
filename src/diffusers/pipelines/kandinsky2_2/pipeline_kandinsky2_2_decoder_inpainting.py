@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from copy import deepcopy
 from typing import List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
+import torch.nn.functional as F
+from PIL import Image
 
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
@@ -25,13 +30,9 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
-import numpy as np
-import PIL 
-from PIL import Image
-import torch.nn.functional as F
-from copy import deepcopy
+
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -43,6 +44,7 @@ def get_new_h_w(h, w, scale_factor=8):
     if w % scale_factor**2 != 0:
         new_w += 1
     return new_h * scale_factor, new_w * scale_factor
+
 
 def prepare_mask(masks):
     prepared_masks = []
@@ -66,6 +68,7 @@ def prepare_mask(masks):
                     mask[:, i + 1, j + 1] = 0
         prepared_masks.append(mask)
     return torch.stack(prepared_masks, dim=0)
+
 
 def prepare_mask_and_masked_image(image, mask, height, width):
     r"""
@@ -182,6 +185,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
 
     return mask, image
 
+
 class KandinskyV22InpaintPipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
@@ -221,7 +225,6 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -368,9 +371,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=self.unet.dtype, device=device
-        )
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
@@ -399,7 +400,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             masked_image = masked_image.repeat(2, 1, 1, 1)
 
         num_channels_latents = self.vae.config.latent_channels
-        
+
         height, width = get_new_h_w(height, width, self.vae_scale_factor)
 
         # create initial latent
@@ -416,7 +417,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = torch.cat([latent_model_input, masked_image, mask_image], dim=1)
-            
+
             added_cond_kwargs = {"image_embeds": image_embeds}
             noise_pred = self.unet(
                 sample=latent_model_input,

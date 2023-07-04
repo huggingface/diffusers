@@ -147,7 +147,9 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_inputs(self, device, seed=0):
         image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed)).to(device)
-        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed + 1)).to(device)
+        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed + 1)).to(
+            device
+        )
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -188,7 +190,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.6237976, 1., 0.36441332, 1., 0.70639634, 0.29877186, 0.85652125, 0.5216843, 0.54454046]
+            [0.6237976, 1.0, 0.36441332, 1.0, 0.70639634, 0.29877186, 0.85652125, 0.5216843, 0.54454046]
         )
 
         assert (
@@ -220,7 +222,9 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
         )
         pipe_prior.to(torch_device)
 
-        pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+        pipeline = KandinskyV22Pipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
+        )
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 

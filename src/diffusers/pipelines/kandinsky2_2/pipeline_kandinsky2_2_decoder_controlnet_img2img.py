@@ -13,10 +13,11 @@
 # limitations under the License.
 
 from typing import List, Optional, Union
-import PIL
-from PIL import Image
+
 import numpy as np
+import PIL
 import torch
+from PIL import Image
 
 from ...models import UNet2DConditionModel, VQModel
 from ...pipelines import DiffusionPipeline
@@ -27,7 +28,6 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
 
 
@@ -89,8 +89,8 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps, num_inference_steps - t_start        
-        
+        return timesteps, num_inference_steps - t_start
+
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -121,22 +121,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
 
             init_latents = self.vae.config.scaling_factor * init_latents
 
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            deprecation_message = (
-                f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many initial images as text prompts to suppress this warning."
-            )
-            additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents], dim=0)
+        init_latents = torch.cat([init_latents], dim=0)
 
         shape = init_latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -149,7 +134,6 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
 
         return latents
-
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -296,9 +280,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=self.unet.dtype, device=device
-        )
+        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
 
         if not isinstance(image, list):
             image = [image]
@@ -307,8 +289,6 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support  PIL image and pytorch tensor"
             )
 
-        num_channels_latents = self.vae.config.latent_channels
-        
         image = torch.cat([prepare_image(i, width, height) for i in image], dim=0)
         image = image.to(dtype=image_embeds.dtype, device=device)
 
@@ -325,7 +305,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            added_cond_kwargs = {"image_embeds": image_embeds, 'hint': hint}
+            added_cond_kwargs = {"image_embeds": image_embeds, "hint": hint}
             noise_pred = self.unet(
                 sample=latent_model_input,
                 timestep=t,

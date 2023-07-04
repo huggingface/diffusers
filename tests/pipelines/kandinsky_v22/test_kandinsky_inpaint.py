@@ -21,7 +21,13 @@ import numpy as np
 import torch
 from PIL import Image
 
-from diffusers import DDIMScheduler, KandinskyV22InpaintPipeline, KandinskyV22PriorPipeline, UNet2DConditionModel, VQModel
+from diffusers import (
+    DDIMScheduler,
+    KandinskyV22InpaintPipeline,
+    KandinskyV22PriorPipeline,
+    UNet2DConditionModel,
+    VQModel,
+)
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
@@ -151,7 +157,9 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
     def get_dummy_inputs(self, device, seed=0):
         image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed)).to(device)
-        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed + 1)).to(device)
+        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed + 1)).to(
+            device
+        )
         # create init_image
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]

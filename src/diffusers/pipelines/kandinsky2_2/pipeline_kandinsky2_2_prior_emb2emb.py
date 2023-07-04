@@ -14,11 +14,12 @@ from ...utils import (
     is_accelerate_available,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
 @dataclass
 class KandinskyPriorPipelineOutput(BaseOutput):
     """
@@ -80,8 +81,8 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps, num_inference_steps - t_start    
-        
+        return timesteps, num_inference_steps - t_start
+
     @torch.no_grad()
     def interpolate(
         self,
@@ -172,11 +173,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
         image_emb = torch.cat(image_embeddings).sum(dim=0)
 
-
         return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=torch.randn_like(image_emb))
 
     def prepare_latents(self, emb, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
-
         emb = emb.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -200,10 +199,11 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         try:
             init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         except:
-            print('error')
+            print("error")
         latents = init_latents
 
         return latents
+
     def get_zero_embed(self, batch_size=1, device=None):
         device = device or self.device
         zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(
@@ -426,7 +426,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
         batch_size = len(prompt)
         batch_size = batch_size * num_images_per_prompt
-        
+
         do_classifier_free_guidance = guidance_scale > 1.0
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
@@ -434,12 +434,17 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
         # prior
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        embedding_dim = self.prior.config.embedding_dim
         latents = emb.repeat_interleave(num_images_per_prompt, dim=0)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         latents = self.prepare_latents(
-            latents, latent_timestep, batch_size // num_images_per_prompt, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            latents,
+            latent_timestep,
+            batch_size // num_images_per_prompt,
+            num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            generator,
         )
         print(latents.shape, prompt_embeds.shape)
         for i, t in enumerate(self.progress_bar(timesteps)):
