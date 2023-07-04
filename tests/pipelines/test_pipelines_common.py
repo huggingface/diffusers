@@ -703,7 +703,7 @@ class PipelineTesterMixin:
 
         pipe.enable_xformers_memory_efficient_attention()
         inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = pipe(**inputs)[0].cpu()
+        output_with_offload = pipe(**inputs)[0]
         output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
 
         if test_max_difference:
