@@ -24,6 +24,8 @@ import torch
 
 import diffusers
 from diffusers import (
+    DDIMScheduler,
+    DiffusionPipeline,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
@@ -201,6 +203,31 @@ class SchedulerBaseTests(unittest.TestCase):
         assert cap_logger_1.out == ""
         assert cap_logger_2.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
         assert cap_logger_3.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
+
+    def test_default_arguments_not_in_config(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+        )
+        assert pipe.scheduler.__class__ == DDIMScheduler
+
+        # Default for PNDMScheduler
+        assert pipe.scheduler.config.timestep_spacing == "leading"
+
+        # Switch to a different one, verify we use the default for that class
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "linspace"
+
+        # Override with kwargs
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+        # Verify overridden kwargs stick
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+        # And stick
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
 
 
 class SchedulerCommonTest(unittest.TestCase):
