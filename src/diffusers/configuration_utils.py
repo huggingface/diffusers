@@ -454,10 +454,6 @@ class ConfigMixin:
         else:
             compatible_classes = []
 
-        # Keys not present in the config - default values were used
-        # TODO: remove the ones passed in kwargs?
-        used_default_keys = set(expected_keys) - set(original_dict.keys())
-
         expected_keys_comp_cls = set()
         for c in compatible_classes:
             expected_keys_c = cls._get_init_keys(c)
@@ -512,7 +508,7 @@ class ConfigMixin:
         hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict}
 
         # 8. Take note of the parameters that were not present in the loaded config
-        hidden_config_dict["_use_default_values"] = used_default_keys
+        hidden_config_dict["_use_default_values"] = expected_keys - set(init_dict) 
 
         return init_dict, unused_kwargs, hidden_config_dict
 
