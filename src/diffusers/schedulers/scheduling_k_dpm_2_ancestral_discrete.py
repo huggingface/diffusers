@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -141,7 +142,8 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if len(self._index_counter) == 0:
             pos = 1 if len(indices) > 1 else 0
         else:
-            pos = self._index_counter[timestep.cpu().item()]
+            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+            pos = self._index_counter[timestep_int]
 
         return indices[pos].item()
 
@@ -231,6 +233,10 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.sample = None
 
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
+
     def sigma_to_t(self, sigma):
         # get log sigma
         log_sigma = sigma.log()
@@ -280,6 +286,10 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         step_index = self.index_for_timestep(timestep)
+
+        # advance index counter by 1
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+        self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]

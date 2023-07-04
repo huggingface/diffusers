@@ -151,7 +151,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if len(self._index_counter) == 0:
             pos = 1 if len(indices) > 1 else 0
         else:
-            pos = self._index_counter[timestep.cpu().item()]
+            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+            pos = self._index_counter[timestep_int]
 
         return indices[pos].item()
 
@@ -292,7 +293,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         step_index = self.index_for_timestep(timestep)
 
         # advance index counter by 1
-        self._index_counter[timestep.cpu().item()] += 1
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+        self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]

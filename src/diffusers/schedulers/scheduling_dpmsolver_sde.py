@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -201,7 +202,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         if len(self._index_counter) == 0:
             pos = 1 if len(indices) > 1 else 0
         else:
-            pos = self._index_counter[timestep.cpu().item()]
+            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+            pos = self._index_counter[timestep_int]
 
         return indices[pos].item()
 
@@ -277,6 +279,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         # empty first order variables
         self.sample = None
         self.mid_point_sigma = None
+
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
 
     def _second_order_timesteps(self, sigmas, log_sigmas):
         def sigma_fn(_t):
@@ -358,6 +364,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         step_index = self.index_for_timestep(timestep)
+
+        # advance index counter by 1
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+        self._index_counter[timestep_int] += 1
 
         # Create a noise sampler if it hasn't been created yet
         if self.noise_sampler is None:
