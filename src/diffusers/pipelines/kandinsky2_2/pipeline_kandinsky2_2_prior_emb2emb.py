@@ -154,15 +154,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 ).image_embeds.unsqueeze(0)
 
             elif isinstance(cond, (PIL.Image.Image, torch.Tensor)):
-                if isinstance(cond, PIL.Image.Image):
-                    cond = (
-                        self.image_processor(cond, return_tensors="pt")
-                        .pixel_values[0]
-                        .unsqueeze(0)
-                        .to(dtype=self.image_encoder.dtype, device=device)
-                    )
-
-                image_emb = self.image_encoder(cond)["image_embeds"].repeat(num_images_per_prompt, 1).unsqueeze(0)
+                image_emb = self._encode_image(cond, device=device, num_images_per_prompt=num_images_per_prompt).unsqueeze(0)
 
             else:
                 raise ValueError(
@@ -174,6 +166,26 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         image_emb = torch.cat(image_embeddings).sum(dim=0)
 
         return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=torch.randn_like(image_emb))
+    
+    def _encode_image(
+        self, 
+        image: Union[torch.Tensor, List[PIL.Image.Image]],
+        device,
+        num_images_per_prompt,
+        ):
+        
+        if not isinstance(image, torch.Tensor):
+            image = (
+                self.image_processor(image, return_tensors="pt")
+                .pixel_values
+                .to(dtype=self.image_encoder.dtype, device=device)
+            )
+
+        image_emb = self.image_encoder(image)["image_embeds"] # B, D
+        image_emb = image_emb.repeat_interleave(num_images_per_prompt, dim=0)
+        image_emb.to(device=device)
+
+        return image_emb
 
     def prepare_latents(self, emb, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         emb = emb.to(device=device, dtype=dtype)
@@ -196,10 +208,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        try:
-            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
-        except:
-            print("error")
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
 
         return latents
@@ -353,7 +362,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        emb: torch.FloatTensor,
+        image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]],
         strength: float = 0.3,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: int = 1,
@@ -431,10 +440,26 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
+        
+        if not isinstance(image, List):
+            image = [image]
+        
+        if isinstance(image[0], torch.Tensor):
+            image = torch.cat(image, dim=0)
+        
+        if isinstance(image, torch.Tensor) and image.ndim == 2:
+            # allow user to pass image_embeds directly
+            image_embeds = image.repeat_interleave(num_images_per_prompt, dim=0)
+        elif isinstance(image, torch.Tensor) and image.ndim != 4:
+            raise ValueError(f" if pass `image` as pytorch tensor, or a list of pytorch tensor, please make sure each tensor has shape [batch_size, channels, height, width], currently {image[0].unsqueeze(0).shape}")
+        else:
+            image_embeds = self._encode_image(image,device,num_images_per_prompt)
+
 
         # prior
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        latents = emb.repeat_interleave(num_images_per_prompt, dim=0)
+        
+        latents = image_embeds
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         latents = self.prepare_latents(
@@ -446,7 +471,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             device,
             generator,
         )
-        print(latents.shape, prompt_embeds.shape)
+
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
