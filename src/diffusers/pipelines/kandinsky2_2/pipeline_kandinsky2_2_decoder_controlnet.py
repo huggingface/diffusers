@@ -246,8 +246,6 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-        print(f" h, w: {height}, {width}")
-        print(f" latents : {latents.shape}")
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
