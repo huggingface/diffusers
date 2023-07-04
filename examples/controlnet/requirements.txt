@@ -7,3 +7,4 @@ datasets
 matplotlib
 opencv-python
 protobuf>=3.19.6,<4
+mlflow
