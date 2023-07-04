@@ -461,7 +461,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         
         latents = image_embeds
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        latent_timestep = timesteps[:1].repeat(batch_size)
         latents = self.prepare_latents(
             latents,
             latent_timestep,
