@@ -106,7 +106,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
-
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
