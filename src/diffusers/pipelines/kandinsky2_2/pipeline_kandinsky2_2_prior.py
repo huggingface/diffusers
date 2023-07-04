@@ -187,7 +187,10 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-        Examples: Returns:
+        
+        Examples: 
+        
+        Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
@@ -445,7 +448,10 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples: Returns:
+        
+        Examples: 
+        
+        Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 

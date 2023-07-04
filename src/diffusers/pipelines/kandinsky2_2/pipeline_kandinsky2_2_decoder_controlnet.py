@@ -206,7 +206,10 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples: Returns:
+        
+        Examples: 
+        
+        Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         device = self._execution_device

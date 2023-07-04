@@ -128,7 +128,10 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-        Examples: Returns:
+        
+        Examples: 
+        
+        Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
