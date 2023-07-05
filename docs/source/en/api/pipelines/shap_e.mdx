@@ -37,3 +37,42 @@ The original codebase can be found [here](https://github.com/openai/shap-e)
 	- __call__
 
 
+## Use Examples:
+
+In the following, we will walk you through some examples of how to use Shap-E pipelines to create 3D objects in gif format.
+
+#### Text-to-Image generation 
+
+We can use [`ShapEPipeline`] to create 3D object based on a text prompt. In this example, we will make a birthday cupcake. The workflow to use the Shap-E text-to-image pipeline is same as how you would use other text-to-image pipelines in diffusers.
+
+```python
+import torch
+
+from diffusers import DiffusionPipeline
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+repo = "openai/shap-e"
+pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
+pipe = pipe.to(device)
+
+guidance_scale = 15.0
+prompt = "A birthday cupcake"
+
+images = pipe(
+    prompt, 
+    guidance_scale=guidance_scale,
+    num_inference_steps= 64, 
+    size = 256,
+    ).images
+```
+
+The output of [`ShapEPipeline`] is a list of lists of images frames. Each list of frames can be used to create a 3D object. Let's use the `export_to_gif` utility function in diffusers to make a 3D cupcake!
+
+```python
+from diffusers.utils import export_to_gif
+
+gif_path=export_to_gif(images[0], "cupcake_3d.gif")
+```
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif)
