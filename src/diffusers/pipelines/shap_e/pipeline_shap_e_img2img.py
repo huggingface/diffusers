@@ -284,7 +284,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t, step_index=i)
+            scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             noise_pred = self.prior(
                 scaled_model_input,
@@ -297,9 +297,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 scaled_model_input.shape[2], dim=2
             )  # batch_size, num_embeddings, embedding_dim
 
-            # clip between -1 and 1
-            noise_pred = noise_pred.clamp(-1, 1)
-
             if do_classifier_free_guidance is not None:
                 noise_pred_uncond, noise_pred = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
@@ -308,7 +305,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 noise_pred,
                 timestep=t,
                 sample=latents,
-                step_index=i,
             ).prev_sample
 
         # YiYi testing only: I don't think we need to return latent for this pipeline

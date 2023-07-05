@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-import warnings
+from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -88,6 +88,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf).
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
@@ -107,8 +111,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
+        clip_sample: Optional[bool] = False,
+        clip_sample_range: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -140,17 +144,22 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
 
-        if self.state_in_first_order:
-            pos = -1
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(self._index_counter) == 0:
+            pos = 1 if len(indices) > 1 else 0
         else:
-            pos = 0
+            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+            pos = self._index_counter[timestep_int]
+
         return indices[pos].item()
 
     def scale_model_input(
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
-        step_index: Optional[int] = None,
     ) -> torch.FloatTensor:
         """
         Args:
@@ -160,8 +169,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        if step_index is None:
-            step_index = self.index_for_timestep(timestep)
+        step_index = self.index_for_timestep(timestep)
 
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -192,27 +200,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         log_sigmas = np.log(sigmas)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
-        if self.config.sigma_min is not None or self.config.sigma_max is not None:
-            if not self.config.use_karras_sigmas:
-                warnings.warn(
-                    "`sigma_min` and `sigma_max` will be ignored when `use_karras_sigmas` is set to `False` "
-                )
-                use_log_sigmas = True
-            else:
-                use_log_sigmas = False
-        else:
-            use_log_sigmas = True
-
         if self.config.use_karras_sigmas:
-            sigmas = self._convert_to_karras(
-                sigma_min=sigmas[-1].item() if self.config.sigma_min is None else self.config.sigma_min,
-                sigma_max=sigmas[0].item() if self.config.sigma_max is None else self.config.sigma_max,
-                num_inference_steps=self.num_inference_steps,
-            )
-
-            timesteps = np.array(
-                [self._sigma_to_t(sigma, log_sigmas=log_sigmas if use_log_sigmas else None) for sigma in sigmas]
-            )
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -234,52 +224,40 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.prev_derivative = None
         self.dt = None
 
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
-        # perform interpolation on sigmas if log_sigmas is not None
-        if log_sigmas is not None:
-            # get log sigma
-            log_sigma = np.log(sigma)
+        # get log sigma
+        log_sigma = np.log(sigma)
 
-            # get distribution
-            dists = log_sigma - log_sigmas[:, np.newaxis]
+        # get distribution
+        dists = log_sigma - log_sigmas[:, np.newaxis]
 
-            # get sigmas range
-            low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
-            high_idx = low_idx + 1
+        # get sigmas range
+        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
 
-            low = log_sigmas[low_idx]
-            high = log_sigmas[high_idx]
+        low = log_sigmas[low_idx]
+        high = log_sigmas[high_idx]
 
-            # interpolate sigmas
-            w = (low - log_sigma) / (low - high)
-            w = np.clip(w, 0, 1)
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = np.clip(w, 0, 1)
 
-            # transform interpolation to time range
-            t = (1 - w) * low_idx + w * high_idx
-            t = t.reshape(sigma.shape)
-
-        else:
-            # perform interpolation on alphas_cumprod
-
-            alpha_cumprod = 1.0 / (sigma**2 + 1)
-            if alpha_cumprod > self.alphas_cumprod[0]:
-                t = 0
-
-            elif alpha_cumprod <= self.alphas_cumprod[-1]:
-                t = len(self.alphas_cumprod) - 1
-
-            else:
-                t = np.interp(
-                    alpha_cumprod,
-                    self.alphas_cumprod.numpy()[::-1].copy(),
-                    np.arange(0, len(self.alphas_cumprod))[::-1],
-                )
-                t = int(t)
-
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.reshape(sigma.shape)
         return t
 
-    def _convert_to_karras(self, sigma_min, sigma_max, num_inference_steps) -> torch.FloatTensor:
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
+
+        sigma_min: float = in_sigmas[-1].item()
+        sigma_max: float = in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -297,7 +275,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: Union[float, torch.FloatTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
-        step_index: Optional[int] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -313,8 +290,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        if step_index is None:
-            step_index = self.index_for_timestep(timestep)
+        step_index = self.index_for_timestep(timestep)
+
+        # advance index counter by 1
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+        self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
@@ -344,6 +324,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
+
+        if self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
         if self.state_in_first_order:
