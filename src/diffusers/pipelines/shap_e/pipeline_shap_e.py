@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 Open AI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,13 +40,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ShapEPipeline
+        >>> from diffusers import DiffusionPipeline
         >>> from diffusers.utils import export_to_gif
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         >>> repo = "openai/shap-e"
-        >>> pipe = ShapEPipeline.from_pretrained(repo)
+        >>> pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
         >>> guidance_scale = 15.0
@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         ...     size=256,
         ... ).images
 
-        >>> gif_path = export_to_gif(images, "shark_3d.gif")
+        >>> gif_path = export_to_gif(images[0], "shark_3d.gif")
         ```
 """
 
@@ -79,7 +79,7 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset with Shap-E
+    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -94,6 +94,8 @@ class ShapEPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
+        renderer ([`ShapERenderer`]):
+            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D object with NeRF rendering method
     """
 
     def __init__(
@@ -113,7 +115,8 @@ class ShapEPipeline(DiffusionPipeline):
             scheduler=scheduler,
             renderer=renderer,
         )
-
+    
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -139,10 +142,39 @@ class ShapEPipeline(DiffusionPipeline):
 
         models = [
             self.text_encoder,
+            self.renderer
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.prior, self.renderer]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        if self.safety_checker is not None:
+            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
 
     @property
     def _execution_device(self):
@@ -195,8 +227,7 @@ class ShapEPipeline(DiffusionPipeline):
         prompt_embeds = text_encoder_output.text_embeds
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        # in Shap-E it normalize the prompt_embeds and then later rescale it, not sure why
-        # YiYi TO-DO: move rescale out of prior_transformer and apply it here
+        # in Shap-E it normalize the prompt_embeds and then later rescale it
         prompt_embeds = prompt_embeds / torch.linalg.norm(prompt_embeds, dim=-1, keepdim=True)
 
         if do_classifier_free_guidance:
@@ -250,6 +281,8 @@ class ShapEPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            size (`int`, *optional*, default to 64):
+                the width and height of each image frame of the generated 3d output 
             output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
                 (`torch.Tensor`).

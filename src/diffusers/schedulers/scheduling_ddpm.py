@@ -47,7 +47,7 @@ class DDPMSchedulerOutput(BaseOutput):
 def betas_for_alpha_bar(
     num_diffusion_timesteps,
     max_beta=0.999,
-    alpha_transform_type="cosine",  # cosine, exp
+    alpha_transform_type="cosine",
 ):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -61,6 +61,8 @@ def betas_for_alpha_bar(
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
+                     Choose from `cosine` or `exp`
 
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs

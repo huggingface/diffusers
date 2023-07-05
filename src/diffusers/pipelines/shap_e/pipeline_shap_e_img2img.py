@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 Open AI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,13 +40,13 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> from PIL import Image
         >>> import torch
-        >>> from diffusers import ShapEImg2ImgPipeline
+        >>> from diffusers import DiffusionPipeline
         >>> from diffusers.utils import export_to_gif
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         >>> repo = "openai/shap-e-img2img"
-        >>> pipe = ShapEImg2ImgPipeline.from_pretrained(repo)
+        >>> pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
         >>> guidance_scale = 3.0
@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
         ...     size=256,
         ... ).images
 
-        >>> gif_path = export_to_gif(images, "corgi_3d")
+        >>> gif_path = export_to_gif(images[0], "corgi_3d.gif")
         ```
 """
 
@@ -80,7 +80,7 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEImg2ImgPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset with Shap.E
+    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -95,6 +95,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
+        renderer ([`ShapERenderer`]):
+            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D object with NeRF rendering method
     """
 
     def __init__(
@@ -114,7 +116,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             renderer=renderer,
         )
-
+    
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
