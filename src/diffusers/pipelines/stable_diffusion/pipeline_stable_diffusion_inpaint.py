@@ -25,7 +25,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -178,7 +178,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
     </Tip>
 
     Args:
-        vae ([`AutoencoderKL`]):
+        vae ([`AutoencoderKL`, `AsymmetricAutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder. Stable Diffusion uses the text portion of
@@ -201,7 +201,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
     def __init__(
         self,
-        vae: AutoencoderKL,
+        vae: Union[AutoencoderKL, AsymmetricAutoencoderKL],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
@@ -557,14 +557,17 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         return extra_step_kwargs
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
+    def decode_latents(self, latents, image=None, mask=None):
         warnings.warn(
             "The decode_latents method is deprecated and will be removed in a future version. Please"
             " use VaeImageProcessor instead",
             FutureWarning,
         )
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
+        if isinstance(self.vae, AsymmetricAutoencoderKL):
+            image = self.vae.decode(latents, image, mask, return_dict=False)[0]
+        else:
+            image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -940,6 +943,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         mask, masked_image, init_image = prepare_mask_and_masked_image(
             image, mask_image, height, width, return_image=True
         )
+        mask_condition = mask.clone()
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -980,6 +984,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             do_classifier_free_guidance,
         )
         init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+        init_image_condition = init_image.clone()
         init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
@@ -1052,7 +1057,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                         callback(i, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            if isinstance(self.vae, AsymmetricAutoencoderKL):
+                mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
+                image = self.vae.decode(
+                    latents / self.vae.config.scaling_factor, init_image_condition, mask_condition, return_dict=False
+                )[0]
+            else:
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
