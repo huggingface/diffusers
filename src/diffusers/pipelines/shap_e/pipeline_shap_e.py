@@ -27,6 +27,7 @@ from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
     is_accelerate_available,
+    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -95,7 +96,8 @@ class ShapEPipeline(DiffusionPipeline):
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
         renderer ([`ShapERenderer`]):
-            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D object with NeRF rendering method
+            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D object
+            with NeRF rendering method
     """
 
     def __init__(
@@ -115,7 +117,7 @@ class ShapEPipeline(DiffusionPipeline):
             scheduler=scheduler,
             renderer=renderer,
         )
-    
+
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -140,10 +142,7 @@ class ShapEPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        models = [
-            self.text_encoder,
-            self.renderer
-        ]
+        models = [self.text_encoder, self.renderer]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
@@ -282,7 +281,7 @@ class ShapEPipeline(DiffusionPipeline):
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             size (`int`, *optional*, default to 64):
-                the width and height of each image frame of the generated 3d output 
+                the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
                 (`torch.Tensor`).
