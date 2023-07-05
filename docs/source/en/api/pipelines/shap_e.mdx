@@ -82,19 +82,40 @@ gif_path = export_to_gif(images[0], "cupcake_3d.gif")
 
 You can use [`ShapEImg2ImgPipeline`] along with other text-to-image pipelines in diffusers and turn your 2D generation into 3D. 
 
-In this example, We will first genrate a cheese burger with a simple prompt "A cheeseburger, white background" and then use the shap-e image-to-image pipeline to make a 3D cheeseburger :)
+In this example, We will first genrate a cheeseburger with a simple prompt "A cheeseburger, white background" 
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe_prior = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+t2i_pipe.to("cuda")
+
+prompt = "A cheeseburger, white background"
+
+image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
+image = t2i_pipe(
+    prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds,
+).images[0]
+
+image.save("burger.png")
+
+```
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_in.png)
+
+we will then use the Shap-E image-to-image pipeline to turn it into a 3D cheeseburger :)
 
 ```python
 from PIL import Image
-import torch
-from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_gif
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 repo = "openai/shap-e-img2img"
 pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
-pipe = pipe.to(device)
+pipe = pipe.to("cuda")
 
 guidance_scale = 3.0
 image = Image.open("burger.png").resize((256, 256))
@@ -108,5 +129,4 @@ images = pipe(
 
 gif_path = export_to_gif(images[0], "burger_3d.gif")
 ```
-![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_in.png)
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_out.gif)
