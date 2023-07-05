@@ -423,6 +423,10 @@ class ConfigMixin:
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
+        # Skip keys that were not present in the original config, so default __init__ values were used
+        used_defaults = config_dict.get("_use_default_values", [])
+        config_dict = {k: v for k, v in config_dict.items() if k not in used_defaults and k != "_use_default_values"}
+
         # 0. Copy origin config dict
         original_dict = dict(config_dict.items())
 
@@ -544,8 +548,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
-        # Don't save "_ignore_files"
+        # Don't save "_ignore_files" or "_use_default_values"
         config_dict.pop("_ignore_files", None)
+        config_dict.pop("_use_default_values", None)
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
@@ -599,6 +604,11 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
+
+        # Take note of the parameters that were not present in the loaded config
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
+
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
         init(self, *args, **init_kwargs)
@@ -642,6 +652,10 @@ def flax_register_to_config(cls):
         for i, arg in enumerate(args):
             name = fields[i].name
             new_kwargs[name] = arg
+
+        # Take note of the parameters that were not present in the loaded config
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
 
         getattr(self, "register_to_config")(**new_kwargs)
         original_init(self, *args, **kwargs)
