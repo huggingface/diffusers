@@ -1037,7 +1037,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         )
 
         # 4. Preprocess image
-        image = preprocess(image).repeat_interleave(num_maps_per_mask, dim=0)
+        image = self.image_processor.preprocess(image).repeat_interleave(num_maps_per_mask, dim=0)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1221,7 +1221,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 4. Prepare latent variables
         num_images_per_prompt = 1
@@ -1315,7 +1315,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         # 8. Post-processing
         image = None
         if decode_latents:
-            image = self.decode_latents(latents.flatten(0, 1).detach())
+            image = self.decode_latents(latents.flatten(0, 1))
 
         # 9. Convert to PIL.
         if decode_latents and output_type == "pil":
@@ -1492,7 +1492,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
 
         # 6. Preprocess image latents
-        image_latents = preprocess(image_latents)
+        image_latents = image_latents.detach()
         latent_shape = (self.vae.config.latent_channels, latent_height, latent_width)
         if image_latents.shape[-3:] != latent_shape:
             raise ValueError(
@@ -1513,7 +1513,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 8. Denoising loop
-        latents = image_latents[0].detach().clone()
+        latents = image_latents[0].clone()
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
