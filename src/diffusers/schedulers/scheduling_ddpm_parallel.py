@@ -139,7 +139,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
-        steps_offset: int = 1,
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
