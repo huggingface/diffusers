@@ -98,11 +98,12 @@ prompt = "A cheeseburger, white background"
 
 image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
 image = t2i_pipe(
-    prompt, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds,
+    prompt,
+    image_embeds=image_embeds,
+    negative_image_embeds=negative_image_embeds,
 ).images[0]
 
 image.save("burger.png")
-
 ```
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_in.png)
