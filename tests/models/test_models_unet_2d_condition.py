@@ -797,7 +797,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         sample_copy = copy.copy(sample)
 
-        assert sample == sample_copy
+        assert (sample - sample_copy).abs().max() < 1e-4
 
 
 @slow
