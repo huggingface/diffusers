@@ -200,6 +200,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.sample_size = sample_size
 
+        use_cross_attn = "CrossAttnDownBlock2D" in down_block_types or "CrossAttnUpBlock2D" in up_block_types or mid_block_type == "UNetMidBlock2DCrossAttn",
+        if use_cross_attn and num_attention_heads is not None:
+            raise ValueError(
+                "At the moment it is not possible to define the number of attention heads of cross attention blocks "
+                "via `num_attention_heads` due to a naming error as explained in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131"
+                "For now, please treat the config variable `attention_head_dim` as if it would define the number of attention heads. In a future version, this will be corrected."
+            )
+
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
         # The reason for this behavior is to correct for incorrectly named variables that were introduced

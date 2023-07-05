@@ -17,8 +17,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from packaging import version
 
 from ..utils import is_torch_version, logging
+from .. import __version__
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
@@ -52,6 +54,17 @@ def get_down_block(
     cross_attention_norm=None,
     attention_head_dim=None,
 ):
+    # TODO(Patrick) - move this into UNet2DConditionModel and UNet3DConditionModel, and FlaxUNet2DConditionModel
+    # Make sure that for cross attention models that we don't throw an error, but silently disregard `attention_head_dim`
+    if attention_head_dim is not None and num_attention_heads is not None:
+        expected_num_heads = out_channels // attention_head_dim
+
+        if expected_num_heads != attention_head_dim and version.parse(version.parse(__version__).base_version) >= version.parse("0.24.0"):
+            raise ValueError(
+                    f"Invalid combination of `attention_head_dim`:{attention_head_dim}, `num_attention_heads`: {num_attention_heads} and `out_channels`: {out_channels} has been passed."
+                    f"`attention_head_dim` * `num_attention_heads` has to be equal to `out_channels`, but is not the case {attention_head_dim * num_attention_heads} != {out_channels}."
+            )
+
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
         logger.warn(
