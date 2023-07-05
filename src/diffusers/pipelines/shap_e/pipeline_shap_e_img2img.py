@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         ...     image,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=64,
-        ...     size=256,
+        ...     frame_size=256,
         ... ).images
 
         >>> gif_path = export_to_gif(images[0], "corgi_3d.gif")
@@ -145,6 +145,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         models = [
             self.image_encoder,
+            self.prior
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
@@ -208,7 +209,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        size: int = 64,
+        frame_size: int = 64,
         output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
@@ -236,6 +237,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            frame_size (`int`, *optional*, default to 64):
+                the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
                 (`torch.Tensor`).
@@ -322,7 +325,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             image = self.renderer.decode(
                 latent[None, :],
                 device,
-                size=size,
+                size=frame_size,
                 ray_batch_size=4096,
                 n_coarse_samples=64,
                 n_fine_samples=128,

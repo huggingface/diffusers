@@ -37,7 +37,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "generator",
         "latents",
         "guidance_scale",
-        "size",
+        "frame_size",
         "output_type",
         "return_dict",
     ]
@@ -161,7 +161,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "horse",
             "generator": generator,
             "num_inference_steps": 1,
-            "size": 32,
+            "frame_size": 32,
             "output_type": "np",
         }
         return inputs
@@ -253,7 +253,7 @@ class ShapEPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
 
         images = pipe(
-            "a shark", generator=generator, guidance_scale=15.0, num_inference_steps=64, size=64, output_type="np"
+            "a shark", generator=generator, guidance_scale=15.0, num_inference_steps=64, frame_size=64, output_type="np"
         ).images[0]
 
         assert images.shape == (20, 64, 64, 3)

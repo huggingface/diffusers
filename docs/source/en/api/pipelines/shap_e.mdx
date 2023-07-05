@@ -63,7 +63,7 @@ images = pipe(
     prompt,
     guidance_scale=guidance_scale,
     num_inference_steps=64,
-    size=256,
+    frame_size=256,
 ).images
 ```
 
@@ -103,7 +103,7 @@ images = pipe(
     image,
     guidance_scale=guidance_scale,
     num_inference_steps=64,
-    size=256,
+    frame_size=256,
 ).images
 
 gif_path = export_to_gif(images[0], "burger_3d.gif")

@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         ...     prompt,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=64,
-        ...     size=256,
+        ...     frame_size=256,
         ... ).images
 
         >>> gif_path = export_to_gif(images[0], "shark_3d.gif")
@@ -143,7 +143,7 @@ class ShapEPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        models = [self.text_encoder, self.renderer]
+        models = [self.text_encoder, self.prior]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
@@ -253,7 +253,7 @@ class ShapEPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        size: int = 64,
+        frame_size: int = 64,
         output_type: Optional[str] = "pil",  # pil, np, latent
         return_dict: bool = True,
     ):
@@ -281,7 +281,7 @@ class ShapEPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            size (`int`, *optional*, default to 64):
+            frame_size (`int`, *optional*, default to 64):
                 the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
@@ -364,7 +364,7 @@ class ShapEPipeline(DiffusionPipeline):
             image = self.renderer.decode(
                 latent[None, :],
                 device,
-                size=size,
+                size=frame_size,
                 ray_batch_size=4096,
                 n_coarse_samples=64,
                 n_fine_samples=128,
