@@ -34,7 +34,7 @@ fi
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_instruct_pix2pix.py \
+conda run -n ${env_name} python3 train_instruct_pix2pix_mlflow.py \
     --pretrained_model_name_or_path ${model_name} \
     --dataset_name=$DATASET_ID \
     --resolution=256 --random_flip \

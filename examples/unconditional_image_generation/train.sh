@@ -30,7 +30,7 @@ fi
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_unconditional.py \
+conda run -n ${env_name} python3 train_unconditional_mlflow.py \
   --model_config_name_or_path ${model_name} \
   --dataset_name="huggan/pokemon" \
   --resolution=64 --center_crop --random_flip \

@@ -41,7 +41,7 @@ fi
 echo "# ========================================================= #"
 echo "training ${model_name}.."
 cd ..
-conda run -n ${env_name} python3 ../examples/textual_inversion/textual_inversion.py \
+conda run -n ${env_name} python3 ../examples/textual_inversion/textual_inversion_mlflow.py \
   --pretrained_model_name_or_path ${model_name} \
   --train_data_dir $data_dir \
   --learnable_property="object" \

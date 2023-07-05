@@ -32,7 +32,7 @@ fi
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_controlnet.py \
+conda run -n ${env_name} python3 train_controlnet_mlflow.py \
     --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5  \
     --controlnet_model_name_or_path ${model_name}  \
     --dataset_name fusing/fill50k \

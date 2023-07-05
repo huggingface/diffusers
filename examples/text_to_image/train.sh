@@ -30,7 +30,7 @@ fi
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_text_to_image.py \
+conda run -n ${env_name} python3 train_text_to_image_mlflow.py \
   --pretrained_model_name_or_path ${model_name} \
   --dataset_name lambdalabs/pokemon-blip-captions \
   --use_ema \

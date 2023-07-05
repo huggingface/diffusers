@@ -40,7 +40,7 @@ fi
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_dreambooth.py \
+conda run -n ${env_name} python3 train_dreambooth_mlflow.py \
   --pretrained_model_name_or_path ${model_name} \
   --instance_data_dir $data_dir \
   --instance_prompt="a photo of sks dog" \
