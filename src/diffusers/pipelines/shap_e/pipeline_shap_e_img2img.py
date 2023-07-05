@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        >>> repo = "YiYiXu/shap-e-img2img"
+        >>> repo = "openai/shap-e-img2img"
         >>> pipe = ShapEImg2ImgPipeline.from_pretrained(repo)
         >>> pipe = pipe.to(device)
 
