@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        >>> repo = "YiYiXu/shap-e"
+        >>> repo = "openai/shap-e"
         >>> pipe = ShapEPipeline.from_pretrained(repo)
         >>> pipe = pipe.to(device)
 
@@ -79,7 +79,7 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset with Shap.E
+    Pipeline for generating latent representation of a 3D asset with Shap-E
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -234,7 +234,7 @@ class ShapEPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
