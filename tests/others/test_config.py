@@ -153,6 +153,7 @@ class ConfigTester(unittest.TestCase):
 
         assert config.pop("c") == (2, 5)  # instantiated as tuple
         assert new_config.pop("c") == [2, 5]  # saved & loaded as list because of json
+        config.pop("_use_default_values")
         assert config == new_config
 
     def test_load_ddim_from_pndm(self):
@@ -259,6 +260,12 @@ class ConfigTester(unittest.TestCase):
         #    e=[1, 3],
 
         config = SampleObject()
+
+        config_dict = {k: v for k, v in config.config.items() if not k.startswith("_")}
+
+        # make sure that default config has all keys in `_use_default_values`
+        assert set(config_dict.keys()) == config.config._use_default_values
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             config.save_config(tmpdirname)
 

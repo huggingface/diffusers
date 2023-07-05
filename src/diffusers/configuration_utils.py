@@ -507,10 +507,6 @@ class ConfigMixin:
         # 7. Define "hidden" config parameters that were saved for compatible classes
         hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict}
 
-        # 8. Take note of the parameters that were not present in the loaded config
-        if len(expected_keys - set(init_dict)) > 0:
-            hidden_config_dict["_use_default_values"] = expected_keys - set(init_dict)
-
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
@@ -608,6 +604,8 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
+
+        # Take note of the parameters that were not present in the loaded config
         if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
             new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
 
@@ -655,6 +653,7 @@ def flax_register_to_config(cls):
             name = fields[i].name
             new_kwargs[name] = arg
 
+        # Take note of the parameters that were not present in the loaded config
         if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
             new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
 
