@@ -260,10 +260,22 @@ class ConfigTester(unittest.TestCase):
 
         config = SampleObject()
         with tempfile.TemporaryDirectory() as tmpdirname:
-            config.save(tmpdirname)
+            config.save_config(tmpdirname)
 
             # now loading it with SampleObject2 should put f into `_use_default_values`
             config = SampleObject2.from_config(tmpdirname)
 
             assert "f" in config._use_default_values
-            assert config.f == [1, 4]
+            assert config.f == [1, 3]
+
+        # now loading the config, should **NOT** use [1, 3] for `f`, but the default [1, 4] value
+        # **BECAUSE** it is part of `config._use_default_values`
+        new_config = SampleObject4.from_config(config.config)
+        assert new_config.f == [5, 4]
+
+        config.config._use_default_values.pop()
+        new_config_2 = SampleObject4.from_config(config.config)
+        assert new_config_2.f == [1, 3]
+
+        # Nevertheless "e" should still be correctly loaded to [1, 3] from SampleObject2 instead of defaulting to [1, 5]
+        assert new_config_2.e == [1, 3]

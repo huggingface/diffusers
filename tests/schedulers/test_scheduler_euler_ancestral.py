@@ -47,7 +47,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         generator = torch.manual_seed(0)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma.cpu()
         sample = sample.to(torch_device)
 
         for i, t in enumerate(scheduler.timesteps):
@@ -100,7 +100,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         generator = torch.manual_seed(0)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma.cpu()
         sample = sample.to(torch_device)
 
         for t in scheduler.timesteps:
