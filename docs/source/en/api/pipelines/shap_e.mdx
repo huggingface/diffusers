@@ -76,3 +76,37 @@ gif_path = export_to_gif(images[0], "cupcake_3d.gif")
 ```
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif)
+
+
+### Image-to-Image generation
+
+You can use [`ShapEImg2ImgPipeline`] along with other text-to-image pipelines in diffusers and turn your 2D generation into 3D. 
+
+In this example, We will first genrate a cheese burger with a simple prompt "A cheeseburger, white background" and then use the shap-e image-to-image pipeline to make a 3D cheeseburger :)
+
+```python
+from PIL import Image
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_gif
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+repo = "openai/shap-e-img2img"
+pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
+pipe = pipe.to(device)
+
+guidance_scale = 3.0
+image = Image.open("burger.png").resize((256, 256))
+
+images = pipe(
+    image,
+    guidance_scale=guidance_scale,
+    num_inference_steps=64,
+    size=256,
+).images
+
+gif_path = export_to_gif(images[0], "burger_3d.gif")
+```
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_in.png)
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_out.gif)
