@@ -100,7 +100,7 @@ class KandinskyPriorPipelineOutput(BaseOutput):
 
 
 class KandinskyV22PriorPipeline(DiffusionPipeline):
-    """    
+    """
     Pipeline for generating image prior for Kandinsky
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
@@ -159,6 +159,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
     ):
         """
         Function invoked when using the prior pipeline for interpolation.
+
         Args:
             images_and_prompts (`List[Union[str, PIL.Image.Image, torch.FloatTensor]]`):
                 list of prompts and images to guide the image generation.

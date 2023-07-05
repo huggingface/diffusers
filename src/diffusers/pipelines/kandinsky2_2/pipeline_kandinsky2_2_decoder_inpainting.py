@@ -30,6 +30,7 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 
 
@@ -238,7 +239,6 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
@@ -360,8 +360,8 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
         Args:
+        Function invoked when calling the pipeline for generation.
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`PIL.Image.Image`):
@@ -401,9 +401,9 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        
-        Examples: 
-        
+
+        Examples:
+
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """

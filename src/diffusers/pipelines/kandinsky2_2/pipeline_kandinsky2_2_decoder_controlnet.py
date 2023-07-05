@@ -25,6 +25,7 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 
 
@@ -40,49 +41,55 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import pipeline
         >>> from diffusers.utils import load_image
 
+
         >>> def make_hint(image, depth_estimator):
-        ...   image = depth_estimator(image)['depth']
-        ...   image = np.array(image)
-        ...   image = image[:, :, None]
-        ...   image = np.concatenate([image, image, image], axis=2)
-        ...   detected_map = torch.from_numpy(image).float() / 255.0
-        ...   hint = detected_map.permute(2, 0, 1)
-        ...   return hint
+        ...     image = depth_estimator(image)["depth"]
+        ...     image = np.array(image)
+        ...     image = image[:, :, None]
+        ...     image = np.concatenate([image, image, image], axis=2)
+        ...     detected_map = torch.from_numpy(image).float() / 255.0
+        ...     hint = detected_map.permute(2, 0, 1)
+        ...     return hint
 
-        >>> depth_estimator = pipeline('depth-estimation')
 
-        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained('kandinsky-community/kandinsky-2-2-prior',torch_dtype=torch.float16)
+        >>> depth_estimator = pipeline("depth-estimation")
+
+        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
+        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ... )
         >>> pipe_prior = pipe_prior.to("cuda")
 
-        >>> pipe = KandinskyV22ControlnetPipeline.from_pretrained('kandinsky-community/kandinsky-2-2-controlnet-depth', torch_dtype=torch.float16)
+        >>> pipe = KandinskyV22ControlnetPipeline.from_pretrained(
+        ...     "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
 
         >>> img = load_image(
-        ...              "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...              "/kandinsky/cat.png"
-        ...         ).resize((768, 768))
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/cat.png"
+        ... ).resize((768, 768))
 
-        >>> hint = make_hint(img, depth_estimator).unsqueeze(0).half().to('cuda')
+        >>> hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
 
-        >>> prompt = 'A robot, 4k photo'
-        >>> negative_prior_prompt ='lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature'
+        >>> prompt = "A robot, 4k photo"
+        >>> negative_prior_prompt = "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
 
-        >>> generator = torch.Generator(device='cuda').manual_seed(43)
+        >>> generator = torch.Generator(device="cuda").manual_seed(43)
 
         >>> image_emb, zero_image_emb = pipe_prior(
-        ...     prompt=prompt, 
-        ...     negative_prompt=negative_prior_prompt, 
-        ...     generator=generator).to_tuple()
+        ...     prompt=prompt, negative_prompt=negative_prior_prompt, generator=generator
+        ... ).to_tuple()
 
         >>> images = pipe(
-        ...     image_embeds=image_emb, 
-        ...     negative_image_embeds=zero_image_emb, 
-        ...     hint=hint, 
-        ...     num_inference_steps=50, 
+        ...     image_embeds=image_emb,
+        ...     negative_image_embeds=zero_image_emb,
+        ...     hint=hint,
+        ...     num_inference_steps=50,
         ...     generator=generator,
-        ...     height=768, 
-        ...     width=768).images
+        ...     height=768,
+        ...     width=768,
+        ... ).images
 
         >>> images[0].save("robot_cat.png")
         ```

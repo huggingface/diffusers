@@ -28,6 +28,7 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 
 
@@ -263,7 +264,6 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
