@@ -456,7 +456,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.save_pretrained(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
-            assert scheduler.config == new_scheduler.config
+            # `_use_default_values` should not exist for just saved & loaded scheduler
+            scheduler_config = dict(scheduler.config)
+            del scheduler_config["_use_default_values"]
+
+            assert scheduler_config == new_scheduler.config
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)

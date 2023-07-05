@@ -608,6 +608,9 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
+
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
         init(self, *args, **init_kwargs)
@@ -651,6 +654,9 @@ def flax_register_to_config(cls):
         for i, arg in enumerate(args):
             name = fields[i].name
             new_kwargs[name] = arg
+
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
 
         getattr(self, "register_to_config")(**new_kwargs)
         original_init(self, *args, **kwargs)
