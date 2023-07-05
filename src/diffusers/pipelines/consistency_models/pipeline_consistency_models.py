@@ -5,7 +5,6 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import CMStochasticIterativeScheduler
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -169,12 +168,14 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     # Follows diffusers.VaeImageProcessor.postprocess
     def postprocess_image(self, sample: torch.FloatTensor, output_type: str = "pil"):
         if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']")
+            raise ValueError(
+                f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
+            )
 
         # Equivalent to diffusers.VaeImageProcessor.denormalize
         sample = (sample / 2 + 0.5).clamp(0, 1)
         if output_type == "pt":
-            return sample 
+            return sample
 
         # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
