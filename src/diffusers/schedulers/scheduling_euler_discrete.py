@@ -146,9 +146,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
-        # standard deviation of the initial noise distribution
-        self.init_noise_sigma = self.sigmas.max()
-
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()

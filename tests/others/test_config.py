@@ -75,6 +75,22 @@ class SampleObject3(ConfigMixin):
         pass
 
 
+class SampleObject4(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 5],
+        f=[5, 4],
+    ):
+        pass
+
+
 class ConfigTester(unittest.TestCase):
     def test_load_not_from_mixin(self):
         with self.assertRaises(ValueError):
@@ -233,3 +249,21 @@ class ConfigTester(unittest.TestCase):
         assert dpm.__class__ == DPMSolverMultistepScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
+
+    def test_use_default_values(self):
+        # let's first save a config that should be in the form
+        #    a=2,
+        #    b=5,
+        #    c=(2, 5),
+        #    d="for diffusion",
+        #    e=[1, 3],
+
+        config = SampleObject()
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            config.save(tmpdirname)
+
+            # now loading it with SampleObject2 should put f into `_use_default_values`
+            config = SampleObject2.from_config(tmpdirname)
+
+            assert "f" in config._use_default_values
+            assert config.f == [1, 4]
