@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
@@ -28,17 +29,25 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+def check_same_shape(tensor_list):
+    shapes = [tensor.shape for tensor in tensor_list]
+    return all(shape == shapes[0] for shape in shapes[1:])
+
+
+class StableDiffusionLatentUpscalePipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionLatentUpscalePipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
         "height",
@@ -184,6 +193,42 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineLatentTesterMixin, P
 
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=3e-3)
+
+    def test_karras_schedulers_shape(self):
+        skip_schedulers = [
+            "DDIMScheduler",
+            "DDPMScheduler",
+            "PNDMScheduler",
+            "HeunDiscreteScheduler",
+            "EulerAncestralDiscreteScheduler",
+            "KDPM2DiscreteScheduler",
+            "KDPM2AncestralDiscreteScheduler",
+            "DPMSolverSDEScheduler",
+        ]
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        # make sure that PNDM does not need warm-up
+        pipe.scheduler.register_to_config(skip_prk_steps=True)
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 2
+
+        outputs = []
+        for scheduler_enum in KarrasDiffusionSchedulers:
+            if scheduler_enum.name in skip_schedulers:
+                # no sigma schedulers are not supported
+                # no schedulers
+                continue
+
+            scheduler_cls = getattr(diffusers, scheduler_enum.name)
+            pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
+            output = pipe(**inputs)[0]
+            outputs.append(output)
+
+        assert check_same_shape(outputs)
 
 
 @require_torch_gpu
