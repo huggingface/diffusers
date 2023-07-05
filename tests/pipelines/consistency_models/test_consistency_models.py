@@ -194,7 +194,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         return latents
 
     def test_consistency_model_cd_multistep(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -215,7 +215,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     def test_consistency_model_cd_onestep(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -239,7 +239,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
     @require_torch_2
     def test_consistency_model_cd_multistep_flash_attn(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -263,7 +263,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
     @require_torch_2
     def test_consistency_model_cd_onestep_flash_attn(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
