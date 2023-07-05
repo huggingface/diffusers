@@ -341,7 +341,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            upsample_type=upsample_type
+            upsample_type=upsample_type,
         )
     elif up_block_type == "SkipUpBlock2D":
         return SkipUpBlock2D(
@@ -758,7 +758,7 @@ class AttnDownBlock2D(nn.Module):
         attention_head_dim=1,
         output_scale_factor=1.0,
         downsample_padding=1,
-        downsample_type="conv"
+        downsample_type="conv",
     ):
         super().__init__()
         resnets = []
@@ -840,7 +840,7 @@ class AttnDownBlock2D(nn.Module):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb)
             hidden_states = attn(hidden_states)
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -852,6 +852,7 @@ class AttnDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         return hidden_states, output_states
+
 
 class CrossAttnDownBlock2D(nn.Module):
     def __init__(
@@ -1892,7 +1893,7 @@ class AttnUpBlock2D(nn.Module):
         resnet_pre_norm: bool = True,
         attention_head_dim=1,
         output_scale_factor=1.0,
-        upsample_type="conv"
+        upsample_type="conv",
     ):
         super().__init__()
         resnets = []
@@ -1983,6 +1984,7 @@ class AttnUpBlock2D(nn.Module):
                     hidden_states = upsampler(hidden_states)
 
         return hidden_states
+
 
 class CrossAttnUpBlock2D(nn.Module):
     def __init__(

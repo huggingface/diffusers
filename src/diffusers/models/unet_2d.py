@@ -65,8 +65,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
         downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
-        downsample_type (`str`, *optional*, defaults to `conv`): The downsample type for downsampling layers. Choose between "conv" and "resnet"
-        upsample_type (`str`, *optional*, defaults to `conv`): The upsample type for upsampling layers. Choose between "conv" and "resnet"
+        downsample_type (`str`, *optional*, defaults to `conv`):
+            The downsample type for downsampling layers. Choose between "conv" and "resnet"
+        upsample_type (`str`, *optional*, defaults to `conv`):
+            The upsample type for upsampling layers. Choose between "conv" and "resnet"
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.

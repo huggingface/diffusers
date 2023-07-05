@@ -10,11 +10,43 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+
+        >>> from diffusers import ConsistencyModelPipeline
+
+        >>> device = "cuda"
+        >>> # Load the cd_imagenet64_l2 checkpoint.
+        >>> model_id_or_path = "openai/diffusers-cd_imagenet64_l2"
+        >>> pipe = ConsistencyModelPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe.to(device)
+
+        >>> # Onestep Sampling
+        >>> image = pipe(num_inference_steps=1).images[0]
+        >>> image.save("cd_imagenet64_l2_onestep_sample.png")
+
+        >>> # Onestep sampling, class-conditional image generation
+        >>> # ImageNet-64 class label 145 corresponds to king penguins
+        >>> image = pipe(num_inference_steps=1, class_labels=145).images[0]
+        >>> image.save("cd_imagenet64_l2_onestep_sample_penguin.png")
+
+        >>> # Multistep sampling, class-conditional image generation
+        >>> # Timesteps can be explicitly specified; the particular timesteps below are from the original Github repo:
+        >>> # https://github.com/openai/consistency_models/blob/main/scripts/launch.sh#L77
+        >>> image = pipe(num_inference_steps=None, timesteps=[22, 0], class_labels=145).images[0]
+        >>> image.save("cd_imagenet64_l2_multistep_sample_penguin.png")
+        ```
+"""
 
 
 class ConsistencyModelPipeline(DiffusionPipeline):
@@ -202,6 +234,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         batch_size: int = 1,
@@ -246,6 +279,9 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+
+        Examples:
+
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
@@ -287,7 +323,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
-                model_output = self.unet(scaled_sample, t, class_labels=class_labels)[0]
+                model_output = self.unet(scaled_sample, t, class_labels=class_labels, return_dict=False)[0]
 
                 sample = self.scheduler.step(model_output, t, sample, generator=generator)[0]
 
