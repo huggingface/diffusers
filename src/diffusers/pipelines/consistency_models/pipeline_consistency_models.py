@@ -284,15 +284,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # 5. Denoising loop
         # Multistep sampling: implements Algorithm 1 in the paper
-        use_noise = False if num_inference_steps == 1 else True  # Onestep sampling does not use random noise
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
-                model_output = self.unet(scaled_sample, t, class_labels=class_labels).sample
+                model_output = self.unet(scaled_sample, t, class_labels=class_labels)[0]
 
-                sample = self.scheduler.step(
-                    model_output, t, sample, use_noise=use_noise, generator=generator
-                ).prev_sample
+                sample = self.scheduler.step(model_output, t, sample, generator=generator)[0]
 
                 # call the callback, if provided
                 progress_bar.update()

@@ -266,7 +266,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        use_noise: bool = True,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
@@ -279,8 +278,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            use_noise (`bool`, *optional*, defaults to `True`):
-                Whether to inject noise during the step. Noise is not used for onestep sampling.
             generator (`torch.Generator`, *optional*): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerDiscreteSchedulerOutput class
         Returns:
@@ -333,7 +330,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             denoised = denoised.clamp(-1, 1)
 
         # 2. Sample z ~ N(0, s_noise^2 * I)
-        if use_noise:
+        # Noise is not used for onestep sampling.
+        if len(self.timesteps) > 1:
             noise = randn_tensor(
                 model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
             )

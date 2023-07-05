@@ -73,7 +73,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
             residual = model(scaled_sample, t)
 
             # 3. predict previous sample x_t-1
-            pred_prev_sample = scheduler.step(residual, t, sample, use_noise=False, generator=generator).prev_sample
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
 
             sample = pred_prev_sample
 
@@ -105,7 +105,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
             residual = model(scaled_sample, t)
 
             # 3. predict previous sample x_t-1
-            pred_prev_sample = scheduler.step(residual, t, sample, use_noise=True, generator=generator).prev_sample
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
 
             sample = pred_prev_sample
 
