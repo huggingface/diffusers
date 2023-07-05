@@ -253,7 +253,12 @@ class ShapEPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
 
         images = pipe(
-            "a shark", generator=generator, guidance_scale=15.0, num_inference_steps=64, frame_size=64, output_type="np"
+            "a shark",
+            generator=generator,
+            guidance_scale=15.0,
+            num_inference_steps=64,
+            frame_size=64,
+            output_type="np",
         ).images[0]
 
         assert images.shape == (20, 64, 64, 3)

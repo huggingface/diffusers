@@ -269,7 +269,12 @@ class ShapEImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
 
         images = pipe(
-            input_image, generator=generator, guidance_scale=3.0, num_inference_steps=64, frame_size=64, output_type="np"
+            input_image,
+            generator=generator,
+            guidance_scale=3.0,
+            num_inference_steps=64,
+            frame_size=64,
+            output_type="np",
         ).images[0]
 
         assert images.shape == (20, 64, 64, 3)

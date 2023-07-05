@@ -143,10 +143,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        models = [
-            self.image_encoder,
-            self.prior
-        ]
+        models = [self.image_encoder, self.prior]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
