@@ -783,6 +783,22 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
 
+    def test_pickle(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+        sample_copy = copy.copy(sample)
+
+        assert sample == sample_copy
+
 
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
@@ -1089,18 +1105,3 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
-
-    @require_torch_gpu
-    def test_pickle(self, seed, timestep):
-        model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
-        latents = self.get_latents(seed)
-        encoder_hidden_states = self.get_encoder_hidden_states(seed)
-
-        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
-
-        with torch.no_grad():
-            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
-
-        sample_copy = copy.copy(sample)
-
-        assert sample == sample_copy
