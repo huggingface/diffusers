@@ -648,7 +648,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    return_dict=False
+                    return_dict=False,
                 )[0]
 
                 # perform guidance
