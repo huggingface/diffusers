@@ -134,6 +134,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
             Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
             diffusion ODEs.
+        timestep_spacing (`str`, default `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -158,6 +165,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
+        timestep_spacing: str = "linspace",
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -217,12 +226,29 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # Clipping the minimum of all lambda(t) for numerical stability.
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
         clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-        timesteps = (
-            np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
-            .round()[::-1][:-1]
-            .copy()
-            .astype(np.int64)
-        )
+        last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
+
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = (
+                np.linspace(0, last_timestep - 1, num_inference_steps + 1).round()[::-1][:-1].copy().astype(np.int64)
+            )
+        elif self.config.timestep_spacing == "leading":
+            step_ratio = last_timestep // (num_inference_steps + 1)
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int64)
+            timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+            )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         if self.config.use_karras_sigmas:
