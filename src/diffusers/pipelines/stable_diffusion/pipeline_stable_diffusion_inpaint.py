@@ -564,10 +564,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             FutureWarning,
         )
         latents = 1 / self.vae.config.scaling_factor * latents
-        if isinstance(self.vae, AsymmetricAutoencoderKL):
-            image = self.vae.decode(latents, image, mask, return_dict=False)[0]
-        else:
-            image = self.vae.decode(latents, return_dict=False)[0]
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -1057,13 +1054,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                         callback(i, t, latents)
 
         if not output_type == "latent":
+            condition_kwargs = {}
             if isinstance(self.vae, AsymmetricAutoencoderKL):
                 mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
-                image = self.vae.decode(
-                    latents / self.vae.config.scaling_factor, init_image_condition, mask_condition, return_dict=False
-                )[0]
-            else:
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+                condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **condition_kwargs)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
