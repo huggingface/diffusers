@@ -29,14 +29,13 @@ EXAMPLE_DOC_STRING = """
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior")
         >>> pipe_prior.to("cuda")
         >>> prompt = "red cat, 4k photo"
-        >>> out = pipe_prior(prompt)
-        >>> image_emb = out.image_embeds
-        >>> zero_image_emb = out.negative_image_embeds
+        >>> image_emb, negative_image_emb = pipe_prior(prompt).to_tuple()
+
         >>> pipe = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder")
         >>> pipe.to("cuda")
         >>> image = pipe(
         ...     image_embeds=image_emb,
-        ...     negative_image_embeds=zero_image_emb,
+        ...     negative_image_embeds=negative_image_emb,
         ...     height=768,
         ...     width=768,
         ...     num_inference_steps=50,
@@ -101,11 +100,13 @@ class KandinskyPriorPipelineOutput(BaseOutput):
 
 
 class KandinskyV22PriorPipeline(DiffusionPipeline):
-    """
+    """    
+    Pipeline for generating image prior for Kandinsky
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
     Args:
-    Pipeline for generating image prior for Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
-    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
-    or saving, running on a particular device, etc.)
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -157,8 +158,8 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         device=None,
     ):
         """
-        Args:
         Function invoked when using the prior pipeline for interpolation.
+        Args:
             images_and_prompts (`List[Union[str, PIL.Image.Image, torch.FloatTensor]]`):
                 list of prompts and images to guide the image generation.
             weights: (`List[float]`):
@@ -187,9 +188,9 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-        
-        Examples: 
-        
+
+        Examples:
+
         Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
@@ -418,8 +419,9 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Args:
         Function invoked when calling the pipeline for generation.
+
+        Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -448,9 +450,9 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        
-        Examples: 
-        
+
+        Examples:
+
         Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """

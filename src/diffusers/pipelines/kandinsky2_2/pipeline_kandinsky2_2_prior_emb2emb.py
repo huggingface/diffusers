@@ -14,17 +14,94 @@ from ...utils import (
     is_accelerate_available,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import KandinskyV22Pipeline, KandinskyV22PriorEmb2EmbPipeline
+        >>> import torch
+
+        >>> pipe_prior = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16)
+        >>> pipe_prior.to("cuda")
+
+        >>> prompt = "red cat, 4k photo"
+        >>> img = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/cat.png"
+        ... )
+        >>> image_emb, nagative_image_emb = pipe_prior(prompt, image=img, strength=0.2).to_tuple()
+
+        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder, torch_dtype=torch.float16")
+        >>> pipe.to("cuda")
+
+        >>> image = pipe(
+        ...     image_embeds=image_emb,
+        ...     negative_image_embeds=negative_image_emb,
+        ...     height=768,
+        ...     width=768,
+        ...     num_inference_steps=100,
+        ... ).images
+
+        >>> image[0].save("cat.png")
+        ```
+"""
+
+EXAMPLE_INTERPOLATE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import KandinskyV22PriorEmb2EmbPipeline, KandinskyV22Pipeline
+        >>> from diffusers.utils import load_image
+        >>> import PIL
+
+        >>> import torch
+        >>> from torchvision import transforms
+
+        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
+        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ... )
+        >>> pipe_prior.to("cuda")
+
+        >>> img1 = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/cat.png"
+        ... )
+
+        >>> img2 = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/starry_night.jpeg"
+        ... )
+
+        >>> images_texts = ["a cat", img1, img2]
+        >>> weights = [0.3, 0.3, 0.4]
+        >>> image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
+
+        >>> pipe = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+        >>> pipe.to("cuda")
+
+        >>> image = pipe(
+        ...     image_embeds=image_emb,
+        ...     negative_image_embeds=zero_image_emb,
+        ...     height=768,
+        ...     width=768,
+        ...     num_inference_steps=150,
+        ... ).images[0]
+
+        >>> image.save("starry_cat.png")
+        ```
+"""
+
 
 @dataclass
 class KandinskyPriorPipelineOutput(BaseOutput):
     """
-    Args:
     Output class for KandinskyPriorPipeline.
+
+    Args:
         image_embeds (`torch.FloatTensor`)
             clip image embeddings for text prompt
         negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
@@ -37,10 +114,12 @@ class KandinskyPriorPipelineOutput(BaseOutput):
 
 class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     """
+    Pipeline for generating image prior for Kandinsky
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
     Args:
-    Pipeline for generating image prior for Kandinsky This model inherits from [`DiffusionPipeline`]. Check the
-    superclass documentation for the generic methods the library implements for all the pipelines (such as downloading
-    or saving, running on a particular device, etc.)
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -84,6 +163,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_INTERPOLATE_DOC_STRING)
     def interpolate(
         self,
         images_and_prompts: List[Union[str, PIL.Image.Image, torch.FloatTensor]],
@@ -98,8 +178,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         device=None,
     ):
         """
-        Args:
         Function invoked when using the prior pipeline for interpolation.
+
+        Args:
             images_and_prompts (`List[Union[str, PIL.Image.Image, torch.FloatTensor]]`):
                 list of prompts and images to guide the image generation.
             weights: (`List[float]`):
@@ -128,9 +209,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-        
-        Examples: 
-        
+
+        Examples:
+
         Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
@@ -360,6 +441,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -375,8 +457,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Args:
         Function invoked when calling the pipeline for generation.
+
+        Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             strength (`float`, *optional*, defaults to 0.8):
@@ -411,7 +494,10 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-        Examples: Returns:
+
+        Examples:
+
+        Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
