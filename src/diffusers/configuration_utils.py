@@ -551,8 +551,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
-        # Don't save "_ignore_files"
+        # Don't save "_ignore_files" or "_use_default_values"
         config_dict.pop("_ignore_files", None)
+        config_dict.pop("_use_default_values", None)
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
