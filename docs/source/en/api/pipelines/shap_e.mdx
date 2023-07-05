@@ -50,7 +50,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 repo = "openai/shap-e"
 pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
@@ -60,11 +60,11 @@ guidance_scale = 15.0
 prompt = "A birthday cupcake"
 
 images = pipe(
-    prompt, 
+    prompt,
     guidance_scale=guidance_scale,
-    num_inference_steps= 64, 
-    size = 256,
-    ).images
+    num_inference_steps=64,
+    size=256,
+).images
 ```
 
 The output of [`ShapEPipeline`] is a list of lists of images frames. Each list of frames can be used to create a 3D object. Let's use the `export_to_gif` utility function in diffusers to make a 3D cupcake!
@@ -72,7 +72,7 @@ The output of [`ShapEPipeline`] is a list of lists of images frames. Each list o
 ```python
 from diffusers.utils import export_to_gif
 
-gif_path=export_to_gif(images[0], "cupcake_3d.gif")
+gif_path = export_to_gif(images[0], "cupcake_3d.gif")
 ```
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif)
