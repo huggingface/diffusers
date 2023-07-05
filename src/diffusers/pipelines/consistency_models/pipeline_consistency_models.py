@@ -3,7 +3,7 @@ from typing import Callable, List, Optional, Union
 import torch
 
 from ...models import UNet2DModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import CMStochasticIterativeScheduler
 from ...utils import (
     deprecate,
     is_accelerate_available,
@@ -35,7 +35,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             with [`CMStochasticIterativeScheduler`].
     """
 
-    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
+    def __init__(self, unet: UNet2DModel, scheduler: CMStochasticIterativeScheduler) -> None:
         super().__init__()
 
         self.register_modules(
