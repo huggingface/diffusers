@@ -672,6 +672,9 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        if output_type == "latent":
+            return TextToVideoSDPipelineOutput(frames=latents)
+
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
