@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 
 ## Overview
 
-Kandinsky 2.1 inherits best practices from [DALL-E 2](https://arxiv.org/abs/2204.06125) and [Latent Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/latent_diffusion), while introducing some new ideas.
+Kandinsky inherits best practices from [DALL-E 2](https://arxiv.org/abs/2204.06125) and [Latent Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/latent_diffusion), while introducing some new ideas.
 
 It uses [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for encoding images and text, and a diffusion image prior (mapping) between latent spaces of CLIP modalities. This approach enhances the visual performance of the model and unveils new horizons in blending images and text-guided image manipulation.
 
@@ -116,6 +116,29 @@ image.save("cheeseburger_monster.png")
 One cheeseburger monster coming up! Enjoy! 
 
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png)
+
+<Tip warning={true}>
+
+The Kandinsky 2.2 text-to-image pipeline no longer accept the `prompt` input and will condition the image generation process with only `image_embeds` and `negative_image_embeds`. To use Kandinsky2.2 text-to-image pipeline, you need to create your pipelines with Kandinsky 2.2 checkpoints
+
+```python
+pipe_prior = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+t2i_pipe.to("cuda")
+```
+
+You can then use `pipe_prior` to generate image embeddings with exact same workflow as in 2.1, and pass these embeddings to the text-to-image pipeline. Remember that in 2.2 you don't need to pass the `prompt`.
+
+```python
+image = t2i_pipe(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[
+    0
+]
+image.save("cheeseburger_monster.png")
+```
+
+</Tip>
 
 The Kandinsky model works extremely well with creative prompts. Here is some of the amazing art that can be created using the exact same process but with different prompts.
 
