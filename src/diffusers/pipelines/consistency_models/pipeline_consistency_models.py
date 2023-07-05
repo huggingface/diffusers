@@ -167,32 +167,23 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         return latents
 
     # Follows diffusers.VaeImageProcessor.postprocess
-    def postprocess_image(self, latents: torch.FloatTensor, output_type: str = "pil"):
-        if output_type not in ["latent", "pt", "np", "pil"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
-                "`pil`, `np`, `pt`, `latent`"
-            )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
-
-        if output_type == "latent":
-            # Return latents without modification
-            return latents
+    def postprocess_image(self, sample: torch.FloatTensor, output_type: str = "pil"):
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']")
 
         # Equivalent to diffusers.VaeImageProcessor.denormalize
-        latents = (latents / 2 + 0.5).clamp(0, 1)
+        sample = (sample / 2 + 0.5).clamp(0, 1)
         if output_type == "pt":
-            return latents
+            return sample 
 
         # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
-        latents = latents.cpu().permute(0, 2, 3, 1).numpy()
+        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "np":
-            return latents
+            return sample
 
         # Output_type must be 'pil'
-        latents = self.numpy_to_pil(latents)
-        return latents
+        sample = self.numpy_to_pil(sample)
+        return sample
 
     def prepare_class_labels(self, batch_size, device, class_labels=None):
         if self.unet.config.num_class_embeds is not None:
