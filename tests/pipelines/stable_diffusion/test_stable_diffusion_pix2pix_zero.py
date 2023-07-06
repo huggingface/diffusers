@@ -41,7 +41,11 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import (
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    assert_mean_pixel_difference,
+)
 
 
 enable_full_determinism()

@@ -34,4 +34,6 @@ class DependencyTester(unittest.TestCase):
                 for backend in cls_module._backends:
                     if backend == "k_diffusion":
                         backend = "k-diffusion"
+                    elif backend == "invisible_watermark":
+                        backend = "invisible-watermark"
                     assert backend in deps, f"{backend} is not in the deps table!"
