@@ -57,14 +57,14 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def get_new_h_w(h, w, scale_factor=8):
-    new_h = h // scale_factor**2
-    if h % scale_factor**2 != 0:
-        new_h += 1
-    new_w = w // scale_factor**2
-    if w % scale_factor**2 != 0:
-        new_w += 1
-    return new_h * scale_factor, new_w * scale_factor
+def downscale_height_and_width(height, width, scale_factor=8):
+    new_height = height // scale_factor**2
+    if height % scale_factor**2 != 0:
+        new_height += 1
+    new_width = width // scale_factor**2
+    if width % scale_factor**2 != 0:
+        new_width += 1
+    return new_height * scale_factor, new_width * scale_factor
 
 
 class KandinskyV22Pipeline(DiffusionPipeline):
@@ -79,7 +79,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
-        vae ([`VQModel`]):
+        movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
 
@@ -87,14 +87,14 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
-        vae: VQModel,
+        movq: VQModel,
     ):
         super().__init__()
 
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            movq=movq,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
@@ -124,7 +124,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.vae,
+            self.movq,
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
@@ -254,7 +254,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
 
         num_channels_latents = self.unet.config.in_channels
 
-        height, width = get_new_h_w(height, width, self.vae_scale_factor)
+        height, width = downscale_height_and_width(height, width, self.vae_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(

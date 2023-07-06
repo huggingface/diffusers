@@ -361,7 +361,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # Kadinsky 2.2
             self.add_embedding = ImageTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type == "image_hint":
-            # Kadinsky 2.2
+            # Kadinsky 2.2 ControlNet
             self.add_embedding = ImageHintTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
