@@ -48,7 +48,9 @@ You can use SDXL as follows for *text-to-image*:
 from diffusers import StableDiffusionXLPipeline
 import torch
 
-pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
 pipe.to("cuda")
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -64,10 +66,14 @@ In this case, you only have to output the `latents` from the base model.
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 
-pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
 pipe.to("cuda")
 
-refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16")
+refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+)
 refiner.to("cuda")
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -85,10 +91,14 @@ original file format into `diffusers`:
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 
-pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
 pipe.to("cuda")
 
-refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16")
+refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+)
 refiner.to("cuda")
 ```
 
@@ -127,8 +137,8 @@ pip install xformers
 ```
 
 ```py
-+ pipe.enable_xformers_memory_efficient_attention()
-+ refiner.enable_xformers_memory_efficient_attention()
++pipe.enable_xformers_memory_efficient_attention()
++refiner.enable_xformers_memory_efficient_attention()
 ```
 
 ## StableDiffusionXLPipeline
