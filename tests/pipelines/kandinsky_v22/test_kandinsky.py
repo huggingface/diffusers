@@ -141,7 +141,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = {
             "unet": unet,
             "scheduler": scheduler,
-            "vae": movq,
+            "movq": movq,
         }
         return components
 

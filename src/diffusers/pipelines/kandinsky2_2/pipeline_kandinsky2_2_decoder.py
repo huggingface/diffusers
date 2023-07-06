@@ -96,7 +96,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -149,7 +149,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.unet, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -254,7 +254,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
 
         num_channels_latents = self.unet.config.in_channels
 
-        height, width = downscale_height_and_width(height, width, self.vae_scale_factor)
+        height, width = downscale_height_and_width(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
@@ -300,7 +300,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
                 generator=generator,
             )[0]
         # post-processing
-        image = self.vae.decode(latents, force_not_quantize=True)["sample"]
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
