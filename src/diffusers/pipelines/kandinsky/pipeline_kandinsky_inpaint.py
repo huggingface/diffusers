@@ -275,6 +275,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)

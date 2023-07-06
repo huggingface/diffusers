@@ -18,6 +18,9 @@ from ...models.attention_processor import (
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import (
     GaussianFourierProjection,
+    ImageHintTimeEmbedding,
+    ImageProjection,
+    ImageTimeEmbedding,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,
@@ -189,7 +192,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        encoder_hid_dim (`int`, *optional*, defaults to `None`):
+        transformer_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
+            [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
+            [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
+        encoder_hid_dim (`int`, *optional*, defaults to None):
             If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
             dimension to `cross_attention_dim`.
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
@@ -206,6 +213,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         addition_embed_type (`str`, *optional*, defaults to `None`):
             Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
             "text". "text" will use the `TextTimeEmbedding` layer.
+        addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
+            Dimension for the timestep embeddings.
         num_class_embeds (`int`, *optional*, defaults to `None`):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -266,6 +275,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -274,6 +284,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
+        addition_time_embed_dim: Optional[int] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
@@ -295,6 +306,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         super().__init__()
 
         self.sample_size = sample_size
+
+        if num_attention_heads is not None:
+            raise ValueError(
+                "At the moment it is not possible to define the number of attention heads via `num_attention_heads`"
+                " because of a naming issue as described in"
+                " https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing"
+                " `num_attention_heads` will only be supported in diffusers v0.19."
+            )
 
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
@@ -401,7 +420,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 image_embed_dim=cross_attention_dim,
                 cross_attention_dim=cross_attention_dim,
             )
-
+        elif encoder_hid_dim_type == "image_proj":
+            # Kandinsky 2.2
+            self.encoder_hid_proj = ImageProjection(
+                image_embed_dim=encoder_hid_dim,
+                cross_attention_dim=cross_attention_dim,
+            )
         elif encoder_hid_dim_type is not None:
             raise ValueError(
                 f"encoder_hid_dim_type: {encoder_hid_dim_type} must be None, 'text_proj' or 'text_image_proj'."
@@ -454,6 +478,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.add_embedding = TextImageTimeEmbedding(
                 text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim
             )
+        elif addition_embed_type == "text_time":
+            self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
+            self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+        elif addition_embed_type == "image":
+            # Kandinsky 2.2
+            self.add_embedding = ImageTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
+        elif addition_embed_type == "image_hint":
+            # Kandinsky 2.2 ControlNet
+            self.add_embedding = ImageHintTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
@@ -486,6 +519,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if isinstance(layers_per_block, int):
             layers_per_block = [layers_per_block] * len(down_block_types)
 
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+
         if class_embeddings_concat:
             # The time embeddings are concatenated with the class embeddings. The dimension of the
             # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
@@ -504,6 +540,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block[i],
+                transformer_layers_per_block=transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
@@ -529,6 +566,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # mid
         if mid_block_type == "UNetMidBlockFlatCrossAttn":
             self.mid_block = UNetMidBlockFlatCrossAttn(
+                transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
                 resnet_eps=norm_eps,
@@ -570,6 +608,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         only_cross_attention = list(reversed(only_cross_attention))
 
         output_channel = reversed_block_out_channels[0]
@@ -590,6 +629,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             up_block = get_up_block(
                 up_block_type,
                 num_layers=reversed_layers_per_block[i] + 1,
+                transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -796,6 +836,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -866,6 +909,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        aug_emb = None
 
         if self.class_embedding is not None:
             if class_labels is None:
@@ -887,9 +931,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
-            emb = emb + aug_emb
         elif self.config.addition_embed_type == "text_image":
-            # Kadinsky 2.1 - style
+            # Kandinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires"
@@ -898,9 +941,48 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             image_embs = added_cond_kwargs.get("image_embeds")
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
-
             aug_emb = self.add_embedding(text_embs, image_embs)
-            emb = emb + aug_emb
+        elif self.config.addition_embed_type == "text_time":
+            if "text_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
+                    " the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if "time_ids" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
+                    " the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            time_embeds = self.add_time_proj(time_ids.flatten())
+            time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+
+            add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+            add_embeds = add_embeds.to(emb.dtype)
+            aug_emb = self.add_embedding(add_embeds)
+        elif self.config.addition_embed_type == "image":
+            # Kandinsky 2.2 - style
+            if "image_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the"
+                    " keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                )
+            image_embs = added_cond_kwargs.get("image_embeds")
+            aug_emb = self.add_embedding(image_embs)
+        elif self.config.addition_embed_type == "image_hint":
+            # Kandinsky 2.2 - style
+            if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires"
+                    " the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
+                )
+            image_embs = added_cond_kwargs.get("image_embeds")
+            hint = added_cond_kwargs.get("hint")
+            aug_emb, hint = self.add_embedding(image_embs, hint)
+            sample = torch.cat([sample, hint], dim=1)
+
+        emb = emb + aug_emb if aug_emb is not None else emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
@@ -917,7 +999,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states, image_embeds)
-
+        elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "image_proj":
+            # Kandinsky 2.2 - style
+            if "image_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires"
+                    " the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                )
+            image_embeds = added_cond_kwargs.get("image_embeds")
+            encoder_hidden_states = self.encoder_hid_proj(image_embeds)
         # 2. pre-process
         sample = self.conv_in(sample)
 
@@ -1212,6 +1302,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1256,7 +1347,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1446,6 +1537,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1491,7 +1583,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1592,6 +1684,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1634,7 +1727,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,

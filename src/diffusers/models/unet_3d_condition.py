@@ -114,6 +114,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.sample_size = sample_size
 
+        if num_attention_heads is not None:
+            raise NotImplementedError(
+                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
+            )
+
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
         # The reason for this behavior is to correct for incorrectly named variables that were introduced
@@ -526,8 +531,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_in(sample)
 
         sample = self.transformer_in(
-            sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-        ).sample
+            sample,
+            num_frames=num_frames,
+            cross_attention_kwargs=cross_attention_kwargs,
+            return_dict=False,
+        )[0]
 
         # 3. down
         down_block_res_samples = (sample,)
