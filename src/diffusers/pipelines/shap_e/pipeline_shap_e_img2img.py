@@ -96,8 +96,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
         renderer ([`ShapERenderer`]):
-            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D object
-            with NeRF rendering method
+            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
+            with the NeRF rendering method
     """
 
     def __init__(
