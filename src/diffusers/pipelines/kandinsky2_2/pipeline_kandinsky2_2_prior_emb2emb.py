@@ -1,7 +1,5 @@
-from dataclasses import dataclass
 from typing import List, Optional, Union
 
-import numpy as np
 import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -10,12 +8,12 @@ from ...models import PriorTransformer
 from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
-    BaseOutput,
     is_accelerate_available,
     logging,
     randn_tensor,
     replace_example_docstring,
 )
+from ..kandinsky import KandinskyPriorPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -100,22 +98,6 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> image.save("starry_cat.png")
         ```
 """
-
-
-@dataclass
-class KandinskyPriorPipelineOutput(BaseOutput):
-    """
-    Output class for KandinskyPriorPipeline.
-
-    Args:
-        image_embeds (`torch.FloatTensor`)
-            clip image embeddings for text prompt
-        negative_image_embeds (`List[PIL.Image.Image]` or `np.ndarray`)
-            clip image embeddings for unconditional tokens
-    """
-
-    image_embeds: Union[torch.FloatTensor, np.ndarray]
-    negative_image_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
