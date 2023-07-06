@@ -41,7 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> import torch
         >>> from diffusers import DiffusionPipeline
-        >>> from diffusers.utils import export_to_gif
+        >>> from diffusers.utils import export_to_gif, load_image
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -50,8 +50,8 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to(device)
 
         >>> guidance_scale = 3.0
-        >>> image = Image.open("corgi.png")
-
+        >>> image_url = "https://hf.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi.png"
+        >>> image = load_image(image_url).convert("RGB")
 
         >>> images = pipe(
         ...     image,
