@@ -66,6 +66,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
             beta_end=0.012,
+            steps_offset=1,
             beta_schedule="scaled_linear",
             timestep_spacing="leading",
         )
@@ -139,7 +140,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5753, 0.6113, 0.5005, 0.5036, 0.5464, 0.4725, 0.4982, 0.4865, 0.4861])
+        expected_slice = np.array([0.5873, 0.6128, 0.4797, 0.5122, 0.5674, 0.4639, 0.5227, 0.5149, 0.4747])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

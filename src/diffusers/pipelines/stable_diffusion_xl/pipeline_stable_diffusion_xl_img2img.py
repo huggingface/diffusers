@@ -496,8 +496,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
-        # TODO(Patrick): Make sure to remove +1 later here - that's just to compare with CompVis
-        # t_start = max(num_inference_steps - init_timestep, 0) + 1
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
@@ -545,7 +543,11 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
 
             init_latents = self.vae.config.scaling_factor * init_latents
 
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            additional_image_per_prompt = batch_size // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
@@ -773,7 +775,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
-
         # 7. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
@@ -854,7 +855,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
             latents = latents.float()
 
         if not output_type == "latent":
-            # CHECK there is problem here (PVP)
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             has_nsfw_concept = None
         else:
