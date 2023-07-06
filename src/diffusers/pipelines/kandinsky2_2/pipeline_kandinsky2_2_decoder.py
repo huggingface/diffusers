@@ -91,7 +91,7 @@ class Kandinsky2_2_DecoderPipeline(DiffusionPipeline):
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            vae=movq,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
