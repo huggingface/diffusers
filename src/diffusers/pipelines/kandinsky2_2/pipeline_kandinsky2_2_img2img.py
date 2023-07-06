@@ -85,6 +85,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
+# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.prepare_image
 def prepare_image(pil_image, w=512, h=512):
     pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
     arr = np.array(pil_image.convert("RGB"))
