@@ -27,6 +27,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         torch \
         torchvision \
         torchaudio \
+        invisible_watermark \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
     python3 -m pip install --no-cache-dir \
         accelerate \

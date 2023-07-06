@@ -194,6 +194,7 @@ extras["test"] = deps_list(
     "compel",
     "datasets",
     "Jinja2",
+    "invisible-watermark",
     "k-diffusion",
     "librosa",
     "omegaconf",
