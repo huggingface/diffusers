@@ -17,18 +17,6 @@ It uses [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for enco
 
 The Kandinsky model is created by [Arseniy Shakhmatov](https://github.com/cene555), [Anton Razzhigaev](https://github.com/razzant), [Aleksandr Nikolich](https://github.com/AlexWortega), [Igor Pavlov](https://github.com/boomb0om), [Andrey Kuznetsov](https://github.com/kuznetsoffandrey) and [Denis Dimitrov](https://github.com/denndimitrov) and the original codebase can be found [here](https://github.com/ai-forever/Kandinsky-2)
 
-## Available Pipelines:
-
-| Pipeline | Tasks |
-|---|---|
-| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* |
-| [pipeline_kandinsky2_2.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2.py) | *Text-to-Image Generation* |
-| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky2_2_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_inpaint.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky2_2_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_img2img.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky2_2_controlnet.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky2_2_controlnet_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet_img2img.py) | *Image-Guided Image Generation* |
 
 ## Usage example
 
@@ -116,29 +104,6 @@ image.save("cheeseburger_monster.png")
 One cheeseburger monster coming up! Enjoy! 
 
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png)
-
-<Tip warning={true}>
-
-The Kandinsky 2.2 text-to-image pipeline no longer accept the `prompt` input and will condition the image generation process with only `image_embeds` and `negative_image_embeds`. To use Kandinsky2.2 text-to-image pipeline, you need to create your pipelines with Kandinsky 2.2 checkpoints
-
-```python
-pipe_prior = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16)
-pipe_prior.to("cuda")
-
-t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
-t2i_pipe.to("cuda")
-```
-
-You can then use `pipe_prior` to generate image embeddings with exact same workflow as in 2.1, and pass these embeddings to the text-to-image pipeline. Remember that in 2.2 you don't need to pass the `prompt`.
-
-```python
-image = t2i_pipe(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[
-    0
-]
-image.save("cheeseburger_monster.png")
-```
-
-</Tip>
 
 The Kandinsky model works extremely well with creative prompts. Here is some of the amazing art that can be created using the exact same process but with different prompts.
 
@@ -453,6 +418,46 @@ Here is the output. Compared with the output from our text-to-image controlnet e
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/robot_cat.png)
 
+## Kandinsky 2.2
+
+The Kandinsky 2.2 release includes robust new text-to-image models that support text-to-image generation, image-to-image generation, image interpolation, and text-guided image inpainting. The general workflow to perform these tasks using Kandinsky 2.2 is the same as Kandinsky 2.1. First, you will need to use a prior pipeline to generate image embedding based on your text prompt and then use one of the image decoding pipelines to generate the image. The only difference is that in Kandinsky 2.2, all of the decoding pipelines no longer accept the `prompt` input, and the image generation process is conditioned with only `image_embeds` and `negative_image_embeds`.
+
+Let's look at an example of how to perform text-to-image generation using Kandinsky 2.2.
+
+First, let's create the prior pipeline and text-to-image pipeline with Kandinsky 2.2 checkpoints.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe_prior = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16)
+pipe_prior.to("cuda")
+
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+t2i_pipe.to("cuda")
+```
+
+You can then use `pipe_prior` to generate image embeddings the same way as you would with kandinsky 2.1
+
+```python
+prompt = "portrait of a women, blue eyes, cinematic"
+negative_prompt = "low quality, bad quality"
+
+image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
+```
+
+Now you can pass these embeddings to the text-to-image pipeline. Remember that in 2.2 you don't need to pass the `prompt`.
+
+```
+image = t2i_pipe(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[
+    0
+]
+image.save("portrait.png")
+```
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/%20blue%20eyes.png)
+
+We used the text-to-image pipeline as an example, but the same process applies to all decoding pipelines in Kandinsky 2.2. For more information, please refer to our API section for each pipeline.
+
 
 ## Optimization
 
@@ -506,9 +511,19 @@ t2i_pipe.unet = torch.compile(t2i_pipe.unet, mode="reduce-overhead", fullgraph=T
 After compilation you should see a very fast inference time. For more information,
 feel free to have a look at [Our PyTorch 2.0 benchmark](https://huggingface.co/docs/diffusers/main/en/optimization/torch2.0).
 
+## Available Pipelines:
 
+| Pipeline | Tasks |
+|---|---|
+| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* |
+| [pipeline_kandinsky2_2.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2.py) | *Text-to-Image Generation* |
+| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky2_2_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_inpaint.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky2_2_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_img2img.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky2_2_controlnet.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky2_2_controlnet_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet_img2img.py) | *Image-Guided Image Generation* |
 
-## Kandinsky 2.1
 
 ### KandinskyPriorPipeline
 
@@ -535,7 +550,6 @@ feel free to have a look at [Our PyTorch 2.0 benchmark](https://huggingface.co/d
 	- all
 	- __call__
 
-## Kandinsky 2.2
 
 ### KandinskyV22Pipeline
 
