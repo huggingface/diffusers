@@ -226,6 +226,8 @@
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/shap_e
+      title: Shap-E
     - local: api/pipelines/spectrogram_diffusion
       title: Spectrogram Diffusion
     - sections:

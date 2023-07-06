@@ -149,6 +149,8 @@ else:
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
+        ShapEImg2ImgPipeline,
+        ShapEPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
