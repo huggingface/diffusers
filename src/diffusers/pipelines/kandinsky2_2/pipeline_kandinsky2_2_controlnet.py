@@ -150,6 +150,7 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
