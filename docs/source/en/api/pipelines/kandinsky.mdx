@@ -380,9 +380,9 @@ from diffusers.utils import load_image
 from transformers import pipeline
 
 img = load_image(
-    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-    "/kandinskyv22/cat.png"
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinskyv22/cat.png"
 ).resize((768, 768))
+
 
 def make_hint(image, depth_estimator):
     image = depth_estimator(image)["depth"]
@@ -392,6 +392,7 @@ def make_hint(image, depth_estimator):
     detected_map = torch.from_numpy(image).float() / 255.0
     hint = detected_map.permute(2, 0, 1)
     return hint
+
 
 depth_estimator = pipeline("depth-estimation")
 hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
