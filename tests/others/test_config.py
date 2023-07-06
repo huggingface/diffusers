@@ -75,6 +75,22 @@ class SampleObject3(ConfigMixin):
         pass
 
 
+class SampleObject4(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 5],
+        f=[5, 4],
+    ):
+        pass
+
+
 class ConfigTester(unittest.TestCase):
     def test_load_not_from_mixin(self):
         with self.assertRaises(ValueError):
@@ -137,6 +153,7 @@ class ConfigTester(unittest.TestCase):
 
         assert config.pop("c") == (2, 5)  # instantiated as tuple
         assert new_config.pop("c") == [2, 5]  # saved & loaded as list because of json
+        config.pop("_use_default_values")
         assert config == new_config
 
     def test_load_ddim_from_pndm(self):
@@ -233,3 +250,39 @@ class ConfigTester(unittest.TestCase):
         assert dpm.__class__ == DPMSolverMultistepScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
+
+    def test_use_default_values(self):
+        # let's first save a config that should be in the form
+        #    a=2,
+        #    b=5,
+        #    c=(2, 5),
+        #    d="for diffusion",
+        #    e=[1, 3],
+
+        config = SampleObject()
+
+        config_dict = {k: v for k, v in config.config.items() if not k.startswith("_")}
+
+        # make sure that default config has all keys in `_use_default_values`
+        assert set(config_dict.keys()) == config.config._use_default_values
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            config.save_config(tmpdirname)
+
+            # now loading it with SampleObject2 should put f into `_use_default_values`
+            config = SampleObject2.from_config(tmpdirname)
+
+            assert "f" in config._use_default_values
+            assert config.f == [1, 3]
+
+        # now loading the config, should **NOT** use [1, 3] for `f`, but the default [1, 4] value
+        # **BECAUSE** it is part of `config._use_default_values`
+        new_config = SampleObject4.from_config(config.config)
+        assert new_config.f == [5, 4]
+
+        config.config._use_default_values.pop()
+        new_config_2 = SampleObject4.from_config(config.config)
+        assert new_config_2.f == [1, 3]
+
+        # Nevertheless "e" should still be correctly loaded to [1, 3] from SampleObject2 instead of defaulting to [1, 5]
+        assert new_config_2.e == [1, 3]
