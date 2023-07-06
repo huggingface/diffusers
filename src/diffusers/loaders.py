@@ -1095,8 +1095,11 @@ class LoraLoaderMixin:
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
+    def _remove_text_encoder_monkey_patch(self):
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+
     @classmethod
-    def _remove_text_encoder_monkey_patch(cls, text_encoder):
+    def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
                 attn_module.q_proj = attn_module.q_proj.regular_linear_layer
@@ -1111,7 +1114,7 @@ class LoraLoaderMixin:
         """
 
         # First, remove any monkey-patch that might have been applied before
-        cls._remove_text_encoder_monkey_patch(text_encoder)
+        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
         lora_parameters = []
 
