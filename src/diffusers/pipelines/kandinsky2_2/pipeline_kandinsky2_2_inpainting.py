@@ -92,6 +92,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
+# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_inpaint.prepare_masks
 def prepare_mask(masks):
     prepared_masks = []
     for mask in masks:
@@ -116,6 +117,7 @@ def prepare_mask(masks):
     return torch.stack(prepared_masks, dim=0)
 
 
+# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_inpaint.prepare_mask_and_masked_image
 def prepare_mask_and_masked_image(image, mask, height, width):
     r"""
     Prepares a pair (mask, image) to be consumed by the Kandinsky inpaint pipeline. This means that those inputs will
@@ -262,7 +264,8 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             movq=movq,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
-
+   
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
