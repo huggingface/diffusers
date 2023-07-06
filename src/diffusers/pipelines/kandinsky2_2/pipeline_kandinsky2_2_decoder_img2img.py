@@ -73,15 +73,15 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-
-def get_new_h_w(h, w, scale_factor=8):
-    new_h = h // scale_factor**2
-    if h % scale_factor**2 != 0:
-        new_h += 1
-    new_w = w // scale_factor**2
-    if w % scale_factor**2 != 0:
-        new_w += 1
-    return new_h * scale_factor, new_w * scale_factor
+# Copied from diffusers.pipelines.kandinsky2_2.pipelines_kandinsky_2_2_decoder.KandinskyV22Pipeline.downscale_height_and_width
+def downscale_height_and_width(height, width, scale_factor=8):
+    new_height = height // scale_factor**2
+    if height % scale_factor**2 != 0:
+        new_height += 1
+    new_width = width // scale_factor**2
+    if width % scale_factor**2 != 0:
+        new_width += 1
+    return new_height * scale_factor, new_width * scale_factor
 
 
 def prepare_image(pil_image, w=512, h=512):
@@ -105,7 +105,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
-        vae ([`VQModel`]):
+        movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
 
@@ -113,16 +113,16 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
-        vae: VQModel,
+        movq: VQModel,
     ):
         super().__init__()
 
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            movq=movq,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
@@ -155,13 +155,13 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
 
             elif isinstance(generator, list):
                 init_latents = [
-                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                    self.movq.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = self.vae.encode(image).latent_dist.sample(generator)
+                init_latents = self.movq.encode(image).latent_dist.sample(generator)
 
-            init_latents = self.vae.config.scaling_factor * init_latents
+            init_latents = self.movq.config.scaling_factor * init_latents
 
         init_latents = torch.cat([init_latents], dim=0)
 
@@ -190,7 +190,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.vae,
+            self.movq,
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
@@ -215,7 +215,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.unet, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -333,12 +333,12 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         image = torch.cat([prepare_image(i, width, height) for i in image], dim=0)
         image = image.to(dtype=image_embeds.dtype, device=device)
 
-        latents = self.vae.encode(image)["latents"]
+        latents = self.movq.encode(image)["latents"]
         latents = latents.repeat_interleave(num_images_per_prompt, dim=0)
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-        height, width = get_new_h_w(height, width, self.vae_scale_factor)
+        height, width = downscale_height_and_width(height, width, self.movq_scale_factor)
         latents = self.prepare_latents(
             latents, latent_timestep, batch_size, num_images_per_prompt, image_embeds.dtype, device, generator
         )
@@ -377,7 +377,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
             )[0]
 
         # post-processing
-        image = self.vae.decode(latents, force_not_quantize=True)["sample"]
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")

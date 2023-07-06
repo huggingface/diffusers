@@ -150,7 +150,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         components = {
             "unet": unet,
             "scheduler": scheduler,
-            "vae": movq,
+            "movq": movq,
         }
 
         return components
@@ -255,7 +255,9 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyV22InpaintPipeline.from_pretrained(
-            "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+            # YiYi notes: for testing only, remember to send a PR to kandinsky repo and remove this before merge 
+            "/home/yiyi_huggingface_co/model_repo/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+            #"kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)

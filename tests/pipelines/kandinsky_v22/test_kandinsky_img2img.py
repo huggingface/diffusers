@@ -151,7 +151,7 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         components = {
             "unet": unet,
             "scheduler": scheduler,
-            "vae": movq,
+            "movq": movq,
         }
 
         return components
@@ -244,7 +244,9 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyV22Img2ImgPipeline.from_pretrained(
-            "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
+            # YiYi notes: for testing only, remember to send a PR to kandinsky repo and remove this before merge 
+            "/home/yiyi_huggingface_co/model_repo/kandinsky-2-2-decoder", torch_dtype=torch.float16
+            #"kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
 

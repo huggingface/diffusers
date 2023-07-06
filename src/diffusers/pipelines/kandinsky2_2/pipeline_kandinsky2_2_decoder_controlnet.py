@@ -96,14 +96,15 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def get_new_h_w(h, w, scale_factor=8):
-    new_h = h // scale_factor**2
-    if h % scale_factor**2 != 0:
-        new_h += 1
-    new_w = w // scale_factor**2
-    if w % scale_factor**2 != 0:
-        new_w += 1
-    return new_h * scale_factor, new_w * scale_factor
+# Copied from diffusers.pipelines.kandinsky2_2.pipelines_kandinsky_2_2_decoder.KandinskyV22Pipeline.downscale_height_and_width
+def downscale_height_and_width(height, width, scale_factor=8):
+    new_height = height // scale_factor**2
+    if height % scale_factor**2 != 0:
+        new_height += 1
+    new_width = width // scale_factor**2
+    if width % scale_factor**2 != 0:
+        new_width += 1
+    return new_height * scale_factor, new_width * scale_factor
 
 
 class KandinskyV22ControlnetPipeline(DiffusionPipeline):
@@ -126,16 +127,16 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
-        vae: VQModel,
+        movq: VQModel,
     ):
         super().__init__()
 
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            movq=movq,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -163,7 +164,7 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
 
         models = [
             self.unet,
-            self.vae,
+            self.movq,
         ]
         for cpu_offloaded_model in models:
             if cpu_offloaded_model is not None:
@@ -188,7 +189,7 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.unet, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -304,9 +305,9 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
-        num_channels_latents = self.vae.config.latent_channels
+        num_channels_latents = self.movq.config.latent_channels
 
-        height, width = get_new_h_w(height, width, self.vae_scale_factor)
+        height, width = downscale_height_and_width(height, width, self.movq_scale_factor)
 
         # create initial latent
         latents = self.prepare_latents(
@@ -352,7 +353,7 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
                 generator=generator,
             )[0]
         # post-processing
-        image = self.vae.decode(latents, force_not_quantize=True)["sample"]
+        image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
