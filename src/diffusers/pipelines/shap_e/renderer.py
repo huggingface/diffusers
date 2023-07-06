@@ -568,9 +568,9 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         act_fn: str = "swish",
         insert_direction_at: int = 4,
         background: Tuple[float] = (
-            0.0,
-            0.0,
-            0.0,
+            255.0,
+            255.0,
+            255.0,
         ),
     ):
         super().__init__()
