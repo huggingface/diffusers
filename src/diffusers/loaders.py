@@ -177,7 +177,7 @@ class UNet2DConditionLoadersMixin:
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
@@ -589,7 +589,7 @@ class TextualInversionLoaderMixin:
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
@@ -806,7 +806,7 @@ class LoraLoaderMixin:
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
@@ -1054,7 +1054,7 @@ class LoraLoaderMixin:
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
