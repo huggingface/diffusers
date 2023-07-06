@@ -526,8 +526,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_in(sample)
 
         sample = self.transformer_in(
-            sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-        ).sample
+            sample,
+            num_frames=num_frames,
+            cross_attention_kwargs=cross_attention_kwargs,
+            return_dict=False,
+        )[0]
 
         # 3. down
         down_block_res_samples = (sample,)
