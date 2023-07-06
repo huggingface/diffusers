@@ -336,7 +336,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         ), "lora outputs should be different to without lora outputs"
 
         # remove monkey patch
-        pipe._remove_text_encoder_monkey_patch(pipe.text_encoder)
+        pipe._remove_text_encoder_monkey_patch()
 
         # inference with removed lora
         outputs_without_lora_removed = pipe.text_encoder(**dummy_tokens)[0]
