@@ -308,6 +308,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         return UnCLIPSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
