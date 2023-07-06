@@ -376,7 +376,25 @@ import torch
 import numpy as np
 
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, KandinskyV22ControlnetImg2ImgPipeline
+from diffusers.utils import load_image
 from transformers import pipeline
+
+img = load_image(
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+    "/kandinskyv22/cat.png"
+).resize((768, 768))
+
+def make_hint(image, depth_estimator):
+    image = depth_estimator(image)["depth"]
+    image = np.array(image)
+    image = image[:, :, None]
+    image = np.concatenate([image, image, image], axis=2)
+    detected_map = torch.from_numpy(image).float() / 255.0
+    hint = detected_map.permute(2, 0, 1)
+    return hint
+
+depth_estimator = pipeline("depth-estimation")
+hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
 
 pipe_prior = KandinskyV22PriorEmb2EmbPipeline.from_pretrained(
     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
@@ -515,40 +533,14 @@ feel free to have a look at [Our PyTorch 2.0 benchmark](https://huggingface.co/d
 
 | Pipeline | Tasks |
 |---|---|
-| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* |
 | [pipeline_kandinsky2_2.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2.py) | *Text-to-Image Generation* |
-| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky.py) | *Text-to-Image Generation* |
 | [pipeline_kandinsky2_2_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_inpaint.py) | *Image-Guided Image Generation* |
-| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_inpaint.py) | *Image-Guided Image Generation* |
 | [pipeline_kandinsky2_2_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_img2img.py) | *Image-Guided Image Generation* |
+| [pipeline_kandinsky_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky/pipeline_kandinsky_img2img.py) | *Image-Guided Image Generation* |
 | [pipeline_kandinsky2_2_controlnet.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet.py) | *Image-Guided Image Generation* |
 | [pipeline_kandinsky2_2_controlnet_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/kandinsky2_2/pipeline_kandinsky2_2_controlnet_img2img.py) | *Image-Guided Image Generation* |
-
-
-### KandinskyPriorPipeline
-
-[[autodoc]] KandinskyPriorPipeline
-	- all
-	- __call__
-	- interpolate
-	
-### KandinskyPipeline
-
-[[autodoc]] KandinskyPipeline
-	- all
-	- __call__
-
-### KandinskyImg2ImgPipeline
-
-[[autodoc]] KandinskyImg2ImgPipeline
-	- all
-	- __call__
-
-### KandinskyInpaintPipeline
-
-[[autodoc]] KandinskyInpaintPipeline
-	- all
-	- __call__
 
 
 ### KandinskyV22Pipeline
@@ -594,3 +586,28 @@ feel free to have a look at [Our PyTorch 2.0 benchmark](https://huggingface.co/d
 	- all
 	- __call__
 	- interpolate
+
+### KandinskyPriorPipeline
+
+[[autodoc]] KandinskyPriorPipeline
+	- all
+	- __call__
+	- interpolate
+	
+### KandinskyPipeline
+
+[[autodoc]] KandinskyPipeline
+	- all
+	- __call__
+
+### KandinskyImg2ImgPipeline
+
+[[autodoc]] KandinskyImg2ImgPipeline
+	- all
+	- __call__
+
+### KandinskyInpaintPipeline
+
+[[autodoc]] KandinskyInpaintPipeline
+	- all
+	- __call__
