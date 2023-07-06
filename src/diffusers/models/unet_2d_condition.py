@@ -57,7 +57,7 @@ class UNet2DConditionOutput(BaseOutput):
             The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.FloatTensor = None
 
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
