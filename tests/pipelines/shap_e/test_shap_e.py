@@ -99,7 +99,6 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "norm_in_type": "layer",
             "encoder_hid_proj_type": None,
             "added_emb_type": None,
-            "upcast_softmax": True,
         }
 
         model = PriorTransformer(**model_kwargs)

@@ -111,7 +111,6 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "embedding_proj_norm_type": "layer",
             "encoder_hid_proj_type": None,
             "added_emb_type": None,
-            "upcast_softmax": True,
         }
 
         model = PriorTransformer(**model_kwargs)
