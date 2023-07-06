@@ -74,7 +74,9 @@ class LDM3DPipelineOutput(BaseOutput):
     nsfw_content_detected: Optional[List[bool]]
 
 
-class StableDiffusionLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusionLDM3DPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image and 3d generation using LDM3D. LDM3D: Latent Diffusion Model for 3D:
     https://arxiv.org/abs/2305.10853

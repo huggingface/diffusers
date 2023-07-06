@@ -59,7 +59,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionParadigmsPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusionParadigmsPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Parallelized version of StableDiffusionPipeline, based on the paper https://arxiv.org/abs/2305.16317 This pipeline
     parallelizes the denoising steps to generate a single image faster (more akin to model parallelism).

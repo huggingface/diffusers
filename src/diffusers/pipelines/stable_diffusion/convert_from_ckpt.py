@@ -233,7 +233,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if controlnet:
         unet_params = original_config.model.params.control_stage_config.params
     else:
-        if original_config.model.params.unet_config is not None:
+        if "unet_config" in original_config.model.params and original_config.model.params.unet_config is not None:
             unet_params = original_config.model.params.unet_config.params
         else:
             unet_params = original_config.model.params.network_config.params
@@ -1194,11 +1194,12 @@ def download_from_original_stable_diffusion_ckpt(
     if original_config_file is None:
         key_name_v2_1 = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
         key_name_sd_xl_base = "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias"
+        key_name_sd_xl_refiner = "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias"
 
         # model_type = "v1"
         config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
 
-        if key_name_v2_1 in checkpoint and checkpoint[key_name].shape[-1] == 1024:
+        if key_name_v2_1 in checkpoint and checkpoint[key_name_v2_1].shape[-1] == 1024:
             # model_type = "v2"
             config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
 
@@ -1208,13 +1209,20 @@ def download_from_original_stable_diffusion_ckpt(
         elif key_name_sd_xl_base in checkpoint:
             # only base xl has two text embedders
             config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+        elif key_name_sd_xl_refiner in checkpoint:
+            # only refiner xl has embedder and one text embedders
+            config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
 
         original_config_file = BytesIO(requests.get(config_url).content)
 
     original_config = OmegaConf.load(original_config_file)
 
     # Convert the text model.
-    if model_type is None and "cond_stage_config" in original_config.model.params and original_config.model.params.cond_stage_config is not None:
+    if (
+        model_type is None
+        and "cond_stage_config" in original_config.model.params
+        and original_config.model.params.cond_stage_config is not None
+    ):
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
         logger.debug(f"no `model_type` given, `model_type` inferred as: {model_type}")
     elif model_type is None and original_config.model.params.network_config is not None:
@@ -1253,25 +1261,28 @@ def download_from_original_stable_diffusion_ckpt(
         )
 
     num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
-    beta_start = getattr(original_config.model.params, "linear_start", None) or 0.02
-    beta_end = getattr(original_config.model.params, "linear_end", None) or 0.00085
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
-        scheduler_dict = dict(
-            beta_schedule="scaled_linear",
-            beta_start=beta_start,
-            beta_end=beta_end,
-            interpolation_type="linear",
-            num_train_timesteps=num_train_timesteps,
-            prediction_type="epsilon",
-            sample_max_value=1.0,
-            set_alpha_to_one=False,
-            skip_prk_steps=True,
-            steps_offset=1,
-            timestep_spacing="leading",
-        )
+        image_size = 1024
+        scheduler_dict = {
+            "beta_schedule": "scaled_linear",
+            "beta_start": 0.00085,
+            "beta_end": 0.012,
+            "interpolation_type": "linear",
+            "num_train_timesteps": num_train_timesteps,
+            "prediction_type": "epsilon",
+            "sample_max_value": 1.0,
+            "set_alpha_to_one": False,
+            "skip_prk_steps": True,
+            "steps_offset": 1,
+            "timestep_spacing": "leading",
+        }
         scheduler = EulerDiscreteScheduler.from_config(scheduler_dict)
+        scheduler_type = "euler"
+        vae_path = "stabilityai/sdxl-vae"
     else:
+        beta_start = getattr(original_config.model.params, "linear_start", None) or 0.02
+        beta_end = getattr(original_config.model.params, "linear_end", None) or 0.085
         scheduler = DDIMScheduler(
             beta_end=beta_end,
             beta_schedule="scaled_linear",

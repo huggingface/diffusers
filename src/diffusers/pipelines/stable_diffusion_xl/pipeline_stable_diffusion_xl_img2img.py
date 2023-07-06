@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
@@ -78,7 +78,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
+class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -778,8 +778,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         height, width = latents.shape[-2:]
-        height = height * self.vae_scale_factor 
-        width = width * self.vae_scale_factor 
+        height = height * self.vae_scale_factor
+        width = width * self.vae_scale_factor
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)

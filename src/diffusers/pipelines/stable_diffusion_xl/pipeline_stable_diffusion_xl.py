@@ -630,7 +630,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         original_size = original_size or (height, width)
-        original_size = (1024, 1024)
         target_size = target_size or (height, width)
 
         # 1. Check inputs. Raise error if not correct
