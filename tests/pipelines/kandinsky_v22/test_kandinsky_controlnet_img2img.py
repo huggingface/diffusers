@@ -254,10 +254,7 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyV22ControlnetImg2ImgPipeline.from_pretrained(
-            # YiYi notes: for testing only, remember to send a PR to kandinsky repo and remove this before merge
-            "/home/yiyi_huggingface_co/model_repo/kandinsky-2-2-controlnet-depth",
-            torch_dtype=torch.float16
-            # "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+            "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
 
