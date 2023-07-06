@@ -120,7 +120,9 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         elif added_emb_type is None:
             self.prd_embedding = None
         else:
-            raise ValueError(f"`added_emb_type`: {added_emb_type} is not supported. Make sure to choose one of `'prd'` or `None`.")
+            raise ValueError(
+                f"`added_emb_type`: {added_emb_type} is not supported. Make sure to choose one of `'prd'` or `None`."
+            )
 
         self.transformer_blocks = nn.ModuleList(
             [
