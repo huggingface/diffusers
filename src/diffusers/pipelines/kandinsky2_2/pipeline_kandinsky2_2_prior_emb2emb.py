@@ -301,6 +301,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
         return latents
 
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_prior.KandinskyPriorPipeline.get_zero_embed
     def get_zero_embed(self, batch_size=1, device=None):
         device = device or self.device
         zero_img = torch.zeros(1, 3, self.image_encoder.config.image_size, self.image_encoder.config.image_size).to(
@@ -310,6 +311,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
 
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_prior.KandinskyPriorPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
@@ -332,6 +334,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 cpu_offload(cpu_offloaded_model, device)
 
     @property
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_prior.KandinskyPriorPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -349,6 +352,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_prior.KandinskyPriorPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
