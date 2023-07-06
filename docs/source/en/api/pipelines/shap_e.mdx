@@ -32,87 +32,11 @@ The original codebase can be found [here](https://github.com/openai/shap-e).
 * [`openai/shap-e`](https://huggingface.co/openai/shap-e)
 * [`openai/shap-e-img2img`](https://huggingface.co/openai/shap-e-img2img)
 
-## Usage examples 
-
-### Text-to-3D image generation
-
-```python 
-import torch
-from diffusers import ShapEPipeline
-from diffusers.utils import export_to_gif
-
-
-ckpt_id = "openai/shap-e"
-pipe = ShapEPipeline.from_pretrained(repo).to("cuda")
-
-
-guidance_scale = 15.0
-prompt = "a shark"
-images = pipe(
-    prompt,
-    guidance_scale=guidance_scale,
-    num_inference_steps=64,
-    size=256,
-).images
-
-gif_path = export_to_gif(images, "shark_3d.gif")
-```
-
-| **Prompt** | **Image** |
-|---|---|
-| A shark | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/shark_3d.gif) |
-| A bird | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/bird_3d.gif) |
-| A bowl of vegetables | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/veg_3d.gif) |
-
-### 3D image generation from a 2D image
-
-```pythonimport torch
-from diffusers import ShapEImg2ImgPipeline
-from diffusers.utils import export_to_gif, load_image
-
-ckpt_id = "openai/shap-e-img2img"
-pipe = ShapEImg2ImgPipeline.from_pretrained(repo).to("cuda")
-
-img_url = "https://hf.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi.png"
-image = load_image(img_url)
-
-generator = torch.Generator(device="cuda").manual_seed(0)
-batch_size = 4
-guidance_scale = 3.0
-
-images = pipe(
-    image, 
-    num_images_per_prompt=batch_size, 
-    generator=generator, 
-    guidance_scale=guidance_scale,
-    num_inference_steps=64, 
-    size=256, 
-    output_type="pil"
-).images
-
-gif_path = export_to_gif(images, "corgi_sampled_3d.gif")
-```
-
-| **Reference corgi image<br>in 2D** | **Sampled image<br>in 3D (one)** | **Sampled image <br>in 3D (two)** |
-|---|---|---|
-| ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi_sampled_3d.gif) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi_sampled_3d_two.gif) |
-
-### ShapEPipeline
-[[autodoc]] ShapEPipeline
-	- all
-	- __call__
-
-### ShapEImg2ImgPipeline
-[[autodoc]] ShapEImg2ImgPipeline
-	- all
-	- __call__
-
-
-## Use Examples:
+## Use Examples
 
 In the following, we will walk you through some examples of how to use Shap-E pipelines to create 3D objects in gif format.
 
-### Text-to-Image generation 
+### Text-to-3D image generation 
 
 We can use [`ShapEPipeline`] to create 3D object based on a text prompt. In this example, we will make a birthday cupcake. The workflow to use the Shap-E text-to-image pipeline is same as how you would use other text-to-image pipelines in diffusers.
 
@@ -202,3 +126,13 @@ images = pipe(
 gif_path = export_to_gif(images[0], "burger_3d.gif")
 ```
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_out.gif)
+
+### ShapEPipeline
+[[autodoc]] ShapEPipeline
+	- all
+	- __call__
+
+### ShapEImg2ImgPipeline
+[[autodoc]] ShapEImg2ImgPipeline
+	- all
+	- __call__
