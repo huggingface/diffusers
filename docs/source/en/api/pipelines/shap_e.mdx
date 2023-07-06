@@ -38,7 +38,7 @@ In the following, we will walk you through some examples of how to use Shap-E pi
 
 ### Text-to-3D image generation 
 
-We can use [`ShapEPipeline`] to create 3D object based on a text prompt. In this example, we will make a birthday cupcake. The workflow to use the Shap-E text-to-image pipeline is same as how you would use other text-to-image pipelines in diffusers.
+We can use [`ShapEPipeline`] to create 3D object based on a text prompt. In this example, we will make a birthday cupcake for :firecracker: diffusers library's 1 year birthday. The workflow to use the Shap-E text-to-image pipeline is same as how you would use other text-to-image pipelines in diffusers.
 
 ```python
 import torch
@@ -52,7 +52,7 @@ pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
-prompt = "A birthday cupcake"
+prompt = ["A firecracker", "A birthday cupcake"]
 
 images = pipe(
     prompt,
@@ -67,9 +67,10 @@ The output of [`ShapEPipeline`] is a list of lists of images frames. Each list o
 ```python
 from diffusers.utils import export_to_gif
 
-gif_path = export_to_gif(images[0], "cupcake_3d.gif")
+export_to_gif(images[0], "firecracker_3d.gif")
+export_to_gif(images[1], "cake_3d.gif")
 ```
-
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/firecracker_out.gif)
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif)
 
 
