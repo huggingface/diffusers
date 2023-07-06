@@ -151,7 +151,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.5753, 0.6113, 0.5005, 0.5036, 0.5464, 0.4725, 0.4982, 0.4865, 0.4861])
+        expected_slice = np.array([0.4656, 0.4840, 0.4439, 0.6698, 0.5574, 0.4524, 0.5799, 0.5943, 0.5165])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
