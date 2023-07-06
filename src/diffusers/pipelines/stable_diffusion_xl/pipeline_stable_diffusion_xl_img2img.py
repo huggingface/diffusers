@@ -48,10 +48,8 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> import requests
-        >>> from PIL import Image
-        >>> from io import BytesIO
         >>> from diffusers import StableDiffusionXLImg2ImgPipeline
+        >>> from diffusers.utils import load_image
 
         >>> pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
@@ -59,10 +57,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
         >>> url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
 
-        >>> response = requests.get(url)
-        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> init_image = load_image(url).convert("RGB")
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> image = pipe(prompt, image=init_image).images[0]
         ```
 """
 
