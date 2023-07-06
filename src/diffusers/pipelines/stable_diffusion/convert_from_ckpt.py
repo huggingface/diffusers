@@ -1139,7 +1139,7 @@ def download_from_original_stable_diffusion_ckpt(
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
-    # import pipelines here to avoid circular import error when using from_ckpt method
+    # import pipelines here to avoid circular import error when using from_single_file method
     from diffusers import (
         LDMTextToImagePipeline,
         PaintByExamplePipeline,

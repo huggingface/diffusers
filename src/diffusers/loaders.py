@@ -1367,16 +1367,16 @@ class FromSingleFileMixin:
         >>> from diffusers import StableDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
         ...     "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
         ... )
 
         >>> # Download pipeline from local file
         >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
-        >>> pipeline = StableDiffusionPipeline.from_ckpt("./v1-5-pruned-emaonly")
+        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly")
 
         >>> # Enable float16 and move to GPU
-        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
         ...     "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
         ...     torch_dtype=torch.float16,
         ... )
