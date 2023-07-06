@@ -117,6 +117,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "invisible-watermark"
 ]
 
 # this is a lookup table with items like:
@@ -207,6 +208,7 @@ extras["test"] = deps_list(
     "scipy",
     "torchvision",
     "transformers",
+    "invisible-watermark",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
