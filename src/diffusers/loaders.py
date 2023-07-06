@@ -1276,13 +1276,19 @@ class LoraLoaderMixin:
         return new_state_dict, network_alpha
 
 
-class FromCkptMixin:
+class FromSingleFileMixin:
     """
     Load model weights saved in the `.ckpt` format into a [`DiffusionPipeline`].
     """
 
     @classmethod
-    def from_ckpt(cls, pretrained_model_link_or_path, **kwargs):
+    def from_ckpt(cls, *args, **kwargs):
+        deprecation_message = "The function `from_ckpt` is deprecated in favor of `from_single_file` and will be removed in diffusers v.0.21. Please make sure to use `StableDiffusionPipeline.from_single_file(...)` instead."
+        deprecate("from_ckpt", "0.21.0", deprecation_message, standard_warn=False)
+        return cls.from_single_file(*args, **kwargs)
+
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
         Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
         is set in evaluation mode (`model.eval()`) by default.
@@ -1361,16 +1367,16 @@ class FromCkptMixin:
         >>> from diffusers import StableDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
         ...     "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
         ... )
 
         >>> # Download pipeline from local file
         >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
-        >>> pipeline = StableDiffusionPipeline.from_ckpt("./v1-5-pruned-emaonly")
+        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly")
 
         >>> # Enable float16 and move to GPU
-        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
         ...     "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
         ...     torch_dtype=torch.float16,
         ... )

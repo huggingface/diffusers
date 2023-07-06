@@ -1029,7 +1029,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         ]
 
         for ckpt_path in ckpt_paths:
-            pipe = StableDiffusionPipeline.from_ckpt(ckpt_path, torch_dtype=torch.float16)
+            pipe = StableDiffusionPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
             pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
             pipe.to("cuda")
 
@@ -1040,7 +1040,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_local(self):
         filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
 
-        pipe = StableDiffusionPipeline.from_ckpt(filename, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -1051,7 +1051,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        pipe = StableDiffusionPipeline.from_ckpt(ckpt_path)
+        pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
         pipe.to("cuda")

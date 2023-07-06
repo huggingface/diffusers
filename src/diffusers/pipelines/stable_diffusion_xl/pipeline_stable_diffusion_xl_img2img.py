@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
@@ -78,7 +78,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
+class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -88,7 +88,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
         - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
-        - *Ckpt*: [`loaders.FromCkptMixin.from_ckpt`]
+        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
     as well as the following saving methods:
         - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
@@ -136,7 +136,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.vae_scale_factor = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.watermark = StableDiffusionXLWatermarker()
@@ -631,9 +630,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
-        original_size: Tuple[int, int] = (1024, 1024),
+        original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
-        target_size: Tuple[int, int] = (1024, 1024),
+        target_size: Tuple[int, int] = None,
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,
     ):
@@ -777,6 +776,13 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline):
         )
         # 7. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        height, width = latents.shape[-2:]
+        height = height * self.vae_scale_factor
+        width = width * self.vae_scale_factor
+
+        original_size = original_size or (height, width)
+        target_size = target_size or (height, width)
 
         # 8. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
