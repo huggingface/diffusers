@@ -126,6 +126,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.KandinskyImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)

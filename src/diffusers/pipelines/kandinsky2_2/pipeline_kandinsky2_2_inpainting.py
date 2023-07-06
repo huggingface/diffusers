@@ -92,7 +92,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
-# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_inpaint.prepare_masks
+# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_inpaint.prepare_mask
 def prepare_mask(masks):
     prepared_masks = []
     for mask in masks:
@@ -264,7 +264,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             movq=movq,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
-   
+
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:

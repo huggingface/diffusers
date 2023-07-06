@@ -111,6 +111,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
+# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.prepare_image
 def prepare_image(pil_image, w=512, h=512):
     pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
     arr = np.array(pil_image.convert("RGB"))
@@ -151,6 +152,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
+    # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.KandinskyImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -160,6 +162,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2_img2img.KandinskyV22Img2ImgPipeline.prepare_latents
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -197,6 +200,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+
         latents = init_latents
 
         return latents
