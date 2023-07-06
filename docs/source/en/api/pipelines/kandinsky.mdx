@@ -11,11 +11,11 @@ specific language governing permissions and limitations under the License.
 
 ## Overview
 
-Kandinsky inherits best practices from [DALL-E 2](https://arxiv.org/abs/2204.06125) and [Latent Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/latent_diffusion), while introducing some new ideas.
+Kandinsky inherits best practices from [DALL-E 2](https://huggingface.co/papers/2204.06125) and [Latent Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/latent_diffusion), while introducing some new ideas.
 
 It uses [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for encoding images and text, and a diffusion image prior (mapping) between latent spaces of CLIP modalities. This approach enhances the visual performance of the model and unveils new horizons in blending images and text-guided image manipulation.
 
-The Kandinsky model is created by [Arseniy Shakhmatov](https://github.com/cene555), [Anton Razzhigaev](https://github.com/razzant), [Aleksandr Nikolich](https://github.com/AlexWortega), [Igor Pavlov](https://github.com/boomb0om), [Andrey Kuznetsov](https://github.com/kuznetsoffandrey) and [Denis Dimitrov](https://github.com/denndimitrov) and the original codebase can be found [here](https://github.com/ai-forever/Kandinsky-2)
+The Kandinsky model is created by [Arseniy Shakhmatov](https://github.com/cene555), [Anton Razzhigaev](https://github.com/razzant), [Aleksandr Nikolich](https://github.com/AlexWortega), [Igor Pavlov](https://github.com/boomb0om), [Andrey Kuznetsov](https://github.com/kuznetsoffandrey) and [Denis Dimitrov](https://github.com/denndimitrov). The original codebase can be found [here](https://github.com/ai-forever/Kandinsky-2)
 
 
 ## Usage example
@@ -287,12 +287,12 @@ First, let's take an image and extract its depth map.
 from diffusers.utils import load_image
 
 img = load_image(
-    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png"
 ).resize((768, 768))
 ```
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png)
 
-We can use `depth-estimation` pipeline from transformers to process the image and retrieve its depth map
+We can use the `depth-estimation` pipeline from transformers to process the image and retrieve its depth map.
 
 ```python
 import torch
@@ -344,7 +344,7 @@ image_emb, zero_image_emb = pipe_prior(
 ).to_tuple()
 ```
 
-Now we can pass the image embeddings and the depth image we extracted to the controlnet pipeline. Remember that with Kandinsky 2.2, only prior pipelines accept `prompt` input. You do not need to pass the prompt to controlnet pipeline.
+Now we can pass the image embeddings and the depth image we extracted to the controlnet pipeline. With Kandinsky 2.2, only prior pipelines accept `prompt` input. You do not need to pass the prompt to the controlnet pipeline.
 
 ```python
 images = pipe(
@@ -365,9 +365,9 @@ The output image looks as follow:
 
 ### Image-to-Image Generation with ControlNet Conditioning
 
-Kandinsky 2.2 also includes an [`KandinskyV22ControlnetImg2ImgPipeline`] that will allow you to add control to the image generation process with both the image and its depth map. This pipeline works really well with [`KandinskyV22PriorEmb2EmbPipeline`], which generates image embeddings based on both a text prompt and an image. 
+Kandinsky 2.2 also includes a [`KandinskyV22ControlnetImg2ImgPipeline`] that will allow you to add control to the image generation process with both the image and its depth map. This pipeline works really well with [`KandinskyV22PriorEmb2EmbPipeline`], which generates image embeddings based on both a text prompt and an image. 
 
-For our robot cat example, we will pass the prompt and cat image together to prior pipeline to generate an image embedding. We will then use that image embedding and the depth map of the cat to further control the image generation process. 
+For our robot cat example, we will pass the prompt and cat image together to the prior pipeline to generate an image embedding. We will then use that image embedding and the depth map of the cat to further control the image generation process. 
 
 We can use the same cat image and its depth map from the last example.
 
@@ -414,13 +414,13 @@ images = pipe(
 images[0].save("robot_cat.png")
 ```
 
-Here is the output. Compared with the output from our text-to-image controlnet example, it kept a lot more cat facial details from the original images and worked into the robot style we asked for.
+Here is the output. Compared with the output from our text-to-image controlnet example, it kept a lot more cat facial details from the original image and worked into the robot style we asked for.
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/robot_cat.png)
 
 ## Kandinsky 2.2
 
-The Kandinsky 2.2 release includes robust new text-to-image models that support text-to-image generation, image-to-image generation, image interpolation, and text-guided image inpainting. The general workflow to perform these tasks using Kandinsky 2.2 is the same as Kandinsky 2.1. First, you will need to use a prior pipeline to generate image embedding based on your text prompt and then use one of the image decoding pipelines to generate the image. The only difference is that in Kandinsky 2.2, all of the decoding pipelines no longer accept the `prompt` input, and the image generation process is conditioned with only `image_embeds` and `negative_image_embeds`.
+The Kandinsky 2.2 release includes robust new text-to-image models that support text-to-image generation, image-to-image generation, image interpolation, and text-guided image inpainting. The general workflow to perform these tasks using Kandinsky 2.2 is the same as in Kandinsky 2.1. First, you will need to use a prior pipeline to generate image embeddings based on your text prompt, and then use one of the image decoding pipelines to generate the output image. The only difference is that in Kandinsky 2.2, all of the decoding pipelines no longer accept the `prompt` input, and the image generation process is conditioned with only `image_embeds` and `negative_image_embeds`.
 
 Let's look at an example of how to perform text-to-image generation using Kandinsky 2.2.
 
@@ -437,7 +437,7 @@ t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-
 t2i_pipe.to("cuda")
 ```
 
-You can then use `pipe_prior` to generate image embeddings the same way as you would with kandinsky 2.1
+You can then use `pipe_prior` to generate image embeddings.
 
 ```python
 prompt = "portrait of a women, blue eyes, cinematic"
@@ -446,7 +446,7 @@ negative_prompt = "low quality, bad quality"
 image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
 ```
 
-Now you can pass these embeddings to the text-to-image pipeline. Remember that in 2.2 you don't need to pass the `prompt`.
+Now you can pass these embeddings to the text-to-image pipeline. When using Kandinsky 2.2 you don't need to pass the `prompt` (but you do with the previous version, Kandinsky 2.1).
 
 ```
 image = t2i_pipe(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[

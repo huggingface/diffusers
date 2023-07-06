@@ -405,7 +405,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
             )
         elif encoder_hid_dim_type == "image_proj":
-            # Kadinsky 2.2
+            # Kandinsky 2.2
             self.encoder_hid_proj = ImageProjection(
                 image_embed_dim=encoder_hid_dim,
                 cross_attention_dim=cross_attention_dim,
@@ -463,10 +463,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim
             )
         elif addition_embed_type == "image":
-            # Kadinsky 2.2
+            # Kandinsky 2.2
             self.add_embedding = ImageTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type == "image_hint":
-            # Kadinsky 2.2 ControlNet
+            # Kandinsky 2.2 ControlNet
             self.add_embedding = ImageHintTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
@@ -912,7 +912,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             aug_emb = self.add_embedding(text_embs, image_embs)
             emb = emb + aug_emb
         elif self.config.addition_embed_type == "image":
-            # Kadinsky 2.2 - style
+            # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the"
@@ -923,11 +923,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             aug_emb = self.add_embedding(image_embs)
             emb = emb + aug_emb
         elif self.config.addition_embed_type == "image_hint":
-            # Kadinsky 2.2 - style
+            # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires"
-                    " the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    " the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             hint = added_cond_kwargs.get("hint")
@@ -950,7 +950,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states, image_embeds)
         elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "image_proj":
-            # Kadinsky 2.2 - style
+            # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires"
