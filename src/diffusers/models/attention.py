@@ -58,7 +58,6 @@ class BasicTransformerBlock(nn.Module):
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
         upcast_attention: bool = False,
-        upcast_softmax: bool = False,
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
@@ -91,7 +90,6 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-            upcast_softmax=upcast_softmax,
         )
 
         # 2. Cross-Attn
@@ -112,7 +110,6 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-                upcast_softmax=upcast_softmax,
             )  # is self-attn if encoder_hidden_states is none
         else:
             self.norm2 = None
