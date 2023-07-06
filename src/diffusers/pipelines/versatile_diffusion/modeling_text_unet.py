@@ -933,7 +933,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             image_embs = added_cond_kwargs.get("image_embeds")
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
-
             aug_emb = self.add_embedding(text_embs, image_embs)
         elif self.config.addition_embed_type == "text_time":
             if "text_embeds" not in added_cond_kwargs:
@@ -961,7 +960,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the"
                     " keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
-
             image_embs = added_cond_kwargs.get("image_embeds")
             aug_emb = self.add_embedding(image_embs)
         elif self.config.addition_embed_type == "image_hint":
