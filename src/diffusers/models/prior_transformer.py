@@ -117,8 +117,10 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         if added_emb_type == "prd":
             self.prd_embedding = nn.Parameter(torch.zeros(1, 1, inner_dim))
-        else:
+        elif added_emb_type is None:
             self.prd_embedding = None
+        else:
+            raise ValueError(f"`added_embed_type`: {added_embed_type} is not supported. Make sure to choose one of `"prd"` or `None`.)
 
         self.transformer_blocks = nn.ModuleList(
             [
