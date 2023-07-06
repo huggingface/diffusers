@@ -246,7 +246,7 @@ class ShapEPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/shap_e/test_shap_e_np_out.npy"
         )
-        pipe = ShapEPipeline.from_pretrained("YiYiXu/shap-e")
+        pipe = ShapEPipeline.from_pretrained("openai/shap-e")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

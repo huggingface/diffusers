@@ -262,7 +262,7 @@ class ShapEImg2ImgPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/shap_e/test_shap_e_img2img_out.npy"
         )
-        pipe = ShapEImg2ImgPipeline.from_pretrained("YiYiXu/shap-e-img2img")
+        pipe = ShapEImg2ImgPipeline.from_pretrained("openai/shap-e-img2img")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
