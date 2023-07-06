@@ -1448,9 +1448,7 @@ def download_from_original_stable_diffusion_ckpt(
                 tokenizer_2=tokenizer_2,
                 unet=unet,
                 scheduler=scheduler,
-                # safety_checker=None,
-                # feature_extractor=None,
-                # requires_safety_checker=False,
+                force_zeros_for_empty_prompt=True,
             )
         else:
             tokenizer = None
@@ -1466,9 +1464,8 @@ def download_from_original_stable_diffusion_ckpt(
                 tokenizer_2=tokenizer_2,
                 unet=unet,
                 scheduler=scheduler,
-                # safety_checker=None,
-                # feature_extractor=None,
-                # requires_safety_checker=False,
+                requires_aesthetics_score=True,
+                force_zeros_for_empty_prompt=False,
             )
     else:
         text_config = create_ldm_bert_config(original_config)
