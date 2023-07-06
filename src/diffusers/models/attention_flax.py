@@ -152,6 +152,7 @@ class FlaxAttention(nn.Module):
         self.value = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_v")
 
         self.proj_attn = nn.Dense(self.query_dim, dtype=self.dtype, name="to_out_0")
+        self.dropout_layer = nn.Dropout(rate=self.dropout)
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -169,7 +170,6 @@ class FlaxAttention(nn.Module):
         tensor = tensor.reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
-    @nn.compact
     def __call__(self, hidden_states, context=None, deterministic=True):
         context = hidden_states if context is None else context
 
@@ -215,7 +215,7 @@ class FlaxAttention(nn.Module):
 
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         hidden_states = self.proj_attn(hidden_states)
-        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
+        return self.dropout_layer(hidden_states, deterministic=deterministic)
 
 
 class FlaxBasicTransformerBlock(nn.Module):
@@ -261,8 +261,8 @@ class FlaxBasicTransformerBlock(nn.Module):
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm3 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
+        self.dropout_layer = nn.Dropout(rate=self.dropout)
 
-    @nn.compact
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
@@ -282,7 +282,7 @@ class FlaxBasicTransformerBlock(nn.Module):
         hidden_states = self.ff(self.norm3(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
-        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
+        return self.dropout_layer(hidden_states, deterministic=deterministic)
 
 
 class FlaxTransformer2DModel(nn.Module):
@@ -358,7 +358,8 @@ class FlaxTransformer2DModel(nn.Module):
                 dtype=self.dtype,
             )
 
-    @nn.compact
+        self.dropout_layer = nn.Dropout(rate=self.dropout)
+
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
         residual = hidden_states
@@ -381,7 +382,7 @@ class FlaxTransformer2DModel(nn.Module):
             hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states + residual
-        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_states)
+        return self.dropout_layer(hidden_states, deterministic=deterministic)
 
 
 class FlaxFeedForward(nn.Module):
@@ -437,9 +438,9 @@ class FlaxGEGLU(nn.Module):
     def setup(self):
         inner_dim = self.dim * 4
         self.proj = nn.Dense(inner_dim * 2, dtype=self.dtype)
+        self.dropout_layer = nn.Dropout(rate=self.dropout)
 
-    @nn.compact
     def __call__(self, hidden_states, deterministic=True):
         hidden_states = self.proj(hidden_states)
         hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
-        return nn.Dropout(rate=self.dropout, deterministic=deterministic)(hidden_linear * nn.gelu(hidden_gelu))
+        return self.dropout_layer(hidden_linear * nn.gelu(hidden_gelu), deterministic=deterministic)
