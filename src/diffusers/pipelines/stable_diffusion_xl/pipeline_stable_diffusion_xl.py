@@ -13,13 +13,10 @@
 # limitations under the License.
 
 import inspect
-import warnings
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-import PIL
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
@@ -30,47 +27,66 @@ from ...models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from . import StableDiffusionXLPipelineOutput
+from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import StableDiffusionXLPipeline
 
-def preprocess(image):
-    warnings.warn(
-        "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
-    )
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
+        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
 
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = (x - x % 64 for x in (w, h))  # resize to integer multiple of 64
-
-        image = [np.array(i.resize((w, h)))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> image = pipe(prompt).images[0]
+        ```
+"""
 
 
-class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    """
+    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
+    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
+
+
+class StableDiffusionXLPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image super-resolution using Stable Diffusion 2.
+    Pipeline for text-to-image generation using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    In addition the pipeline inherits the following loading methods:
+        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+        - *Ckpt*: [`loaders.FromCkptMixin.from_ckpt`]
+
+    as well as the following saving methods:
+        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -83,79 +99,92 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        low_res_scheduler ([`SchedulerMixin`]):
-            A scheduler used to add initial noise to the low res conditioning image. It must be an instance of
-            [`DDPMScheduler`].
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-    _optional_components = ["watermarker", "safety_checker", "feature_extractor"]
 
     def __init__(
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
+        text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
+        tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Optional[Any] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
-        watermarker: Optional[Any] = None,
-        max_noise_level: int = 350,
+        force_zeros_for_empty_prompt: bool = True,
     ):
         super().__init__()
-
-        if hasattr(
-            vae, "config"
-        ):  # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
-            is_vae_scaling_factor_set_to_0_08333 = (
-                hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
-            )
-            if not is_vae_scaling_factor_set_to_0_08333:
-                deprecation_message = (
-                    "The configuration file of the vae does not contain `scaling_factor` or it is set to"
-                    f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
-                    " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to"
-                    " 0.08333 Please make sure to update the config accordingly, as not doing so might lead to"
-                    " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging"
-                    " Face Hub, it would be very nice if you could open a Pull Request for the `vae/config.json` file"
-                )
-                deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
-                vae.register_to_config(scaling_factor=0.08333)
 
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
             unet=unet,
-            low_res_scheduler=low_res_scheduler,
             scheduler=scheduler,
-            safety_checker=safety_checker,
-            watermarker=watermarker,
-            feature_extractor=feature_extractor,
         )
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, resample="bicubic")
-        self.register_to_config(max_noise_level=max_noise_level)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+        self.watermark = StableDiffusionXLWatermarker()
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
+        steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
+        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
         `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
 
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -175,16 +204,19 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
+        model_sequence = (
+            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+        )
+        model_sequence.extend([self.unet, self.vae])
+
         hook = None
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+        for cpu_offloaded_model in model_sequence:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -202,25 +234,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, nsfw_detected, watermark_detected = self.safety_checker(
-                images=image,
-                clip_input=safety_checker_input.pixel_values.to(dtype=dtype),
-            )
-        else:
-            nsfw_detected = None
-            watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
-
-        return image, nsfw_detected, watermark_detected
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -269,56 +283,65 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # Define tokenizers and text encoders
+        tokenizers = [self.tokenizer, self.tokenizer_2] if self.tokenizer is not None else [self.tokenizer_2]
+        text_encoders = (
+            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+        )
+
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+            prompt_embeds_list = []
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                if isinstance(self, TextualInversionLoaderMixin):
+                    prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                text_inputs = tokenizer(
+                    prompt,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
                 )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                text_input_ids = text_inputs.input_ids
+                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                    text_input_ids, untruncated_ids
+                ):
+                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
+                    logger.warning(
+                        "The following part of your input was truncated because CLIP can only handle sequences up to"
+                        f" {tokenizer.model_max_length} tokens: {removed_text}"
+                    )
+
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(device),
+                    output_hidden_states=True,
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
+                # We are only ALWAYS interested in the pooled output of the final text encoder
+                pooled_prompt_embeds = prompt_embeds[0]
+                prompt_embeds = prompt_embeds.hidden_states[-2]
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            prompt_embeds = prompt_embeds[0]
+                bs_embed, seq_len, _ = prompt_embeds.shape
+                # duplicate text embeddings for each generation per prompt, using mps friendly method
+                prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+                prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+                prompt_embeds_list.append(prompt_embeds)
 
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+            prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
 
         # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
+        zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
+        if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
+            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+            negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        elif do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
             uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif prompt is not None and type(prompt) is not type(negative_prompt):
+            if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -334,47 +357,71 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
+            negative_prompt_embeds_list = []
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                # textual inversion: procecss multi-vector tokens if necessary
+                if isinstance(self, TextualInversionLoaderMixin):
+                    uncond_tokens = self.maybe_convert_prompt(uncond_tokens, tokenizer)
 
-            max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+                max_length = prompt_embeds.shape[1]
+                uncond_input = tokenizer(
+                    uncond_tokens,
+                    padding="max_length",
+                    max_length=max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
+                negative_prompt_embeds = text_encoder(
+                    uncond_input.input_ids.to(device),
+                    output_hidden_states=True,
+                )
+                # We are only ALWAYS interested in the pooled output of the final text encoder
+                negative_pooled_prompt_embeds = negative_prompt_embeds[0]
+                negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+
+                if do_classifier_free_guidance:
+                    # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+                    seq_len = negative_prompt_embeds.shape[1]
+
+                    negative_prompt_embeds = negative_prompt_embeds.to(dtype=text_encoder.dtype, device=device)
+
+                    negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+                    negative_prompt_embeds = negative_prompt_embeds.view(
+                        batch_size * num_images_per_prompt, seq_len, -1
+                    )
+
+                    # For classifier free guidance, we need to do two forward passes.
+                    # Here we concatenate the unconditional and text embeddings into a single batch
+                    # to avoid doing two forward passes
+
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+
+            negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
+
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
+
+        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             else:
-                attention_mask = None
-
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+        return image, has_nsfw_concept
 
-        if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
-
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        return prompt_embeds
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -392,30 +439,19 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
     def check_inputs(
         self,
         prompt,
-        image,
-        noise_level,
+        height,
+        width,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -450,72 +486,48 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        if (
-            not isinstance(image, torch.Tensor)
-            and not isinstance(image, PIL.Image.Image)
-            and not isinstance(image, np.ndarray)
-            and not isinstance(image, list)
-        ):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `np.ndarray`, `PIL.Image.Image` or `list` but is {type(image)}"
-            )
-
-        # verify batch size of prompt and image are same if image is a list or tensor or numpy array
-        if isinstance(image, list) or isinstance(image, torch.Tensor) or isinstance(image, np.ndarray):
-            if isinstance(prompt, str):
-                batch_size = 1
-            else:
-                batch_size = len(prompt)
-            if isinstance(image, list):
-                image_batch_size = len(image)
-            else:
-                image_batch_size = image.shape[0]
-            if batch_size != image_batch_size:
-                raise ValueError(
-                    f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
-                    " Please make sure that passed `prompt` matches the batch size of `image`."
-                )
-
-        # check noise level
-        if noise_level > self.config.max_noise_level:
-            raise ValueError(f"`noise_level` has to be <= {self.config.max_noise_level} but is {noise_level}")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height, width)
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        )
+        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
+
+        if expected_add_embed_dim != passed_add_embed_dim:
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
+
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
+        return add_time_ids
+
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
-        num_inference_steps: int = 75,
-        guidance_scale: float = 9.0,
-        noise_level: int = 20,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -528,6 +540,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0,
+        original_size: Tuple[int, int] = (1024, 1024),
+        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        target_size: Tuple[int, int] = (1024, 1024),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -536,8 +552,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, or tensor representing an image batch which will be upscaled. *
+            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -549,14 +567,14 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. Ignored when not using guidance (i.e., ignored if `guidance_scale`
-                is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator`, *optional*):
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
@@ -574,7 +592,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -586,54 +604,35 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            guidance_rescale (`float`, *optional*, defaults to 0.7):
+                Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
+                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+                Guidance rescale factor should fix overexposure when using zero terminal SNR.
+            original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                TODO
+            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                TODO
+            target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                TODO
 
         Examples:
-        ```py
-        >>> import requests
-        >>> from PIL import Image
-        >>> from io import BytesIO
-        >>> from diffusers import StableDiffusionUpscalePipeline
-        >>> import torch
-
-        >>> # load model and scheduler
-        >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-        ...     model_id, revision="fp16", torch_dtype=torch.float16
-        ... )
-        >>> pipeline = pipeline.to("cuda")
-
-        >>> # let's download an  image
-        >>> url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
-        >>> response = requests.get(url)
-        >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> low_res_img = low_res_img.resize((128, 128))
-        >>> prompt = "a white cat"
-
-        >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
-        >>> upscaled_image.save("upsampled_cat.png")
-        ```
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
+            element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        # 1. Check inputs
+        # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt,
-            image,
-            noise_level,
-            callback_steps,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
-
-        if image is None:
-            raise ValueError("`image` input cannot be undefined.")
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -644,6 +643,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -653,7 +653,12 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        prompt_embeds = self._encode_prompt(
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -664,26 +669,13 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             lora_scale=text_encoder_lora_scale,
         )
 
-        # 4. Preprocess image
-        image = self.image_processor.preprocess(image)
-        image = image.to(dtype=prompt_embeds.dtype, device=device)
-
-        # 5. set timesteps
+        # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+
         timesteps = self.scheduler.timesteps
 
-        # 5. Add noise to image
-        noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
-        noise = randn_tensor(image.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
-        image = self.low_res_scheduler.add_noise(image, noise, noise_level)
-
-        batch_multiplier = 2 if do_classifier_free_guidance else 1
-        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
-        noise_level = torch.cat([noise_level] * image.shape[0])
-
-        # 6. Prepare latent variables
-        height, width = image.shape[2:]
-        num_channels_latents = self.vae.config.latent_channels
+        # 5. Prepare latent variables
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -695,38 +687,41 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             latents,
         )
 
-        # 7. Check that sizes of image and latents match
-        num_channels_image = image.shape[1]
-        if num_channels_latents + num_channels_image != self.unet.config.in_channels:
-            raise ValueError(
-                f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                f" `num_channels_image`: {num_channels_image} "
-                f" = {num_channels_latents+num_channels_image}. Please verify the config of"
-                " `pipeline.unet` or your `image` input."
-            )
-
-        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 9. Denoising loop
+        # 7. Prepare added time ids & embeddings
+        add_text_embeds = pooled_prompt_embeds
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
+
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-                # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = torch.cat([latent_model_input, image], dim=1)
 
                 # predict the noise residual
+                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    class_labels=noise_level,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -734,6 +729,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -744,7 +743,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 10. Post-processing
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
@@ -763,24 +761,22 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         else:
             latents = latents.float()
 
-        # post-processing
         if not output_type == "latent":
+            # CHECK there is problem here (PVP)
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            has_nsfw_concept = None
         else:
             image = latents
             has_nsfw_concept = None
+            return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=None)
 
         if has_nsfw_concept is None:
             do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
+        image = self.watermark.apply_watermark(image)
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-
-        # 11. Apply watermark
-        if output_type == "pil" and self.watermarker is not None:
-            image = self.watermarker.apply_watermark(image)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -789,4 +785,4 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

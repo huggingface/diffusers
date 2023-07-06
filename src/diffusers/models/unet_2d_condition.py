@@ -98,7 +98,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        encoder_hid_dim (`int`, *optional*, defaults to `None`):
+        transformer_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
+            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
+            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+        encoder_hid_dim (`int`, *optional*, defaults to None):
             If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
             dimension to `cross_attention_dim`.
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
@@ -115,6 +119,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         addition_embed_type (`str`, *optional*, defaults to `None`):
             Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
             "text". "text" will use the `TextTimeEmbedding` layer.
+        addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
+            Dimension for the timestep embeddings.
         num_class_embeds (`int`, *optional*, defaults to `None`):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -170,6 +176,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -178,6 +185,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
+        addition_time_embed_dim: Optional[int] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
@@ -351,6 +359,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.add_embedding = TextImageTimeEmbedding(
                 text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim
             )
+        elif addition_embed_type == "text_time":
+            self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
+            self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
@@ -383,6 +395,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(layers_per_block, int):
             layers_per_block = [layers_per_block] * len(down_block_types)
 
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+
         if class_embeddings_concat:
             # The time embeddings are concatenated with the class embeddings. The dimension of the
             # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
@@ -401,6 +416,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block[i],
+                transformer_layers_per_block=transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
@@ -426,6 +442,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # mid
         if mid_block_type == "UNetMidBlock2DCrossAttn":
             self.mid_block = UNetMidBlock2DCrossAttn(
+                transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
                 resnet_eps=norm_eps,
@@ -467,6 +484,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         only_cross_attention = list(reversed(only_cross_attention))
 
         output_channel = reversed_block_out_channels[0]
@@ -487,6 +505,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             up_block = get_up_block(
                 up_block_type,
                 num_layers=reversed_layers_per_block[i] + 1,
+                transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -693,6 +712,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -763,6 +785,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        aug_emb = None
 
         if self.class_embedding is not None:
             if class_labels is None:
@@ -784,7 +807,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
-            emb = emb + aug_emb
         elif self.config.addition_embed_type == "text_image":
             # Kadinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
@@ -796,7 +818,25 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
 
             aug_emb = self.add_embedding(text_embs, image_embs)
-            emb = emb + aug_emb
+        elif self.config.addition_embed_type == "text_time":
+            if "text_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if "time_ids" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            time_embeds = self.add_time_proj(time_ids.flatten())
+            time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+
+            add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+            add_embeds = add_embeds.to(emb.dtype)
+            aug_emb = self.add_embedding(add_embeds)
+
+        emb = emb + aug_emb if aug_emb is not None else emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
