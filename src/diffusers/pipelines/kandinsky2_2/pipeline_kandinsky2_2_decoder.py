@@ -84,7 +84,7 @@ class Kandinsky2_2_DecoderPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
-        vae: VQModel,
+        movq: VQModel,
     ):
         super().__init__()
 
