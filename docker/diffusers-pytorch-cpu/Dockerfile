@@ -14,6 +14,7 @@ RUN apt update && \
                    libsndfile1-dev \
                    python3.8 \
                    python3-pip \
+                   libgl1 \
                    python3.8-venv && \
     rm -rf /var/lib/apt/lists
 
