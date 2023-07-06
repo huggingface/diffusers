@@ -819,7 +819,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # Kadinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             hint = added_cond_kwargs.get("hint")
