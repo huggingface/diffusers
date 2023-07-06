@@ -9,15 +9,10 @@ concurrency:
 
 jobs:
   build:
-    steps:
-      - name: Install dependencies
-        run: |
-          apt-get update && apt-get install libsndfile1-dev libgl1 -y
-
-      - name: Build doc
-        uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@main
-        with:
-          commit_sha: ${{ github.event.pull_request.head.sha }}
-          pr_number: ${{ github.event.number }}
-          package: diffusers
-          languages: en ko zh
+    uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@main
+    with:
+      commit_sha: ${{ github.event.pull_request.head.sha }}
+      pr_number: ${{ github.event.number }}
+      install_libgl1: true
+      package: diffusers
+      languages: en ko zh
