@@ -75,14 +75,14 @@ class Kandinsky2_2_DecoderControlnetImg2ImgPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
-        vae: VQModel,
+        movq: VQModel,
     ):
         super().__init__()
 
         self.register_modules(
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            vae=movq,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
