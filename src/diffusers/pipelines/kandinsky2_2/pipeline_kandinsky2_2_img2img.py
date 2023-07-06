@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2_decoder.downscale_height_and_width
+# Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.downscale_height_and_width
 def downscale_height_and_width(height, width, scale_factor=8):
     new_height = height // scale_factor**2
     if height % scale_factor**2 != 0:
