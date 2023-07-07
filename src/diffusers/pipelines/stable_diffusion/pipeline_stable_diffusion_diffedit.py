@@ -1336,7 +1336,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        image_latents: torch.FloatTensor = None,
+        image_latents: Union[torch.FloatTensor, PIL.Image.Image] = None,
         inpaint_strength: Optional[float] = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
@@ -1492,7 +1492,13 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
 
         # 6. Preprocess image latents
-        image_latents = image_latents.detach()
+        if isinstance(image_latents, list) and any(isinstance(l, torch.Tensor) and l.ndim == 5 for l in image_latents):
+            image_latents = torch.cat(image_latents).detach()
+        elif isinstance(image_latents, torch.Tensor) and image_latents.ndim == 5:
+            image_latents = image_latents.detach()
+        else:
+            image_latents = self.image_processor.preprocess(image_latents).detach()
+
         latent_shape = (self.vae.config.latent_channels, latent_height, latent_width)
         if image_latents.shape[-3:] != latent_shape:
             raise ValueError(
@@ -1503,8 +1509,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             image_latents = image_latents.reshape(batch_size, len(timesteps), *latent_shape)
         if image_latents.shape[:2] != (batch_size, len(timesteps)):
             raise ValueError(
-                f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)} timesteps, "
-                f"but has batch size {image_latents.shape[0]} with latent images from {image_latents.shape[1]} timesteps."
+                f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)}"
+                f" timesteps, but has batch size {image_latents.shape[0]} with latent images from"
+                f" {image_latents.shape[1]} timesteps."
             )
         image_latents = image_latents.transpose(0, 1).repeat_interleave(num_images_per_prompt, dim=1)
         image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
