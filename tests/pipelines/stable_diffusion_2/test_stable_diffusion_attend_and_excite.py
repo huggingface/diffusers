@@ -30,7 +30,7 @@ from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -38,13 +38,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 @skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     # Attend and excite requires being able to run a backward pass at
     # inference time. There's no deterministic backward operator for pad

@@ -26,8 +26,9 @@ This tutorial will teach you how to train a [`UNet2DModel`] from scratch on a su
 
 Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets, and 🤗 Accelerate, to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics (you can also use [Weights & Biases](https://docs.wandb.ai/) to track your training).
 
-```bash
-!pip install diffusers[training]
+```py
+# uncomment to install the necessary libraries in Colab
+#!pip install diffusers[training]
 ```
 
 We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
@@ -312,7 +313,7 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         mixed_precision=config.mixed_precision,
 ...         gradient_accumulation_steps=config.gradient_accumulation_steps,
 ...         log_with="tensorboard",
-...         logging_dir=os.path.join(config.output_dir, "logs"),
+...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
 ...         if config.push_to_hub:
@@ -407,9 +408,9 @@ Once training is complete, take a look at the final 🦋 images 🦋 generated b
 
 ## Next steps
 
-Unconditional image generation is one example of a task that can be trained. You can explore other tasks and training techniques by visiting the [🧨 Diffusers Training Examples](./training/overview) page. Here are some examples of what you can learn:
+Unconditional image generation is one example of a task that can be trained. You can explore other tasks and training techniques by visiting the [🧨 Diffusers Training Examples](../training/overview) page. Here are some examples of what you can learn:
 
-* [Textual Inversion](./training/text_inversion), an algorithm that teaches a model a specific visual concept and integrates it into the generated image.
-* [DreamBooth](./training/dreambooth), a technique for generating personalized images of a subject given several input images of the subject.
-* [Guide](./training/text2image) to finetuning a Stable Diffusion model on your own dataset.
-* [Guide](./training/lora) to using LoRA, a memory-efficient technique for finetuning really large models faster.
+* [Textual Inversion](../training/text_inversion), an algorithm that teaches a model a specific visual concept and integrates it into the generated image.
+* [DreamBooth](../training/dreambooth), a technique for generating personalized images of a subject given several input images of the subject.
+* [Guide](../training/text2image) to finetuning a Stable Diffusion model on your own dataset.
+* [Guide](../training/lora) to using LoRA, a memory-efficient technique for finetuning really large models faster.

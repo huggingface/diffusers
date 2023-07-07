@@ -11,10 +11,13 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.utils import randn_tensor, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_2, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -38,7 +41,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         unet = UNet2DModel.from_pretrained(
-            "dg845/consistency-models-test",
+            "diffusers/consistency-models-test",
             subfolder="test_unet",
         )
         return unet
@@ -46,7 +49,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def dummy_cond_unet(self):
         unet = UNet2DModel.from_pretrained(
-            "dg845/consistency-models-test",
+            "diffusers/consistency-models-test",
             subfolder="test_unet_class_cond",
         )
         return unet
@@ -191,7 +194,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         return latents
 
     def test_consistency_model_cd_multistep(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -206,12 +209,13 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.0059, 0.0003, 0.0000, 0.0023, 0.0052, 0.0007, 0.0165, 0.0081, 0.0095])
+
+        expected_slice = np.array([0.0888, 0.0881, 0.0666, 0.0479, 0.0292, 0.0195, 0.0201, 0.0163, 0.0254])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     def test_consistency_model_cd_onestep(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -228,13 +232,14 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.0146, 0.0158, 0.0092, 0.0086, 0.0000, 0.0000, 0.0000, 0.0000, 0.0058])
+
+        expected_slice = np.array([0.0340, 0.0152, 0.0063, 0.0267, 0.0221, 0.0107, 0.0416, 0.0186, 0.0217])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     @require_torch_2
     def test_consistency_model_cd_multistep_flash_attn(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -251,13 +256,14 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314])
+
+        expected_slice = np.array([0.1875, 0.1428, 0.1289, 0.2151, 0.2092, 0.1477, 0.1877, 0.1641, 0.1353])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @require_torch_2
     def test_consistency_model_cd_onestep_flash_attn(self):
-        unet = UNet2DModel.from_pretrained("ayushtues/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
+        unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
         scheduler = CMStochasticIterativeScheduler(
             num_train_timesteps=40,
             sigma_min=0.002,
@@ -276,6 +282,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1623, 0.2009, 0.2387, 0.1731, 0.1168, 0.1202, 0.2031, 0.1327, 0.2447])
+
+        expected_slice = np.array([0.1663, 0.1948, 0.2275, 0.1680, 0.1204, 0.1245, 0.1858, 0.1338, 0.2095])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

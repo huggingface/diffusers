@@ -125,14 +125,14 @@ Awesome! Tell us what problem it solved for you.
 
 You can open a feature request [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=).
 
-#### 2.3 Feedback. 
+#### 2.3 Feedback.
 
 Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](https://huggingface.co/docs/diffusers/conceptual/philosophy). If you feel like a certain design choice does not fit with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
 If a certain design choice is very useful for you, please also leave a note as this is great feedback for future design decisions.
 
 You can open an issue about feedback [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
 
-#### 2.4 Technical questions. 
+#### 2.4 Technical questions.
 
 Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and please provide detail on
 why this part of the code is difficult to understand.
@@ -394,8 +394,8 @@ passes. You should run the tests impacted by your changes like this:
  ```bash
  $ pytest tests/<TEST_TO_RUN>.py
  ```
- 
-Before you run the tests, please make sure you install the dependencies required for testing. You can do so 
+
+Before you run the tests, please make sure you install the dependencies required for testing. You can do so
 with this command:
 
  ```bash

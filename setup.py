@@ -89,11 +89,14 @@ _deps = [
     "huggingface-hub>=0.13.2",
     "requests-mock==1.10.0",
     "importlib_metadata",
+    "invisible-watermark",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
     "Jinja2",
     "k-diffusion>=0.0.12",
+    "torchsde",
+    "note_seq",
     "librosa",
     "numpy",
     "omegaconf",
@@ -106,6 +109,7 @@ _deps = [
     "safetensors",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
+    "onnx",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -190,6 +194,7 @@ extras["test"] = deps_list(
     "compel",
     "datasets",
     "Jinja2",
+    "invisible-watermark",
     "k-diffusion",
     "librosa",
     "omegaconf",
@@ -227,7 +232,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.17.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.18.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

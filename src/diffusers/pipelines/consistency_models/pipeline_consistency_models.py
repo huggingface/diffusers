@@ -3,18 +3,49 @@ from typing import Callable, List, Optional, Union
 import torch
 
 from ...models import UNet2DModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import CMStochasticIterativeScheduler
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+
+        >>> from diffusers import ConsistencyModelPipeline
+
+        >>> device = "cuda"
+        >>> # Load the cd_imagenet64_l2 checkpoint.
+        >>> model_id_or_path = "openai/diffusers-cd_imagenet64_l2"
+        >>> pipe = ConsistencyModelPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe.to(device)
+
+        >>> # Onestep Sampling
+        >>> image = pipe(num_inference_steps=1).images[0]
+        >>> image.save("cd_imagenet64_l2_onestep_sample.png")
+
+        >>> # Onestep sampling, class-conditional image generation
+        >>> # ImageNet-64 class label 145 corresponds to king penguins
+        >>> image = pipe(num_inference_steps=1, class_labels=145).images[0]
+        >>> image.save("cd_imagenet64_l2_onestep_sample_penguin.png")
+
+        >>> # Multistep sampling, class-conditional image generation
+        >>> # Timesteps can be explicitly specified; the particular timesteps below are from the original Github repo:
+        >>> # https://github.com/openai/consistency_models/blob/main/scripts/launch.sh#L77
+        >>> image = pipe(num_inference_steps=None, timesteps=[22, 0], class_labels=145).images[0]
+        >>> image.save("cd_imagenet64_l2_multistep_sample_penguin.png")
+        ```
+"""
 
 
 class ConsistencyModelPipeline(DiffusionPipeline):
@@ -35,7 +66,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             with [`CMStochasticIterativeScheduler`].
     """
 
-    def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
+    def __init__(self, unet: UNet2DModel, scheduler: CMStochasticIterativeScheduler) -> None:
         super().__init__()
 
         self.register_modules(
@@ -135,32 +166,25 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         return latents
 
     # Follows diffusers.VaeImageProcessor.postprocess
-    def postprocess_image(self, latents: torch.FloatTensor, output_type: str = "pil"):
-        if output_type not in ["latent", "pt", "np", "pil"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
-                "`pil`, `np`, `pt`, `latent`"
+    def postprocess_image(self, sample: torch.FloatTensor, output_type: str = "pil"):
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(
+                f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
             )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
-
-        if output_type == "latent":
-            # Return latents without modification
-            return latents
 
         # Equivalent to diffusers.VaeImageProcessor.denormalize
-        latents = (latents / 2 + 0.5).clamp(0, 1)
+        sample = (sample / 2 + 0.5).clamp(0, 1)
         if output_type == "pt":
-            return latents
+            return sample
 
         # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
-        latents = latents.cpu().permute(0, 2, 3, 1).numpy()
+        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "np":
-            return latents
+            return sample
 
         # Output_type must be 'pil'
-        latents = self.numpy_to_pil(latents)
-        return latents
+        sample = self.numpy_to_pil(sample)
+        return sample
 
     def prepare_class_labels(self, batch_size, device, class_labels=None):
         if self.unet.config.num_class_embeds is not None:
@@ -202,6 +226,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         batch_size: int = 1,
@@ -246,6 +271,9 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+
+        Examples:
+
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
@@ -284,15 +312,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # 5. Denoising loop
         # Multistep sampling: implements Algorithm 1 in the paper
-        use_noise = False if num_inference_steps == 1 else True  # Onestep sampling does not use random noise
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 scaled_sample = self.scheduler.scale_model_input(sample, t)
-                model_output = self.unet(scaled_sample, t, class_labels=class_labels).sample
+                model_output = self.unet(scaled_sample, t, class_labels=class_labels, return_dict=False)[0]
 
-                sample = self.scheduler.step(
-                    model_output, t, sample, use_noise=use_noise, generator=generator
-                ).prev_sample
+                sample = self.scheduler.step(model_output, t, sample, generator=generator)[0]
 
                 # call the callback, if provided
                 progress_bar.update()

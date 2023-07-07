@@ -11,19 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import is_torch_version
+from ..utils import is_torch_version, logging
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def get_down_block(
@@ -35,7 +38,8 @@ def get_down_block(
     add_downsample,
     resnet_eps,
     resnet_act_fn,
-    attn_num_head_channels,
+    transformer_layers_per_block=1,
+    num_attention_heads=None,
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
@@ -47,7 +51,16 @@ def get_down_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    attention_head_dim=None,
+    downsample_type=None,
 ):
+    # If attn head dim is not defined, we default it to the number of heads
+    if attention_head_dim is None:
+        logger.warn(
+            f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+        )
+        attention_head_dim = num_attention_heads
+
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
         return DownBlock2D(
@@ -77,18 +90,22 @@ def get_down_block(
             output_scale_factor=resnet_out_scale_factor,
         )
     elif down_block_type == "AttnDownBlock2D":
+        if add_downsample is False:
+            downsample_type = None
+        else:
+            downsample_type = downsample_type or "conv"  # default to 'conv'
         return AttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            downsample_type=downsample_type,
         )
     elif down_block_type == "AttnDownsampleBlock2D":
         return AttnDownsampleBlock2D(
@@ -109,6 +126,7 @@ def get_down_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlock2D")
         return CrossAttnDownBlock2D(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
@@ -118,7 +136,7 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -138,7 +156,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
@@ -166,8 +184,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            downsample_padding=downsample_padding,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "DownEncoderBlock2D":
@@ -192,7 +209,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
@@ -215,7 +232,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             add_self_attention=True if not add_downsample else False,
         )
     raise ValueError(f"{down_block_type} does not exist.")
@@ -231,7 +248,8 @@ def get_up_block(
     add_upsample,
     resnet_eps,
     resnet_act_fn,
-    attn_num_head_channels,
+    transformer_layers_per_block=1,
+    num_attention_heads=None,
     resnet_groups=None,
     cross_attention_dim=None,
     dual_cross_attention=False,
@@ -242,7 +260,16 @@ def get_up_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    attention_head_dim=None,
+    upsample_type=None,
 ):
+    # If attn head dim is not defined, we default it to the number of heads
+    if attention_head_dim is None:
+        logger.warn(
+            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+        )
+        attention_head_dim = num_attention_heads
+
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
         return UpBlock2D(
@@ -277,6 +304,7 @@ def get_up_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock2D")
         return CrossAttnUpBlock2D(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
@@ -286,7 +314,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -307,7 +335,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
@@ -315,18 +343,23 @@ def get_up_block(
             cross_attention_norm=cross_attention_norm,
         )
     elif up_block_type == "AttnUpBlock2D":
+        if add_upsample is False:
+            upsample_type = None
+        else:
+            upsample_type = upsample_type or "conv"  # default to 'conv'
+
         return AttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
-            add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            upsample_type=upsample_type,
         )
     elif up_block_type == "AttnUpsampleBlock2D":
         return AttnUpsampleBlock2D(
@@ -364,7 +397,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "UpDecoderBlock2D":
@@ -377,6 +410,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            temb_channels=temb_channels,
         )
     elif up_block_type == "AttnUpDecoderBlock2D":
         return AttnUpDecoderBlock2D(
@@ -387,8 +421,9 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            temb_channels=temb_channels,
         )
     elif up_block_type == "KUpBlock2D":
         return KUpBlock2D(
@@ -410,7 +445,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            attention_head_dim=attention_head_dim,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -424,12 +459,12 @@ class UNetMidBlock2D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
+        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
     ):
         super().__init__()
@@ -453,16 +488,23 @@ class UNetMidBlock2D(nn.Module):
         ]
         attentions = []
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
+            )
+            attention_head_dim = in_channels
+
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
                     Attention(
                         in_channels,
-                        heads=in_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                        dim_head=attn_num_head_channels if attn_num_head_channels is not None else in_channels,
+                        heads=in_channels // attention_head_dim,
+                        dim_head=attention_head_dim,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
-                        norm_num_groups=resnet_groups,
+                        norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
+                        spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                         residual_connection=True,
                         bias=True,
                         upcast_softmax=True,
@@ -494,7 +536,7 @@ class UNetMidBlock2D(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
-                hidden_states = attn(hidden_states)
+                hidden_states = attn(hidden_states, temb=temb)
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -507,12 +549,13 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         dual_cross_attention=False,
@@ -522,7 +565,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         super().__init__()
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -546,10 +589,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_head_channels,
-                        in_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
                         in_channels=in_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -559,8 +602,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_head_channels,
-                        in_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
                         in_channels=in_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -586,14 +629,22 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
-    ):
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
                 return_dict=False,
             )[0]
             hidden_states = resnet(hidden_states, temb)
@@ -613,7 +664,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         skip_time_act=False,
@@ -624,10 +675,10 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
 
         self.has_cross_attention = True
 
-        self.attn_num_head_channels = attn_num_head_channels
+        self.attention_head_dim = attention_head_dim
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
-        self.num_heads = in_channels // self.attn_num_head_channels
+        self.num_heads = in_channels // self.attention_head_dim
 
         # there is always at least one resnet
         resnets = [
@@ -657,7 +708,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
-                    dim_head=attn_num_head_channels,
+                    dim_head=self.attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
@@ -687,16 +738,34 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+
+        if attention_mask is None:
+            # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
+            mask = None if encoder_hidden_states is None else encoder_attention_mask
+        else:
+            # when attention_mask is defined: we don't even check for encoder_attention_mask.
+            # this is to maintain compatibility with UnCLIP, which uses 'attention_mask' param for cross-attn masks.
+            # TODO: UnCLIP should express cross-attn mask via encoder_attention_mask param instead of via attention_mask.
+            #       then we can simplify this whole if/else block to:
+            #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
+            mask = attention_mask
+
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
+                attention_mask=mask,
                 **cross_attention_kwargs,
             )
 
@@ -719,14 +788,21 @@ class AttnDownBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         downsample_padding=1,
-        add_downsample=True,
+        downsample_type="conv",
     ):
         super().__init__()
         resnets = []
         attentions = []
+        self.downsample_type = downsample_type
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -747,8 +823,8 @@ class AttnDownBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -762,11 +838,29 @@ class AttnDownBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-        if add_downsample:
+        if downsample_type == "conv":
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
+            )
+        elif downsample_type == "resnet":
+            self.downsamplers = nn.ModuleList(
+                [
+                    ResnetBlock2D(
+                        in_channels=out_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                        down=True,
                     )
                 ]
             )
@@ -779,11 +873,14 @@ class AttnDownBlock2D(nn.Module):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb)
             hidden_states = attn(hidden_states)
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                if self.downsample_type == "resnet":
+                    hidden_states = downsampler(hidden_states, temb=temb)
+                else:
+                    hidden_states = downsampler(hidden_states)
 
             output_states += (hidden_states,)
 
@@ -892,12 +989,13 @@ class CrossAttnDownBlock2D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         downsample_padding=1,
@@ -912,7 +1010,7 @@ class CrossAttnDownBlock2D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -933,10 +1031,10 @@ class CrossAttnDownBlock2D(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_head_channels,
-                        out_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -947,8 +1045,8 @@ class CrossAttnDownBlock2D(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_head_channels,
-                        out_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -972,9 +1070,14 @@ class CrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
-        # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -989,33 +1092,32 @@ class CrossAttnDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )[0]
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        cross_attention_kwargs,
-                    )[0]
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # timestep
+                    None,  # class_labels
+                    cross_attention_kwargs,
+                    attention_mask,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -1188,7 +1290,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
@@ -1196,6 +1298,12 @@ class AttnDownEncoderBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1216,8 +1324,8 @@ class AttnDownEncoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -1266,14 +1374,19 @@ class AttnSkipDownBlock2D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=np.sqrt(2.0),
-        downsample_padding=1,
         add_downsample=True,
     ):
         super().__init__()
         self.attentions = nn.ModuleList([])
         self.resnets = nn.ModuleList([])
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1295,8 +1408,8 @@ class AttnSkipDownBlock2D(nn.Module):
             self.attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=32,
@@ -1540,7 +1653,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_downsample=True,
@@ -1555,8 +1668,8 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         resnets = []
         attentions = []
 
-        self.attn_num_head_channels = attn_num_head_channels
-        self.num_heads = out_channels // self.attn_num_head_channels
+        self.attention_head_dim = attention_head_dim
+        self.num_heads = out_channels // self.attention_head_dim
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1585,7 +1698,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
                     heads=self.num_heads,
-                    dim_head=attn_num_head_channels,
+                    dim_head=attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
@@ -1623,10 +1736,27 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+
+        if attention_mask is None:
+            # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
+            mask = None if encoder_hidden_states is None else encoder_attention_mask
+        else:
+            # when attention_mask is defined: we don't even check for encoder_attention_mask.
+            # this is to maintain compatibility with UnCLIP, which uses 'attention_mask' param for cross-attn masks.
+            # TODO: UnCLIP should express cross-attn mask via encoder_attention_mask param instead of via attention_mask.
+            #       then we can simplify this whole if/else block to:
+            #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
+            mask = attention_mask
 
         for resnet, attn in zip(self.resnets, self.attentions):
             if self.training and self.gradient_checkpointing:
@@ -1645,6 +1775,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
+                    mask,
                     cross_attention_kwargs,
                 )[0]
             else:
@@ -1653,7 +1784,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=mask,
                     **cross_attention_kwargs,
                 )
 
@@ -1757,7 +1888,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         num_layers: int = 4,
         resnet_group_size: int = 32,
         add_downsample=True,
-        attn_num_head_channels: int = 64,
+        attention_head_dim: int = 64,
         add_self_attention: bool = False,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
@@ -1790,8 +1921,8 @@ class KCrossAttnDownBlock2D(nn.Module):
             attentions.append(
                 KAttentionBlock(
                     out_channels,
-                    out_channels // attn_num_head_channels,
-                    attn_num_head_channels,
+                    out_channels // attention_head_dim,
+                    attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
@@ -1812,7 +1943,13 @@ class KCrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
 
@@ -1828,29 +1965,23 @@ class KCrossAttnDownBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                    )
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    cross_attention_kwargs,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
@@ -1859,6 +1990,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_attention_mask=encoder_attention_mask,
                 )
 
             if self.downsamplers is None:
@@ -1887,13 +2019,21 @@ class AttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
-        add_upsample=True,
+        upsample_type="conv",
     ):
         super().__init__()
         resnets = []
         attentions = []
+
+        self.upsample_type = upsample_type
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1916,8 +2056,8 @@ class AttnUpBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
@@ -1931,8 +2071,26 @@ class AttnUpBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-        if add_upsample:
+        if upsample_type == "conv":
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+        elif upsample_type == "resnet":
+            self.upsamplers = nn.ModuleList(
+                [
+                    ResnetBlock2D(
+                        in_channels=out_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                        up=True,
+                    )
+                ]
+            )
         else:
             self.upsamplers = None
 
@@ -1948,7 +2106,10 @@ class AttnUpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                if self.upsample_type == "resnet":
+                    hidden_states = upsampler(hidden_states, temb=temb)
+                else:
+                    hidden_states = upsampler(hidden_states)
 
         return hidden_states
 
@@ -2059,12 +2220,13 @@ class CrossAttnUpBlock2D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -2078,7 +2240,7 @@ class CrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2101,10 +2263,10 @@ class CrossAttnUpBlock2D(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        attn_num_head_channels,
-                        out_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -2115,8 +2277,8 @@ class CrossAttnUpBlock2D(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        attn_num_head_channels,
-                        out_channels // attn_num_head_channels,
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -2135,15 +2297,15 @@ class CrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        res_hidden_states_tuple,
-        temb=None,
-        encoder_hidden_states=None,
-        cross_attention_kwargs=None,
-        upsample_size=None,
-        attention_mask=None,
+        hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
-        # TODO(Patrick, William) - attention mask is not used
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2161,33 +2323,32 @@ class CrossAttnUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )[0]
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        cross_attention_kwargs,
-                    )[0]
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    None,  # timestep
+                    None,  # class_labels
+                    cross_attention_kwargs,
+                    attention_mask,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -2287,12 +2448,13 @@ class UpDecoderBlock2D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
+        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
+        temb_channels=None,
     ):
         super().__init__()
         resnets = []
@@ -2304,7 +2466,7 @@ class UpDecoderBlock2D(nn.Module):
                 ResnetBlock2D(
                     in_channels=input_channels,
                     out_channels=out_channels,
-                    temb_channels=None,
+                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
@@ -2322,9 +2484,9 @@ class UpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=None)
+            hidden_states = resnet(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -2345,13 +2507,20 @@ class AttnUpDecoderBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        temb_channels=None,
     ):
         super().__init__()
         resnets = []
         attentions = []
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
 
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
@@ -2360,7 +2529,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                 ResnetBlock2D(
                     in_channels=input_channels,
                     out_channels=out_channels,
-                    temb_channels=None,
+                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
@@ -2373,11 +2542,12 @@ class AttnUpDecoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    norm_num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups if resnet_time_scale_shift != "spatial" else None,
+                    spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                     residual_connection=True,
                     bias=True,
                     upcast_softmax=True,
@@ -2393,10 +2563,10 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb=None)
-            hidden_states = attn(hidden_states)
+            hidden_states = resnet(hidden_states, temb=temb)
+            hidden_states = attn(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -2418,9 +2588,8 @@ class AttnSkipUpBlock2D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         output_scale_factor=np.sqrt(2.0),
-        upsample_padding=1,
         add_upsample=True,
     ):
         super().__init__()
@@ -2447,11 +2616,17 @@ class AttnSkipUpBlock2D(nn.Module):
                 )
             )
 
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
         self.attentions.append(
             Attention(
                 out_channels,
-                heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
-                dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                heads=out_channels // attention_head_dim,
+                dim_head=attention_head_dim,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
                 norm_num_groups=32,
@@ -2728,7 +2903,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        attention_head_dim=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -2741,9 +2916,9 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.attention_head_dim = attention_head_dim
 
-        self.num_heads = out_channels // self.attn_num_head_channels
+        self.num_heads = out_channels // self.attention_head_dim
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2774,7 +2949,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
                     heads=self.num_heads,
-                    dim_head=attn_num_head_channels,
+                    dim_head=self.attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
@@ -2813,15 +2988,28 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        res_hidden_states_tuple,
-        temb=None,
-        encoder_hidden_states=None,
-        upsample_size=None,
-        attention_mask=None,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+
+        if attention_mask is None:
+            # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
+            mask = None if encoder_hidden_states is None else encoder_attention_mask
+        else:
+            # when attention_mask is defined: we don't even check for encoder_attention_mask.
+            # this is to maintain compatibility with UnCLIP, which uses 'attention_mask' param for cross-attn masks.
+            # TODO: UnCLIP should express cross-attn mask via encoder_attention_mask param instead of via attention_mask.
+            #       then we can simplify this whole if/else block to:
+            #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
+            mask = attention_mask
+
         for resnet, attn in zip(self.resnets, self.attentions):
             # resnet
             # pop res hidden states
@@ -2845,6 +3033,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
+                    mask,
                     cross_attention_kwargs,
                 )[0]
             else:
@@ -2853,7 +3042,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=mask,
                     **cross_attention_kwargs,
                 )
 
@@ -2955,7 +3144,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
         resnet_group_size: int = 32,
-        attn_num_head_channels=1,  # attention dim_head
+        attention_head_dim=1,  # attention dim_head
         cross_attention_dim: int = 768,
         add_upsample: bool = True,
         upcast_attention: bool = False,
@@ -2969,7 +3158,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         add_self_attention = True if is_first_block else False
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.attention_head_dim = attention_head_dim
 
         # in_channels, and out_channels for the block (k-unet)
         k_in_channels = out_channels if is_first_block else 2 * out_channels
@@ -3005,10 +3194,10 @@ class KCrossAttnUpBlock2D(nn.Module):
             attentions.append(
                 KAttentionBlock(
                     k_out_channels if (i == num_layers - 1) else out_channels,
-                    k_out_channels // attn_num_head_channels
+                    k_out_channels // attention_head_dim
                     if (i == num_layers - 1)
-                    else out_channels // attn_num_head_channels,
-                    attn_num_head_channels,
+                    else out_channels // attention_head_dim,
+                    attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
@@ -3030,13 +3219,14 @@ class KCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        res_hidden_states_tuple,
-        temb=None,
-        encoder_hidden_states=None,
-        cross_attention_kwargs=None,
-        upsample_size=None,
-        attention_mask=None,
+        hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
@@ -3054,29 +3244,23 @@ class KCrossAttnUpBlock2D(nn.Module):
 
                     return custom_forward
 
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                        use_reentrant=False,
-                    )[0]
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(attn, return_dict=False),
-                        hidden_states,
-                        encoder_hidden_states,
-                        attention_mask,
-                        cross_attention_kwargs,
-                    )[0]
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn, return_dict=False),
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    cross_attention_kwargs,
+                    encoder_attention_mask,
+                    **ckpt_kwargs,
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
@@ -3085,6 +3269,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     emb=temb,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_attention_mask=encoder_attention_mask,
                 )
 
         if self.upsamplers is not None:
@@ -3163,11 +3348,14 @@ class KAttentionBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        encoder_hidden_states=None,
-        emb=None,
-        attention_mask=None,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        # TODO: mark emb as non-optional (self.norm2 requires it).
+        #       requires assessing impact of change to positional param interface.
+        emb: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
@@ -3181,6 +3369,7 @@ class KAttentionBlock(nn.Module):
             attn_output = self.attn1(
                 norm_hidden_states,
                 encoder_hidden_states=None,
+                attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
             attn_output = self._to_4d(attn_output, height, weight)
@@ -3195,6 +3384,7 @@ class KAttentionBlock(nn.Module):
         attn_output = self.attn2(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask if encoder_hidden_states is None else encoder_attention_mask,
             **cross_attention_kwargs,
         )
         attn_output = self._to_4d(attn_output, height, weight)

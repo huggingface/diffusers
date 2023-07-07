@@ -92,9 +92,14 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 
+        ramp = np.linspace(0, 1, num_train_timesteps)
+        sigmas = self._convert_to_karras(ramp)
+        timesteps = self.sigma_to_t(sigmas)
+
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+        self.sigmas = torch.from_numpy(sigmas)
+        self.timesteps = torch.from_numpy(timesteps)
         self.custom_timesteps = False
         self.is_scale_input_called = False
 
@@ -128,15 +133,18 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def _sigma_to_t(self, sigmas: np.ndarray):
+    def sigma_to_t(self, sigmas: Union[float, np.ndarray]):
         """
         Gets scaled timesteps from the Karras sigmas, for input to the consistency model.
 
         Args:
-            sigmas (`np.ndarray`, *optional*): array of Karras sigmas
+            sigmas (`float` or `np.ndarray`): single Karras sigma or array of Karras sigmas
         Returns:
-            `np.ndarray`: scaled input timestep
+            `float` or `np.ndarray`: scaled input timestep or scaled input timestep array
         """
+        if not isinstance(sigmas, np.ndarray):
+            sigmas = np.array(sigmas, dtype=np.float64)
+
         timesteps = 1000 * 0.25 * np.log(sigmas + 1e-44)
 
         return timesteps
@@ -200,7 +208,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         ramp = timesteps[::-1].copy()
         ramp = ramp / (num_train_timesteps - 1)
         sigmas = self._convert_to_karras(ramp)
-        timesteps = self._sigma_to_t(sigmas)
+        timesteps = self.sigma_to_t(sigmas)
 
         sigmas = np.concatenate([sigmas, [self.sigma_min]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -258,7 +266,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        use_noise: bool = True,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
@@ -271,8 +278,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            use_noise (`bool`, *optional*, defaults to `True`):
-                Whether to inject noise during the step. Noise is not used for onestep sampling.
             generator (`torch.Generator`, *optional*): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerDiscreteSchedulerOutput class
         Returns:
@@ -310,7 +315,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         # sigma_next corresponds to next_t in original implementation
         sigma = self.sigmas[step_index]
-        sigma_next = self.sigmas[step_index + 1]
+        if step_index + 1 < self.config.num_train_timesteps:
+            sigma_next = self.sigmas[step_index + 1]
+        else:
+            # Set sigma_next to sigma_min
+            sigma_next = self.sigmas[-1]
 
         # Get scalings for boundary conditions
         c_skip, c_out = self.get_scalings_for_boundary_condition(sigma)
@@ -321,7 +330,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             denoised = denoised.clamp(-1, 1)
 
         # 2. Sample z ~ N(0, s_noise^2 * I)
-        if use_noise:
+        # Noise is not used for onestep sampling.
+        if len(self.timesteps) > 1:
             noise = randn_tensor(
                 model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
             )

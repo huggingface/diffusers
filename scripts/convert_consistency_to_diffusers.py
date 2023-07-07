@@ -20,13 +20,15 @@ TEST_UNET_CONFIG = {
     "attention_head_dim": 8,
     "down_block_types": [
         "ResnetDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
+        "AttnDownBlock2D",
     ],
     "up_block_types": [
-        "AttnUpsampleBlock2D",
+        "AttnUpBlock2D",
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "scale_shift",
+    "upsample_type": "resnet",
+    "downsample_type": "resnet",
 }
 
 IMAGENET_64_UNET_CONFIG = {
@@ -39,17 +41,19 @@ IMAGENET_64_UNET_CONFIG = {
     "attention_head_dim": 64,
     "down_block_types": [
         "ResnetDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
     ],
     "up_block_types": [
-        "AttnUpsampleBlock2D",
-        "AttnUpsampleBlock2D",
-        "AttnUpsampleBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "scale_shift",
+    "upsample_type": "resnet",
+    "downsample_type": "resnet",
 }
 
 LSUN_256_UNET_CONFIG = {
@@ -64,19 +68,21 @@ LSUN_256_UNET_CONFIG = {
         "ResnetDownsampleBlock2D",
         "ResnetDownsampleBlock2D",
         "ResnetDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
-        "AttnDownsampleBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
     ],
     "up_block_types": [
-        "AttnUpsampleBlock2D",
-        "AttnUpsampleBlock2D",
-        "AttnUpsampleBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
         "ResnetUpsampleBlock2D",
         "ResnetUpsampleBlock2D",
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "default",
+    "upsample_type": "resnet",
+    "downsample_type": "resnet",
 }
 
 CD_SCHEDULER_CONFIG = {
@@ -145,7 +151,9 @@ def convert_attention(checkpoint, new_checkpoint, old_prefix, new_prefix, attent
     new_checkpoint[f"{new_prefix}.to_v.weight"] = weight_v.squeeze(-1).squeeze(-1)
     new_checkpoint[f"{new_prefix}.to_v.bias"] = bias_v.squeeze(-1).squeeze(-1)
 
-    new_checkpoint[f"{new_prefix}.to_out.0.weight"] = checkpoint[f"{old_prefix}.proj_out.weight"].squeeze(-1).squeeze(-1)
+    new_checkpoint[f"{new_prefix}.to_out.0.weight"] = (
+        checkpoint[f"{old_prefix}.proj_out.weight"].squeeze(-1).squeeze(-1)
+    )
     new_checkpoint[f"{new_prefix}.to_out.0.bias"] = checkpoint[f"{old_prefix}.proj_out.bias"].squeeze(-1).squeeze(-1)
 
     return new_checkpoint
@@ -184,7 +192,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix, has_skip=has_skip)
                 current_layer += 1
 
-        elif layer_type == "AttnDownsampleBlock2D":
+        elif layer_type == "AttnDownBlock2D":
             for j in range(layers_per_block):
                 new_prefix = f"down_blocks.{i}.resnets.{j}"
                 old_prefix = f"input_blocks.{current_layer}.0"
@@ -231,7 +239,7 @@ def con_pt_to_diffuser(checkpoint_path: str, unet_config):
                 new_prefix = f"up_blocks.{i}.upsamplers.0"
                 old_prefix = f"output_blocks.{current_layer-1}.1"
                 new_checkpoint = convert_resnet(checkpoint, new_checkpoint, old_prefix, new_prefix)
-        elif layer_type == "AttnUpsampleBlock2D":
+        elif layer_type == "AttnUpBlock2D":
             for j in range(layers_per_block + 1):
                 new_prefix = f"up_blocks.{i}.resnets.{j}"
                 old_prefix = f"output_blocks.{current_layer}.0"

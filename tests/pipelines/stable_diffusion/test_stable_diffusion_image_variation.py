@@ -30,24 +30,24 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
 class StableDiffusionImageVariationPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionImageVariationPipeline
     params = IMAGE_VARIATION_PARAMS
     batch_params = IMAGE_VARIATION_BATCH_PARAMS
     image_params = frozenset([])
     # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
 
     def get_dummy_components(self):
         torch.manual_seed(0)

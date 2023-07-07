@@ -1,6 +1,7 @@
 from ..utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
+    is_invisible_watermark_available,
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
@@ -58,9 +59,25 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
     )
+    from .kandinsky import (
+        KandinskyImg2ImgPipeline,
+        KandinskyInpaintPipeline,
+        KandinskyPipeline,
+        KandinskyPriorPipeline,
+    )
+    from .kandinsky2_2 import (
+        KandinskyV22ControlnetImg2ImgPipeline,
+        KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintPipeline,
+        KandinskyV22Pipeline,
+        KandinskyV22PriorEmb2EmbPipeline,
+        KandinskyV22PriorPipeline,
+    )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
+    from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
@@ -72,8 +89,10 @@ else:
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
+        StableDiffusionLDM3DPipeline,
         StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
+        StableDiffusionParadigmsPipeline,
         StableDiffusionPipeline,
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
@@ -82,8 +101,9 @@ else:
         StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
-    from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline
+    from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
+    from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
@@ -91,6 +111,15 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_invisible_watermark_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
+else:
+    from .stable_diffusion_xl import StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline
 
 try:
     if not is_onnx_available():

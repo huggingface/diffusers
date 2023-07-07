@@ -35,24 +35,31 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
-class ControlNetImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class ControlNetImg2ImgPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS.union({"control_image"})
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -160,7 +167,9 @@ class ControlNetImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
 
-class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionMultiControlNetPipelineFastTests(
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
@@ -179,6 +188,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
         )
         torch.manual_seed(0)
+
+        def init_weights(m):
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.normal(m.weight)
+                m.bias.data.fill_(1.0)
+
         controlnet1 = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -187,6 +202,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet1.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         controlnet2 = ControlNetModel(
             block_out_channels=(32, 64),
@@ -196,6 +213,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet2.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -278,6 +297,39 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
 
         return inputs
 
+    def test_control_guidance_switch(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        scale = 10.0
+        steps = 4
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_1 = pipe(**inputs)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_2 = pipe(**inputs, control_guidance_start=0.1, control_guidance_end=0.2)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])[0]
+
+        # make sure that all outputs are different
+        assert np.sum(np.abs(output_1 - output_2)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_3)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_4)) > 1e-3
+
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
@@ -302,21 +354,6 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_float16(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_local(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_optional_components(self):
-        ...
 
 
 @slow

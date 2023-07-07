@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromCkptMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -85,7 +85,7 @@ def preprocess_mask(mask, batch_size, scale_factor=8):
 
 
 class StableDiffusionInpaintPipelineLegacy(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
@@ -96,7 +96,7 @@ class StableDiffusionInpaintPipelineLegacy(
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
         - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
-        - *Ckpt*: [`loaders.FromCkptMixin.from_ckpt`]
+        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
     as well as the following saving methods:
         - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
@@ -123,7 +123,6 @@ class StableDiffusionInpaintPipelineLegacy(
     """
     _optional_components = ["feature_extractor"]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -136,6 +135,13 @@ class StableDiffusionInpaintPipelineLegacy(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        deprecation_message = (
+            f"The class {self.__class__} is deprecated and will be removed in v1.0.0. You can achieve exactly the same functionality"
+            "by loading your model into `StableDiffusionInpaintPipeline` instead. See https://github.com/huggingface/diffusers/pull/3533"
+            "for more information."
+        )
+        deprecate("legacy is outdated", "1.0.0", deprecation_message, standard_warn=False)
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -298,6 +304,7 @@ class StableDiffusionInpaintPipelineLegacy(
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -322,7 +329,14 @@ class StableDiffusionInpaintPipelineLegacy(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -534,7 +548,7 @@ class StableDiffusionInpaintPipelineLegacy(
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, image, timestep, num_images_per_prompt, dtype, device, generator):
-        image = image.to(device=self.device, dtype=dtype)
+        image = image.to(device=device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = self.vae.config.scaling_factor * init_latents
@@ -544,7 +558,7 @@ class StableDiffusionInpaintPipelineLegacy(
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
-        noise = randn_tensor(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
+        noise = randn_tensor(init_latents.shape, generator=generator, device=device, dtype=dtype)
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
         return latents, init_latents_orig, noise
@@ -569,6 +583,7 @@ class StableDiffusionInpaintPipelineLegacy(
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -633,6 +648,10 @@ class StableDiffusionInpaintPipelineLegacy(
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -659,6 +678,9 @@ class StableDiffusionInpaintPipelineLegacy(
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -667,6 +689,7 @@ class StableDiffusionInpaintPipelineLegacy(
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Preprocess image and mask
@@ -687,7 +710,7 @@ class StableDiffusionInpaintPipelineLegacy(
         )
 
         # 7. Prepare mask latent
-        mask = mask_image.to(device=self.device, dtype=latents.dtype)
+        mask = mask_image.to(device=device, dtype=latents.dtype)
         mask = torch.cat([mask] * num_images_per_prompt)
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -702,9 +725,13 @@ class StableDiffusionInpaintPipelineLegacy(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds, return_dict=False)[
-                    0
-                ]
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

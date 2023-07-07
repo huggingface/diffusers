@@ -97,7 +97,8 @@ accelerate launch train_controlnet.py \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --train_batch_size=4
+ --train_batch_size=4 \
+ --push_to_hub
 ```
 
 This default configuration requires ~38GB VRAM.
@@ -120,7 +121,8 @@ accelerate launch train_controlnet.py \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
- --gradient_accumulation_steps=4
+ --gradient_accumulation_steps=4 \
+  --push_to_hub
 ```
 
 ## Training with multiple GPUs
@@ -143,7 +145,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
  --train_batch_size=4 \
  --mixed_precision="fp16" \
  --tracker_project_name="controlnet-demo" \
- --report_to=wandb
+ --report_to=wandb \
+  --push_to_hub
 ```
 
 ## Example results
@@ -191,7 +194,8 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
- --use_8bit_adam
+ --use_8bit_adam \
+  --push_to_hub
 ```
 
 ## Training on a 12 GB GPU
@@ -219,7 +223,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
- --set_grads_to_none
+ --set_grads_to_none \
+  --push_to_hub
 ```
 
 When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
@@ -283,7 +288,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
- --mixed_precision fp16
+ --mixed_precision fp16 \
+ --push_to_hub
 ```
 
 ## Inference

@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Load pipelines, models, and schedulers
 
+[[open-in-colab]]
+
 Having an easy way to use a diffusion system for inference is essential to 🧨 Diffusers. Diffusion systems often consist of multiple components like parameterized models, tokenizers, and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API, while remaining flexible enough to be adapted for other use cases, such as loading each component individually as building blocks to assemble your own diffusion system.
 
 Everything you need for inference or training is accessible with the `from_pretrained()` method.
@@ -172,7 +174,7 @@ A checkpoint variant is usually a checkpoint where it's weights are:
 
 </Tip>
 
-Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using-diffusers/using_safetensors)), model structure, and weights have identical tensor shapes.
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using_safetensors)), model structure, and weights have identical tensor shapes.
 
 | **checkpoint type** | **weight name**                     | **argument for loading weights** |
 |---------------------|-------------------------------------|----------------------------------|
@@ -188,6 +190,7 @@ There are two important arguments to know for loading variants:
 
 ```python
 from diffusers import DiffusionPipeline
+import torch
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(

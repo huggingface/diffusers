@@ -15,41 +15,100 @@
 
 import gc
 import tempfile
+import traceback
 import unittest
 
 import numpy as np
 import torch
-from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DDIMScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
 
 from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
-class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+# Will be run via run_test_in_subprocess
+def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
+    error = None
+    try:
+        _ = in_queue.get(timeout=timeout)
+
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe.to("cuda")
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        pipe.controlnet.to(memory_format=torch.channels_last)
+        pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "bird"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, output_type="np")
+        image = output.images[0]
+
+        assert image.shape == (768, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1.0
+
+    except Exception:
+        error = f"{traceback.format_exc()}"
+
+    results = {"error": error}
+    out_queue.put(results, timeout=timeout)
+    out_queue.join()
+
+
+class ControlNetPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -154,7 +213,9 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
 
-class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionMultiControlNetPipelineFastTests(
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -173,6 +234,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
         )
         torch.manual_seed(0)
+
+        def init_weights(m):
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.normal(m.weight)
+                m.bias.data.fill_(1.0)
+
         controlnet1 = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -181,6 +248,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet1.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         controlnet2 = ControlNetModel(
             block_out_channels=(32, 64),
@@ -190,6 +259,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
         )
+        controlnet2.controlnet_down_blocks.apply(init_weights)
+
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -268,6 +339,39 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
 
         return inputs
 
+    def test_control_guidance_switch(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        scale = 10.0
+        steps = 4
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_1 = pipe(**inputs)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_2 = pipe(**inputs, control_guidance_start=0.1, control_guidance_end=0.2)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = steps
+        inputs["controlnet_conditioning_scale"] = scale
+        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])[0]
+
+        # make sure that all outputs are different
+        assert np.sum(np.abs(output_1 - output_2)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_3)) > 1e-3
+        assert np.sum(np.abs(output_1 - output_4)) > 1e-3
+
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
@@ -292,21 +396,6 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_float16(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_local(self):
-        ...
-
-    # override PipelineTesterMixin
-    @unittest.skip("save pretrained not implemented")
-    def test_save_load_optional_components(self):
-        ...
 
 
 @slow
@@ -595,41 +684,42 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.2724, 0.2846, 0.2724, 0.3843, 0.3682, 0.2736, 0.4675, 0.3862, 0.2887])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_compile(self):
-        if version.parse(torch.__version__) < version.parse("2.0"):
-            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
-            return
-
+    def test_canny_guess_mode_euler(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe.to("cuda")
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
-        pipe.unet.to(memory_format=torch.channels_last)
-        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-        pipe.controlnet.to(memory_format=torch.channels_last)
-        pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
-
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "bird"
+        prompt = ""
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
-        image = output.images[0]
-
-        assert image.shape == (768, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
+        output = pipe(
+            prompt,
+            image,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=3,
+            guidance_scale=3.0,
+            guess_mode=True,
         )
 
-        assert np.abs(expected_image - image).max() < 1.0
+        image = output.images[0]
+        assert image.shape == (768, 512, 3)
+
+        image_slice = image[-3:, -3:, -1]
+        expected_slice = np.array([0.1655, 0.1721, 0.1623, 0.1685, 0.1711, 0.1646, 0.1651, 0.1631, 0.1494])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @require_torch_2
+    def test_stable_diffusion_compile(self):
+        run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
     def test_v11_shuffle_global_pool_conditions(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11e_sd15_shuffle")
