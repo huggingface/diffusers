@@ -845,7 +845,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
-        use_torch_2_0_or_xformers = isinstance(self.vae.decoder.mid_block.attentions[0].processor in (
+        use_torch_2_0_or_xformers = isinstance(self.vae.decoder.mid_block.attentions[0].processor, (
             AttnProcessor2_0,
             XFormersAttnProcessor,
             LoRAXFormersAttnProcessor,
