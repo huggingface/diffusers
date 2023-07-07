@@ -118,7 +118,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
             operations.append(CommitOperationAdd(path_in_repo="/".join(path.split("/")[4:]), path_or_fileobj=path))
 
         # Open the PR.
-        commit_descrition = (
+        commit_description = (
             "Variables converted by the [`diffusers`' `fp16_safetensors`"
             " CLI](https://github.com/huggingface/diffusers/blob/main/src/diffusers/commands/fp16_safetensors.py)."
         )
@@ -126,7 +126,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
             repo_id=self.ckpt_id,
             operations=operations,
             commit_message=commit_message,
-            commit_descrition=commit_descrition,
+            commit_description=commit_description,
             repo_type="model",
             create_pr=True,
         ).pr_url
