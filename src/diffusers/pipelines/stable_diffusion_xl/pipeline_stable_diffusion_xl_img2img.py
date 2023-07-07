@@ -191,7 +191,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.text_encoder_2, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
 
     def enable_model_cpu_offload(self, gpu_id=0):
