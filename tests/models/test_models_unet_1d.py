@@ -89,7 +89,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "mid_block_type": "MidResTemporalBlock1D",
             "down_block_types": ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
             "up_block_types": ("UpResnetBlock1D", "UpResnetBlock1D", "UpResnetBlock1D"),
-            "act_fn": "mish",
+            "act_fn": "swish",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
