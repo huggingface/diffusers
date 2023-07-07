@@ -189,7 +189,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -200,7 +200,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.vae, self.image_encoder]:
             cpu_offload(cpu_offloaded_model, execution_device=device)

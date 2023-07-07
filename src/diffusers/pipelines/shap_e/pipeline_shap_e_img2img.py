@@ -130,7 +130,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
         models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
@@ -141,7 +141,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         models = [self.image_encoder, self.prior]
         for cpu_offloaded_model in models:

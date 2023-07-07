@@ -160,7 +160,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         """
         self.vae.disable_slicing()
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
         models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
@@ -171,7 +171,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         # TODO: self.image_normalizer.{scale,unscale} are not covered by the offload hooks, so they fails if added to the list
         models = [
@@ -184,7 +184,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -196,7 +196,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)

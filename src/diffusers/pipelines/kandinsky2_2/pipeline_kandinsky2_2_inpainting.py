@@ -278,7 +278,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         return latents
 
     # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
         models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
@@ -289,7 +289,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         models = [
             self.unet,
@@ -300,7 +300,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 cpu_offload(cpu_offloaded_model, device)
 
     # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -312,7 +312,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)

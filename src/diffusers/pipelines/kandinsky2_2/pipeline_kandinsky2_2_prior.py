@@ -255,7 +255,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         return zero_image_emb
 
     # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_prior.KandinskyPriorPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
         models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
@@ -266,7 +266,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         models = [
             self.image_encoder,

@@ -298,7 +298,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae, controlnet, and safety checker have their state dicts saved to CPU and then are moved to a
@@ -311,7 +311,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
             cpu_offload(cpu_offloaded_model, device)
@@ -319,7 +319,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu="cuda", gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -331,7 +331,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device = torch.device(f"{gpu}:{gpu_id}")
 
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
