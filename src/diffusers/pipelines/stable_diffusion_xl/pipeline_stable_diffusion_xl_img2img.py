@@ -876,24 +876,18 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            has_nsfw_concept = None
         else:
             image = latents
-            return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=None)
-
-        if has_nsfw_concept is None:
-            do_denormalize = [True] * image.shape[0]
-        else:
-            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+            return StableDiffusionXLPipelineOutput(images=image)
 
         image = self.watermark.apply_watermark(image)
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (image,)
 
-        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionXLPipelineOutput(images=image)
