@@ -17,6 +17,7 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
+
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
