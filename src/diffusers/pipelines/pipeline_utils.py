@@ -204,7 +204,7 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
-        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetenstors`
+        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetensors`
         variant_file_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
@@ -213,7 +213,7 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
             rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
         )
 
-    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetenstors`
+    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
     non_variant_file_re = re.compile(
         rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
     )
@@ -1168,7 +1168,7 @@ class DiffusionPipeline(ConfigMixin):
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
