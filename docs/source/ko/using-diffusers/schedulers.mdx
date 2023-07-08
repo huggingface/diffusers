@@ -22,7 +22,7 @@ diffusion 파이프라인은 diffusion 모델, 스케줄러 등의 컴포넌트�
 - 확률적으로(stochastic) 혹은 확정적으로(deterministic)?
 - 디노이징 된 샘플을 찾아내기 위해 어떤 알고리즘을 사용해야 할까?
 
-이러한 프로세스는 다소 난해하고, 디노이징 속도와 디노이징 퀄리티 사이의 트레이드 오프를 정의해야 하는 문제가 될 수 있습니다. 주어진 파이프라인에 어떤 스케줄러가 가장 적합한지를 정량적으로 판단하는 것은 매우 어려운 일입니다. 이로인해 일단 해당 스케줄러를 직접 사용하여, 생성되는 이미지를 직접 눈으로 보며, (정성적으로) 성능을  판단해보는 것이 추천되곤 합니다.
+이러한 프로세스는 다소 난해하고, 디노이징 속도와 디노이징 퀄리티 사이의 트레이드 오프를 정의해야 하는 문제가 될 수 있습니다. 주어진 파이프라인에 어떤 스케줄러가 가장 적합한지를 정량적으로 판단하는 것은 매우 어려운 일입니다. 이로 인해 일단 해당 스케줄러를 직접 사용하여, 생성되는 이미지를 직접 눈으로 보며, 정성적으로 성능을 판단해보는 것이 추천되곤 합니다.
 
 
 
@@ -46,7 +46,7 @@ login()
 pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 ```
 
-GPU사용을 원한다면 `.to("cuda")`를 설정해주시면 됩니다.
+다음으로, GPU로 이동합니다.
 
 ```python
 pipeline.to("cuda")
@@ -82,7 +82,7 @@ PNDMScheduler {
 }
 ```
 
-출력 결과를 통해, 우리는 해당 스케줄러가 [`PNDMScheduler`]의 인스턴스라는 것을 알 수 있습니다. 이제 [`PNDMScheduler`]와 다른 스케줄러들의 퍼포먼스를 비교해보도록 하겠습니다. 먼저 테스트에 사용할 프롬프트를 다음과 같이 정의해보도록 하겠습니다. 
+출력 결과를 통해, 우리는 해당 스케줄러가 [`PNDMScheduler`]의 인스턴스라는 것을 알 수 있습니다. 이제 [`PNDMScheduler`]와 다른 스케줄러들의 성능을 비교해보도록 하겠습니다. 먼저 테스트에 사용할 프롬프트를 다음과 같이 정의해보도록 하겠습니다. 
 
 ```python
 prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
@@ -135,7 +135,7 @@ pipeline.scheduler.compatibles
 - [`DDPMScheduler`], 
 - [`EulerAncestralDiscreteScheduler`].
 
-앞서 정의했던 프롬프트를 사용해서 각각의 스케줄러들을 비교해보도록 하겠습니다.  
+앞서 정의했던 프롬프트를 사용해서 각각의 스케줄러들을 비교해보도록 하겠습니다.
 
 먼저 파이프라인 안의 스케줄러를 바꾸기 위해 [`ConfigMixin.config`] 속성과 [`ConfigMixin.from_config`] 메서드를 활용해보려고 합니다.
 
@@ -161,9 +161,9 @@ FrozenDict([('num_train_timesteps', 1000),
             ('clip_sample', False)])
 ```
 
-기존 스케줄러의 컨피그(config)를 호환 가능한 다른 스케줄러에 이식하는 것 역시 가능합니다. 
+기존 스케줄러의 config를 호환 가능한 다른 스케줄러에 이식하는 것 역시 가능합니다. 
 
-다음 예시는 기존 스케줄러(`pipeline.scheduler`)를 다른 종류의 스케줄러(`DDIMScheduler`)로 바꾸는 코드입니다. 기존 스케줄러가 갖고 있던 컨피그를 `.from_config` 메서드의 인자로 전달하는 것을 확인할 수 있습니다.
+다음 예시는 기존 스케줄러(`pipeline.scheduler`)를 다른 종류의 스케줄러(`DDIMScheduler`)로 바꾸는 코드입니다. 기존 스케줄러가 갖고 있던 config를 `.from_config` 메서드의 인자로 전달하는 것을 확인할 수 있습니다.
 
 ```python
 from diffusers import DDIMScheduler
@@ -272,7 +272,7 @@ image
 </p>
 
 
-보시다 싶이 생성된 이미지들은 매우 비슷하고, 비슷한 퀄리티를 보이는 것 같습니다. 실제로 어떤 스케줄러를 선택할 것인가는 종종 특정 이용 사례에 기반해서 결정되곤 합니다. 결국 여러 종류의 스케줄러를 직접 실행시켜보고 눈으로 직접 비교해서 판단하는 게 좋은 선택일 것 같습니다.
+보시다시피 생성된 이미지들은 매우 비슷하고, 비슷한 퀄리티를 보이는 것 같습니다. 실제로 어떤 스케줄러를 선택할 것인가는 종종 특정 이용 사례에 기반해서 결정되곤 합니다. 결국 여러 종류의 스케줄러를 직접 실행시켜보고 눈으로 직접 비교해서 판단하는 게 좋은 선택일 것 같습니다.
 
 
 
