@@ -71,6 +71,7 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
+use_refiner = True
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
