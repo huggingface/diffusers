@@ -294,6 +294,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchsde_available = False
 
+_invisible_watermark_available = importlib.util.find_spec("imwatermark") is not None
+try:
+    _invisible_watermark_version = importlib_metadata.version("invisible-watermark")
+    logger.debug(f"Successfully imported invisible-watermark version {_invisible_watermark_version}")
+except importlib_metadata.PackageNotFoundError:
+    _invisible_watermark_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -381,6 +388,10 @@ def is_bs4_available():
 
 def is_torchsde_available():
     return _torchsde_available
+
+
+def is_invisible_watermark_available():
+    return _invisible_watermark_available
 
 
 # docstyle-ignore
@@ -491,6 +502,11 @@ TORCHSDE_IMPORT_ERROR = """
 {0} requires the torchsde library but it was not found in your environment. You can install it with pip: `pip install torchsde`
 """
 
+# docstyle-ignore
+INVISIBLE_WATERMARK_IMPORT_ERROR = """
+{0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install invisible-watermark>=2.0`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -508,10 +524,11 @@ BACKENDS_MAPPING = OrderedDict(
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
-        ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
-        ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
+        ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
+        ("compel", (is_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
-        ("torchsde", (_torchsde_available, TORCHSDE_IMPORT_ERROR)),
+        ("torchsde", (is_torchsde_available, TORCHSDE_IMPORT_ERROR)),
+        ("invisible_watermark", (is_invisible_watermark_available, INVISIBLE_WATERMARK_IMPORT_ERROR)),
     ]
 )
 

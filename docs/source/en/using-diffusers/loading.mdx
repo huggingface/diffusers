@@ -174,7 +174,7 @@ A checkpoint variant is usually a checkpoint where it's weights are:
 
 </Tip>
 
-Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using-diffusers/using_safetensors)), model structure, and weights have identical tensor shapes.
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using_safetensors)), model structure, and weights have identical tensor shapes.
 
 | **checkpoint type** | **weight name**                     | **argument for loading weights** |
 |---------------------|-------------------------------------|----------------------------------|
@@ -190,6 +190,7 @@ There are two important arguments to know for loading variants:
 
 ```python
 from diffusers import DiffusionPipeline
+import torch
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(

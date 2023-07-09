@@ -376,6 +376,29 @@ class TextImageProjection(nn.Module):
         return torch.cat([image_text_embeds, text_embeds], dim=1)
 
 
+class ImageProjection(nn.Module):
+    def __init__(
+        self,
+        image_embed_dim: int = 768,
+        cross_attention_dim: int = 768,
+        num_image_text_embeds: int = 32,
+    ):
+        super().__init__()
+
+        self.num_image_text_embeds = num_image_text_embeds
+        self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        batch_size = image_embeds.shape[0]
+
+        # image
+        image_embeds = self.image_embeds(image_embeds)
+        image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
+        image_embeds = self.norm(image_embeds)
+        return image_embeds
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -427,6 +450,50 @@ class TextImageTimeEmbedding(nn.Module):
         time_image_embeds = self.image_proj(image_embeds)
 
         return time_image_embeds + time_text_embeds
+
+
+class ImageTimeEmbedding(nn.Module):
+    def __init__(self, image_embed_dim: int = 768, time_embed_dim: int = 1536):
+        super().__init__()
+        self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
+        self.image_norm = nn.LayerNorm(time_embed_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        # image
+        time_image_embeds = self.image_proj(image_embeds)
+        time_image_embeds = self.image_norm(time_image_embeds)
+        return time_image_embeds
+
+
+class ImageHintTimeEmbedding(nn.Module):
+    def __init__(self, image_embed_dim: int = 768, time_embed_dim: int = 1536):
+        super().__init__()
+        self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
+        self.image_norm = nn.LayerNorm(time_embed_dim)
+        self.input_hint_block = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(32, 96, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(96, 96, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(96, 256, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(256, 4, 3, padding=1),
+        )
+
+    def forward(self, image_embeds: torch.FloatTensor, hint: torch.FloatTensor):
+        # image
+        time_image_embeds = self.image_proj(image_embeds)
+        time_image_embeds = self.image_norm(time_image_embeds)
+        hint = self.input_hint_block(hint)
+        return time_image_embeds, hint
 
 
 class AttentionPooling(nn.Module):

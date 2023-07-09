@@ -226,6 +226,8 @@
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/shap_e
+      title: Shap-E
     - local: api/pipelines/spectrogram_diffusion
       title: Spectrogram Diffusion
     - sections:
@@ -245,6 +247,8 @@
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
         title: Stable Diffusion 2
+      - local: api/pipelines/stable_diffusion/stable_diffusion_xl
+        title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/latent_upscale
         title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/upscale

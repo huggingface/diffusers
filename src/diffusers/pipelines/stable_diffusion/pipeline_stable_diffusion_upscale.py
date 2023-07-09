@@ -24,7 +24,12 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import AttnProcessor2_0, LoRAXFormersAttnProcessor, XFormersAttnProcessor
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -747,6 +752,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             AttnProcessor2_0,
             XFormersAttnProcessor,
             LoRAXFormersAttnProcessor,
+            LoRAAttnProcessor2_0,
         ]
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory

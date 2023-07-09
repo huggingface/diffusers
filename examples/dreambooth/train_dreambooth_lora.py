@@ -440,6 +440,12 @@ def parse_args(input_args=None):
         default=None,
         help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
     )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -865,6 +871,7 @@ def main(args):
             lora_attn_processor_class = (
                 LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
             )
+            
         module = lora_attn_processor_class(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
