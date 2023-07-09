@@ -20,6 +20,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
+from torch import nn
 
 from .models.attention_processor import (
     AttnAddedKVProcessor,
@@ -29,6 +30,7 @@ from .models.attention_processor import (
     LoRAAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
+    LoRALinearLayer,
     LoRAXFormersAttnProcessor,
     SlicedAttnAddedKVProcessor,
     XFormersAttnProcessor,
@@ -36,7 +38,6 @@ from .models.attention_processor import (
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
-    TEXT_ENCODER_ATTN_MODULE,
     _get_model_file,
     deprecate,
     is_safetensors_available,
@@ -49,7 +50,7 @@ if is_safetensors_available():
     import safetensors
 
 if is_transformers_available():
-    from transformers import PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
 
 
 logger = logging.get_logger(__name__)
@@ -65,6 +66,64 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
+
+
+class PatchedLoraProjection(nn.Module):
+    def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
+        super().__init__()
+        self.regular_linear_layer = regular_linear_layer
+
+        device = self.regular_linear_layer.weight.device
+
+        if dtype is None:
+            dtype = self.regular_linear_layer.weight.dtype
+
+        self.lora_linear_layer = LoRALinearLayer(
+            self.regular_linear_layer.in_features,
+            self.regular_linear_layer.out_features,
+            network_alpha=network_alpha,
+            device=device,
+            dtype=dtype,
+            rank=rank,
+        )
+
+        self.lora_scale = lora_scale
+
+    def forward(self, input):
+        return self.regular_linear_layer(input) + self.lora_scale * self.lora_linear_layer(input)
+
+
+def text_encoder_attn_modules(text_encoder):
+    attn_modules = []
+
+    if isinstance(text_encoder, CLIPTextModel):
+        for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+            name = f"text_model.encoder.layers.{i}.self_attn"
+            mod = layer.self_attn
+            attn_modules.append((name, mod))
+    else:
+        raise ValueError(f"do not know how to get attention modules for: {text_encoder.__class__.__name__}")
+
+    return attn_modules
+
+
+def text_encoder_lora_state_dict(text_encoder):
+    state_dict = {}
+
+    for name, module in text_encoder_attn_modules(text_encoder):
+        for k, v in module.q_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.q_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.k_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.k_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.v_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.v_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.out_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.out_proj.lora_linear_layer.{k}"] = v
+
+    return state_dict
 
 
 class AttnProcsLayers(torch.nn.Module):
@@ -744,9 +803,48 @@ class LoraLoaderMixin:
     unet_name = UNET_NAME
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+        """
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+
+        All kwargs are forwarded to `self.lora_state_dict`.
+
+        See [`~loaders.LoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
+
+        See [`~loaders.LoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is loaded into
+        `self.unet`.
+
+        See [`~loaders.LoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state dict is loaded
+        into `self.text_encoder`.
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+
+            kwargs:
+                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+        """
+        state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
+        self.load_lora_into_text_encoder(
+            state_dict, network_alpha=network_alpha, text_encoder=self.text_encoder, lora_scale=self.lora_scale
+        )
+
+    @classmethod
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
         r"""
-        Load pretrained LoRA attention processor layers into [`UNet2DConditionModel`] and
-        [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
+        Return state dict for lora weights
+
+        <Tip warning={true}>
+
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+
+        This function is experimental and might change in the future.
+
+        </Tip>
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -801,9 +899,6 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        # set lora scale to a reasonable default
-        self._lora_scale = 1.0
-
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
                 "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
@@ -840,7 +935,7 @@ class LoraLoaderMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except IOError as e:
+                except (IOError, safetensors.SafetensorError) as e:
                     if not allow_pickle:
                         raise e
                     # try loading non-safetensors weights
@@ -866,44 +961,133 @@ class LoraLoaderMixin:
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alpha = None
         if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
-            state_dict, network_alpha = self._convert_kohya_lora_to_diffusers(state_dict)
+            state_dict, network_alpha = cls._convert_kohya_lora_to_diffusers(state_dict)
+
+        return state_dict, network_alpha
+
+    @classmethod
+    def load_lora_into_unet(cls, state_dict, network_alpha, unet):
+        """
+        This will load the LoRA layers specified in `state_dict` into `unet`
+
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
+                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
+                encoder lora layers.
+            network_alpha (`float`):
+                See `LoRALinearLayer` for more details.
+            unet (`UNet2DConditionModel`):
+                The UNet model to load the LoRA layers into.
+        """
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
+        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
-            unet_keys = [k for k in keys if k.startswith(self.unet_name)]
-            logger.info(f"Loading {self.unet_name}.")
+            unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
+            logger.info(f"Loading {cls.unet_name}.")
             unet_lora_state_dict = {
-                k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
+                k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
             }
-            self.unet.load_attn_procs(unet_lora_state_dict, network_alpha=network_alpha)
-
-            # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
-            text_encoder_lora_state_dict = {
-                k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
-            }
-            if len(text_encoder_lora_state_dict) > 0:
-                logger.info(f"Loading {self.text_encoder_name}.")
-                attn_procs_text_encoder = self._load_text_encoder_attn_procs(
-                    text_encoder_lora_state_dict, network_alpha=network_alpha
-                )
-                self._modify_text_encoder(attn_procs_text_encoder)
-
-                # save lora attn procs of text encoder so that it can be easily retrieved
-                self._text_encoder_lora_attn_procs = attn_procs_text_encoder
+            unet.load_attn_procs(unet_lora_state_dict, network_alpha=network_alpha)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
         # contain the module names of the `unet` as its keys WITHOUT any prefix.
         elif not all(
-            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+            key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
         ):
-            self.unet.load_attn_procs(state_dict)
+            unet.load_attn_procs(state_dict)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
+
+    @classmethod
+    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, lora_scale=1.0):
+        """
+        This will load the LoRA layers specified in `state_dict` into `text_encoder`
+
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The key shoult be prefixed with an
+                additional `text_encoder` to distinguish between unet lora layers.
+            network_alpha (`float`):
+                See `LoRALinearLayer` for more details.
+            text_encoder (`CLIPTextModel`):
+                The text encoder model to load the LoRA layers into.
+            lora_scale (`float`):
+                How much to scale the output of the lora linear layer before it is added with the output of the regular
+                lora layer.
+        """
+
+        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
+        # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
+        # their prefixes.
+        keys = list(state_dict.keys())
+        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
+            # Load the layers corresponding to text encoder and make necessary adjustments.
+            text_encoder_keys = [k for k in keys if k.startswith(cls.text_encoder_name)]
+            text_encoder_lora_state_dict = {
+                k.replace(f"{cls.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+            }
+            if len(text_encoder_lora_state_dict) > 0:
+                logger.info(f"Loading {cls.text_encoder_name}.")
+
+                if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
+                    # Convert from the old naming convention to the new naming convention.
+                    #
+                    # Previously, the old LoRA layers were stored on the state dict at the
+                    # same level as the attention block i.e.
+                    # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
+                    #
+                    # This is no actual module at that point, they were monkey patched on to the
+                    # existing module. We want to be able to load them via their actual state dict.
+                    # They're in `PatchedLoraProjection.lora_linear_layer` now.
+                    for name, _ in text_encoder_attn_modules(text_encoder):
+                        text_encoder_lora_state_dict[
+                            f"{name}.q_proj.lora_linear_layer.up.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.k_proj.lora_linear_layer.up.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.v_proj.lora_linear_layer.up.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.out_proj.lora_linear_layer.up.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
+
+                        text_encoder_lora_state_dict[
+                            f"{name}.q_proj.lora_linear_layer.down.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.k_proj.lora_linear_layer.down.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.v_proj.lora_linear_layer.down.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
+                        text_encoder_lora_state_dict[
+                            f"{name}.out_proj.lora_linear_layer.down.weight"
+                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
+
+                rank = text_encoder_lora_state_dict[
+                    "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
+                ].shape[1]
+
+                cls._modify_text_encoder(text_encoder, lora_scale, network_alpha, rank=rank)
+
+                # set correct dtype & device
+                text_encoder_lora_state_dict = {
+                    k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
+                    for k, v in text_encoder_lora_state_dict.items()
+                }
+
+                load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
+                if len(load_state_dict_results.unexpected_keys) != 0:
+                    raise ValueError(
+                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                    )
 
     @property
     def lora_scale(self) -> float:
@@ -911,241 +1095,51 @@ class LoraLoaderMixin:
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
-    @property
-    def text_encoder_lora_attn_procs(self):
-        if hasattr(self, "_text_encoder_lora_attn_procs"):
-            return self._text_encoder_lora_attn_procs
-        return
-
     def _remove_text_encoder_monkey_patch(self):
-        # Loop over the CLIPAttention module of text_encoder
-        for name, attn_module in self.text_encoder.named_modules():
-            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-                # Loop over the LoRA layers
-                for _, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
-                    # Retrieve the q/k/v/out projection of CLIPAttention
-                    module = attn_module.get_submodule(text_encoder_attr)
-                    if hasattr(module, "old_forward"):
-                        # restore original `forward` to remove monkey-patch
-                        module.forward = module.old_forward
-                        delattr(module, "old_forward")
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
 
-    def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
+    @classmethod
+    def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
+        for _, attn_module in text_encoder_attn_modules(text_encoder):
+            if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                attn_module.q_proj = attn_module.q_proj.regular_linear_layer
+                attn_module.k_proj = attn_module.k_proj.regular_linear_layer
+                attn_module.v_proj = attn_module.v_proj.regular_linear_layer
+                attn_module.out_proj = attn_module.out_proj.regular_linear_layer
+
+    @classmethod
+    def _modify_text_encoder(cls, text_encoder, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
-
-        Parameters:
-            attn_processors: Dict[str, `LoRAAttnProcessor`]:
-                A dictionary mapping the module names and their corresponding [`~LoRAAttnProcessor`].
         """
 
         # First, remove any monkey-patch that might have been applied before
-        self._remove_text_encoder_monkey_patch()
+        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
-        # Loop over the CLIPAttention module of text_encoder
-        for name, attn_module in self.text_encoder.named_modules():
-            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-                # Loop over the LoRA layers
-                for attn_proc_attr, text_encoder_attr in self._lora_attn_processor_attr_to_text_encoder_attr.items():
-                    # Retrieve the q/k/v/out projection of CLIPAttention and its corresponding LoRA layer.
-                    module = attn_module.get_submodule(text_encoder_attr)
-                    lora_layer = attn_processors[name].get_submodule(attn_proc_attr)
+        lora_parameters = []
 
-                    # save old_forward to module that can be used to remove monkey-patch
-                    old_forward = module.old_forward = module.forward
-
-                    # create a new scope that locks in the old_forward, lora_layer value for each new_forward function
-                    # for more detail, see https://github.com/huggingface/diffusers/pull/3490#issuecomment-1555059060
-                    def make_new_forward(old_forward, lora_layer):
-                        def new_forward(x):
-                            result = old_forward(x) + self.lora_scale * lora_layer(x)
-                            return result
-
-                        return new_forward
-
-                    # Monkey-patch.
-                    module.forward = make_new_forward(old_forward, lora_layer)
-
-    @property
-    def _lora_attn_processor_attr_to_text_encoder_attr(self):
-        return {
-            "to_q_lora": "q_proj",
-            "to_k_lora": "k_proj",
-            "to_v_lora": "v_proj",
-            "to_out_lora": "out_proj",
-        }
-
-    def _load_text_encoder_attn_procs(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
-    ):
-        r"""
-        Load pretrained attention processor layers for
-        [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
-
-        <Tip warning={true}>
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
-                      `./my_model_directory/`.
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory in which a downloaded pretrained model configuration should be cached if the
-                standard cache should not be used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
-                file exists.
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether or not to only look at local files (i.e., do not try to download the model).
-            use_auth_token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-                when running `diffusers-cli login` (stored in `~/.huggingface`).
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
-                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
-                identifier allowed by git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                In case the relevant files are located inside a subfolder of the model repo (either remote in
-                huggingface.co or downloaded locally), you can specify the folder name here.
-            mirror (`str`, *optional*):
-                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
-                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
-                Please refer to the mirror site for more information.
-
-        Returns:
-            `Dict[name, LoRAAttnProcessor]`: Mapping between the module names and their corresponding
-            [`LoRAAttnProcessor`].
-
-        <Tip>
-
-        It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-        models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-        </Tip>
-        """
-
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-        force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
-        revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
-        network_alpha = kwargs.pop("network_alpha", None)
-
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
+        for _, attn_module in text_encoder_attn_modules(text_encoder):
+            attn_module.q_proj = PatchedLoraProjection(
+                attn_module.q_proj, lora_scale, network_alpha, rank=rank, dtype=dtype
             )
+            lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
-        allow_pickle = False
-        if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
-            allow_pickle = True
+            attn_module.k_proj = PatchedLoraProjection(
+                attn_module.k_proj, lora_scale, network_alpha, rank=rank, dtype=dtype
+            )
+            lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
+            attn_module.v_proj = PatchedLoraProjection(
+                attn_module.v_proj, lora_scale, network_alpha, rank=rank, dtype=dtype
+            )
+            lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
-        model_file = None
-        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            # Let's first try to load .safetensors weights
-            if (use_safetensors and weight_name is None) or (
-                weight_name is not None and weight_name.endswith(".safetensors")
-            ):
-                try:
-                    model_file = _get_model_file(
-                        pretrained_model_name_or_path_or_dict,
-                        weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        resume_download=resume_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        user_agent=user_agent,
-                    )
-                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except IOError as e:
-                    if not allow_pickle:
-                        raise e
-                    # try loading non-safetensors weights
-                    pass
-            if model_file is None:
-                model_file = _get_model_file(
-                    pretrained_model_name_or_path_or_dict,
-                    weights_name=weight_name or LORA_WEIGHT_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                )
-                state_dict = torch.load(model_file, map_location="cpu")
-        else:
-            state_dict = pretrained_model_name_or_path_or_dict
+            attn_module.out_proj = PatchedLoraProjection(
+                attn_module.out_proj, lora_scale, network_alpha, rank=rank, dtype=dtype
+            )
+            lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
-        # fill attn processors
-        attn_processors = {}
-
-        is_lora = all("lora" in k for k in state_dict.keys())
-
-        if is_lora:
-            lora_grouped_dict = defaultdict(dict)
-            for key, value in state_dict.items():
-                attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                lora_grouped_dict[attn_processor_key][sub_key] = value
-
-            for key, value_dict in lora_grouped_dict.items():
-                rank = value_dict["to_k_lora.down.weight"].shape[0]
-                cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
-                hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
-
-                attn_processor_class = (
-                    LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-                )
-                attn_processors[key] = attn_processor_class(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                    rank=rank,
-                    network_alpha=network_alpha,
-                )
-                attn_processors[key].load_state_dict(value_dict)
-
-        else:
-            raise ValueError(f"{model_file} does not seem to be in the correct format expected by LoRA training.")
-
-        # set correct dtype & device
-        attn_processors = {
-            k: v.to(device=self.device, dtype=self.text_encoder.dtype) for k, v in attn_processors.items()
-        }
-        return attn_processors
+        return lora_parameters
 
     @classmethod
     def save_lora_weights(
@@ -1225,7 +1219,8 @@ class LoraLoaderMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    def _convert_kohya_lora_to_diffusers(self, state_dict):
+    @classmethod
+    def _convert_kohya_lora_to_diffusers(cls, state_dict):
         unet_state_dict = {}
         te_state_dict = {}
         network_alpha = None
