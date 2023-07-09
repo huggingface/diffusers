@@ -176,7 +176,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -202,7 +201,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         if self.text_encoder is not None:
             cpu_offload(self.text_encoder, device)
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
