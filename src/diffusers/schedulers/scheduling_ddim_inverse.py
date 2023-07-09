@@ -174,6 +174,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
     """
 
     order = 1
+    ignore_for_config = ["kwargs"]
+    _deprecated_kwargs = ["set_alpha_to_zero"]
 
     @register_to_config
     def __init__(
