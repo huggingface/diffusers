@@ -108,7 +108,7 @@ specific language governing permissions and limitations under the License.
 
 Stable Diffusion 은 text-to-image *latent diffusion* 모델입니다. latent diffusion 모델이라고 불리는 이유는 실제 픽셀 공간 대신 이미지의 저차원의 표현으로 작업하기 때문이고, 메모리 효율이 더 높습니다. 인코더는 이미지를 더 작은 표현으로 압축하고, 디코더는 압축된 표현을 다시 이미지로 변환합니다. text-to-image 모델의 경우 텍스트 임베딩을 생성하기 위해 tokenizer와 인코더가 필요합니다. 이전 예제에서 이미 UNet 모델과 스케줄러가 필요하다는 것은 알고 계셨을 것입니다.
 
-보시다시피, 이것은 UNet 모델만 포함된 DDPM 파이프라인보다 더 복잡합니다. Stable Diffusion 모델에는 세 개의 개별 사전 학습된 모델이 있습니다.
+보시다시피, 이것은 UNet 모델만 포함된 DDPM 파이프라인보다 더 복잡합니다. Stable Diffusion 모델에는 세 개의 개별 사전학습된 모델이 있습니다.
 
 <Tip>
 

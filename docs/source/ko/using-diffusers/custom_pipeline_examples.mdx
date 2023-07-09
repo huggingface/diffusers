@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # 커뮤니티 파이프라인
 
 > **커뮤니티 파이프라인에 대한 자세한 내용은 [이 이슈](https://github.com/huggingface/diffusers/issues/841)를 참조하세요.
@@ -15,7 +27,7 @@
 | Long Prompt Weighting Stable Diffusion | 토큰 길이 제한이 없고 프롬프트에서 파싱 가중치 지원을 하는 **하나의** Stable Diffusion 파이프라인,                                                                                                                                                                                                                                                                                                                                                                                                    | [Long Prompt Weighting Stable Diffusion](#long-prompt-weighting-stable-diffusion) |-                                                                                                                                                                                                                  | [SkyTNT](https://github.com/SkyTNT)                        |
 | Speech to Image                        | 자동 음성 인식을 사용하여 텍스트를 작성하고 Stable Diffusion을 사용하여 이미지를 생성합니다.                                                                                                                                                                                                                                                                                                                                                                                                          | [Speech to Image](#speech-to-image)                                               | -                                                                                                                                                                                                                 | [Mikail Duzenli](https://github.com/MikailINTech)          |
 
-커스텀 파이프라인을 로드하려면 `diffusers/examples/community`에 있는 파일 중 하나로서 `custom_pipeline` 인수를 `DiffusionPipeline`에 전달하기만 하면 됩니다. 자신만의 파이프라인이 있는 PR을 보내주시면 빠르게 병합해드리겠습니다.
+커스텀 파이프라인을 불러오려면 `diffusers/examples/community`에 있는 파일 중 하나로서 `custom_pipeline` 인수를 `DiffusionPipeline`에 전달하기만 하면 됩니다. 자신만의 파이프라인이 있는 PR을 보내주시면 빠르게 병합해드리겠습니다.
 ```py
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder"
@@ -71,7 +83,7 @@ for i, img in enumerate(images):
     img.save(f"./clip_guided_sd/image_{i}.png")
 ```
 
-이미지` 목록에는 로컬에 저장하거나 구글 콜랩에 직접 표시할 수 있는 PIL 이미지 목록이 포함되어 있습니다.생성된 이미지는 기본적으로 안정적인 확산을 사용하는 것보다 품질이 높은 경향이 있습니다. 예를 들어 위의 스크립트는 다음과 같은 이미지를 생성합니다:
+이미지` 목록에는 로컬에 저장하거나 구글 콜랩에 직접 표시할 수 있는 PIL 이미지 목록이 포함되어 있습니다. 생성된 이미지는 기본적으로 안정적인 확산을 사용하는 것보다 품질이 높은 경향이 있습니다. 예를 들어 위의 스크립트는 다음과 같은 이미지를 생성합니다:
 
 ![clip_guidance](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/clip_guidance/merged_clip_guidance.jpg).
 
@@ -218,7 +230,7 @@ pipe.text2img(prompt, negative_prompt=neg_prompt, width=512, height=512, max_emb
 토큰 인덱스 시퀀스 길이가 이 모델에 지정된 최대 시퀀스 길이보다 길면(*** > 77). 이 시퀀스를 모델에서 실행하면 인덱싱 오류가 발생합니다`. 정상적인 현상이니 걱정하지 마세요.
 ### Speech to Image
 
-다음 코드는 사전 학습된 OpenAI whisper-small과 Stable Diffusion을 사용하여 오디오 샘플에서 이미지를 생성할 수 있습니다.
+다음 코드는 사전학습된 OpenAI whisper-small과 Stable Diffusion을 사용하여 오디오 샘플에서 이미지를 생성할 수 있습니다.
 ```Python
 import torch
 

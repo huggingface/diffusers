@@ -1,5 +1,3 @@
-# other-formats.mdx
-
 <!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
@@ -12,13 +10,13 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# 다양한 Stable Diffusion 포맷 로드
+# 다양한 Stable Diffusion 포맷 불러오기
 
 Stable Diffusion 모델들은 학습 및 저장된 프레임워크와 다운로드 위치에 따라 다양한 형식으로 제공됩니다. 이러한 형식을 🤗 Diffusers에서 사용할 수 있도록 변환하면 추론을 위한 [다양한 스케줄러 사용](schedulers), 사용자 지정 파이프라인 구축, 추론 속도 최적화를 위한 다양한 기법과 방법 등 라이브러리에서 지원하는 모든 기능을 사용할 수 있습니다.
 
 <Tip>
 
-우리는 `.safetensors` 형식을 추천합니다. 왜냐하면 기존의 pickled 파일은 취약하고 머신에서 코드를 실행할 때 악용될 수 있는 것에 비해 훨씬 더 안전합니다. (safetensors 로드 가이드에서 자세히 알아보세요.)
+우리는 `.safetensors` 형식을 추천합니다. 왜냐하면 기존의 pickled 파일은 취약하고 머신에서 코드를 실행할 때 악용될 수 있는 것에 비해 훨씬 더 안전합니다. (safetensors 불러오기 가이드에서 자세히 알아보세요.)
 
 </Tip>
 
@@ -71,7 +69,7 @@ git checkout pr/13
 - `original_config_file`: 원래 아키텍처의 구성을 정의하는 YAML 파일입니다. 이 파일을 찾을 수 없는 경우 `.ckpt` 파일을 찾은 GitHub 리포지토리에서 YAML 파일을 검색해 보세요.
 - `dump_path`: 변환된 모델의 경로
 
-예를 들어, TemporalNet 모델은 안정적인 확산 v1.5 및 ControlNet 모델이기 때문에 ControlNet 리포지토리에서 cldm_v15.yaml 파일을 가져올 수 있습니다.
+예를 들어, TemporalNet 모델은 Stable Diffusion v1.5 및 ControlNet 모델이기 때문에 ControlNet 리포지토리에서 cldm_v15.yaml 파일을 가져올 수 있습니다.
 
 4. 이제 스크립트를 실행하여 .ckpt 파일을 변환할 수 있습니다:
 
@@ -129,7 +127,7 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 
 [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111)은 Stable Diffusion을 위해 널리 사용되는 웹 UI로, [Civitai](https://civitai.com/) 와 같은 모델 공유 플랫폼을 지원합니다. 특히 LoRA 기법으로 학습된 모델은 학습 속도가 빠르고 완전히 파인튜닝된 모델보다 파일 크기가 훨씬 작기 때문에 인기가 높습니다.
 
-🤗 Diffusers는 [`~loaders.LoraLoaderMixin.load_lora_weights`]:를 사용하여 A1111 LoRA 체크포인트 로드를 지원합니다:
+🤗 Diffusers는 [`~loaders.LoraLoaderMixin.load_lora_weights`]:를 사용하여 A1111 LoRA 체크포인트 불러오기를 지원합니다:
 
 ```py
 from diffusers import DiffusionPipeline, UniPCMultistepScheduler
@@ -175,6 +173,7 @@ images = pipeline(
 ```py
 from PIL import Image
 
+
 def image_grid(imgs, rows=2, cols=2):
     w, h = imgs[0].size
     grid = Image.new("RGB", size=(cols * w, rows * h))
@@ -182,6 +181,7 @@ def image_grid(imgs, rows=2, cols=2):
     for i, img in enumerate(imgs):
         grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
+
 
 image_grid(images)
 ```

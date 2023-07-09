@@ -114,12 +114,9 @@ from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultis
 
 repo_id = "runwayml/stable-diffusion-v1-5"
 
-scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, 
-                                                   subfolder="scheduler")
+scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, 
-                                                     scheduler=scheduler)
-
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler)
 ```
 
 ### 세이프티 체커
@@ -200,15 +197,10 @@ from diffusers import DiffusionPipeline
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    variant="fp16", 
-    torch_dtype=torch.float16
+    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
 )
 # load non_ema variant
-stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    variant="non_ema"
-)
+stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
 ```
 
 다른 부동소수점 타입의 가중치 혹은 non-EMA 가중치를 사용하는 체크포인트를 저장하기 위해서는, [`DiffusionPipeline.save_pretrained`] 메서드를 사용해야 하며, 이 때 `variant` 인자를 명시해줘야 합니다. 원래의 체크포인트와 동일한 폴더에 variant를 저장해야 하며, 이렇게 하면 동일한 폴더에서 오리지널 체크포인트과 variant를 모두 불러올 수 있습니다.
@@ -260,11 +252,7 @@ model = UNet2DModel.from_pretrained(repo_id)
 ```python
 from diffusers import UNet2DConditionModel
 
-model = UNet2DConditionModel.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    subfolder="unet", 
-    variant="non-ema"
-)
+model = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non-ema")
 model.save_pretrained("./local-unet", variant="non-ema")
 ```
 
@@ -403,27 +391,9 @@ CLIPTokenizer(
     padding_side="right",
     truncation_side="right",
     special_tokens={
-        "bos_token": AddedToken(
-            "<|startoftext|>", 
-            rstrip=False, 
-            lstrip=False, 
-            single_word=False, 
-            normalized=True
-        ),
-        "eos_token": AddedToken(
-            "<|endoftext|>", 
-            rstrip=False, 
-            lstrip=False, 
-            single_word=False, 
-            normalized=True
-        ),
-        "unk_token": AddedToken(
-            "<|endoftext|>", 
-            rstrip=False, 
-            lstrip=False, 
-            single_word=False, 
-            normalized=True
-        ),
+        "bos_token": AddedToken("<|startoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
+        "eos_token": AddedToken("<|endoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
+        "unk_token": AddedToken("<|endoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
         "pad_token": "<|endoftext|>",
     },
 )

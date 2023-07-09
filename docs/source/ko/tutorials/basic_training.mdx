@@ -72,8 +72,8 @@ huggingface-cli login
 ...     lr_warmup_steps = 500
 ...     save_image_epochs = 10
 ...     save_model_epochs = 30
-...     mixed_precision = "fp16"  # `no`는 float32, 자동 혼합 정밀도를 위한 `fp16` 
-...     output_dir = "ddpm-butterflies-128"  # 로컬 및 HF Hub에 저장되는 모델명 
+...     mixed_precision = "fp16"  # `no`는 float32, 자동 혼합 정밀도를 위한 `fp16`
+...     output_dir = "ddpm-butterflies-128"  # 로컬 및 HF Hub에 저장되는 모델명
 
 ...     push_to_hub = True  # 저장된 모델을 HF Hub에 업로드할지 여부
 ...     hub_private_repo = False
@@ -153,7 +153,7 @@ huggingface-cli login
 
 ## UNet2DModel 생성하기
 
-🧨 Diffusers에 사전 학습된 모델들은 모델 클래스에서 원하는 파라미터로 쉽게 생성할 수 있습니다. 예를 들어, [`UNet2DModel`]를 생성하려면:
+🧨 Diffusers에 사전학습된 모델들은 모델 클래스에서 원하는 파라미터로 쉽게 생성할 수 있습니다. 예를 들어, [`UNet2DModel`]를 생성하려면:
 
 ```py
 >>> from diffusers import UNet2DModel
@@ -316,7 +316,7 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 ...         accelerator.init_trackers("train_example")
 
 ...     # 모든 것이 준비되었습니다.
-...     # 기억해야 할 특정한 순서는 없으며 준비한 방법에 제공한 것과 동일한 순서로 객체의 압축을 풀면 됩니다. 
+...     # 기억해야 할 특정한 순서는 없으며 준비한 방법에 제공한 것과 동일한 순서로 객체의 압축을 풀면 됩니다.
 ...     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
 ...         model, optimizer, train_dataloader, lr_scheduler
 ...     )
@@ -330,7 +330,7 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 
 ...         for step, batch in enumerate(train_dataloader):
 ...             clean_images = batch["images"]
-...             # 이미지에 더할 노이즈를 샘플링합니다.    
+...             # 이미지에 더할 노이즈를 샘플링합니다.
 ...             noise = torch.randn(clean_images.shape).to(clean_images.device)
 ...             bs = clean_images.shape[0]
 
@@ -339,8 +339,8 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 ...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
 ...             ).long()
 
-...             # (this is the forward diffusion process)
-                # (이는 diffusion 과정의 forward 입니다.)
+...             # 각 타임스텝의 노이즈 크기에 따라 깨끗한 이미지에 노이즈를 추가합니다.
+...             # (이는 foward diffusion 과정입니다.)
 ...             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
 
 ...             with accelerator.accumulate(model):
