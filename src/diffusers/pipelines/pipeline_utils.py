@@ -1013,7 +1013,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in init_dict.items():
+        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -1055,6 +1055,9 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
+                name_or_path = loaded_sub_model.config.name_or_path if hasattr(loaded_sub_model, "config") and hasattr(loaded_sub_model.config, "name_or_path") else None
+                logging_suffix = f" from {name_or_path}" if name_or_path is not None else ""
+                logger.info(f"Loaded {name} as {class_name} instance{logging_suffix}.")
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
