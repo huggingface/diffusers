@@ -14,10 +14,10 @@
 # limitations under the License.
 
 import gc
+import glob
 import json
 import os
 import random
-import glob
 import shutil
 import sys
 import tempfile
@@ -34,7 +34,6 @@ from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from transformers.utils import cached_file
 
 from diffusers import (
     AutoencoderKL,
@@ -1367,13 +1366,15 @@ class PipelineFastTests(unittest.TestCase):
     def test_warning_no_variant_available(self):
         variant = "fp16"
         with self.assertWarns(FutureWarning) as warning_context:
-            cached_folder = StableDiffusionPipeline.download("hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant)
+            cached_folder = StableDiffusionPipeline.download(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
+            )
 
         assert "but no such modeling files are available" in str(warning_context.warning)
         assert variant in str(warning_context.warning)
 
         def get_all_filenames(directory):
-            filenames = glob.glob(directory + '/**', recursive=True)
+            filenames = glob.glob(directory + "/**", recursive=True)
             filenames = [f for f in filenames if os.path.isfile(f)]
             return filenames
 
