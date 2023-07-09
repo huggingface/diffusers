@@ -308,7 +308,8 @@ class PipelineTesterMixin:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
             for name in pipe_loaded.components.keys():
-                assert name in str(cap_logger)
+                if name not in pipe_loaded._optional_components:
+                    assert name in str(cap_logger)
 
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
