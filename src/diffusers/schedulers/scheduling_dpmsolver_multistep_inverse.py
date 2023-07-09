@@ -230,7 +230,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         # Clipping the minimum of all lambda(t) for numerical stability.
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped)
+        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped).item()
         self.noisiest_timestep = self.config.num_train_timesteps - 1 - clipped_idx
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
@@ -428,7 +428,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
             return epsilon
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.dpm_solver_first_order_update
     def dpm_solver_first_order_update(
         self,
         model_output: torch.FloatTensor,
@@ -460,23 +459,12 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
         elif self.config.algorithm_type == "dpmsolver":
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            x_t = (
-                (sigma_t / sigma_s * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
-                + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-            )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            x_t = (
-                (alpha_t / alpha_s) * sample
-                - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * model_output
-                + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
+        elif "sde" in self.config.algorithm_type:
+            raise NotImplementedError(
+                f"Inversion step is not yet implemented for algorithm type {self.config.algorithm_type}."
             )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_second_order_update
     def multistep_dpm_solver_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
@@ -535,38 +523,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                     - (sigma_t * (torch.exp(h) - 1.0)) * D0
                     - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                 )
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - (sigma_t * (torch.exp(h) - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
-                )
+        elif "sde" in self.config.algorithm_type:
+            raise NotImplementedError(
+                f"Inversion step is not yet implemented for algorithm type {self.config.algorithm_type}."
+            )
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_third_order_update
