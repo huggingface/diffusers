@@ -308,6 +308,7 @@ class PipelineTesterMixin:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
             for name in pipe_loaded.components.keys():
+                import ipdb; ipdb.set_trace()
                 assert name in str(cap_logger)
 
             pipe_loaded.to(torch_device)

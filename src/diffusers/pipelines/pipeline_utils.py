@@ -1056,7 +1056,7 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
-                logger.info(f"Loaded {name} as {class_name} from subfolder {name} of {pretrained_model_name_or_path}.")
+                logger.info(f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}.")
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
