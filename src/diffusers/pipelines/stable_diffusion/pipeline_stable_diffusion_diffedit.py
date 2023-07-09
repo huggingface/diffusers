@@ -1247,7 +1247,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         # 7. Noising loop where we obtain the intermediate noised latent image for each timestep.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
         inverted_latents = []
-        with self.progress_bar(total=num_inference_steps - 1) as progress_bar:
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
