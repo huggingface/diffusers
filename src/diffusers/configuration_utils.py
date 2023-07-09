@@ -399,7 +399,6 @@ class ConfigMixin:
         try:
             # Load config dict
             config_dict = cls._dict_from_json_file(config_file)
-            config_dict["_name_or_path"] = str(pretrained_model_name_or_path)
 
             commit_hash = extract_commit_hash(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -417,10 +416,6 @@ class ConfigMixin:
             outputs += (commit_hash,)
 
         return outputs
-
-    @property
-    def name_or_path(self) -> str:
-        return getattr(self, "_name_or_path", None)
 
     @staticmethod
     def _get_init_keys(cls):

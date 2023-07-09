@@ -556,6 +556,7 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -1055,9 +1056,7 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
-                name_or_path = loaded_sub_model.config.name_or_path if hasattr(loaded_sub_model, "config") and hasattr(loaded_sub_model.config, "name_or_path") else None
-                logging_suffix = f" from {name_or_path}" if name_or_path is not None else ""
-                logger.info(f"Loaded {name} as {class_name} instance{logging_suffix}.")
+                logger.info(f"Loaded {name} as {class_name} from subfolder {name} of {pretrained_model_name_or_path}.")
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
@@ -1076,7 +1075,14 @@ class DiffusionPipeline(ConfigMixin):
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        # 9. Save where the model was instantiated from
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
+
+    @property
+    def name_or_path(self) -> str:
+        return getattr(self.config, "_name_or_path", None)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
