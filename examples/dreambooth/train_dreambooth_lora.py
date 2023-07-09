@@ -871,7 +871,7 @@ def main(args):
             lora_attn_processor_class = (
                 LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
             )
-            
+
         module = lora_attn_processor_class(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
