@@ -26,7 +26,7 @@
       title: 다른 스케줄러들을 가져오고 비교하기
     - local: using-diffusers/custom_pipeline_overview
       title: 커뮤니티 파이프라인 불러오기
-    - local: in_translation
+    - local: using-diffusers/using_safetensors
       title: 세이프텐서 불러오기
     - local: using-diffusers/other-formats
       title: 다른 형식의 Stable Diffusion 불러오기
