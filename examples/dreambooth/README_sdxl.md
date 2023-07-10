@@ -89,13 +89,13 @@ accelerate launch train_dreambooth_lora_sdxl.py \
   --resolution=1024 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --learning_rate=1e-5 \
+  --learning_rate=1e-4 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --max_train_steps=500 \
   --validation_prompt="A photo of sks dog in a bucket" \
-  --validation_epochs=50 \
+  --validation_epochs=25 \
   --seed="0" \
   --push_to_hub
 ```
@@ -106,6 +106,26 @@ To better track our training experiments, we're using the following flags in the
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
 
 Our experiments were conducted on a single 40GB A100 GPU.
+
+### Inference
+
+Once training is done, we can perform inference like so:
+
+```python
+from huggingface_hub.repocard import RepoCard
+from diffusers import DiffusionPipeline
+import torch
+
+lora_model_id = <"lora-sdxl-dreambooth-id">
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+pipe.load_lora_weights(lora_model_id)
+image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+image.save("sks-dog.png")
+```
 
 ## Notes
 
