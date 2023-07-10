@@ -5,7 +5,7 @@ import math
 import os
 from pathlib import Path
 from typing import Optional
-
+import shutil
 import accelerate
 import datasets
 import torch
@@ -23,7 +23,7 @@ import diffusers
 from diffusers import DDPMPipeline, UNet2DModel, CMStochasticIterativeScheduler, ConsistencyModelPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available, is_xformers_available
 
 
 #Copied from examples/unconditional_image_generation/train_unconditional.py for now
@@ -281,14 +281,12 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -377,14 +375,15 @@ def main(args):
                 attention_head_dim=8,
                 down_block_types= [
                     "ResnetDownsampleBlock2D",
-                    "AttnDownsampleBlock2D",
+                    "AttnDownBlock2D",
                 ],
                 up_block_types= [
-                    "AttnUpsampleBlock2D",
+                    "AttnUpBlock2D",
                     "ResnetUpsampleBlock2D",
                 ],
                 resnet_time_scale_shift="scale_shift",
-        
+                upsample_type="resnet",
+                downsample_type="resnet"
                 )
         target_model = UNet2DModel(
                 sample_size= args.resolution,
@@ -396,19 +395,21 @@ def main(args):
                 attention_head_dim=8,
                 down_block_types= [
                     "ResnetDownsampleBlock2D",
-                    "AttnDownsampleBlock2D",
+                    "AttnDownBlock2D",
                 ],
                 up_block_types= [
-                    "AttnUpsampleBlock2D",
+                    "AttnUpBlock2D",
                     "ResnetUpsampleBlock2D",
                 ],
                 resnet_time_scale_shift="scale_shift",
-        
+                upsample_type="resnet",
+                downsample_type="resnet"
                 )
     else:
         config = UNet2DModel.load_config(args.model_config_name_or_path)
         model = UNet2DModel.from_config(config)
         target_model = UNet2DModel.from_config(config)
+
     
     # load the model to distill into a consistency model
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
@@ -417,8 +418,6 @@ def main(args):
     teacher_model = teacher_model.float()
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
-    noise_scheduler.set_timesteps(num_scales)
-    timesteps = noise_scheduler.timesteps
 
 
     # Create EMA for the model, this is the target model in the paper
@@ -489,12 +488,12 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema
+    model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema = accelerator.prepare(
+        model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema
     )
+    noise_scheduler.set_timesteps(num_scales, device=accelerator.device)
 
     target_model_ema.to(accelerator.device)
-
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
@@ -550,7 +549,8 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-
+    timesteps = noise_scheduler.timesteps
+    sigmas = noise_scheduler.sigmas
 
     # Train!
     for epoch in range(first_epoch, args.num_epochs):
@@ -564,17 +564,18 @@ def main(args):
             index = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
             ).long()
+            # timestep is the scaled timestep, sigma is the unscaled timestep
             timestep = timesteps[index]
-            timestep_prev = timestep + 1
+            sigma = sigmas[index]
+            timestep_prev = timesteps[index+1]
+            sigma_prev = sigmas[index+1]
+            # add noise expects the scaled timestep only and internally converts to sigma
             noised_image = noise_scheduler.add_noise(clean_images, noise, timestep)
-            scaled_timesteps = noise_scheduler.scale_timestep(timestep)
-            scaled_timesteps_prev = noise_scheduler.scale_timestep(timestep_prev) 
             target_model_ema.copy_to(target_model.parameters())
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-
-                model_output = model(noise_scheduler.scale_model_input(noised_image, timestep), scaled_timesteps, class_labels=labels).sample
+                model_output = model(noise_scheduler.scale_model_input(noised_image, timestep), timestep, class_labels=labels).sample
                 distiller = noise_scheduler.step(
                     model_output, timestep, noised_image, use_noise=False
                 ).prev_sample
@@ -584,22 +585,22 @@ def main(args):
                     # TODO - make this cleaner
                     samples = noised_image
                     x = samples
-                    model_output = teacher_model(noise_scheduler.scale_model_input(x, timestep), scaled_timesteps, class_labels=labels).sample
+                    model_output = teacher_model(noise_scheduler.scale_model_input(x, timestep), timestep, class_labels=labels).sample
                     teacher_denoiser = noise_scheduler.step(
                         model_output, timestep, x, use_noise=False
                     ).prev_sample
-                    d = (x - teacher_denoiser) / append_dims(scaled_timesteps, x.ndim)
-                    samples = x + d * append_dims(scaled_timesteps_prev - scaled_timesteps, x.ndim)
-                    model_output = teacher_model(noise_scheduler.scale_model_input(samples, timestep_prev), scaled_timesteps_prev, class_labels=labels).sample
+                    d = (x - teacher_denoiser) / append_dims(sigma, x.ndim)
+                    samples = x + d * append_dims(sigma_prev - sigma, x.ndim)
+                    model_output = teacher_model(noise_scheduler.scale_model_input(samples, timestep_prev), timestep_prev, class_labels=labels).sample
                     teacher_denoiser = noise_scheduler.step(
                         model_output, timestep_prev, samples, use_noise=False
                     ).prev_sample
 
-                    next_d = (samples - teacher_denoiser) / append_dims(scaled_timesteps_prev, x.ndim)
-                    denoised_image = x + (d + next_d) * append_dims((scaled_timesteps_prev - scaled_timesteps) /2, x.ndim)
+                    next_d = (samples - teacher_denoiser) / append_dims(sigma_prev, x.ndim)
+                    denoised_image = x + (d + next_d) * append_dims((sigma_prev - sigma) /2, x.ndim)
 
                     # get output from target model
-                    model_output = target_model(denoised_image, scaled_timesteps_prev, class_labels=labels).sample
+                    model_output = target_model(noise_scheduler.scale_model_input(denoised_image, timestep_prev), timestep_prev, class_labels=labels).sample
                     distiller_target = noise_scheduler.step(
                         model_output, timestep_prev, denoised_image, use_noise=False
                     ).prev_sample
@@ -622,6 +623,26 @@ def main(args):
                 global_step += 1
 
                 if global_step % args.checkpointing_steps == 0:
+                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                    if args.checkpoints_total_limit is not None:
+                        checkpoints = os.listdir(args.output_dir)
+                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                        if len(checkpoints) >= args.checkpoints_total_limit:
+                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                            removing_checkpoints = checkpoints[0:num_to_remove]
+
+                            logger.info(
+                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                            )
+                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                            for removing_checkpoint in removing_checkpoints:
+                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                shutil.rmtree(removing_checkpoint)
+
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)

@@ -268,6 +268,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        use_noise: bool = True
     ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -331,7 +332,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. Sample z ~ N(0, s_noise^2 * I)
         # Noise is not used for onestep sampling.
-        if len(self.timesteps) > 1:
+        if len(self.timesteps) > 1 and use_noise:
             noise = randn_tensor(
                 model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
             )
