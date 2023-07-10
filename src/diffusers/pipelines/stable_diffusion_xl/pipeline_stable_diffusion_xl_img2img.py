@@ -455,11 +455,27 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         return extra_step_kwargs
 
     def check_inputs(
-        self, prompt, strength, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
+        self, prompt, strength, num_inference_steps, first_inference_step, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
+        if num_inference_steps is None:
+            raise ValueError("`num_inference_steps` cannot be None.")
+        elif not isinstance(num_inference_steps, int) or num_inference_steps <= 0:
+            raise ValueError(
+                f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
+                f" {type(num_inference_steps)}."
+            )
+        if first_inference_step is not None and (not isinstance(first_inference_step, int) or first_inference_step <= 0):
+            raise ValueError(
+                f"`first_inference_step` has to be a positive integer but is {first_inference_step} of type"
+                f" {type(first_inference_step)}."
+            )
+        if first_inference_step is not None and first_inference_step > num_inference_steps:
+            raise ValueError(
+                f"`first_inference_step` has to be smaller than `num_inference_steps` but is {first_inference_step} and"
+                f" `num_inference_steps` is {num_inference_steps}."
+            )
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -619,6 +635,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         ] = None,
         strength: float = 0.3,
         num_inference_steps: int = 50,
+        max_inference_steps: Optional[int] = None,
+        first_inference_step: Optional[int] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -659,6 +677,12 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            max_inference_steps (`int`, *optional*):
+                Instead of completing the backwards pass entirely, stop and return the output after this many steps.
+                Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
+            first_inference_step (`int`, *optional*):
+                Ignore the first steps of the denoising process, and start from here.
+                Useful if the input is a latent tensor that still has residual noise, eg. using `max_inference_steps`.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -737,7 +761,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(prompt, strength, num_inference_steps, first_inference_step, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -822,6 +846,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # skip a number of timesteps, if first_inference_step is set
+                if first_inference_step is not None and i < first_inference_step:
+                    print(f'Skipping timestep {i} of {num_inference_steps} because of first_inference_step={first_inference_step}')
+                    continue
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
@@ -855,6 +883,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+                if max_inference_steps is not None and i >= max_inference_steps:
+                    logger.debug(f'Breaking inference loop at step {i} as we have reached max_inference_steps={max_inference_steps}')
+                    break
 
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
