@@ -1382,7 +1382,7 @@ class PipelineFastTests(unittest.TestCase):
 
         all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
 
-        # make sure that none of the model names are variable model names
+        # make sure that none of the model names are variant model names
         assert len(variant_model_files) == 0
         assert len(all_model_files) > 0
 
