@@ -510,9 +510,12 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def get_timesteps(self, num_inference_steps, strength, device):
+    def get_timesteps(self, num_inference_steps, first_inference_step, strength, device):
         # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+        if first_inference_step is None:
+            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+        else:
+            init_timestep = first_inference_step
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
@@ -805,7 +808,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, first_inference_step, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
@@ -846,10 +849,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # skip a number of timesteps, if first_inference_step is set
-                if first_inference_step is not None and i < first_inference_step:
-                    print(f'Skipping timestep {i} of {num_inference_steps} because of first_inference_step={first_inference_step}')
-                    continue
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
