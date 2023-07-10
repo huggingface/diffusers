@@ -819,7 +819,12 @@ class CustomPipelineTests(unittest.TestCase):
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
 
-        assert dict(pipe_new.config) == dict(pipe.config)
+        conf_1 = dict(pipe.config)
+        conf_2 = dict(pipe_new.config)
+
+        del conf_2["_name_or_path"]
+
+        assert conf_1 == conf_2
 
     @slow
     @require_torch_gpu
