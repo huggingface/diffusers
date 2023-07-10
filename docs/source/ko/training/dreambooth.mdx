@@ -273,7 +273,7 @@ from diffusers import DiffusionPipeline, UNet2DConditionModel
 from transformers import CLIPTextModel
 import torch
 
-# 학습에 사용된 것과 동일한 인수(model, revision)로 파이프라인을 로드합니다.
+# 학습에 사용된 것과 동일한 인수(model, revision)로 파이프라인을 불러옵니다.
 model_id = "CompVis/stable-diffusion-v1-4"
 
 unet = UNet2DConditionModel.from_pretrained("/sddata/dreambooth/daruma-v2-1/checkpoint-100/unet")
@@ -294,7 +294,7 @@ If you have **`"accelerate<0.16.0"`** installed, you need to convert it to an in
 from accelerate import Accelerator
 from diffusers import DiffusionPipeline
 
-# 학습에 사용된 것과 동일한 인수(model, revision)로 파이프라인을 로드합니다.
+# 학습에 사용된 것과 동일한 인수(model, revision)로 파이프라인을 불러옵니다.
 model_id = "CompVis/stable-diffusion-v1-4"
 pipeline = DiffusionPipeline.from_pretrained(model_id)
 
