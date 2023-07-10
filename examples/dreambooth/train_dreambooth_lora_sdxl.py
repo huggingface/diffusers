@@ -81,8 +81,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- 'stable-diffusion-xl'
-- 'stable-diffusion-xl-diffusers'
+- stable-diffusion-xl
+- stable-diffusion-xl-diffusers
 - text-to-image
 - diffusers
 - lora
@@ -105,7 +105,7 @@ def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -682,7 +682,6 @@ def main(args):
                 torch_dtype=torch_dtype,
                 safety_checker=None,
                 revision=args.revision,
-                use_auth_token=True,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -716,26 +715,15 @@ def main(args):
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name,
-                exist_ok=True,
-                token=args.hub_token,
-                private=True,
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        use_fast=False,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer_2",
-        revision=args.revision,
-        use_fast=False,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
     )
 
     # import correct text encoder classes
@@ -747,23 +735,16 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler", use_auth_token=True
-    )
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=args.revision,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, use_auth_token=True
-    )
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     # We only train the additional adapter LoRA layers
@@ -1156,7 +1137,6 @@ def main(args):
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
-                    use_auth_token=True,
                 )
 
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
@@ -1218,7 +1198,7 @@ def main(args):
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype, use_auth_token=True
+            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
