@@ -411,7 +411,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
 
-class AsymmetricAutoencoderKL(AutoencoderKL):
+class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     r"""
     Designing a Better Asymmetric VQGAN for StableDiffusion https://arxiv.org/abs/2306.04632 . A VAE model with KL loss
     for encoding images into latents and decoding latent representations into images.
@@ -447,8 +447,6 @@ class AsymmetricAutoencoderKL(AutoencoderKL):
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
-
-    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(

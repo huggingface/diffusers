@@ -510,7 +510,8 @@ class ConditionDecoder(nn.Module):
                     sample = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
                     )
-                sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
+                if image is not None and mask is not None:
+                    sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
             else:
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
@@ -532,7 +533,8 @@ class ConditionDecoder(nn.Module):
                         mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
                         sample = sample * mask_ + sample_ * (1 - mask_)
                     sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
-                sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
+                if image is not None and mask is not None:
+                    sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
         else:
             # middle
             sample = self.mid_block(sample, latent_embeds)
@@ -550,7 +552,8 @@ class ConditionDecoder(nn.Module):
                     mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
                     sample = sample * mask_ + sample_ * (1 - mask_)
                 sample = up_block(sample, latent_embeds)
-            sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
+            if image is not None and mask is not None:
+                sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
 
         # post-process
         if latent_embeds is None:
