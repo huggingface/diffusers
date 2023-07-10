@@ -740,4 +740,4 @@ accelerate launch train_dreambooth.py \
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://github.com/Stability-AI/generative-models/blob/main/assets/sdxl_report.pdf) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
+We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
