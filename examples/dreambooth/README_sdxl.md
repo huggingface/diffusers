@@ -78,7 +78,6 @@ Now, we can launch training using:
 ```bash
 export MODEL_NAME="diffusers/stable-diffusion-xl-base-0.9"
 export INSTANCE_DIR="dog"
-export CLASS_DIR="dog-class"
 export OUTPUT_DIR="lora-trained-xl"
 
 accelerate launch train_dreambooth_lora_sdxl.py \
