@@ -439,7 +439,7 @@ class DreamBoothDataset(Dataset):
         class_data_root=None,
         class_prompt=None,
         class_num=None,
-        size=512,
+        size=1024,
         center_crop=False,
         instance_prompt_hidden_states=None,
         class_prompt_hidden_states=None,
