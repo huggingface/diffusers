@@ -678,15 +678,23 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         for h_start, h_end, w_start, w_end in batch_view:
                             if w_end > latents.shape[3]:
                                 # Add circular horizontal padding
-                                latent_view = torch.cat((latents[:, :, h_start:h_end, w_start:],
-                                                         latents[:, :, h_start:h_end, :w_end - latents.shape[3]]), axis=-1)
+                                latent_view = torch.cat(
+                                    (
+                                        latents[:, :, h_start:h_end, w_start:],
+                                        latents[:, :, h_start:h_end, : w_end - latents.shape[3]],
+                                    ),
+                                    axis=-1,
+                                )
                             else:
                                 latent_view = latents[:, :, h_start:h_end, w_start:w_end]
                             latents_for_view.append(latent_view)
                         latents_for_view = torch.cat(latents_for_view)
                     else:
                         latents_for_view = torch.cat(
-                            [latents[:, :, h_start:h_end, w_start:w_end] for h_start, h_end, w_start, w_end in batch_view]
+                            [
+                                latents[:, :, h_start:h_end, w_start:w_end]
+                                for h_start, h_end, w_start, w_end in batch_view
+                            ]
                         )
 
                     # rematch block's scheduler status
@@ -730,10 +738,14 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     ):
                         if w_end > latents.shape[3]:
                             # Case for circular padding
-                            value[:, :, h_start:h_end, w_start:] += latents_view_denoised[:, :, h_start:h_end, :latents.shape[3] - w_start]
-                            value[:, :, h_start:h_end, :w_end - latents.shape[3]] += latents_view_denoised[:, :, h_start:h_end, latents.shape[3] - w_start:]
+                            value[:, :, h_start:h_end, w_start:] += latents_view_denoised[
+                                :, :, h_start:h_end, : latents.shape[3] - w_start
+                            ]
+                            value[:, :, h_start:h_end, : w_end - latents.shape[3]] += latents_view_denoised[
+                                :, :, h_start:h_end, latents.shape[3] - w_start :
+                            ]
                             count[:, :, h_start:h_end, w_start:] += 1
-                            count[:, :, h_start:h_end, :w_end - latents.shape[3]] += 1
+                            count[:, :, h_start:h_end, : w_end - latents.shape[3]] += 1
                         else:
                             value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                             count[:, :, h_start:h_end, w_start:w_end] += 1
