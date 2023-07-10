@@ -1218,7 +1218,7 @@ class DiffusionPipeline(ConfigMixin):
                     f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
                     f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
                     "if such variant modeling files are not available. Doing so will lead to an error in v0.22.0 as defaulting to non-variant"
-                    "modeling files will is deprecated."
+                    "modeling files is deprecated."
                 )
                 deprecate("no variant default", "0.22.0", deprecation_message, standard_warn=False)
 
