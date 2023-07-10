@@ -549,8 +549,9 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    timesteps = noise_scheduler.timesteps
-    sigmas = noise_scheduler.sigmas
+    timesteps = noise_scheduler.timesteps 
+    sigmas = noise_scheduler.sigmas # in reverse order, sigma0 is sigma_max
+
 
     # Train!
     for epoch in range(first_epoch, args.num_epochs):
@@ -565,10 +566,10 @@ def main(args):
                 0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
             ).long()
             # timestep is the scaled timestep, sigma is the unscaled timestep
-            timestep = timesteps[index]
-            sigma = sigmas[index]
-            timestep_prev = timesteps[index+1]
-            sigma_prev = sigmas[index+1]
+            timestep = timesteps[index+1]
+            sigma = sigmas[index+1]
+            timestep_prev = timesteps[index]
+            sigma_prev = sigmas[index]
             # add noise expects the scaled timestep only and internally converts to sigma
             noised_image = noise_scheduler.add_noise(clean_images, noise, timestep)
             target_model_ema.copy_to(target_model.parameters())
