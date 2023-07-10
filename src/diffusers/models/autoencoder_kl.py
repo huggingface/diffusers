@@ -413,8 +413,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
 class AsymmetricAutoencoderKL(AutoencoderKL):
     r"""
-    Designing a Better Asymmetric VQGAN for StableDiffusion https://arxiv.org/abs/2306.04632
-    A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
+    Designing a Better Asymmetric VQGAN for StableDiffusion https://arxiv.org/abs/2306.04632 . A VAE model with KL loss
+    for encoding images into latents and decoding latent representations into images.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
