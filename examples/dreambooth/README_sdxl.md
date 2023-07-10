@@ -1,6 +1,6 @@
 # DreamBooth training example for Stable Diffusion XL (SDXL)
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
+[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_lora_sdxl.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
@@ -22,7 +22,7 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Then cd in the `examples/dreambooth` folder and run
 ```bash
 pip install -r requirements_sdxl.txt
 ```
@@ -39,7 +39,7 @@ Or for a default accelerate configuration without answering questions about your
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell e.g. a notebook
+Or if your environment doesn't support an interactive shell (e.g., a notebook)
 
 ```python
 from accelerate.utils import write_basic_config
@@ -166,11 +166,11 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 
 ## Notes
 
-In our experiments, we have found out that SDXL, with the default settings of the script, already yields better initial results. This is why, we didn't explore further hyperparameter tuning experiments. However, we encourage the community to explore this avenue further and share their results with us 🤗
+In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
 
 ## Results
 
-You can explore the results from a couple of our internal experiments by checking out this link: [https://wandb.ai/sayakpaul/dreambooth-lora-sd-xl](https://wandb.ai/sayakpaul/dreambooth-lora-sd-xl). Specifically, we used the same script with the exact the same hyperparameters on the following datasets:
+You can explore the results from a couple of our internal experiments by checking out this link: [https://wandb.ai/sayakpaul/dreambooth-lora-sd-xl](https://wandb.ai/sayakpaul/dreambooth-lora-sd-xl). Specifically, we used the same script with the exact same hyperparameters on the following datasets:
 
 * [Dogs](https://huggingface.co/datasets/diffusers/dog-example)
 * [Starbucks logo](https://huggingface.co/datasets/diffusers/starbucks-example)
