@@ -129,6 +129,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.default_sample_size = self.unet.config.sample_size
 
         self.watermark = StableDiffusionXLWatermarker()
 
@@ -652,8 +653,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
