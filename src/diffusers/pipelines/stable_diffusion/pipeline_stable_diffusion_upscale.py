@@ -760,7 +760,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
-        if not use_torch_2_0_or_xformers:
+        if use_torch_2_0_or_xformers:
             self.vae.post_quant_conv.to(latents.dtype)
             self.vae.decoder.conv_in.to(latents.dtype)
             self.vae.decoder.mid_block.to(latents.dtype)
