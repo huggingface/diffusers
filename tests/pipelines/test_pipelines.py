@@ -821,7 +821,12 @@ class CustomPipelineTests(unittest.TestCase):
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
 
-        assert dict(pipe_new.config) == dict(pipe.config)
+        conf_1 = dict(pipe.config)
+        conf_2 = dict(pipe_new.config)
+
+        del conf_2["_name_or_path"]
+
+        assert conf_1 == conf_2
 
     @slow
     @require_torch_gpu
@@ -1362,6 +1367,18 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.requires_safety_checker == [True, True]
             assert sd.config.safety_checker != (None, None)
             assert sd.config.feature_extractor != (None, None)
+
+    def test_name_or_path(self):
+        model_path = "hf-internal-testing/tiny-stable-diffusion-torch"
+        sd = DiffusionPipeline.from_pretrained(model_path)
+
+        assert sd.name_or_path == model_path
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            sd = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.name_or_path == tmpdirname
 
     def test_warning_no_variant_available(self):
         variant = "fp16"

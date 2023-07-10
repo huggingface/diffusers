@@ -556,6 +556,7 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -1013,7 +1014,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in init_dict.items():
+        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -1055,6 +1056,9 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
+                logger.info(
+                    f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
+                )
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
@@ -1073,7 +1077,14 @@ class DiffusionPipeline(ConfigMixin):
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        # 9. Save where the model was instantiated from
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
+
+    @property
+    def name_or_path(self) -> str:
+        return getattr(self.config, "_name_or_path", None)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
