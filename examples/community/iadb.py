@@ -1,11 +1,11 @@
-
 import torch
 from diffusers import DiffusionPipeline
-from diffusers.schedulers.scheduling_utils import  SchedulerMixin, SchedulerOutput
+from diffusers.schedulers.scheduling_utils import SchedulerMixin, SchedulerOutput
 from diffusers.schedulers import DDIMScheduler
 from diffusers.pipeline_utils import ImagePipelineOutput
 from diffusers.configuration_utils import ConfigMixin
 from typing import List, Optional, Tuple, Union
+
 
 class IADBScheduler(SchedulerMixin, ConfigMixin):
     """
@@ -18,7 +18,7 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.FloatTensor,
         timestep: int,
-        x_alpha: torch.FloatTensor,  
+        x_alpha: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         Predict the sample at the previous timestep by reversing the ODE. Core function to propagate the diffusion
@@ -38,17 +38,14 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-
         alpha = timestep / self.num_inference_steps
-        alpha_next = (timestep+1) / self.num_inference_steps
+        alpha_next = (timestep + 1) / self.num_inference_steps
 
         d = model_output
 
-        x_alpha = x_alpha + (alpha_next-alpha) * d
+        x_alpha = x_alpha + (alpha_next - alpha) * d
 
-        
         return x_alpha
-
 
     def set_timesteps(self, num_inference_steps: int):
         self.num_inference_steps = num_inference_steps
@@ -59,12 +56,11 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         alpha: torch.FloatTensor,
     ) -> torch.FloatTensor:
-    
         return original_samples * alpha + noise * (1 - alpha)
-
 
     def __len__(self):
         return self.config.num_train_timesteps
+
 
 class IADBPipeline(DiffusionPipeline):
     r"""
@@ -80,7 +76,6 @@ class IADBPipeline(DiffusionPipeline):
 
     def __init__(self, unet, scheduler):
         super().__init__()
-
 
         self.register_modules(unet=unet, scheduler=scheduler)
 
@@ -135,16 +130,12 @@ class IADBPipeline(DiffusionPipeline):
         x_alpha = image.clone()
         for t in self.progress_bar(range(num_inference_steps)):
             alpha = t / num_inference_steps
-    
+
             # 1. predict noise model_output
             model_output = self.unet(x_alpha, torch.tensor(alpha, device=x_alpha.device)).sample
 
             # 2. step
-            x_alpha = self.scheduler.step(
-                model_output, t, x_alpha
-            )
-
-
+            x_alpha = self.scheduler.step(model_output, t, x_alpha)
 
         image = (x_alpha * 0.5 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
