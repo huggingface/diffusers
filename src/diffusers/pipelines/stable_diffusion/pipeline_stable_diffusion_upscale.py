@@ -748,12 +748,16 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
-        use_torch_2_0_or_xformers = self.vae.decoder.mid_block.attentions[0].processor in [
-            AttnProcessor2_0,
-            XFormersAttnProcessor,
-            LoRAXFormersAttnProcessor,
-            LoRAAttnProcessor2_0,
-        ]
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                LoRAXFormersAttnProcessor,
+                LoRAAttnProcessor2_0,
+            ),
+        )
+
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
         if not use_torch_2_0_or_xformers:
