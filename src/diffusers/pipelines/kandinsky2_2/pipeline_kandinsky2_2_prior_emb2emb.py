@@ -156,6 +156,8 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         self,
         images_and_prompts: List[Union[str, PIL.Image.Image, torch.FloatTensor]],
         weights: List[float],
+        image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]],
+        strength: float = 0.3,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -216,6 +218,8 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             if isinstance(cond, str):
                 image_emb = self(
                     cond,
+                    image=image,
+                    strength=strength,
                     num_inference_steps=num_inference_steps,
                     num_images_per_prompt=num_images_per_prompt,
                     generator=generator,
