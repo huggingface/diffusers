@@ -18,7 +18,7 @@ from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
-
+import wandb
 import diffusers
 from diffusers import DDPMPipeline, UNet2DModel, CMStochasticIterativeScheduler, ConsistencyModelPipeline
 from diffusers.optimization import get_scheduler
@@ -32,35 +32,6 @@ from diffusers.utils import check_min_version, is_accelerate_version, is_tensorb
 check_min_version("0.17.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
-
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
-    return x[(...,) + (None,) * dims_to_append]
-
-
-
-
-
-
-def _extract_into_tensor(arr, timesteps, broadcast_shape):
-    """
-    Extract values from a 1-D numpy array for a batch of indices.
-
-    :param arr: the 1-D numpy array.
-    :param timesteps: a tensor of indices into the array to extract.
-    :param broadcast_shape: a larger shape of K dimensions with the batch
-                            dimension equal to the length of timesteps.
-    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
-    """
-    if not isinstance(arr, torch.Tensor):
-        arr = torch.from_numpy(arr)
-    res = arr[timesteps].float().to(timesteps.device)
-    while len(res.shape) < len(broadcast_shape):
-        res = res[..., None]
-    return res.expand(broadcast_shape)
 
 
 def parse_args():
@@ -290,15 +261,6 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
-    if args.logger == "tensorboard":
-        if not is_tensorboard_available():
-            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
-
-    elif args.logger == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
-
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -413,9 +375,6 @@ def main(args):
     
     # load the model to distill into a consistency model
     teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
-    model = model.float()
-    target_model = target_model.float() # TODO : support half precision training
-    teacher_model = teacher_model.float()
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
 
@@ -586,24 +545,22 @@ def main(args):
                     # TODO - make this cleaner
                     samples = noised_image
                     x = samples
-                    model_output = teacher_model(noise_scheduler.scale_model_input(x, timestep), timestep, class_labels=labels).sample
+                    teacher_model_output = teacher_model(noise_scheduler.scale_model_input(x, timestep), timestep, class_labels=labels).sample
                     teacher_denoiser = noise_scheduler.step(
-                        model_output, timestep, x, use_noise=False
+                        teacher_model_output, timestep, x, use_noise=False
                     ).prev_sample
-                    d = (x - teacher_denoiser) / append_dims(sigma, x.ndim)
-                    samples = x + d * append_dims(sigma_prev - sigma, x.ndim)
-                    model_output = teacher_model(noise_scheduler.scale_model_input(samples, timestep_prev), timestep_prev, class_labels=labels).sample
+                    d = (x - teacher_denoiser) / sigma[(...,) + (None,) * 3]
+                    samples = x + d * (sigma_prev - sigma)[(...,) + (None,) * 3]
+                    teacher_model_output = teacher_model(noise_scheduler.scale_model_input(samples, timestep_prev), timestep_prev, class_labels=labels).sample
                     teacher_denoiser = noise_scheduler.step(
-                        model_output, timestep_prev, samples, use_noise=False
+                        teacher_model_output, timestep_prev, samples, use_noise=False
                     ).prev_sample
-
-                    next_d = (samples - teacher_denoiser) / append_dims(sigma_prev, x.ndim)
-                    denoised_image = x + (d + next_d) * append_dims((sigma_prev - sigma) /2, x.ndim)
-
+                    next_d = (samples - teacher_denoiser) / sigma_prev[(...,) + (None,) * 3]
+                    denoised_image = x + (d + next_d) * ((sigma_prev - sigma) /2)[(...,) + (None,) * 3]
                     # get output from target model
-                    model_output = target_model(noise_scheduler.scale_model_input(denoised_image, timestep_prev), timestep_prev, class_labels=labels).sample
+                    target_model_output = target_model(noise_scheduler.scale_model_input(denoised_image, timestep_prev), timestep_prev, class_labels=labels).sample
                     distiller_target = noise_scheduler.step(
-                        model_output, timestep_prev, denoised_image, use_noise=False
+                        target_model_output, timestep_prev, denoised_image, use_noise=False
                     ).prev_sample
 
                 loss = F.mse_loss(distiller, distiller_target) 
