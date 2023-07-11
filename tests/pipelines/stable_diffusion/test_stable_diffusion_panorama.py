@@ -125,6 +125,22 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_panorama_circular_padding_case(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs, circular_padding=True).images
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.6127, 0.6299, 0.4595, 0.4051, 0.4543, 0.3925, 0.5510, 0.5693, 0.5031])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     # override to speed the overall test timing up.
     def test_inference_batch_consistent(self):
         super().test_inference_batch_consistent(batch_sizes=[1, 2])
@@ -167,6 +183,24 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.6187, 0.5375, 0.4915, 0.4136, 0.4114, 0.4563, 0.5128, 0.4976, 0.4757])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_panorama_views_batch_circular_padding(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs, circular_padding=True, view_batch_size=2)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.6127, 0.6299, 0.4595, 0.4051, 0.4543, 0.3925, 0.5510, 0.5693, 0.5031])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -255,6 +289,36 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
                 0.27100027,
                 0.27054125,
                 0.25536096,
+            ]
+        )
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-2
+
+    def test_stable_diffusion_panorama_circular_padding(self):
+        model_ckpt = "stabilityai/stable-diffusion-2-base"
+        scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs()
+        image = pipe(**inputs, circular_padding=True).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 2048, 3)
+
+        expected_slice = np.array(
+            [
+                0.47725636,
+                0.5465917,
+                0.5207574,
+                0.40147963,
+                0.35636646,
+                0.5230185,
+                0.41887498,
+                0.38896298,
+                0.42032397,
             ]
         )
 
