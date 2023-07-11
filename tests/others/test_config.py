@@ -264,7 +264,7 @@ class ConfigTester(unittest.TestCase):
         config_dict = {k: v for k, v in config.config.items() if not k.startswith("_")}
 
         # make sure that default config has all keys in `_use_default_values`
-        assert set(config_dict.keys()) == config.config._use_default_values
+        assert set(config_dict.keys()) == set(config.config._use_default_values)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             config.save_config(tmpdirname)
