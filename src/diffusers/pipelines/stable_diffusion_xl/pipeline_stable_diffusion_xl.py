@@ -565,6 +565,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         final_inference_step: Optional[int] = None,
+        denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -770,6 +771,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
+        # 7.1 Apply denoising_end
+        if denoising_end is not None:
+            num_inference_steps = int(round(denoising_end * num_inference_steps))
+            timesteps = timesteps[:num_warmup_steps + self.scheduler.order * num_inference_steps]
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -805,9 +812,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-                if final_inference_step is not None and i >= final_inference_step:
-                    logger.debug(f'Breaking inference loop at step {i} as we have reached final_inference_step={final_inference_step}')
-                    break
 
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
