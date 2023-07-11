@@ -295,7 +295,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        controlnet = MultiControlNetModel([controlnet1, controlnet2][:self.num_controlnet_models])
+        controlnet = MultiControlNetModel([controlnet1, controlnet2][: self.num_controlnet_models])
 
         components = {
             "unet": unet,
@@ -328,7 +328,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
                 generator=generator,
                 device=torch.device(device),
             ),
-        ][:self.num_controlnet_models]
+        ][: self.num_controlnet_models]
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
@@ -341,7 +341,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         return inputs
 
-    def _test_with_varying_num_models(self, test, num_models = [1, 2]):
+    def _test_with_varying_num_models(self, test, num_models=[1, 2]):
         # Run test for varying number of ControlNet models
         for n in num_models:
             self.num_controlnet_models = n
@@ -368,12 +368,18 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
         inputs["controlnet_conditioning_scale"] = scale
-        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3][:self.num_controlnet_models], control_guidance_end=[0.2, 0.7][:self.num_controlnet_models])[0]
+        output_3 = pipe(
+            **inputs,
+            control_guidance_start=[0.1, 0.3][: self.num_controlnet_models],
+            control_guidance_end=[0.2, 0.7][: self.num_controlnet_models],
+        )[0]
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
         inputs["controlnet_conditioning_scale"] = scale
-        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8][:self.num_controlnet_models])[0]
+        output_4 = pipe(
+            **inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8][: self.num_controlnet_models]
+        )[0]
 
         # make sure that all outputs are different
         assert np.sum(np.abs(output_1 - output_2)) > 1e-3
