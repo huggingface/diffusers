@@ -14,6 +14,7 @@
 
 import inspect
 import warnings
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -26,6 +27,7 @@ from ...models import AutoencoderKL, MultiAdapter, T2IAdapter, UNet2DConditionMo
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
+    BaseOutput,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -33,8 +35,23 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
+
+@dataclass
+class StableDiffusionAdapterPipelineOutput(BaseOutput):
+    """
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+        nsfw_content_detected (`List[bool]`)
+            List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
+            (nsfw) content, or `None` if safety checking could not be performed.
+    """
+
+    images: Union[List[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[List[bool]]
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -641,8 +658,8 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] instead
+                of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -661,11 +678,11 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
+            element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
         height, width = self._default_height_width(height, width, image)
@@ -796,4 +813,4 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionAdapterPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

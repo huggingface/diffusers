@@ -80,7 +80,6 @@ else:
     from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
-        StableDiffusionAdapterPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
@@ -102,6 +101,7 @@ else:
         StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .t2i_adapter import StableDiffusionAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
