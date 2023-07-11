@@ -1,0 +1,182 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# BentoML Integration Guide
+
+[[open-in-colab]]
+
+[BentoML](https://github.com/bentoml/BentoML/) is an open-source platform for building,
+shipping, and scaling AI applications. Integrating Diffusers with BentoML makes it an
+valuable tool for real-world deployments. With BentoML, users can easily package and serve
+diffusion models for production use, ensuring reliable and efficient deployments. BentoML
+comes equipped with out-of-the-box operation management tools like monitoring and tracing,
+and offers the freedom to deploy to multiple cloud platform with ease. The distributed
+nature of BentoML architecture and the separation of api server logic and model inference
+logic means you can efficiently scale up the deployment even with tight budget.
+
+To install BentoML package, simply run `pip install bentoml`. For general information
+about BentoML, please check <https://docs.bentoml.com>. For information about BentoML's
+integration with diffusers, please check [bentoml.diffusers
+guides](https://docs.bentoml.com/en/latest/frameworks/diffusers.html).
+
+## How to import diffusion models using `bentoml.diffusers`
+
+BentoML has its own [Model Store](https://docs.bentoml.com/en/latest/concepts/model.html)
+to do model management. A simple script to import a diffusion model into BentoML's model
+store may looks like below:
+
+```py
+import bentoml
+
+bentoml.diffusers.import_model(
+    "sd2.1",  # model tag in BentoML model store
+    "stabilityai/stable-diffusion-2-1",  # huggingface model identifier
+)
+```
+
+This code snippet will download the Stable Diffusion 2.1 model (using model identifier
+`stabilityai/stable-diffusion-2-1`) from the HuggingFace Hub (or use the cached download
+files if the model is already downloaded before) and import it into the BentoML model
+store with the name `sd2.1`.
+
+If you have an already fine-tuned model on disk, you can also provide the path instead of
+model identifier.
+
+```py
+import bentoml
+
+bentoml.diffusers.import_model(
+    "sd2.1-local",
+    "./local_stable_diffusion_2.1/",
+)
+```
+
+## How to turn A diffusion model to a RESTful service using BentoML
+
+With the diffusion model in BentoML's model store, we now want to implement a text2img
+service using Stable Diffusion 2.1 model. One property of stable diffusion model is that
+it accept lots of arguments besides the required prompt for fine-controlling the image
+generation process. To validate these input arguments, we can utilize BentoML's
+[pydantic](https://github.com/pydantic/pydantic) integration. Let's define a simple
+pydantic model:
+
+```py
+import typing as t
+
+from pydantic import BaseModel
+
+class SDArgs(BaseModel):
+    prompt: str
+    negative_prompt: t.Optional[str] = None
+    height: t.Optional[int] = 512
+    width: t.Optional[int] = 512
+
+    class Config:
+        extra = "allow"
+```
+
+Here we define a pydantic model which requires a string field `prompt` and three optional
+fields `height`, `width` and `negative_prompt` with corresponding types. The `extra =
+"allow"` line allow the model include more fields that are not defined here. In a real
+world situation, you may define all the fields you want and disallow extra fields.
+
+Now we can define a BentoML service file that define a stable diffusion service:
+
+```py
+import bentoml
+from bentoml.io import Image, JSON
+
+from sdargs import SDArgs
+
+bento_model = bentoml.diffusers.get("sd2.1:latest")
+sd21_runner = bento_model.to_runner(name="sd21-runner")
+
+svc = bentoml.Service("stable-diffusion-21", runners=[sd21_runner])
+
+@svc.api(input=JSON(pydantic_model=SDArgs), output=Image())
+async def txt2img(input_data):
+    kwargs = input_data.dict()
+    res = await sd21_runner.async_run(**kwargs)
+    images = res[0]
+    return images[0]
+```
+
+Save the codes as `service.py`, then we can spin up a BentoML service endpoint using:
+
+```
+bentoml serve service:svc
+```
+
+An HTTP server with /txt2img endpoint that accept a JSON dictionary should be up at
+port 3000. Go to <http://127.0.0.1:3000> in your web browser to access the Swagger UI.
+
+You can also test the text-to-image generation using curl and write the returned image to
+`output.jpg`.
+
+```
+curl -X POST http://127.0.0.1:3000/txt2img \
+     -H 'Content-Type: application/json' \
+     -d "{\"prompt\":\"a black cat\", \"height\":768, \"width\":768}" \
+     --output output.jpg
+```
+
+## How to package a BentoML service and deploy to cloud provider
+
+To deploy a BentoML service, we need to first pack the service into a BentoML
+[bento](https://docs.bentoml.com/en/latest/concepts/bento.html). We can simply provide a
+`bentofile.yaml` like the following:
+
+```yaml
+service: "service.py:svc"
+include:
+  - "service.py"
+python:
+  packages:
+    - torch
+    - transformers
+    - accelerate
+    - diffusers
+    - triton
+    - xformers
+    - pydantic
+docker:
+    distro: debian
+    cuda_version: "11.6"
+```
+
+The `bentofile.yaml` contains [bento build
+options](https://docs.bentoml.com/en/latest/concepts/bento.html#bento-build-options)
+including package dependencies and docker options etc.
+
+Then you can build a bento using:
+
+```
+bentoml build
+```
+
+The output looks like:
+
+```
+Successfully built Bento(tag="stable-diffusion-21:crkuh7a7rw5bcasc").
+
+Possible next steps:
+
+ * Containerize your Bento with `bentoml containerize`:
+    $ bentoml containerize stable-diffusion-21:crkuh7a7rw5bcasc
+
+ * Push to BentoCloud with `bentoml push`:
+    $ bentoml push stable-diffusion-21:crkuh7a7rw5bcasc
+```
+
+Then you can use `bentoml containerize stable-diffusion-21:crkuh7a7rw5bcasc` to create a
+docker image and deploy it to cloud provider. Or you can push the bento to BentoCloud to
+do a distributed deployment.
