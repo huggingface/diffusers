@@ -564,7 +564,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        max_inference_steps: Optional[int] = None,
+        final_inference_step: Optional[int] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -599,7 +599,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            max_inference_steps (`int`, *optional*):
+            final_inference_step (`int`, *optional*):
                 Instead of completing the backwards pass entirely, stop and return the output after this many steps.
                 Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
             guidance_scale (`float`, *optional*, defaults to 7.5):
@@ -805,8 +805,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-                if max_inference_steps is not None and i >= max_inference_steps:
-                    logger.debug(f'Breaking inference loop at step {i} as we have reached max_inference_steps={max_inference_steps}')
+                if final_inference_step is not None and i >= final_inference_step:
+                    logger.debug(f'Breaking inference loop at step {i} as we have reached final_inference_step={final_inference_step}')
                     break
 
         # make sure the VAE is in float32 mode, as it overflows in float16
