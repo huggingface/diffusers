@@ -21,7 +21,7 @@ The abstract of the paper is the following:
 ## Tips
 
 - Stable Diffusion XL works especially well with images between 768 and 1024.
-- Stable Diffusion XL output image can be improved by making use of a refiner as shown below
+- Stable Diffusion XL output image can be improved by making use of a refiner as shown below.
 
 ### Available checkpoints:
 
@@ -40,7 +40,7 @@ pip install safetensors
 pip install invisible-watermark>=2.0
 ```
 
-### *Text-to-Image*
+### Text-to-Image
 
 You can use SDXL as follows for *text-to-image*:
 
@@ -71,6 +71,7 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
+use_refiner = True
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
@@ -82,7 +83,29 @@ image = pipe(prompt=prompt, output_type="latent" if use_refiner else "pil").imag
 image = refiner(prompt=prompt, image=image[None, :]).images[0]
 ```
 
-### Loading single file checkpoitns / original file format
+### Image-to-image 
+
+```py 
+import torch
+from diffusers import StableDiffusionXLImg2ImgPipeline
+from diffusers.utils import load_image
+
+pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
+)
+pipe = pipe.to("cuda")
+url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
+
+init_image = load_image(url).convert("RGB")
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt, image=init_image).images[0]
+```
+
+| Original Image | Refined Image |
+|---|---|
+| ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
+
+### Loading single file checkpoints / original file format
 
 By making use of [`~diffusers.loaders.FromSingleFileMixin.from_single_file`] you can also load the 
 original file format into `diffusers`:
@@ -127,7 +150,7 @@ You can speed up inference by making use of `torch.compile`. This should give yo
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-### Running with `torch` < 2.0
+### Running with `torch` \< 2.0
 
 **Note** that if you want to run Stable Diffusion XL with `torch` < 2.0, please make sure to enable xformers 
 attention:

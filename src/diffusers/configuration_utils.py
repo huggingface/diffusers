@@ -607,7 +607,7 @@ def register_to_config(init):
 
         # Take note of the parameters that were not present in the loaded config
         if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
-            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
+            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
 
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
@@ -655,7 +655,7 @@ def flax_register_to_config(cls):
 
         # Take note of the parameters that were not present in the loaded config
         if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
-            new_kwargs["_use_default_values"] = set(new_kwargs.keys()) - set(init_kwargs)
+            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
 
         getattr(self, "register_to_config")(**new_kwargs)
         original_init(self, *args, **kwargs)
