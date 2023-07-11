@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A hammer hitting a wooden surface"
-        >>> audio = pipe(prompt).audio[0]
+        >>> audio = pipe(prompt).audios[0]
         ```
 """
 
