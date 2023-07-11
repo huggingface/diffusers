@@ -892,7 +892,7 @@ def convert_paint_by_example_checkpoint(checkpoint):
 
 
 def convert_open_clip_checkpoint(
-    checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=True, **config_kwargs
+    checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=False, **config_kwargs
 ):
     # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
     # text_model = CLIPTextModelWithProjection.from_pretrained(
@@ -905,6 +905,12 @@ def convert_open_clip_checkpoint(
 
     keys = list(checkpoint.keys())
 
+    keys_to_ignore = []
+    if config_name == "stabilityai/stable-diffusion-2" and config.num_hidden_layers == 23:
+        # make sure to remove all keys > 22
+        keys_to_ignore += [k for k in keys if k.startswith("cond_stage_model.model.transformer.resblocks.23")]
+        keys_to_ignore += ["cond_stage_model.model.text_projection"]
+
     text_model_dict = {}
 
     if prefix + "text_projection" in checkpoint:
@@ -915,8 +921,8 @@ def convert_open_clip_checkpoint(
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     for key in keys:
-        # if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
-        #     continue
+        if key in keys_to_ignore:
+            continue
         if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
                 value = checkpoint[key].T
@@ -1075,7 +1081,7 @@ def convert_controlnet_checkpoint(
 def download_from_original_stable_diffusion_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 512,
+    image_size: Optional[int] = None,
     prediction_type: str = None,
     model_type: str = None,
     extract_ema: bool = False,
@@ -1241,6 +1247,8 @@ def download_from_original_stable_diffusion_ckpt(
             model_type = "SDXL"
         else:
             model_type = "SDXL-Refiner"
+        if image_size is None:
+            image_size = 1024
 
     if num_in_channels is not None:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
@@ -1274,7 +1282,6 @@ def download_from_original_stable_diffusion_ckpt(
     num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
-        image_size = 1024
         scheduler_dict = {
             "beta_schedule": "scaled_linear",
             "beta_start": 0.00085,
