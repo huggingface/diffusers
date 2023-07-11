@@ -581,7 +581,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             final_inference_step (`int`, *optional*):
-                Instead of completing the backwards pass entirely, stop and return the output after this many steps.
+                Instead of completing the denoising pass entirely, stop and return the output after this many steps.
                 Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
