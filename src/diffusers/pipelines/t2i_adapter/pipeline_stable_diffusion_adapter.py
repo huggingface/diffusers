@@ -88,7 +88,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def preprocess(image, height, width):
+def _preprocess_adapter_image(image, height, width):
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -695,11 +695,11 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
 
         is_multi_adapter = isinstance(self.adapter, MultiAdapter)
         if is_multi_adapter:
-            adapter_input = [preprocess(img, height, width).to(device) for img in image]
+            adapter_input = [_preprocess_adapter_image(img, height, width).to(device) for img in image]
             n, c, h, w = adapter_input[0].shape
             adapter_input = torch.stack([x.reshape([n * c, h, w]) for x in adapter_input])
         else:
-            adapter_input = preprocess(image, height, width).to(device)
+            adapter_input = _preprocess_adapter_image(image, height, width).to(device)
         adapter_input = adapter_input.to(self.adapter.dtype)
 
         # 2. Define call parameters
