@@ -580,9 +580,13 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            final_inference_step (`int`, *optional*):
-                Instead of completing the backwards pass entirely, stop and return the output after this many steps.
-                Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
+            denoising_end (`float`, *optional*):
+                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
+                completed before it is intentionally prematurely terminated. For instance, if denoising_end is set to
+                0.7 and `num_inference_steps` is fixed at 50, the process will execute only 35 (i.e., 0.7 * 50)
+                denoising steps. As a result, the returned sample will still retain a substantial amount of noise. The
+                denoising_end parameter should ideally be utilized when this pipeline forms a part of a "Mixture of
+                Denoisers" multi-pipeline setup, as elaborated in [].
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -755,7 +759,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         # 7.1 Apply denoising_end
         if denoising_end is not None:
             num_inference_steps = int(round(denoising_end * num_inference_steps))
-            timesteps = timesteps[:num_warmup_steps + self.scheduler.order * num_inference_steps]
+            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):

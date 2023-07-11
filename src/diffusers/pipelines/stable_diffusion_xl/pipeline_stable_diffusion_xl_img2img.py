@@ -455,7 +455,14 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         return extra_step_kwargs
 
     def check_inputs(
-        self, prompt, strength, num_inference_steps, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
+        self,
+        prompt,
+        strength,
+        num_inference_steps,
+        callback_steps,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -512,7 +519,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True):
+    def prepare_latents(
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -670,12 +679,22 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            final_inference_step (`int`, *optional*):
-                Instead of completing the backwards pass entirely, stop and return the output after this many steps.
-                Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
-            begin_inference_step (`int`, *optional*):
-                Ignore the first steps of the denoising process, and start from here.
-                Useful if the input is a latent tensor that still has residual noise, eg. using `final_inference_step`.
+            denoising_start (`float`, *optional*):
+                When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be
+                bypassed before it is initiated. For example, if `denoising_start` is set to 0.7 and
+                num_inference_steps is fixed at 50, the process will begin only from the 35th (i.e., 0.7 * 50)
+                denoising step. Consequently, the initial part of the denoising process is skipped and it is assumed
+                that the passed `image` is a partly denoised image. The `denoising_start` parameter is particularly
+                beneficial when this pipeline is integrated into a "Mixture of Denoisers" multi-pipeline setup, as
+                detailed in [].
+            denoising_end (`float`, *optional*):
+                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
+                completed before it is intentionally prematurely terminated. For instance, if denoising_end is set to
+                0.7 and `num_inference_steps` is fixed at 50, the process will execute only 35 (i.e., 0.7 * 50)
+                denoising steps. As a result, the returned sample will still retain a substantial amount of noise (ca.
+                30%) and should be denoised by a successor pipeline that has `denoising_start` set to 0.7 so that it
+                only denoised the final 30%. The denoising_end parameter should ideally be utilized when this pipeline
+                forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [].
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -754,7 +773,15 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, num_inference_steps, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(
+            prompt,
+            strength,
+            num_inference_steps,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+        )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -798,14 +825,22 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device, denoising_start=denoising_start)
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps, strength, device, denoising_start=denoising_start
+        )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         add_noise = True if denoising_start is None else False
-        
         # 6. Prepare latent variables
         latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator, add_noise
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            add_noise,
         )
         # 7. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -843,16 +878,18 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         # 9.1 Apply denoising_end
         if denoising_end is not None and denoising_start is not None:
             if denoising_end <= denoising_start:
-                raise ValueError(f"`denoising_end`: {denoising_end} cannot be larger than `denoising_start`: {denoising_start}.")
+                raise ValueError(
+                    f"`denoising_end`: {denoising_end} cannot be larger than `denoising_start`: {denoising_start}."
+                )
 
             orig_num_inference_steps = int(round(num_inference_steps / (1 - denoising_start)))
             skipped_final_steps = int(round((1 - denoising_end) * orig_num_inference_steps))
 
             num_inference_steps = num_inference_steps - skipped_final_steps
-            timesteps = timesteps[:num_warmup_steps + self.scheduler.order * num_inference_steps]
+            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
         elif denoising_end is not None:
             num_inference_steps = int(round(denoising_end * num_inference_steps))
-            timesteps = timesteps[:num_warmup_steps + self.scheduler.order * num_inference_steps]
+            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
