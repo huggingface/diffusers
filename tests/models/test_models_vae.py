@@ -185,8 +185,9 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         sizes = (32, 32)
 
         image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        mask = torch.ones((batch_size, 1) + sizes).to(torch_device)
 
-        return {"sample": image}
+        return {"sample": image, "mask": mask}
 
     @property
     def input_shape(self):
@@ -219,33 +220,6 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         pass
 
     def test_forward_with_norm_groups(self):
-        pass
-
-    def test_training(self):
-        pass
-
-    def test_ema_training(self):
-        pass
-
-    def test_set_attn_processor_for_determinism(self):
-        pass
-
-    def test_model_from_pretrained(self):
-        pass
-
-    def test_from_save_pretrained(self):
-        pass
-
-    def test_from_save_pretrained_variant(self):
-        pass
-
-    def test_enable_disable_gradient_checkpointing(self):
-        pass
-
-    def test_gradient_checkpointing(self):
-        pass
-
-    def test_from_pretrained_hub(self):
         pass
 
 
