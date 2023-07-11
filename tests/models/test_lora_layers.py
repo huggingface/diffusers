@@ -538,7 +538,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
-    @unittest.skipIf(not hasattr(F, "scaled_dot_product_attention"))
+    @unittest.skipIf(not hasattr(F, "scaled_dot_product_attention"), "Testing this only for PyTorch 2.0.")
     def test_lora_unload(self):
         generator = torch.Generator("cpu").manual_seed(0)
         prompt = "A photo of a sks dog floating in the river"
