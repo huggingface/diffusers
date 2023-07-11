@@ -368,12 +368,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
         inputs["controlnet_conditioning_scale"] = scale
-        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
+        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3][:self.num_controlnet_models], control_guidance_end=[0.2, 0.7][:self.num_controlnet_models])[0]
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
         inputs["controlnet_conditioning_scale"] = scale
-        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])[0]
+        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8][:self.num_controlnet_models])[0]
 
         # make sure that all outputs are different
         assert np.sum(np.abs(output_1 - output_2)) > 1e-3
