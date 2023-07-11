@@ -20,12 +20,11 @@ from typing import Optional
 
 import requests
 import torch
-
 from transformers import (
-    CLIPTextConfig,
     AutoFeatureExtractor,
     BertTokenizerFast,
     CLIPImageProcessor,
+    CLIPTextConfig,
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
@@ -50,7 +49,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_omegaconf_available, is_safetensors_available, is_accelerate_available, logging
+from ...utils import is_accelerate_available, is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
@@ -795,9 +794,7 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
                 text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
 
     for param_name, param in text_model_dict.items():
-        set_module_tensor_to_device(
-            text_model, param_name, "cpu", value=param
-        )
+        set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
 
     return text_model
 
@@ -894,7 +891,9 @@ def convert_paint_by_example_checkpoint(checkpoint):
     return model
 
 
-def convert_open_clip_checkpoint(checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=True, **config_kwargs):
+def convert_open_clip_checkpoint(
+    checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=True, **config_kwargs
+):
     # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
     # text_model = CLIPTextModelWithProjection.from_pretrained(
     #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
@@ -946,9 +945,7 @@ def convert_open_clip_checkpoint(checkpoint, config_name, prefix="cond_stage_mod
                 text_model_dict[new_key] = checkpoint[key]
 
     for param_name, param in text_model_dict.items():
-        set_module_tensor_to_device(
-            text_model, param_name, "cpu", value=param
-        )
+        set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
 
     return text_model
 
@@ -1339,16 +1336,18 @@ def download_from_original_stable_diffusion_ckpt(
     )
 
     for param_name, param in converted_unet_checkpoint.items():
-        set_module_tensor_to_device(
-            unet, param_name, "cpu", value=param
-        )
+        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
 
     # Convert the VAE model.
     if vae_path is None:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-        if "model" in original_config and "params" in original_config.model and "scale_factor" in original_config.model.params:
+        if (
+            "model" in original_config
+            and "params" in original_config.model
+            and "scale_factor" in original_config.model.params
+        ):
             vae_scaling_factor = original_config.model.params.scale_factor
         else:
             vae_scaling_factor = 0.18215  # default SD scaling factor
@@ -1359,9 +1358,7 @@ def download_from_original_stable_diffusion_ckpt(
             vae = AutoencoderKL(**vae_config)
 
         for param_name, param in converted_vae_checkpoint.items():
-            set_module_tensor_to_device(
-                vae, param_name, "cpu", value=param
-            )
+            set_module_tensor_to_device(vae, param_name, "cpu", value=param)
     else:
         vae = AutoencoderKL.from_pretrained(vae_path)
 
@@ -1505,7 +1502,9 @@ def download_from_original_stable_diffusion_ckpt(
 
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs)
+            text_encoder_2 = convert_open_clip_checkpoint(
+                checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
+            )
 
             pipe = StableDiffusionXLPipeline(
                 vae=vae,
@@ -1524,7 +1523,9 @@ def download_from_original_stable_diffusion_ckpt(
 
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs)
+            text_encoder_2 = convert_open_clip_checkpoint(
+                checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
+            )
 
             pipe = StableDiffusionXLImg2ImgPipeline(
                 vae=vae,
