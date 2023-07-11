@@ -30,8 +30,8 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from tests.pipelines.pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from tests.pipelines.test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -47,6 +47,7 @@ class SelfSegmentationStableDiffusionPipelineFastTests(
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     test_attention_slicing = False
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -186,8 +187,6 @@ class SelfSegmentationStableDiffusionPipelineFastTests(
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
 
 
 @slow
