@@ -950,7 +950,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
 
         if is_controlnet:
-            sample += mid_block_additional_residual
+            sample = sample + mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
