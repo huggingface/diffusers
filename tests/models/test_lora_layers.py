@@ -537,3 +537,30 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.7406, 0.699, 0.5963, 0.7493, 0.7045, 0.6096, 0.6886, 0.6388, 0.583])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    @unittest.skipIf(not hasattr(F, "scaled_dot_product_attention"))
+    def test_lora_unload(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+        prompt = "A photo of a sks dog floating in the river"
+        num_inference_steps = 2
+
+        lora_model_id = "hf-internal-testing/lora_dreambooth_dog_example"
+        card = RepoCard.load(lora_model_id)
+        base_model_id = card.data.to_dict()["base_model"]
+
+        pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
+        pipe = pipe.to(torch_device)
+        pipe.load_lora_weights(lora_model_id)
+
+        lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images = lora_images[0, -3:, -3:, -1].flatten()
+
+        pipe.unet.set_attn_processor(AttnProcessor2_0())
+        regular_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        regular_images = regular_images[0, -3:, -3:, -1].flatten()
+
+        self.assertFalse(np.allclose(lora_images, regular_images, atol=1e-4))
