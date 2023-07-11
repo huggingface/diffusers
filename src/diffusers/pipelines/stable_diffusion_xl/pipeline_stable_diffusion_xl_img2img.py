@@ -881,7 +881,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
         # 9.1 Apply denoising_end
         if denoising_end is not None and denoising_start is not None:
-            if denoising_end <= denoising_start:
+            if denoising_start >= denoising_end:
                 raise ValueError(
                     f"`denoising_end`: {denoising_end} cannot be larger than `denoising_start`: {denoising_start}."
                 )
