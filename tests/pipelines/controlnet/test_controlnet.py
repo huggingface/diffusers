@@ -17,6 +17,7 @@ import gc
 import tempfile
 import traceback
 import unittest
+from typing import Literal
 
 import numpy as np
 import torch
@@ -220,6 +221,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+    num_controlnet_models: Literal[1, 2] = 2
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -293,7 +295,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        controlnet = MultiControlNetModel([controlnet1, controlnet2])
+        controlnet = MultiControlNetModel([controlnet1, controlnet2][:self.num_controlnet_models])
 
         components = {
             "unet": unet,
@@ -326,7 +328,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
                 generator=generator,
                 device=torch.device(device),
             ),
-        ]
+        ][:self.num_controlnet_models]
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
@@ -339,7 +341,13 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         return inputs
 
-    def test_control_guidance_switch(self):
+    def _test_with_varying_num_models(self, test, num_models = [1, 2]):
+        # Run test for varying number of ControlNet models
+        for n in num_models:
+            self.num_controlnet_models = n
+            test()
+
+    def _test_control_guidance_switch(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -372,8 +380,11 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         assert np.sum(np.abs(output_1 - output_3)) > 1e-3
         assert np.sum(np.abs(output_1 - output_4)) > 1e-3
 
+    def test_control_guidance_switch(self):
+        self._test_with_varying_num_models(self._test_control_guidance_switch)
+
     def test_attention_slicing_forward_pass(self):
-        return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+        self._test_with_varying_num_models(lambda: self._test_attention_slicing_forward_pass(expected_max_diff=2e-3))
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -383,7 +394,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+        self._test_with_varying_num_models(lambda: self._test_inference_batch_single_identical(expected_max_diff=2e-3))
 
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
