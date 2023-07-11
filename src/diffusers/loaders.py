@@ -1394,7 +1394,7 @@ class FromSingleFileMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         extract_ema = kwargs.pop("extract_ema", False)
-        image_size = kwargs.pop("image_size", 512)
+        image_size = kwargs.pop("image_size", None)
         scheduler_type = kwargs.pop("scheduler_type", "pndm")
         num_in_channels = kwargs.pop("num_in_channels", None)
         upcast_attention = kwargs.pop("upcast_attention", None)
