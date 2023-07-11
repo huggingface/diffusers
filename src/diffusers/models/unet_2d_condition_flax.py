@@ -116,6 +116,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
+    transformer_layers_per_block: Union[int, Tuple[int]] = 1
+
 
     def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
@@ -168,6 +170,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
+        # transformer layers per block
+        transformer_layers_per_block = self.transformer_layers_per_block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(self.down_block_types)
+
         # down
         down_blocks = []
         output_channel = block_out_channels[0]
@@ -182,12 +189,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
                     num_attention_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
-                    dtype=self.dtype,
+                    dtype=self.dtype
                 )
             else:
                 down_block = FlaxDownBlock2D(
@@ -207,9 +215,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             in_channels=block_out_channels[-1],
             dropout=self.dropout,
             num_attention_heads=num_attention_heads[-1],
+            transformer_layers_per_block=transformer_layers_per_block[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
-            dtype=self.dtype,
+            dtype=self.dtype
         )
 
         # up
@@ -218,6 +227,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         only_cross_attention = list(reversed(only_cross_attention))
         output_channel = reversed_block_out_channels[0]
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         for i, up_block_type in enumerate(self.up_block_types):
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
@@ -231,6 +241,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
                     num_layers=self.layers_per_block + 1,
+                    transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                     num_attention_heads=reversed_num_attention_heads[i],
                     add_upsample=not is_final_block,
                     dropout=self.dropout,
