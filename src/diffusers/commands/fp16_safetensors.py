@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Usage example:
+    diffusers-cli fp16_safetensors --ckpt_id=openai/shap-e --fp16 --use_safetensors
+"""
+
 import glob
 import json
 from argparse import ArgumentParser, Namespace
