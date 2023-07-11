@@ -444,6 +444,25 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    def timesteps_from_strength(
+        self, strength: float, num_inference_steps: int
+    ):
+        """Retrieve values for `final_inference_step` and `begin_inference_step` from `strength`, `num_inference_steps`
+
+        Args:
+            strength (float): A traditional img2img strength between 0.0 and 1.0, with higher values resulting in greater
+                                influence from the img2img model and lower values, more influence from the base model.
+            num_inference_steps (int): The total number of inference steps to be taken.
+        Returns:
+            final_inference_step (int): The final inference step to be taken.
+            begin_inference_step (int): The inference step to begin img2img inference.
+        """
+        # We need to invert the percentage. A strength of 0.0 should result in 100% of the inference steps.
+        inverse_strength = 1.0 - strength
+        final_inference_step = int(num_inference_steps * inverse_strength)
+        begin_inference_step = final_inference_step
+        return final_inference_step, begin_inference_step
+
     def check_inputs(
         self,
         prompt,

@@ -454,8 +454,27 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    def timesteps_from_strength(
+        self, strength: float, num_inference_steps: int
+    ):
+        """Retrieve values for `final_inference_step` and `begin_inference_step` from `strength`, `num_inference_steps`
+
+        Args:
+            strength (float): A traditional img2img strength between 0.0 and 1.0, with higher values resulting in greater
+                                influence from the img2img model and lower values, more influence from the base model.
+            num_inference_steps (int): The total number of inference steps to be taken.
+        Returns:
+            final_inference_step (int): The final inference step to be taken.
+            begin_inference_step (int): The inference step to begin img2img inference.
+        """
+        # We need to invert the percentage. A strength of 0.0 should result in 100% of the inference steps.
+        inverse_strength = 1.0 - strength
+        final_inference_step = int(num_inference_steps * inverse_strength)
+        begin_inference_step = final_inference_step
+        return final_inference_step, begin_inference_step
+
     def check_inputs(
-        self, prompt, strength, num_inference_steps, first_inference_step, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
+        self, prompt, strength, num_inference_steps, begin_inference_step, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -466,14 +485,14 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
                 f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
                 f" {type(num_inference_steps)}."
             )
-        if first_inference_step is not None and (not isinstance(first_inference_step, int) or first_inference_step <= 0):
+        if begin_inference_step is not None and (not isinstance(begin_inference_step, int) or begin_inference_step <= 0):
             raise ValueError(
-                f"`first_inference_step` has to be a positive integer but is {first_inference_step} of type"
-                f" {type(first_inference_step)}."
+                f"`begin_inference_step` has to be a positive integer but is {begin_inference_step} of type"
+                f" {type(begin_inference_step)}."
             )
-        if first_inference_step is not None and first_inference_step > num_inference_steps:
+        if begin_inference_step is not None and begin_inference_step > num_inference_steps:
             raise ValueError(
-                f"`first_inference_step` has to be smaller than `num_inference_steps` but is {first_inference_step} and"
+                f"`begin_inference_step` has to be smaller than `num_inference_steps` but is {begin_inference_step} and"
                 f" `num_inference_steps` is {num_inference_steps}."
             )
         if (callback_steps is None) or (
@@ -510,12 +529,12 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def get_timesteps(self, num_inference_steps, first_inference_step, strength, device):
+    def get_timesteps(self, num_inference_steps, begin_inference_step, strength, device):
         # get the original timestep using init_timestep
-        if first_inference_step is None:
+        if begin_inference_step is None:
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
         else:
-            init_timestep = first_inference_step - 1
+            init_timestep = begin_inference_step - 1
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
@@ -638,8 +657,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
         ] = None,
         strength: float = 0.3,
         num_inference_steps: int = 50,
-        max_inference_steps: Optional[int] = None,
-        first_inference_step: Optional[int] = None,
+        final_inference_step: Optional[int] = None,
+        begin_inference_step: Optional[int] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -680,12 +699,12 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            max_inference_steps (`int`, *optional*):
+            final_inference_step (`int`, *optional*):
                 Instead of completing the backwards pass entirely, stop and return the output after this many steps.
                 Can be useful with `output_type="latent"` and an img2img pipeline, possibly with better fine detail.
-            first_inference_step (`int`, *optional*):
+            begin_inference_step (`int`, *optional*):
                 Ignore the first steps of the denoising process, and start from here.
-                Useful if the input is a latent tensor that still has residual noise, eg. using `max_inference_steps`.
+                Useful if the input is a latent tensor that still has residual noise, eg. using `final_inference_step`.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -764,7 +783,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, num_inference_steps, first_inference_step, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(prompt, strength, num_inference_steps, begin_inference_step, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -808,10 +827,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, first_inference_step, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, begin_inference_step, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         add_noise = True
-        if first_inference_step is not None:
+        if begin_inference_step is not None:
             add_noise = False
         # 6. Prepare latent variables
         latents = self.prepare_latents(
@@ -884,8 +903,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-                if max_inference_steps is not None and i >= max_inference_steps:
-                    logger.debug(f'Breaking inference loop at step {i} as we have reached max_inference_steps={max_inference_steps}')
+                if final_inference_step is not None and i >= final_inference_step:
+                    logger.debug(f'Breaking inference loop at step {i} as we have reached final_inference_step={final_inference_step}')
                     break
 
         # make sure the VAE is in float32 mode, as it overflows in float16
