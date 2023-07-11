@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import unittest
 
 import numpy as np
@@ -21,9 +22,14 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
+    StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
@@ -216,3 +222,130 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(num_steps, split, scheduler_cls):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            split_id = int(round(split * num_steps)) * pipe_1.scheduler.order
+            expected_steps_1 = expected_steps[:split_id]
+            expected_steps_2 = expected_steps[split_id:]
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {**inputs, **{"denoising_end": split, "output_type": "latent"}}
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {**inputs, **{"denoising_start": split, "image": latents}}
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        for steps in [5, 8]:
+            for split in [0.33, 0.49, 0.71]:
+                for scheduler_cls in [
+                    DDIMScheduler,
+                    EulerDiscreteScheduler,
+                    DPMSolverMultistepScheduler,
+                    UniPCMultistepScheduler,
+                    HeunDiscreteScheduler,
+                ]:
+                    assert_run_mixture(steps, split, scheduler_cls)
+
+    def test_stable_diffusion_three_xl_mixture_of_denoiser(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+        pipe_3 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_3.unet.set_default_attn_processor()
+
+        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+            pipe_3.scheduler = scheduler_cls.from_config(pipe_3.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            split_id_1 = int(round(split_1 * num_steps)) * pipe_1.scheduler.order
+            split_id_2 = int(round(split_2 * num_steps)) * pipe_1.scheduler.order
+            expected_steps_1 = expected_steps[:split_id_1]
+            expected_steps_2 = expected_steps[split_id_1:split_id_2]
+            expected_steps_3 = expected_steps[split_id_2:]
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert (
+                expected_steps_1 == done_steps
+            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+
+            inputs_2 = {
+                **inputs,
+                **{"denoising_start": split_1, "denoising_end": split_2, "image": latents, "output_type": "latent"},
+            }
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+
+            inputs_3 = {**inputs, **{"denoising_start": split_2, "image": latents}}
+            pipe_3(**inputs_3).images[0]
+
+            assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
+            assert (
+                expected_steps == done_steps
+            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+
+        for steps in [7, 11]:
+            for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):
+                for scheduler_cls in [
+                    DDIMScheduler,
+                    EulerDiscreteScheduler,
+                    DPMSolverMultistepScheduler,
+                    UniPCMultistepScheduler,
+                    HeunDiscreteScheduler,
+                ]:
+                    assert_run_mixture(steps, split_1, split_2, scheduler_cls)

@@ -574,12 +574,13 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
             )
         else:
             init_latents = torch.cat([init_latents], dim=0)
+
         if add_noise:
             shape = init_latents.shape
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
             # get latents
             init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+
         latents = init_latents
 
         return latents
@@ -825,6 +826,8 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
         image = self.image_processor.preprocess(image)
 
         # 5. Prepare timesteps
+        original_num_steps = num_inference_steps  # save for denoising_start/end later
+
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps, strength, device, denoising_start=denoising_start
@@ -874,7 +877,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 9. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         # 9.1 Apply denoising_end
         if denoising_end is not None and denoising_start is not None:
@@ -883,9 +886,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
                     f"`denoising_end`: {denoising_end} cannot be larger than `denoising_start`: {denoising_start}."
                 )
 
-            orig_num_inference_steps = int(round(num_inference_steps / (1 - denoising_start)))
-            skipped_final_steps = int(round((1 - denoising_end) * orig_num_inference_steps))
-
+            skipped_final_steps = int(round((1 - denoising_end) * original_num_steps))
             num_inference_steps = num_inference_steps - skipped_final_steps
             timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
         elif denoising_end is not None:
