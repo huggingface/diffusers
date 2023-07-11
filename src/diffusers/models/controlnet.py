@@ -654,7 +654,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             timestep_cond (`torch.Tensor`, *optional*, defaults to `None`):
             attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
-            added_cond_kwargs (`dict`): 
+            added_cond_kwargs (`dict`):
                 Additional conditions for the Stable Diffusion XL UNet.
             cross_attention_kwargs(`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
