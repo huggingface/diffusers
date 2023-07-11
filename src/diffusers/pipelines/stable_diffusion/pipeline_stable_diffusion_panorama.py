@@ -648,7 +648,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         views = self.get_views(height, width, circular_padding=circular_padding)
         views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
         views_scheduler_status = [copy.deepcopy(self.scheduler.__dict__)] * len(views_batch)
-
         count = torch.zeros_like(latents)
         value = torch.zeros_like(latents)
 
@@ -736,7 +735,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     for latents_view_denoised, (h_start, h_end, w_start, w_end) in zip(
                         latents_denoised_batch.chunk(vb_size), batch_view
                     ):
-                        if w_end > latents.shape[3]:
+                        if circular_padding and w_end > latents.shape[3]:
                             # Case for circular padding
                             value[:, :, h_start:h_end, w_start:] += latents_view_denoised[
                                 :, :, h_start:h_end, : latents.shape[3] - w_start
