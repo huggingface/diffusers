@@ -153,7 +153,7 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>
