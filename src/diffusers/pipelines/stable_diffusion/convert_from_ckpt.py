@@ -1164,6 +1164,7 @@ def download_from_original_stable_diffusion_ckpt(
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLPipeline,
@@ -1250,8 +1251,12 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 1024
 
-    if num_in_channels is not None:
-        original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
+        num_in_channels = 9
+    elif num_in_channels is None:
+        num_in_channels = 4
+
+    original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
 
     if (
         "parameterization" in original_config["model"]["params"]
