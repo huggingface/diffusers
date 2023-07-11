@@ -556,6 +556,7 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -1013,7 +1014,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in init_dict.items():
+        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -1055,6 +1056,9 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
+                logger.info(
+                    f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
+                )
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
@@ -1073,7 +1077,14 @@ class DiffusionPipeline(ConfigMixin):
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        # 9. Save where the model was instantiated from
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
+
+    @property
+    def name_or_path(self) -> str:
+        return getattr(self.config, "_name_or_path", None)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
@@ -1213,6 +1224,15 @@ class DiffusionPipeline(ConfigMixin):
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
+            if len(variant_filenames) == 0 and variant is not None:
+                deprecation_message = (
+                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
+                    "if such variant modeling files are not available. Doing so will lead to an error in v0.22.0 as defaulting to non-variant"
+                    "modeling files is deprecated."
+                )
+                deprecate("no variant default", "0.22.0", deprecation_message, standard_warn=False)
+
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
             variant_filenames = set(variant_filenames) - set(ignore_filenames)
@@ -1302,7 +1322,7 @@ class DiffusionPipeline(ConfigMixin):
             snapshot_folder = Path(config_file).parent
             pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-            if pipeline_is_cached:
+            if pipeline_is_cached and not force_download:
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
                 return snapshot_folder
