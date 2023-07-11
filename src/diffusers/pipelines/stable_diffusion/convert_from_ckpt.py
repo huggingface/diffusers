@@ -20,7 +20,9 @@ from typing import Optional
 
 import requests
 import torch
+
 from transformers import (
+    CLIPTextConfig,
     AutoFeatureExtractor,
     BertTokenizerFast,
     CLIPImageProcessor,
@@ -48,7 +50,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_omegaconf_available, is_safetensors_available, logging
+from ...utils import is_omegaconf_available, is_safetensors_available, is_accelerate_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
@@ -56,6 +58,10 @@ from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -770,11 +776,12 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 
 
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
-    text_model = (
-        CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-        if text_encoder is None
-        else text_encoder
-    )
+    if text_encoder is None:
+        config_name = "openai/clip-vit-large-patch14"
+        config = CLIPTextConfig.from_pretrained(config_name)
+
+        with init_empty_weights():
+            text_model = CLIPTextModel(config)
 
     keys = list(checkpoint.keys())
 
@@ -787,7 +794,10 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
             if key.startswith(prefix):
                 text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
 
-    text_model.load_state_dict(text_model_dict)
+    for param_name, param in text_model_dict.items():
+        set_module_tensor_to_device(
+            text_model, param_name, "cpu", value=param
+        )
 
     return text_model
 
@@ -884,11 +894,15 @@ def convert_paint_by_example_checkpoint(checkpoint):
     return model
 
 
-def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
+def convert_open_clip_checkpoint(checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=True, **config_kwargs):
     # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
-    text_model = CLIPTextModelWithProjection.from_pretrained(
-        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
-    )
+    # text_model = CLIPTextModelWithProjection.from_pretrained(
+    #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
+    # )
+    config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs)
+
+    with init_empty_weights():
+        text_model = CLIPTextModelWithProjection(config) if has_projection else CLIPTextModel(config)
 
     keys = list(checkpoint.keys())
 
@@ -931,7 +945,10 @@ def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
 
                 text_model_dict[new_key] = checkpoint[key]
 
-    text_model.load_state_dict(text_model_dict)
+    for param_name, param in text_model_dict.items():
+        set_module_tensor_to_device(
+            text_model, param_name, "cpu", value=param
+        )
 
     return text_model
 
@@ -1166,12 +1183,9 @@ def download_from_original_stable_diffusion_ckpt(
         if not is_safetensors_available():
             raise ValueError(BACKENDS_MAPPING["safetensors"][1])
 
-        from safetensors import safe_open
+        from safetensors.torch import load_file as safe_load
 
-        checkpoint = {}
-        with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
-            for key in f.keys():
-                checkpoint[key] = f.get_tensor(key)
+        checkpoint = safe_load(checkpoint_path, device="cpu")
     else:
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1183,7 +1197,7 @@ def download_from_original_stable_diffusion_ckpt(
     if "global_step" in checkpoint:
         global_step = checkpoint["global_step"]
     else:
-        logger.warning("global_step key not found in model")
+        logger.debug("global_step key not found in model")
         global_step = None
 
     # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
@@ -1336,7 +1350,10 @@ def download_from_original_stable_diffusion_ckpt(
         vae = AutoencoderKL.from_pretrained(vae_path)
 
     if model_type == "FrozenOpenCLIPEmbedder":
-        text_model = convert_open_clip_checkpoint(checkpoint)
+        config_name = "stabilityai/stable-diffusion-2"
+        config_kwargs = {"subfolder": "text_encoder"}
+
+        text_model = convert_open_clip_checkpoint(checkpoint, config_name, **config_kwargs)
         tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")
 
         if stable_unclip is None:
@@ -1469,7 +1486,10 @@ def download_from_original_stable_diffusion_ckpt(
             tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.1.model.")
+
+            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config_kwargs = {"projection_dim": 1280}
+            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs)
 
             pipe = StableDiffusionXLPipeline(
                 vae=vae,
@@ -1485,7 +1505,10 @@ def download_from_original_stable_diffusion_ckpt(
             tokenizer = None
             text_encoder = None
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.0.model.")
+
+            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config_kwargs = {"projection_dim": 1280}
+            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs)
 
             pipe = StableDiffusionXLImg2ImgPipeline(
                 vae=vae,
