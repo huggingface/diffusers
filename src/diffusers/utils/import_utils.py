@@ -293,6 +293,18 @@ try:
     logger.debug(f"Successfully imported torchsde version {_torchsde_version}")
 except importlib_metadata.PackageNotFoundError:
     _torchsde_available = False
+_sklearn_available = importlib.util.find_spec("sklearn") is not None
+try:
+    _sklearn_version = importlib_metadata.version("scikit-learn")
+    logger.debug(f"Successfully imported scikit-learn version {_sklearn_version}")
+except importlib_metadata.PackageNotFoundError:
+    _sklearn_available = False
+_nltk_available = importlib.util.find_spec("nltk") is not None
+try:
+    _nltk_version = importlib_metadata.version("nltk")
+    logger.debug(f"Successfully imported nltk version {_nltk_version}")
+except importlib_metadata.PackageNotFoundError:
+    _nltk_available = False
 
 _invisible_watermark_available = importlib.util.find_spec("imwatermark") is not None
 try:
@@ -388,6 +400,14 @@ def is_bs4_available():
 
 def is_torchsde_available():
     return _torchsde_available
+
+
+def is_sklearn_available():
+    return _sklearn_available
+
+
+def is_nltk_available():
+    return _nltk_available
 
 
 def is_invisible_watermark_available():

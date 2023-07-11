@@ -148,6 +148,7 @@ else:
         KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        SelfSegmentationStableDiffusionPipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
         ShapEPipeline,
