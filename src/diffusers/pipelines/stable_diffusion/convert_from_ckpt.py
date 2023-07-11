@@ -1293,7 +1293,6 @@ def download_from_original_stable_diffusion_ckpt(
         }
         scheduler = EulerDiscreteScheduler.from_config(scheduler_dict)
         scheduler_type = "euler"
-        vae_path = "stabilityai/sdxl-vae"
     else:
         beta_start = getattr(original_config.model.params, "linear_start", None) or 0.02
         beta_end = getattr(original_config.model.params, "linear_end", None) or 0.085
@@ -1332,20 +1331,37 @@ def download_from_original_stable_diffusion_ckpt(
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
-    unet = UNet2DConditionModel(**unet_config)
+    with init_empty_weights():
+        unet = UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
     )
-    unet.load_state_dict(converted_unet_checkpoint)
+
+    for param_name, param in converted_unet_checkpoint.items():
+        set_module_tensor_to_device(
+            unet, param_name, "cpu", value=param
+        )
 
     # Convert the VAE model.
     if vae_path is None:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-        vae = AutoencoderKL(**vae_config)
-        vae.load_state_dict(converted_vae_checkpoint)
+        if "model" in original_config and "params" in original_config.model and "scale_factor" in original_config.model.params:
+            vae_scaling_factor = original_config.model.params.scale_factor
+        else:
+            vae_scaling_factor = 0.18215  # default SD scaling factor
+
+        vae_config["scaling_factor"] = vae_scaling_factor
+
+        with init_empty_weights():
+            vae = AutoencoderKL(**vae_config)
+
+        for param_name, param in converted_vae_checkpoint.items():
+            set_module_tensor_to_device(
+                vae, param_name, "cpu", value=param
+            )
     else:
         vae = AutoencoderKL.from_pretrained(vae_path)
 
