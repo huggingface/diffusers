@@ -1256,7 +1256,8 @@ def download_from_original_stable_diffusion_ckpt(
     elif num_in_channels is None:
         num_in_channels = 4
 
-    original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    if "unet_config" in original_config.model.params:
+        original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
 
     if (
         "parameterization" in original_config["model"]["params"]
