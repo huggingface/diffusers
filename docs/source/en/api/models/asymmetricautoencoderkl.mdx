@@ -9,18 +9,17 @@ The abstract from the paper is:
 Evaluation results can be found in section 4.1
 
 ## Scales
-* https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-1-5
-* https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-2
+
+* [https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-1-5](https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-1-5)
+* [https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-2](https://huggingface.co/cross-attention/asymmetric-autoencoder-kl-x-2)
 
 ## Example Usage
+
 ```python
 from diffusers import AsymmetricAutoencoderKL, StableDiffusionInpaintPipeline
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
-pipe.vae = AsymmetricAutoencoderKL.from_pretrained(
-    "cross-attention/asymmetric-autoencoder-kl-x-1-5"
-    # "cross-attention/asymmetric-autoencoder-kl-x-2"
-)
+pipe.vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
 
 image = pipe(prompt=prompt, image=image, mask_image=mask_image).images[0]
 ```
