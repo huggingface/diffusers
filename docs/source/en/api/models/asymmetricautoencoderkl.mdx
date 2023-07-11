@@ -16,12 +16,30 @@ Evaluation results can be found in section 4.1
 ## Example Usage
 
 ```python
+from io import BytesIO
+from PIL import Image
+import requests
 from diffusers import AsymmetricAutoencoderKL, StableDiffusionInpaintPipeline
+
+
+def download_image(url: str) -> Image.Image:
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content)).convert("RGB")
+
+
+prompt = "a photo of a person"
+img_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/celeba_hq_256.png"
+mask_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/mask_256.png"
+
+image = download_image(img_url).resize((256, 256))
+mask_image = download_image(mask_url).resize((256, 256))
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
 pipe.vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+pipe.to("cuda")
 
 image = pipe(prompt=prompt, image=image, mask_image=mask_image).images[0]
+image.save("image.jpeg")
 ```
 
 ## AsymmetricAutoencoderKL
