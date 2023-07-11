@@ -56,8 +56,9 @@ execute_training() {
             output_dir="${OUTPUT_DIR}/${model_name}"            
 
             mkdir -p ../log_terminal/${task}
-            bash $train_script -t $task -m $model -o $output_dir -l $log_dir -b $batch_size >> "../log_terminal/${task}/${model_name}.log" 2>&1             
-
+            bash $train_script -t $task -m $model -o $output_dir -l $log_dir -b $batch_size >> "../log_terminal/${task}/${model_name}.log" 2>&1 &
+            pid=$!
+            bash ../all_scripts/memory_record_moreh.sh $pid $task $model $batch_size
             echo Done training model $model for task $task
 }
 
@@ -82,7 +83,7 @@ if [[ "$run_all_tasks" == "True" ]]; then # Task is not provided, run all tasks
         while read model batch_size ; do
             execute_training $model $batch_size
         done < $model_batchsize_file
-        execute_deleting_env $task
+        # execute_deleting_env $task
         cd ..
     done
 elif [[ "$run_all_model" == "True" ]]; then # Task is provided, model is not provided, run all models in task
@@ -91,12 +92,12 @@ elif [[ "$run_all_model" == "True" ]]; then # Task is provided, model is not pro
     while read model batch_size ; do
         execute_training $model $batch_size
     done < $model_batchsize_file
-    execute_deleting_env $task
+    # execute_deleting_env $task
 else # Task and model are provided, run specific model in task
     echo Training the model $model in task $task
     cd $task
     execute_training $model $batch_size
-    execute_deleting_env $task
+    # execute_deleting_env $task
 fi
 
 echo Done

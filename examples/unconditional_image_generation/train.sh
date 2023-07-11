@@ -44,3 +44,4 @@ conda run -n ${env_name} python3 train_unconditional_mlflow.py \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \
+  --logging_steps=100 \
