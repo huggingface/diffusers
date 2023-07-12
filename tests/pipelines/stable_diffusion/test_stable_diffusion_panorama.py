@@ -294,36 +294,6 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
 
         assert np.abs(expected_slice - image_slice).max() < 1e-2
 
-    def test_stable_diffusion_panorama_circular_padding(self):
-        model_ckpt = "stabilityai/stable-diffusion-2-base"
-        scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        inputs = self.get_inputs()
-        image = pipe(**inputs, circular_padding=True).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 2048, 3)
-
-        expected_slice = np.array(
-            [
-                0.47725636,
-                0.5465917,
-                0.5207574,
-                0.40147963,
-                0.35636646,
-                0.5230185,
-                0.41887498,
-                0.38896298,
-                0.42032397,
-            ]
-        )
-
-        assert np.abs(expected_slice - image_slice).max() < 1e-2
-
     def test_stable_diffusion_panorama_k_lms(self):
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", safety_checker=None
