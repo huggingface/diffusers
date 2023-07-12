@@ -1,0 +1,7 @@
+dreambooth 1
+instruct_pix2pix 1
+controlnet 1
+text_to_image 2
+unconditional_image_generation 2
+textual_inversion 1
+#### end list ####
