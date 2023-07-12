@@ -134,11 +134,11 @@ image = refiner(prompt=prompt, num_inference_steps=n_steps, denoising_start=high
 
 Let's have a look at the image
 
-![lion_ref](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/lion_refined.png)
+| Original Image | Ensemble of Denoisers Experts |
+|---|---|
+| ![lion_base](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lion_base.png) | ![lion_ref](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lion_refined.png)
 
 If we would have just run the base model on the same 40 steps, the image would have been arguably less detailed (e.g. the lion eyes and nose):
-
-![lion_base](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/lion_base.png)
 
 <Tip>
 
@@ -146,7 +146,7 @@ The ensemble-of-experts method works well on all available schedulers!
 
 </Tip>
 
-#### Refining the image output from fully denoised base image
+#### 2.) Refining the image output from fully denoised base image
 
 In standard [`StableDiffusionImg2ImgPipeline`]-fashion, the fully-denoised image generated of the base model 
 can be further improved using the [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9).
@@ -179,6 +179,10 @@ image = pipe(prompt=prompt, output_type="latent" if use_refiner else "pil").imag
 image = refiner(prompt=prompt, image=image[None, :]).images[0]
 ```
 
+| Original Image | Refined Image |
+|---|---|
+| ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
+
 ### Image-to-image 
 
 ```py 
@@ -197,10 +201,6 @@ prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt, image=init_image).images[0]
 ```
 
-| Original Image | Refined Image |
-|---|---|
-| ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
-
 ### Loading single file checkpoints / original file format
 
 By making use of [`~diffusers.loaders.FromSingleFileMixin.from_single_file`] you can also load the 
@@ -210,13 +210,13 @@ original file format into `diffusers`:
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+pipe = StableDiffusionXLPipeline.from_single_file(
+    "./sd_xl_base_0.9.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
-refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
+    "./sd_xl_refiner_0.9.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 ```
