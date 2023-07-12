@@ -73,7 +73,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
+class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -129,6 +129,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.default_sample_size = self.unet.config.sample_size
 
         self.watermark = StableDiffusionXLWatermarker()
 
@@ -544,6 +545,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -578,6 +580,14 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            denoising_end (`float`, *optional*):
+                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
+                completed before it is intentionally prematurely terminated. For instance, if denoising_end is set to
+                0.7 and `num_inference_steps` is fixed at 50, the process will execute only 35 (i.e., 0.7 * 50)
+                denoising steps. As a result, the returned sample will still retain a substantial amount of noise. The
+                denoising_end parameter should ideally be utilized when this pipeline forms a part of a "Mixture of
+                Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
+                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output)
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -652,8 +662,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
@@ -745,7 +755,13 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 8. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        # 7.1 Apply denoising_end
+        if denoising_end is not None:
+            num_inference_steps = int(round(denoising_end * num_inference_steps))
+            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -785,15 +801,18 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin):
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
-        use_torch_2_0_or_xformers = self.vae.decoder.mid_block.attentions[0].processor in [
-            AttnProcessor2_0,
-            XFormersAttnProcessor,
-            LoRAXFormersAttnProcessor,
-            LoRAAttnProcessor2_0,
-        ]
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                LoRAXFormersAttnProcessor,
+                LoRAAttnProcessor2_0,
+            ),
+        )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
-        if not use_torch_2_0_or_xformers:
+        if use_torch_2_0_or_xformers:
             self.vae.post_quant_conv.to(latents.dtype)
             self.vae.decoder.conv_in.to(latents.dtype)
             self.vae.decoder.mid_block.to(latents.dtype)
