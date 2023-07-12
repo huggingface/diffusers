@@ -277,6 +277,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
+
 @slow
 @require_torch_gpu
 class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
