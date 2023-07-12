@@ -59,21 +59,117 @@ image = pipe(prompt=prompt).images[0]
 
 ### Refining the image output
 
-The image can be refined by making use of [stabilityai/stable-diffusion-xl-refiner-0.9](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9).
-In this case, you only have to output the `latents` from the base model.
+In addition to the [base model checkpoint](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9), 
+StableDiffusion-XL also includes a [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9)
+that is specialized in denoising low-noise stage images to generate images of improved high-frequency quality.
+This refiner checkpoint can be used as a "second-step" pipeline after having run the base checkpoint to improve
+image quality.
+
+When using the refiner, one can easily 
+- 1.) employ the base model and refiner as an *Ensemble of Expert Denoisers* as first proposed in [eDiff-I](https://research.nvidia.com/labs/dir/eDiff-I/) or
+- 2.) simply run the refiner in [SDEdit](https://arxiv.org/abs/2108.01073) fashion after the base model.
+
+**Note**: The idea of using SD-XL base & refiner as an ensemble of experts was first brought forward by 
+a couple community contributors which also helped shape the following `diffusers` implementation, namely:
+- [SytanSD](https://github.com/SytanSD)
+- [bghira](https://github.com/bghira)
+- [Birch-san](https://github.com/Birch-san)
+
+#### 1.) Ensemble of Expert Denoisers
+
+When using the base and refiner model as an ensemble of expert of denoisers, the base model should serve as the 
+expert for the high-noise diffusion stage and the refiner serves as the expert for the low-noise diffusion stage.
+
+The advantage of 1.) over 2.) is that it requires less overall denoising steps and therefore should be significantly
+faster. The drawback is that one cannot really inspect the output of the base model; it will still be heavily denoised.
+
+To use the base model and refiner as an ensemble of expert denoisers, make sure to define the fraction
+of timesteps which should be run through the high-noise denoising stage (*i.e.* the base model) and the low-noise
+denoising stage (*i.e.* the refiner model) respectively. This fraction should be set as the [`~StableDiffusionXLPipeline.__call__.denoising_end`] of the base model 
+and as the [`~StableDiffusionXLImg2ImgPipeline.__call__.denoising_start`] of the refiner model.
+
+Let's look at an example.
+First, we import the two pipelines. Since the text encoders and variational autoencoder are the same
+you don't have to load those again for the refiner.
 
 ```py
-from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
+from diffusers import DiffusionPipeline
 import torch
 
-pipe = StableDiffusionXLPipeline.from_pretrained(
+base = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
-use_refiner = True
-refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+refiner = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    text_encoder_2=base.text_encoder_2,
+    vae=base.vae,
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16",
+)
+refiner.to("cuda")
+```
+
+Now we define the number of inference steps and the fraction at which the model shall be run through the 
+high-noise denoising stage (*i.e.* the base model).
+
+```py
+n_steps = 40
+high_noise_frac = 0.7
+```
+
+A fraction of 0.7 means that 70% of the 40 inference steps (28 steps) are run through the base model
+and the remaining 12 steps are run through the refiner. Let's run the two pipelines now.
+Make sure to set `denoising_end` and `denoising_start` to the same values and keep `num_inference_steps`
+constant. Also remember that the output of the base model should be in latent space:
+
+```py
+prompt = "A majestic lion jumping from a big stone at night"
+
+image = base(prompt=prompt, num_inference_steps=n_steps, denoising_end=high_noise_frac, output_type="latent").images
+image = refiner(prompt=prompt, num_inference_steps=n_steps, denoising_start=high_noise_frac, image=image).images[0]
+```
+
+Let's have a look at the image
+
+![lion_ref](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/lion_refined.png)
+
+If we would have just run the base model on the same 40 steps, the image would have been arguably less detailed (e.g. the lion eyes and nose):
+
+![lion_base](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/lion_base.png)
+
+<Tip>
+
+The ensemble-of-experts method works well on all available schedulers!
+
+</Tip>
+
+#### Refining the image output from fully denoised base image
+
+In standard [`StableDiffusionImg2ImgPipeline`]-fashion, the fully-denoised image generated of the base model 
+can be further improved using the [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9).
+
+For this, you simply run the refiner as a normal image-to-image pipeline after the "base" text-to-image 
+pipeline. You can leave the outputs of the base model in latent space.
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+pipe.to("cuda")
+
+refiner = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    text_encoder_2=pipe.text_encoder_2,
+    vae=pipe.vae,
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16",
 )
 refiner.to("cuda")
 
