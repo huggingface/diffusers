@@ -84,7 +84,7 @@ def log_validation(controlnet, args, accelerator, step):
     # https://github.com/huggingface/diffusers/pull/4038#issuecomment-1631245691
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        controlnet=controlnet.to(torch.float16),
+        controlnet=controlnet.to(accelerator.device, dtype=torch.float16),
         safety_checker=None,
         revision=args.revision,
         torch_dtype=torch.float16,
