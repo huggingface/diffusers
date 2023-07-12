@@ -207,7 +207,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent
+        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
@@ -312,32 +312,38 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 sample=latents,
             ).prev_sample
 
+        if output_type not in ["np", "pil", "latent", "mesh"]:
+                raise ValueError(f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}")
+
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
-
+        
         images = []
-        for i, latent in enumerate(latents):
-            print()
-            image = self.renderer.decode(
-                latent[None, :],
-                device,
-                size=frame_size,
-                ray_batch_size=4096,
-                n_coarse_samples=64,
-                n_fine_samples=128,
-            )
+        if output_type is "mesh":
 
-            images.append(image)
+            for i, latent in enumerate(latents):
+                mesh = self.renderer.decode_to_mesh(
+                    latent[None, :],
+                    device,
+                )
+                images.append(mesh)
+            
+        else:
+            # np, pil
+            for i, latent in enumerate(latents):
+                image = self.renderer.decode_to_image(
+                    latent[None, :],
+                    device,
+                    size=frame_size,
+                )
+                images.append(image)
 
-        images = torch.stack(images)
+            images = torch.stack(images)
 
-        if output_type not in ["np", "pil"]:
-            raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")
+            images = images.cpu().numpy()
 
-        images = images.cpu().numpy()
-
-        if output_type == "pil":
-            images = [self.numpy_to_pil(image) for image in images]
+            if output_type == "pil":
+                images = [self.numpy_to_pil(image) for image in images]
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
