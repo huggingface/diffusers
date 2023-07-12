@@ -360,11 +360,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
         inputs["controlnet_conditioning_scale"] = scale
-        output_3 = pipe(
-            **inputs,
-            control_guidance_start=[0.1, 0.3],
-            control_guidance_end=[0.2, 0.7],
-        )[0]
+        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["num_inference_steps"] = steps
