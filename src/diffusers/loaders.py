@@ -23,8 +23,11 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .models.attention_processor import (
+    Attention,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
+    AttnProcessor,
+    AttnProcessor2_0,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
@@ -823,6 +826,8 @@ class LoraLoaderMixin:
             kwargs:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
+        for name, attn_processor in self.unet.attn_processors.items():
+            print(f"From load_lora_weights() before loading: {type(attn_processor)}")
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
         self.load_lora_into_text_encoder(
@@ -1269,6 +1274,39 @@ class LoraLoaderMixin:
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alpha
+
+    def unload_lora_weights(self):
+        """
+        Unloads the LoRA parameters.
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
+        >>> pipeline.unload_lora_weights()
+        >>> ...
+        ```
+        """
+        is_unet_lora = all(
+            isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor, LoRAAttnAddedKVProcessor))
+            for _, processor in self.unet.attn_processors.items()
+        )
+        # Handle attention processors that are a mix of regular attention and AddedKV
+        # attention.
+        if is_unet_lora:
+            is_attn_procs_mixed = all(
+                isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor))
+                for _, processor in self.unet.attn_processors.items()
+            )
+            if not is_attn_procs_mixed:
+                unet_attn_proc_cls = AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                self.unet.set_attn_processor(unet_attn_proc_cls())
+            else:
+                self.unet.set_default_attn_processor()
+
+
+        # Safe to call the following regardless of LoRA.
+        self._remove_text_encoder_monkey_patch()
 
 
 class FromSingleFileMixin:

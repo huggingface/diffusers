@@ -83,9 +83,9 @@ def create_text_encoder_lora_layers(text_encoder: nn.Module):
     return text_encoder_lora_layers
 
 
-def set_lora_weights(text_lora_attn_parameters, randn_weight=False):
+def set_lora_weights(lora_attn_parameters, randn_weight=False):
     with torch.no_grad():
-        for parameter in text_lora_attn_parameters:
+        for parameter in lora_attn_parameters:
             if randn_weight:
                 parameter[:] = torch.randn_like(parameter)
             else:
@@ -175,8 +175,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         return noise, input_ids, pipeline_inputs
 
-        # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-
+    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
     def get_dummy_tokens(self):
         max_seq_length = 77
 
@@ -455,6 +454,46 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
+    def test_unload_lora(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs()
+
+        original_images = sd_pipe(**pipeline_inputs).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        # Immitate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            LoraLoaderMixin.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        lora_images = sd_pipe(**pipeline_inputs).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Unload LoRA.
+        sd_pipe.unload_lora_weights()
+        original_images_two = sd_pipe(**pipeline_inputs).images
+        orig_image_slice_two = original_images_two[0, -3:, -3:, -1]
+
+        print(f"orig_image_slice: {orig_image_slice}")
+        print(f"orig_image_slice_two: {orig_image_slice_two}")
+
+        assert not torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice))
+        assert torch.allclose(
+            torch.from_numpy(orig_image_slice_two), torch.from_numpy(orig_image_slice), atol=1e-4
+        ), "Unloading LoRA should produce initial outputs as without LoRA."
+
 
 @slow
 @require_torch_gpu
@@ -537,30 +576,3 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.7406, 0.699, 0.5963, 0.7493, 0.7045, 0.6096, 0.6886, 0.6388, 0.583])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
-
-    @unittest.skipIf(not hasattr(F, "scaled_dot_product_attention"), "Testing this only for PyTorch 2.0.")
-    def test_lora_unload(self):
-        generator = torch.Generator("cpu").manual_seed(0)
-        prompt = "A photo of a sks dog floating in the river"
-        num_inference_steps = 2
-
-        lora_model_id = "hf-internal-testing/lora_dreambooth_dog_example"
-        card = RepoCard.load(lora_model_id)
-        base_model_id = card.data.to_dict()["base_model"]
-
-        pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
-        pipe = pipe.to(torch_device)
-        pipe.load_lora_weights(lora_model_id)
-
-        lora_images = pipe(
-            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
-        ).images
-        lora_images = lora_images[0, -3:, -3:, -1].flatten()
-
-        pipe.unet.set_attn_processor(AttnProcessor2_0())
-        regular_images = pipe(
-            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
-        ).images
-        regular_images = regular_images[0, -3:, -3:, -1].flatten()
-
-        self.assertFalse(np.allclose(lora_images, regular_images, atol=1e-4))
