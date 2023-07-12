@@ -79,9 +79,6 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
 
     controlnet = accelerator.unwrap_model(controlnet)
 
-    # We're loading the pipeline in full-precision to avoid numerical instabilities.
-    # Using autocast also doesn't help. More details:
-    # https://github.com/huggingface/diffusers/pull/4038#issuecomment-1631245691
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         controlnet=controlnet,
