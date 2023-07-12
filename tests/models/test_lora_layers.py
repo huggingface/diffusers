@@ -542,7 +542,7 @@ class LoraIntegrationTests(unittest.TestCase):
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
-        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Counterfeit-V2.5", safety_checker=None).to(
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
             torch_device
         )
         initial_images = pipe(
@@ -550,8 +550,8 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         initial_images = initial_images[0, -3:, -3:, -1].flatten()
 
-        lora_model_id = "hf-internal-testing/civitai-light-shadow-lora"
-        lora_filename = "light_and_shadow.safetensors"
+        lora_model_id = "hf-internal-testing/civitai-colored-icons-lora"
+        lora_filename = "Colored_Icons_by_vizsumit.safetensors"
 
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         lora_images = pipe(
