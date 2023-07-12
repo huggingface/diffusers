@@ -273,9 +273,6 @@ class KandinskyPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
