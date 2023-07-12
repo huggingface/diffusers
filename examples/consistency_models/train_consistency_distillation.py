@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -32,6 +32,39 @@ from diffusers.utils import check_min_version, is_accelerate_version, is_tensorb
 check_min_version("0.17.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
+
+
+def save_model_card(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    repo_folder=None,
+    pipeline: ConsistencyModelPipeline = None,
+):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+tags:
+- consistency models
+- diffusers
+inference: true
+---
+    """
+    model_card = f"""
+# Consistency Model - {repo_id}
+
+This is a consistency model distilled from {base_model}.
+You can find some example images in the following. \n
+{img_str}
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
 
 
 def parse_args():
@@ -57,6 +90,13 @@ def parse_args():
         type=str,
         default=None,
         help="The config of the UNet model to train, leave as None to use standard Consistency configuration.",
+    )
+    parser.add_argument(
+        "--pretrained_teacher_model_name_or_path",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to pretrained model or model identifier from huggingface.co/models to be used as teacher model",
     )
     parser.add_argument(
         "--train_data_dir",
@@ -314,14 +354,9 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo_id = create_repo(repo_name, exist_ok=True, token=args.hub_token)
             repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
@@ -374,9 +409,26 @@ def main(args):
 
     
     # load the model to distill into a consistency model
-    teacher_model = DDPMPipeline.from_pretrained("google/ddpm-cifar10-32").unet
+    teacher_model = DDPMPipeline.from_pretrained(args.pretrained_teacher_model_name_or_path).unet
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
+
+    # Check that all trainable models are in full precision
+    low_precision_error_string = (
+        "Please make sure to always have all model weights in full float32 precision when starting training - even if"
+        " doing mixed precision training. copy of the weights should still be float32."
+    )
+
+    if accelerator.unwrap_model(model).dtype != torch.float32:
+        raise ValueError(
+            f"Unet loaded as datatype {accelerator.unwrap_model(model).dtype}. {low_precision_error_string}"
+        )
+
+    if args.train_text_encoder and accelerator.unwrap_model(teacher_model).dtype != torch.float32:
+        raise ValueError(
+            f"Text encoder loaded as datatype {accelerator.unwrap_model(teacher_model).dtype}."
+            f" {low_precision_error_string}"
+        )
 
 
     # Create EMA for the model, this is the target model in the paper
@@ -452,12 +504,10 @@ def main(args):
     )
     noise_scheduler.set_timesteps(num_scales, device=accelerator.device)
 
-    target_model_ema.to(accelerator.device)
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        run = os.path.split(__file__)[-1].split(".")[0]
-        accelerator.init_trackers(run)
+        accelerator.init_trackers("consistency-distillation", vars(args))
 
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -519,10 +569,10 @@ def main(args):
             clean_images = batch["input"]
             labels = batch["labels"]
             # Sample noise that we'll add to the images
-            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            noise = torch.randn(clean_images.shape).to(accelerator.device)
             # Sample a random timestep for each image, TODO - allow different timesteps in a batch
             index = torch.randint(
-                0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=clean_images.device
+                0, noise_scheduler.config.num_train_timesteps-1,  (1,), device=accelerator.device
             ).long()
             # timestep is the scaled timestep, sigma is the unscaled timestep
             timestep = timesteps[index+1]
@@ -580,31 +630,31 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                    if args.checkpoints_total_limit is not None:
-                        checkpoints = os.listdir(args.output_dir)
-                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                        if len(checkpoints) >= args.checkpoints_total_limit:
-                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                            removing_checkpoints = checkpoints[0:num_to_remove]
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                            logger.info(
-                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                            )
-                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                            for removing_checkpoint in removing_checkpoints:
-                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                shutil.rmtree(removing_checkpoint)
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
 
-                    if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             logs["ema_decay"] = target_model_ema.cur_decay_value
@@ -671,6 +721,19 @@ def main(args):
                 target_model_ema.restore(unet.parameters())
 
                 if args.push_to_hub:
+                    save_model_card(
+                        repo_id,
+                        images=images,
+                        base_model=args.pretrained_teacher_model_name_or_path,
+                        repo_folder=args.output_dir,
+                        pipeline=pipeline,
+                    )
+                    upload_folder(
+                        repo_id=repo_id,
+                        folder_path=args.output_dir,
+                        commit_message="End of training",
+                        ignore_patterns=["step_*", "epoch_*"],
+                    )
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
 
     accelerator.end_training()
