@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
+import copy
 import unittest
 
 import numpy as np
@@ -22,12 +22,16 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    DiffusionPipeline,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
+    StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    UniPCMultistepScheduler,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -190,38 +194,158 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    @require_torch_gpu
+    def test_stable_diffusion_xl_offloads(self):
+        pipes = []
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipes.append(sd_pipe)
 
-@slow
-@require_torch_gpu
-class StableDiffusionXLPipelineSlowTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe.enable_model_cpu_offload()
+        pipes.append(sd_pipe)
 
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
-        inputs = {
-            "prompt": "a photograph of an astronaut riding a horse",
-            "latents": latents,
-            "generator": generator,
-            "num_inference_steps": 3,
-            "guidance_scale": 7.5,
-            "output_type": "numpy",
-        }
-        return inputs
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe.enable_sequential_cpu_offload()
+        pipes.append(sd_pipe)
 
-    def test_stable_diffusion_default_euler(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        image_slices = []
+        for pipe in pipes:
+            pipe.unet.set_default_attn_processor()
 
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs).images
 
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
-        assert np.abs(image_slice - expected_slice).max() < 7e-3
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(num_steps, split, scheduler_cls):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            split_id = int(round(split * num_steps)) * pipe_1.scheduler.order
+            expected_steps_1 = expected_steps[:split_id]
+            expected_steps_2 = expected_steps[split_id:]
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {**inputs, **{"denoising_end": split, "output_type": "latent"}}
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {**inputs, **{"denoising_start": split, "image": latents}}
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        for steps in [5, 8]:
+            for split in [0.33, 0.49, 0.71]:
+                for scheduler_cls in [
+                    DDIMScheduler,
+                    EulerDiscreteScheduler,
+                    DPMSolverMultistepScheduler,
+                    UniPCMultistepScheduler,
+                    HeunDiscreteScheduler,
+                ]:
+                    assert_run_mixture(steps, split, scheduler_cls)
+
+    def test_stable_diffusion_three_xl_mixture_of_denoiser(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+        pipe_3 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_3.unet.set_default_attn_processor()
+
+        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+            pipe_3.scheduler = scheduler_cls.from_config(pipe_3.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            split_id_1 = int(round(split_1 * num_steps)) * pipe_1.scheduler.order
+            split_id_2 = int(round(split_2 * num_steps)) * pipe_1.scheduler.order
+            expected_steps_1 = expected_steps[:split_id_1]
+            expected_steps_2 = expected_steps[split_id_1:split_id_2]
+            expected_steps_3 = expected_steps[split_id_2:]
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert (
+                expected_steps_1 == done_steps
+            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+
+            inputs_2 = {
+                **inputs,
+                **{"denoising_start": split_1, "denoising_end": split_2, "image": latents, "output_type": "latent"},
+            }
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+
+            inputs_3 = {**inputs, **{"denoising_start": split_2, "image": latents}}
+            pipe_3(**inputs_3).images[0]
+
+            assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
+            assert (
+                expected_steps == done_steps
+            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+
+        for steps in [7, 11]:
+            for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):
+                for scheduler_cls in [
+                    DDIMScheduler,
+                    EulerDiscreteScheduler,
+                    DPMSolverMultistepScheduler,
+                    UniPCMultistepScheduler,
+                    HeunDiscreteScheduler,
+                ]:
+                    assert_run_mixture(steps, split_1, split_2, scheduler_cls)
