@@ -25,13 +25,9 @@ E.g:
 - Training all models: bash run_task -t unconditional_image_generation 
 - Training a single model: bash run_task -t unconditional_image_generation -m ddpm-unet
 
-# Record GPU usage
-While running a Python process, open **another terminal** and run:
-
-    bash all_scripts/memory_record_moreh.sh ${DEVICE_ID} | tee ${LOG_FILE}
-
-- DEVICE_ID is the id of the Moreh device you are running the python process on and whose memory you want to record
-- LOG_FILE is the file you want to save the memory to
+**Note**: 
+1. To check the peak GPU memoru usage for trained models of each task, go to ../examples/log_terminal/<taskname>_memory.log
+2. To run on HAC machine, use `run_task_hac.sh` instead of `run_task.sh`
 
 # 🧨 Diffusers Examples
 
