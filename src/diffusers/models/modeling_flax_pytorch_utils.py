@@ -42,9 +42,18 @@ def rename_key(key):
 # and https://github.com/patil-suraj/stable-diffusion-jax/blob/main/stable_diffusion_jax/convert_diffusers_to_jax.py
 def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict):
     """Rename PT weight names to corresponding Flax weight names and reshape tensor if necessary"""
-
     # conv norm or layer norm
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("scale",)
+
+    # rename attention layers
+    if len(pt_tuple_key) > 1:
+        for rename_from, rename_to in (('to_out_0', 'proj_attn'), ('to_k', 'key'), ('to_v', 'value'), ('to_q', 'query')):
+            if pt_tuple_key[-2] == rename_from:
+                weight_name = 'kernel' if pt_tuple_key[-1] == 'weight' else 'bias'
+                renamed_pt_tuple_key = pt_tuple_key[:-2] + (rename_to, weight_name)
+                if renamed_pt_tuple_key in random_flax_state_dict:
+                    return renamed_pt_tuple_key, pt_tensor
+
     if (
         any("norm" in str_ for str_ in pt_tuple_key)
         and (pt_tuple_key[-1] == "bias")
