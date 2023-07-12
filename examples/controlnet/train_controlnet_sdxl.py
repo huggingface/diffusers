@@ -74,7 +74,7 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(controlnet, args, accelerator, step):
+def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
@@ -84,10 +84,10 @@ def log_validation(controlnet, args, accelerator, step):
     # https://github.com/huggingface/diffusers/pull/4038#issuecomment-1631245691
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        controlnet=controlnet.to(accelerator.device, dtype=torch.float16),
+        controlnet=controlnet,
         safety_checker=None,
         revision=args.revision,
-        torch_dtype=torch.float16,
+        torch_dtype=weight_dtype,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
@@ -124,9 +124,10 @@ def log_validation(controlnet, args, accelerator, step):
         images = []
 
         for _ in range(args.num_validation_images):
-            image = pipeline(validation_prompt, validation_image, num_inference_steps=20, generator=generator).images[
-                0
-            ]
+            with torch.autocast("cuda"):
+                image = pipeline(
+                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                ).images[0]
             images.append(image)
 
         image_logs.append(
@@ -1185,7 +1186,7 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        image_logs = log_validation(controlnet, args, accelerator, global_step)
+                        image_logs = log_validation(controlnet, args, accelerator, weight_dtype, global_step)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
