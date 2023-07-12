@@ -170,7 +170,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return noise, input_ids, pipeline_inputs
@@ -454,46 +454,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
-    def test_unload_lora(self):
-        pipeline_components, lora_components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**pipeline_components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        _, _, pipeline_inputs = self.get_dummy_inputs()
-
-        original_images = sd_pipe(**pipeline_inputs).images
-        orig_image_slice = original_images[0, -3:, -3:, -1]
-
-        # Immitate training.
-        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_layers"].parameters(), randn_weight=True)
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            LoraLoaderMixin.save_lora_weights(
-                save_directory=tmpdirname,
-                unet_lora_layers=lora_components["unet_lora_layers"],
-                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
-            )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            sd_pipe.load_lora_weights(tmpdirname)
-
-        lora_images = sd_pipe(**pipeline_inputs).images
-        lora_image_slice = lora_images[0, -3:, -3:, -1]
-
-        # Unload LoRA.
-        sd_pipe.unload_lora_weights()
-        original_images_two = sd_pipe(**pipeline_inputs).images
-        orig_image_slice_two = original_images_two[0, -3:, -3:, -1]
-
-        print(f"orig_image_slice: {orig_image_slice}")
-        print(f"orig_image_slice_two: {orig_image_slice_two}")
-
-        assert not torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice))
-        assert torch.allclose(
-            torch.from_numpy(orig_image_slice_two), torch.from_numpy(orig_image_slice), atol=1e-4
-        ), "Unloading LoRA should produce initial outputs as without LoRA."
-
 
 @slow
 @require_torch_gpu
@@ -576,3 +536,34 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.7406, 0.699, 0.5963, 0.7493, 0.7045, 0.6096, 0.6886, 0.6388, 0.583])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_unload_lora(self):
+        generator = torch.Generator().manual_seed(0)
+        prompt = "masterpiece, best quality, mountain"
+        num_inference_steps = 2
+
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Counterfeit-V2.5", safety_checker=None).to(
+            torch_device
+        )
+        initial_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        initial_images = initial_images[0, -3:, -3:, -1].flatten()
+
+        lora_model_id = "hf-internal-testing/civitai-light-shadow-lora"
+        lora_filename = "light_and_shadow.safetensors"
+
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images = lora_images[0, -3:, -3:, -1].flatten()
+
+        pipe.unload_lora_weights()
+        unloaded_lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        unloaded_lora_images = unloaded_lora_images[0, -3:, -3:, -1].flatten()
+
+        self.assertFalse(np.allclose(initial_images, lora_images))
+        self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))

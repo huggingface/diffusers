@@ -825,8 +825,6 @@ class LoraLoaderMixin:
             kwargs:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
-        for name, attn_processor in self.unet.attn_processors.items():
-            print(f"From load_lora_weights() before loading: {type(attn_processor)}")
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
         self.load_lora_into_text_encoder(
