@@ -17,7 +17,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
 
 def to_np(tensor):
@@ -298,9 +298,19 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+            with CaptureLogger(logger) as cap_logger:
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+            for name in pipe_loaded.components.keys():
+                if name not in pipe_loaded._optional_components:
+                    assert name in str(cap_logger)
+
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
