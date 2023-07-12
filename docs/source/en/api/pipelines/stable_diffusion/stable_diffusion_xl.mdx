@@ -65,7 +65,7 @@ that is specialized in denoising low-noise stage images to generate images of im
 This refiner checkpoint can be used as a "second-step" pipeline after having run the base checkpoint to improve
 image quality.
 
-When using the refiner, one can easier 
+When using the refiner, one can easily 
 - 1.) employ the base model and refiner as an *Ensemble of Expert Denoisers* as first proposed in [eDiff-I](https://research.nvidia.com/labs/dir/eDiff-I/) or
 - 2.) simply run the refiner in [SDEdit](https://arxiv.org/abs/2108.01073) fashion after the base model.
 
@@ -81,15 +81,15 @@ When using the base and refiner model as an ensemble of expert of denoisers, the
 expert for the high-noise diffusion stage and the refiner serves as the expert for the low-noise diffusion stage.
 
 The advantage of 1.) over 2.) is that it requires less overall denoising steps and therefore should be significantly
-faster. The drawback is that one cannot really inspect the output of the base model is it will still be heavily denoised.
+faster. The drawback is that one cannot really inspect the output of the base model; it will still be heavily denoised.
 
 To use the base model and refiner as an ensemble of expert denoisers, make sure to define the fraction
 of timesteps which should be run through the high-noise denoising stage (*i.e.* the base model) and the low-noise
-denoising stage (*i.e.* the refiner model) respectively. This fraction should be set as the [`denoising_end`]() of the base model 
-and as the [`denoising_start`]() of the refiner model.
+denoising stage (*i.e.* the refiner model) respectively. This fraction should be set as the [`~StableDiffusionXLPipeline.__call__.denoising_end`] of the base model 
+and as the [`~StableDiffusionXLImg2ImgPipeline.__call__.denoising_start`] of the refiner model.
 
 Let's look at an example.
-First, we import the two pipelines. Since the text encoder and variational autoencoder are the same
+First, we import the two pipelines. Since the text encoders and variational autoencoder are the same
 you don't have to load those again for the refiner.
 
 ```py
@@ -140,7 +140,11 @@ If we would have just run the base model on the same 40 steps, the image would h
 
 ![lion_base](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/lion_base.png)
 
-**Note**: The ensemble-of-experts method works well on all available schedulers!
+<Tip>
+
+The ensemble-of-experts method works well on all available schedulers!
+
+</Tip>
 
 #### Refining the image output from fully denoised base image
 
@@ -161,8 +165,8 @@ pipe.to("cuda")
 
 refiner = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9",
-    text_encoder_2=pipe_high_noise.text_encoder_2,
-    vae=pipe_high_noise.vae,
+    text_encoder_2=pipe.text_encoder_2,
+    vae=pipe.vae,
     torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
