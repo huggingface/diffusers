@@ -454,6 +454,45 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
+    # def test_unload_lora(self):
+    #     pipeline_components, lora_components = self.get_dummy_components()
+    #     sd_pipe = StableDiffusionPipeline(**pipeline_components)
+    #     sd_pipe = sd_pipe.to(torch_device)
+    #     sd_pipe.set_progress_bar_config(disable=None)
+
+    #     _, _, pipeline_inputs = self.get_dummy_inputs()
+
+    #     original_images = sd_pipe(**pipeline_inputs).images
+    #     orig_image_slice = original_images[0, -3:, -3:, -1]
+
+    #     # Immitate training.
+    #     set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+    #     set_lora_weights(lora_components["text_encoder_lora_layers"].parameters(), randn_weight=True)
+
+    #     with tempfile.TemporaryDirectory() as tmpdirname:
+    #         LoraLoaderMixin.save_lora_weights(
+    #             save_directory=tmpdirname,
+    #             unet_lora_layers=lora_components["unet_lora_layers"],
+    #             text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+    #         )
+    #         self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+    #         sd_pipe.load_lora_weights(tmpdirname)
+
+    #     lora_images = sd_pipe(**pipeline_inputs).images
+    #     lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+    #     # Unload LoRA.
+    #     sd_pipe.unload_lora_weights()
+    #     _ = pipeline_inputs.pop("generator")
+    #     generator = torch.manual_seed(0)
+    #     original_images_two = sd_pipe(**pipeline_inputs, generator=generator).images
+    #     orig_image_slice_two = original_images_two[0, -3:, -3:, -1]
+
+    #     assert not torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice))
+    #     assert torch.allclose(
+    #         torch.from_numpy(orig_image_slice_two), torch.from_numpy(orig_image_slice), atol=1e-3
+    #     ), "Unloading LoRA should produce initial outputs as without LoRA."
+
 
 @slow
 @require_torch_gpu
@@ -538,7 +577,7 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
     def test_unload_lora(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
@@ -560,6 +599,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_images = lora_images[0, -3:, -3:, -1].flatten()
 
         pipe.unload_lora_weights()
+        generator = torch.manual_seed(0)
         unloaded_lora_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
