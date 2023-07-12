@@ -121,10 +121,10 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast("cuda"):
-                image = pipeline(
-                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
-                ).images[0]
+            # with torch.autocast("cuda"):
+            image = pipeline(
+                validation_prompt, validation_image, num_inference_steps=20, generator=generator
+            ).images[0]
             images.append(image)
 
         image_logs.append(
@@ -165,6 +165,10 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
             tracker.log({"validation": formatted_images})
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
+
+        del pipeline
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return image_logs
 
