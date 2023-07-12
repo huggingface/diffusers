@@ -826,6 +826,7 @@ MC_TABLE = [
     [],
 ]
 
+
 def create_mc_lookup_table():
     cases = torch.zeros(256, 5, 3, dtype=torch.long)
     masks = torch.zeros(256, 5, dtype=torch.bool)
@@ -886,7 +887,6 @@ def renderer_model_original_checkpoint_to_diffusers_checkpoint(model, checkpoint
 
     diffusers_checkpoint.update({"mesh_decoder.cases": cases})
     diffusers_checkpoint.update({"mesh_decoder.masks": masks})
-
 
     return diffusers_checkpoint
 

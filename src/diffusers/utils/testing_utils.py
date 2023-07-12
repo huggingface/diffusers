@@ -1,19 +1,18 @@
 import inspect
+import io
 import logging
 import multiprocessing
 import os
-import io
 import random
 import re
 import tempfile
 import unittest
 import urllib.parse
+from contextlib import contextmanager
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import List, Optional, Union
-
-from contextlib import contextmanager
 
 import numpy as np
 import PIL.Image
@@ -324,21 +323,22 @@ def buffered_writer(raw_f):
     yield f
     f.flush()
 
+
 def export_to_ply(mesh, output_ply_path: str = None):
     """
     Write a PLY file for a mesh.
     """
 
-    import struct # YiYi to-do: make it soft dependency
+    import struct  # YiYi to-do: make it soft dependency
 
     if output_ply_path is None:
         output_ply_path = tempfile.NamedTemporaryFile(suffix=".ply").name
-    
+
     coords = mesh.verts.detach().cpu().numpy()
     faces = mesh.faces.cpu().numpy()
     rgb = np.stack([mesh.vertex_channels[x].detach().cpu().numpy() for x in "RGB"], axis=1)
 
-    with buffered_writer(open(output_ply_path, 'wb')) as f:
+    with buffered_writer(open(output_ply_path, "wb")) as f:
         f.write(b"ply\n")
         f.write(b"format binary_little_endian 1.0\n")
         f.write(bytes(f"element vertex {len(coords)}\n", "ascii"))
@@ -375,31 +375,27 @@ def export_to_ply(mesh, output_ply_path: str = None):
             format = struct.Struct("<B3I")
             for tri in faces.tolist():
                 f.write(format.pack(len(tri), *tri))
-    
+
     return output_ply_path
 
+
 def export_to_obj(mesh, output_obj_path: str = None):
-    
     if output_obj_path is None:
         output_obj_path = tempfile.NamedTemporaryFile(suffix=".obj").name
-    
-    coords = mesh.verts.detach().cpu().numpy()
+
+    verts = mesh.verts.detach().cpu().numpy()
     faces = mesh.faces.cpu().numpy()
 
     vertex_colors = np.stack([mesh.vertex_channels[x].detach().cpu().numpy() for x in "RGB"], axis=1)
     vertices = [
-                "{} {} {} {} {} {}".format(*coord, *color)
-                for coord, color in zip(verts.tolist(), vertex_colors.tolist())
-            ]
-    
-    faces = [
-            "f {} {} {}".format(str(tri[0] + 1), str(tri[1] + 1), str(tri[2] + 1))
-            for tri in faces.tolist()
-        ]
+        "{} {} {} {} {} {}".format(*coord, *color) for coord, color in zip(verts.tolist(), vertex_colors.tolist())
+    ]
+
+    faces = ["f {} {} {}".format(str(tri[0] + 1), str(tri[1] + 1), str(tri[2] + 1)) for tri in faces.tolist()]
 
     combined_data = ["v " + vertex for vertex in vertices] + faces
 
-    with open(output_obj_path, 'w') as f:
+    with open(output_obj_path, "w") as f:
         f.writelines("\n".join(combined_data))
 
 

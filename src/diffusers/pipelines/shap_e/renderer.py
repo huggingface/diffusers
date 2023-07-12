@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -122,15 +122,15 @@ def volume_query_points(volume, grid_size):
     ys = torch.div(indices, grid_size, rounding_mode="trunc") % grid_size
     xs = torch.div(indices, grid_size**2, rounding_mode="trunc") % grid_size
     combined = torch.stack([xs, ys, zs], dim=1)
-    return (combined.float() / (grid_size - 1)) * (
-        volume.bbox_max - volume.bbox_min
-    ) + volume.bbox_min
+    return (combined.float() / (grid_size - 1)) * (volume.bbox_max - volume.bbox_min) + volume.bbox_min
+
 
 def _convert_srgb_to_linear(u: torch.Tensor):
     return torch.where(u <= 0.04045, u / 12.92, ((u + 0.055) / 1.055) ** 2.4)
 
+
 def _create_flat_edge_indices(
-    flat_cube_indices: torch.Tensor, 
+    flat_cube_indices: torch.Tensor,
     grid_size: Tuple[int, int, int],
 ):
     num_xs = (grid_size[0] - 1) * grid_size[1] * grid_size[2]
@@ -209,6 +209,7 @@ def _create_flat_edge_indices(
         ],
         dim=-1,
     )
+
 
 class VoidNeRFModel(nn.Module):
     """
@@ -461,6 +462,7 @@ class ImportanceRaySampler(nn.Module):
         ts = torch.sort(ts, dim=-2).values
         return ts
 
+
 @dataclass
 class MeshDecoderOutput(BaseOutput):
     """
@@ -468,12 +470,13 @@ class MeshDecoderOutput(BaseOutput):
 
     Args:
         verts (`torch.Tensor` of shape `(N, 3)`):
-            array of vertext coordinates 
+            array of vertext coordinates
         faces (`torch.Tensor` of shape `(N, 3)`):
             array of triangles, pointing to indices in verts.
-        vertext_channels (Dict): 
+        vertext_channels (Dict):
             vertext coordinates for each color channel
     """
+
     verts: torch.Tensor
     faces: torch.Tensor
     vertex_channels: Dict[str, torch.Tensor]
@@ -497,8 +500,7 @@ class MeshDecoder(nn.Module):
         For a signed distance field, produce a mesh using marching cubes.
 
         :param field: a 3D tensor of field values, where negative values correspond
-                    to the outside of the shape. The dimensions correspond to the
-                    x, y, and z directions, respectively.
+                    to the outside of the shape. The dimensions correspond to the x, y, and z directions, respectively.
         :param min_point: a tensor of shape [3] containing the point corresponding
                         to (0, 0, 0) in the field.
         :param size: a tensor of shape [3] containing the per-axis distance from the
@@ -525,15 +527,13 @@ class MeshDecoder(nn.Module):
 
         # Compute corner coordinates across the entire grid.
         corner_coords = torch.empty(*grid_size, 3, device=dev, dtype=field.dtype)
-        corner_coords[range(grid_size[0]), :, :, 0] = torch.arange(
-            grid_size[0], device=dev, dtype=field.dtype
-        )[:, None, None]
-        corner_coords[:, range(grid_size[1]), :, 1] = torch.arange(
-            grid_size[1], device=dev, dtype=field.dtype
-        )[:, None]
-        corner_coords[:, :, range(grid_size[2]), 2] = torch.arange(
-            grid_size[2], device=dev, dtype=field.dtype
-        )
+        corner_coords[range(grid_size[0]), :, :, 0] = torch.arange(grid_size[0], device=dev, dtype=field.dtype)[
+            :, None, None
+        ]
+        corner_coords[:, range(grid_size[1]), :, 1] = torch.arange(grid_size[1], device=dev, dtype=field.dtype)[
+            :, None
+        ]
+        corner_coords[:, :, range(grid_size[2]), 2] = torch.arange(grid_size[2], device=dev, dtype=field.dtype)
 
         # Compute all vertices across all edges in the grid, even though we will
         # throw some out later. We have (X-1)*Y*Z + X*(Y-1)*Z + X*Y*(Z-1) vertices.
@@ -552,12 +552,8 @@ class MeshDecoder(nn.Module):
         cube_indices = torch.zeros(
             grid_size[0] - 1, grid_size[1] - 1, grid_size[2] - 1, 3, device=dev, dtype=torch.long
         )
-        cube_indices[range(grid_size[0] - 1), :, :, 0] = torch.arange(grid_size[0] - 1, device=dev)[
-            :, None, None
-        ]
-        cube_indices[:, range(grid_size[1] - 1), :, 1] = torch.arange(grid_size[1] - 1, device=dev)[
-            :, None
-        ]
+        cube_indices[range(grid_size[0] - 1), :, :, 0] = torch.arange(grid_size[0] - 1, device=dev)[:, None, None]
+        cube_indices[:, range(grid_size[1] - 1), :, 1] = torch.arange(grid_size[1] - 1, device=dev)[:, None]
         cube_indices[:, :, range(grid_size[2] - 1), 2] = torch.arange(grid_size[2] - 1, device=dev)
         flat_cube_indices = cube_indices.reshape(-1, 3)
 
@@ -565,15 +561,13 @@ class MeshDecoder(nn.Module):
         edge_indices = _create_flat_edge_indices(flat_cube_indices, grid_size)
 
         # Apply the LUT to figure out the triangles.
-        flat_bitmasks = bitmasks.reshape(
-            -1
-        ).long()  # must cast to long for indexing to believe this not a mask
+        flat_bitmasks = bitmasks.reshape(-1).long()  # must cast to long for indexing to believe this not a mask
         local_tris = cases[flat_bitmasks]
         local_masks = masks[flat_bitmasks]
         # Compute the global edge indices for the triangles.
-        global_tris = torch.gather(
-            edge_indices, 1, local_tris.reshape(local_tris.shape[0], -1)
-        ).reshape(local_tris.shape)
+        global_tris = torch.gather(edge_indices, 1, local_tris.reshape(local_tris.shape[0], -1)).reshape(
+            local_tris.shape
+        )
         # Select the used triangles for each cube.
         selected_tris = global_tris.reshape(-1, 3)[local_masks.reshape(-1)]
 
@@ -587,9 +581,7 @@ class MeshDecoder(nn.Module):
         )
 
         # Rewrite the triangles to use the new indices
-        faces = torch.gather(old_index_to_new_index, 0, selected_tris.view(-1)).reshape(
-            selected_tris.shape
-        )
+        faces = torch.gather(old_index_to_new_index, 0, selected_tris.view(-1)).reshape(selected_tris.shape)
 
         # Compute the actual interpolated coordinates corresponding to edge midpoints.
         v1 = torch.floor(used_edge_midpoints).to(torch.long)
@@ -695,16 +687,15 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
             h_density = activation["density_coarse"]
         else:
             h_density = activation["density_fine"]
-        
-        if rendering_mode == "nerf":
 
+        if rendering_mode == "nerf":
             if nerf_level == "coarse":
                 h_channels = activation["nerf_coarse"]
             else:
                 h_channels = activation["nerf_fine"]
-        
+
         elif rendering_mode == "stf":
-            h_channels = activation['stf']
+            h_channels = activation["stf"]
 
         density = self.density_activation(h_density)
         signed_distance = self.sdf_activation(activation["sdf"])
@@ -955,7 +946,6 @@ class ShapERenderer(ModelMixin, ConfigMixin):
 
         return images
 
-
     @torch.no_grad()
     def decode_to_mesh(
         self,
@@ -963,9 +953,8 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         device,
         grid_size: int = 128,
         query_batch_size: int = 4096,
-        texture_channels: Tuple = ('R', 'G', 'B'),
+        texture_channels: Tuple = ("R", "G", "B"),
     ):
-
         # 1. project the the paramters from the generated latents
         projected_params = self.params_proj(latents)
 
@@ -976,25 +965,20 @@ class ShapERenderer(ModelMixin, ConfigMixin):
 
         # 3. decoding with STF rendering
         # 3.1 query the SDF values at vertices along a regular 128**3 grid
-        
+
         query_points = volume_query_points(self.volume, grid_size)
         query_positions = query_points[None].repeat(1, 1, 1).to(device=device, dtype=self.mlp.dtype)
 
         fields = []
 
         for idx in range(0, query_positions.shape[1], query_batch_size):
-
             query_batch = query_positions[:, idx : idx + query_batch_size]
-            
+
             model_out = self.mlp(
-                position=query_batch,
-                direction=None,
-                ts=None,
-                nerf_level="fine",
-                rendering_mode='stf'
+                position=query_batch, direction=None, ts=None, nerf_level="fine", rendering_mode="stf"
             )
             fields.append(model_out.signed_distance)
-        
+
         # predicted SDF values
         fields = torch.cat(fields, dim=1)
         fields = fields.float()
@@ -1018,7 +1002,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         full_grid.fill_(-1.0)
         full_grid[:, 1:-1, 1:-1, 1:-1] = fields
         fields = full_grid
-        
+
         # apply a differentiable implementation of Marching Cubes to construct meshs
         raw_meshes = []
         mesh_mask = []
@@ -1033,29 +1017,24 @@ class ShapERenderer(ModelMixin, ConfigMixin):
 
         # 3.2. query the texture color head at each vertex of the resulting mesh.
         texture_query_positions = torch.stack(
-                [m.verts[torch.arange(0, max_vertices) % len(m.verts)] for m in raw_meshes],
-                dim=0,
-            )
+            [m.verts[torch.arange(0, max_vertices) % len(m.verts)] for m in raw_meshes],
+            dim=0,
+        )
         texture_query_positions = texture_query_positions.to(device=device, dtype=self.mlp.dtype)
-           
+
         textures = []
 
         for idx in range(0, texture_query_positions.shape[1], query_batch_size):
+            query_batch = texture_query_positions[:, idx : idx + query_batch_size]
 
-            query_batch = texture_query_positions[:, idx  : idx +  query_batch_size]
-            
             texture_model_out = self.mlp(
-                position=query_batch,
-                direction=None,
-                ts=None,
-                nerf_level="fine",
-                rendering_mode='stf'
+                position=query_batch, direction=None, ts=None, nerf_level="fine", rendering_mode="stf"
             )
             textures.append(texture_model_out.channels)
-        
+
         # predict texture color
         textures = torch.cat(textures, dim=1)
-        
+
         textures = _convert_srgb_to_linear(textures)
         textures = textures.float()
 
@@ -1063,9 +1042,9 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         assert len(textures.shape) == 3 and textures.shape[-1] == len(
             texture_channels
         ), f"expected [meta_batch x inner_batch x texture_channels] field results, but got {textures.shape}"
-        
+
         for m, texture in zip(raw_meshes, textures):
             texture = texture[: len(m.verts)]
-            m.vertex_channels = {name: ch for name, ch in zip(texture_channels, texture.unbind(-1))}    
-        
+            m.vertex_channels = dict(zip(texture_channels, texture.unbind(-1)))
+
         return raw_meshes[0]

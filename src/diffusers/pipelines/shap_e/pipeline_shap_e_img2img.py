@@ -313,21 +313,22 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             ).prev_sample
 
         if output_type not in ["np", "pil", "latent", "mesh"]:
-                raise ValueError(f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}")
+            raise ValueError(
+                f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
+            )
 
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
-        
-        images = []
-        if output_type is "mesh":
 
+        images = []
+        if output_type == "mesh":
             for i, latent in enumerate(latents):
                 mesh = self.renderer.decode_to_mesh(
                     latent[None, :],
                     device,
                 )
                 images.append(mesh)
-            
+
         else:
             # np, pil
             for i, latent in enumerate(latents):
