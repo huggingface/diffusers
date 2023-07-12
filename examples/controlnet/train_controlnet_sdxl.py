@@ -116,6 +116,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
+        validation_image = validation_image.resize((args.resolution, args.resolution))
 
         images = []
 
