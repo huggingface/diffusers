@@ -23,7 +23,6 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .models.attention_processor import (
-    Attention,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     AttnProcessor,
@@ -1303,7 +1302,6 @@ class LoraLoaderMixin:
                 self.unet.set_attn_processor(unet_attn_proc_cls())
             else:
                 self.unet.set_default_attn_processor()
-
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
