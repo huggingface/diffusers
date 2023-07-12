@@ -74,17 +74,20 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(controlnet, args, accelerator, weight_dtype, step):
+def log_validation(controlnet, args, accelerator, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
 
+    # We're loading the pipeline in full-precision to avoid numerical instabilities.
+    # Using autocast also doesn't help. More details:
+    # https://github.com/huggingface/diffusers/pull/4038#issuecomment-1631245691
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         controlnet=controlnet,
         safety_checker=None,
         revision=args.revision,
-        torch_dtype=weight_dtype,
+        torch_dtype=torch.float32,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
@@ -121,7 +124,6 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
         images = []
 
         for _ in range(args.num_validation_images):
-            # with torch.autocast("cuda"):
             image = pipeline(validation_prompt, validation_image, num_inference_steps=20, generator=generator).images[
                 0
             ]
@@ -1183,7 +1185,7 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        image_logs = log_validation(controlnet, args, accelerator, weight_dtype, global_step)
+                        image_logs = log_validation(controlnet, args, accelerator, global_step)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
