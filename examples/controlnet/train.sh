@@ -20,7 +20,6 @@ then
     mkdir -p ${current_dir}/logs
 fi
 
-moreh-switch-model -M 1
 
 # Check if $batch_size is provided , if not use default value of 5
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
@@ -43,3 +42,4 @@ conda run -n ${env_name} python3 train_controlnet_mlflow.py \
     --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
     --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
     --train_batch_size ${batch_size} \
+    --logging_steps=100 \

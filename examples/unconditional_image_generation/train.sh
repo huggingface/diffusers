@@ -24,7 +24,7 @@ fi
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=4
+  batch_size=800
 fi
 
 # Run training script

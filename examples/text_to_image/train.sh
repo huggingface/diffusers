@@ -24,7 +24,7 @@ fi
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=1
+  batch_size=6
 fi
 
 # Run training script
@@ -43,3 +43,4 @@ conda run -n ${env_name} python3 train_text_to_image_mlflow.py \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --output_dir ${output_dir} \
   --log_dir "${log_dir}" \
+  --logging_steps=100 \

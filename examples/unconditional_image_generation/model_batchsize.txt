@@ -1,2 +1,2 @@
-ddpm-unet 140
+ddpm-unet 800
 #### end list ####

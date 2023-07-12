@@ -1,7 +1,7 @@
-CompVis/stable-diffusion-v1-4 1
-runwayml/stable-diffusion-v1-5 1
-stabilityai/stable-diffusion-2-base 1
-stabilityai/stable-diffusion-2 1
-stabilityai/stable-diffusion-2-1-base 1
-stabilityai/stable-diffusion-2-1 1
+CompVis/stable-diffusion-v1-4 8
+runwayml/stable-diffusion-v1-5 8
+stabilityai/stable-diffusion-2-base 8
+stabilityai/stable-diffusion-2 8
+stabilityai/stable-diffusion-2-1-base 8
+stabilityai/stable-diffusion-2-1 8
 #### end list ####

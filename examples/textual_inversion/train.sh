@@ -18,13 +18,16 @@ if [ -z "$log_dir" ]
 then
     log_dir=${current_dir}/logs/${model_name}.json
     mkdir -p ${current_dir}/logs
+else
+    normalized_model_name=${model_name#*/}
+    log_dir="log_terminal/${env_name}/${normalized_model_name}.log"
 fi
 
 # Check if $batch_size is provided , if not use default value of 1
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=1
+  batch_size=9
 fi
 
 # Check if data is downloaded
@@ -34,7 +37,7 @@ if [ -d "$data_dir" ] && [ "$(ls -A $data_dir)" ]; then
   echo "data is already in $data_dir"
 else
   echo "downloading data.."
-  conda run -n ${env_name} python3 /nas/thuchk/repos/diffusers/examples/textual_inversion/download_data.py
+  conda run -n ${env_name} python3 download_data.py
 fi
 
 # Run training script
@@ -55,3 +58,4 @@ conda run -n ${env_name} python3 ../examples/textual_inversion/textual_inversion
   --lr_warmup_steps=0 \
   --output_dir ${output_dir} \
   --log_dir ${log_dir} \
+  --logging_steps=100 \
