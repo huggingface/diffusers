@@ -12,18 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import gc
 import os
 import tempfile
 import unittest
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from huggingface_hub.repocard import RepoCard
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin, PatchedLoraProjection, text_encoder_attn_modules
 from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor,
@@ -33,7 +34,8 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, floats_tensor, torch_device
+from diffusers.utils import floats_tensor, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, slow
 
 
 def create_unet_lora_layers(unet: nn.Module):
@@ -63,11 +65,15 @@ def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
     lora_attn_processor_class = (
         LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
     )
-    for name, module in text_encoder.named_modules():
-        if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-            text_lora_attn_procs[name] = lora_attn_processor_class(
-                hidden_size=module.out_proj.out_features, cross_attention_dim=None
-            )
+    for name, module in text_encoder_attn_modules(text_encoder):
+        if isinstance(module.out_proj, nn.Linear):
+            out_features = module.out_proj.out_features
+        elif isinstance(module.out_proj, PatchedLoraProjection):
+            out_features = module.out_proj.regular_linear_layer.out_features
+        else:
+            assert False, module.out_proj.__class__
+
+        text_lora_attn_procs[name] = lora_attn_processor_class(hidden_size=out_features, cross_attention_dim=None)
     return text_lora_attn_procs
 
 
@@ -77,17 +83,13 @@ def create_text_encoder_lora_layers(text_encoder: nn.Module):
     return text_encoder_lora_layers
 
 
-def set_lora_up_weights(text_lora_attn_procs, randn_weight=False):
-    for _, attn_proc in text_lora_attn_procs.items():
-        # set up.weights
-        for layer_name, layer_module in attn_proc.named_modules():
-            if layer_name.endswith("_lora"):
-                weight = (
-                    torch.randn_like(layer_module.up.weight)
-                    if randn_weight
-                    else torch.zeros_like(layer_module.up.weight)
-                )
-                layer_module.up.weight = torch.nn.Parameter(weight)
+def set_lora_weights(text_lora_attn_parameters, randn_weight=False):
+    with torch.no_grad():
+        for parameter in text_lora_attn_parameters:
+            if randn_weight:
+                parameter[:] = torch.randn_like(parameter)
+            else:
+                torch.zero_(parameter)
 
 
 class LoraLoaderMixinTests(unittest.TestCase):
@@ -281,16 +283,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
         assert outputs_without_lora.shape == (1, 77, 32)
 
-        # create lora_attn_procs with zeroed out up.weights
-        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
-        set_lora_up_weights(text_attn_procs, randn_weight=False)
-
         # monkey patch
-        pipe._modify_text_encoder(text_attn_procs)
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
 
-        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
-        del text_attn_procs
-        gc.collect()
+        set_lora_weights(params, randn_weight=False)
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -301,15 +297,12 @@ class LoraLoaderMixinTests(unittest.TestCase):
         ), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs"
 
         # create lora_attn_procs with randn up.weights
-        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
-        set_lora_up_weights(text_attn_procs, randn_weight=True)
+        create_text_encoder_lora_attn_procs(pipe.text_encoder)
 
         # monkey patch
-        pipe._modify_text_encoder(text_attn_procs)
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
 
-        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
-        del text_attn_procs
-        gc.collect()
+        set_lora_weights(params, randn_weight=True)
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -329,16 +322,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
         assert outputs_without_lora.shape == (1, 77, 32)
 
-        # create lora_attn_procs with randn up.weights
-        text_attn_procs = create_text_encoder_lora_attn_procs(pipe.text_encoder)
-        set_lora_up_weights(text_attn_procs, randn_weight=True)
-
         # monkey patch
-        pipe._modify_text_encoder(text_attn_procs)
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
 
-        # verify that it's okay to release the text_attn_procs which holds the LoRAAttnProcessor.
-        del text_attn_procs
-        gc.collect()
+        set_lora_weights(params, randn_weight=True)
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -467,3 +454,86 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
+
+
+@slow
+@require_torch_gpu
+class LoraIntegrationTests(unittest.TestCase):
+    def test_dreambooth_old_format(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        lora_model_id = "hf-internal-testing/lora_dreambooth_dog_example"
+        card = RepoCard.load(lora_model_id)
+        base_model_id = card.data.to_dict()["base_model"]
+
+        pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
+        pipe = pipe.to(torch_device)
+        pipe.load_lora_weights(lora_model_id)
+
+        images = pipe(
+            "A photo of a sks dog floating in the river", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+
+        expected = np.array([0.7207, 0.6787, 0.6010, 0.7478, 0.6838, 0.6064, 0.6984, 0.6443, 0.5785])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_dreambooth_text_encoder_new_format(self):
+        generator = torch.Generator().manual_seed(0)
+
+        lora_model_id = "hf-internal-testing/lora-trained"
+        card = RepoCard.load(lora_model_id)
+        base_model_id = card.data.to_dict()["base_model"]
+
+        pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
+        pipe = pipe.to(torch_device)
+        pipe.load_lora_weights(lora_model_id)
+
+        images = pipe("A photo of a sks dog", output_type="np", generator=generator, num_inference_steps=2).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+
+        expected = np.array([0.6628, 0.6138, 0.5390, 0.6625, 0.6130, 0.5463, 0.6166, 0.5788, 0.5359])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_a1111(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Counterfeit-V2.5", safety_checker=None).to(
+            torch_device
+        )
+        lora_model_id = "hf-internal-testing/civitai-light-shadow-lora"
+        lora_filename = "light_and_shadow.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+
+        expected = np.array([0.3743, 0.3893, 0.3835, 0.3891, 0.3949, 0.3649, 0.3858, 0.3802, 0.3245])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_vanilla_funetuning(self):
+        generator = torch.Generator().manual_seed(0)
+
+        lora_model_id = "hf-internal-testing/sd-model-finetuned-lora-t4"
+        card = RepoCard.load(lora_model_id)
+        base_model_id = card.data.to_dict()["base_model"]
+
+        pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
+        pipe = pipe.to(torch_device)
+        pipe.load_lora_weights(lora_model_id)
+
+        images = pipe("A pokemon with blue eyes.", output_type="np", generator=generator, num_inference_steps=2).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+
+        expected = np.array([0.7406, 0.699, 0.5963, 0.7493, 0.7045, 0.6096, 0.6886, 0.6388, 0.583])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
