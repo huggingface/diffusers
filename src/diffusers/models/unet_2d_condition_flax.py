@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict
 
 import flax
 import flax.linen as nn
@@ -117,7 +117,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
     transformer_layers_per_block: Union[int, Tuple[int]] = 1
-
+    addition_embed_type: Optional[str] = None
+    addition_time_embed_dim: Optional[int] = None
+    addition_embed_type_num_heads: int = 64
+    projection_class_embeddings_input_dim: Optional[int] = None
 
     def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
@@ -129,7 +132,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         params_rng, dropout_rng = jax.random.split(rng)
         rngs = {"params": params_rng, "dropout": dropout_rng}
 
-        return self.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
+        added_cond_kwargs = None
+        if self.addition_embed_type == 'text_time':
+            added_cond_kwargs = {
+                    'text_embeds': jnp.zeros((1, 1280), dtype=jnp.float32),   # TODO: Check where this is comming from - block_out_channels[-1]?
+                    'time_ids': jnp.zeros((1, 6), dtype=jnp.float32)
+                    }
+        return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
     def setup(self):
         block_out_channels = self.block_out_channels
@@ -174,6 +183,17 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         transformer_layers_per_block = self.transformer_layers_per_block
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(self.down_block_types)
+
+        # addition embed types
+        if self.addition_embed_type is None:
+            self.add_embedding = None
+        elif self.addition_embed_type == 'text_time':
+            if self.addition_time_embed_dim is None:
+                raise ValueError(f'addition_embed_type {self.addition_embed_type} requires `addition_time_embed_dim` to not be None')
+            self.add_time_proj = FlaxTimesteps(self.addition_time_embed_dim, self.flip_sin_to_cos, self.freq_shift)
+            self.add_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
+        else:
+            raise ValueError(f"addition_embed_type: {self.addition_embed_type} must be None or `text_time`.")
 
         # down
         down_blocks = []
@@ -280,6 +300,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
+        added_cond_kwargs: Optional[Union[Dict, FrozenDict]] = None,
         down_block_additional_residuals=None,
         mid_block_additional_residual=None,
         return_dict: bool = True,
@@ -310,6 +331,29 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
+
+        # additional embeddings
+        aug_emb = None
+        if self.addition_embed_type == 'text_time':
+            if added_cond_kwargs is None:
+                raise ValueError(f'Need to provide argument `added_cond_kwargs` for {self.__class__} when using `addition_embed_type={self.addition_embed_type}`')
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if text_embeds is None:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            if time_ids is None:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            # compute time embeds
+            time_embeds = self.add_time_proj(jnp.ravel(time_ids))   # (1, 6) => (6,) => (6, 256)
+            time_embeds = jnp.reshape(time_embeds, (text_embeds.shape[0], -1))
+            add_embeds = jnp.concatenate([text_embeds, time_embeds], axis=-1)
+            aug_emb = self.add_embedding(add_embeds)
+
+        t_emb = t_emb + aug_emb if aug_emb is not None else t_emb
 
         # 2. pre-process
         sample = jnp.transpose(sample, (0, 2, 3, 1))
