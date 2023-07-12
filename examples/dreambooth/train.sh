@@ -24,7 +24,7 @@ fi
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=1
+  batch_size=8
 fi
 
 # Check if data is downloaded
@@ -34,13 +34,13 @@ if [ -d "$data_dir" ] && [ "$(ls -A $data_dir)" ]; then
   echo "data is already in $data_dir"
 else
   echo "downloading data.."
-  python /nas/thuchk/repos/diffusers/examples/dreambooth/download_data.py
+  conda run -n ${env_name} python3 download_data.py
 fi
 
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_dreambooth.py \
+conda run -n ${env_name} python3 train_dreambooth_mlflow.py \
   --pretrained_model_name_or_path ${model_name} \
   --instance_data_dir $data_dir \
   --instance_prompt="a photo of sks dog" \
@@ -53,3 +53,4 @@ conda run -n ${env_name} python3 train_dreambooth.py \
   --max_train_steps=10 \
   --output_dir ${output_dir}  \
   --log_dir "${log_dir}" \
+  --logging_steps=10 \

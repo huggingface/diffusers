@@ -1,5 +1,4 @@
-base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
-# base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (writable)//' | tr -d ' ')
+base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (writable)//' | tr -d ' ')
 current_dir=$(pwd)
 
 task=$1
@@ -29,10 +28,4 @@ if [ "$CONDA_DEFAULT_ENV" = "${env_name}" ] && [ "$install_requirements" == "1" 
     pip install -e .
     cd ${current_dir}/${task}
     pip install -r requirements.txt
-    echo -e "\\n" | update-moreh --torch 1.10.0 --target 23.6.0 --force
 fi
-
-# Switch to appropriate gpu size if using Moreh framework
-gpu_size=$(grep -E "^$task\b" gpu_size_for_tasks.txt | awk '{print $2}')
-echo $gpu_size
-moreh-switch-model -M $gpu_size

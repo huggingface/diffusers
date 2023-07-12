@@ -37,6 +37,8 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+import mlflow
+import datetime
 
 import diffusers
 from diffusers import (
@@ -269,7 +271,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--log_dir",
         type=str,
-        default="logs",
+        default="logs/controlnet.json",
         help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument(
@@ -547,6 +549,12 @@ def parse_args(input_args=None):
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
+    )
+    parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=10,
+        help="Log every X updates steps. Default to 10.",
     )
 
     if input_args is not None:
@@ -999,105 +1007,123 @@ def main(args):
     )
 
     output_list = []
-    start_time = time.time()
     image_logs = None
-    for epoch in range(first_epoch, args.num_train_epochs):
-        start_time_epoch = time.time()
-        for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(controlnet):
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
+    #Initialize mlflow
+    # mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    experiment_id = mlflow.create_experiment('{}_{}'.format(args.controlnet_model_name_or_path, current_datetime))
+    experiment = mlflow.get_experiment(experiment_id)
+    mlflow_runner = mlflow.start_run(run_name=args.controlnet_model_name_or_path, experiment_id=experiment.experiment_id)
+    with mlflow_runner:
+        start_time = time.time()
+        for epoch in range(first_epoch, args.num_train_epochs):
+            start_time_epoch = time.time()
+            for step, batch in enumerate(train_dataloader):
+                with accelerator.accumulate(controlnet):
+                    # Convert images to latent space
+                    latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+                    latents = latents * vae.config.scaling_factor
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+                    # Sample noise that we'll add to the latents
+                    noise = torch.randn_like(latents)
+                    bsz = latents.shape[0]
+                    # Sample a random timestep for each image
+                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                    timesteps = timesteps.long()
 
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                    # Add noise to the latents according to the noise magnitude at each timestep
+                    # (this is the forward diffusion process)
+                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    # Get the text embedding for conditioning
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
-                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                    controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
-                down_block_res_samples, mid_block_res_sample = controlnet(
-                    noisy_latents,
-                    timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
-                    controlnet_cond=controlnet_image,
-                    return_dict=False,
-                )
+                    down_block_res_samples, mid_block_res_sample = controlnet(
+                        noisy_latents,
+                        timesteps,
+                        encoder_hidden_states=encoder_hidden_states,
+                        controlnet_cond=controlnet_image,
+                        return_dict=False,
+                    )
 
-                # Predict the noise residual
-                model_pred = unet(
-                    noisy_latents,
-                    timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
-                    down_block_additional_residuals=[
-                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
-                    ],
-                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
-                ).sample
+                    # Predict the noise residual
+                    model_pred = unet(
+                        noisy_latents,
+                        timesteps,
+                        encoder_hidden_states=encoder_hidden_states,
+                        down_block_additional_residuals=[
+                            sample.to(dtype=weight_dtype) for sample in down_block_res_samples
+                        ],
+                        mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+                    ).sample
 
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    # Get the target for loss depending on the prediction type
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    else:
+                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-                accelerator.backward(loss)
+                    accelerator.backward(loss)
+                    if accelerator.sync_gradients:
+                        params_to_clip = controlnet.parameters()
+                        accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+
+                # Checks if the accelerator has performed an optimization step behind the scenes
                 if accelerator.sync_gradients:
-                    params_to_clip = controlnet.parameters()
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                    progress_bar.update(1)
+                    global_step += 1
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
+                    if accelerator.is_main_process:
+                        if global_step % args.checkpointing_steps == 0:
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
-                if accelerator.is_main_process:
-                    if global_step % args.checkpointing_steps == 0:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                            image_logs = log_validation(
+                                vae,
+                                text_encoder,
+                                tokenizer,
+                                unet,
+                                controlnet,
+                                args,
+                                accelerator,
+                                weight_dtype,
+                                global_step,
+                            )
 
-                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        image_logs = log_validation(
-                            vae,
-                            text_encoder,
-                            tokenizer,
-                            unet,
-                            controlnet,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            global_step,
-                        )
+                if (step+1) % args.logging_steps == 0:
+                    logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}                    
+                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
+                    progress_bar.set_postfix(**logs)
+                    accelerator.log(logs, step=global_step)
+                    
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
+                if global_step >= args.max_train_steps:
+                    break
 
-            if global_step >= args.max_train_steps:
-                break
+            elapsed_time = time.time() - start_time_epoch
+            epoch_throughput = (len(train_dataset)) / elapsed_time
 
-        elapsed_time = time.time() - start_time_epoch
-        throughput = (len(train_dataset)) / elapsed_time
-        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
-        output_list.append(output_dict)
+            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
+            output_list.append(output_dict)
+            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
+            
         
-    elapsed_time = time.time() - start_time
+        elapsed_time = time.time() - start_time
+        throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
+        output_list.append(output_dict)
+        mlflow.log_metric('avg_throughput', throughput)
+        mlflow.log_params({'model': args.controlnet_model_name_or_path ,'batch_size': args.train_batch_size})
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1118,10 +1144,6 @@ def main(args):
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-    output_list.append(output_dict)
-    
     import json
     with open(args.log_dir, "w") as f:
         json.dump(output_list, f, indent=4)

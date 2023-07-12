@@ -20,6 +20,8 @@ import os
 import time
 import random
 from pathlib import Path
+import mlflow
+import datetime
 
 import accelerate
 import datasets
@@ -186,7 +188,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned",
+        default="text-to-image-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -396,6 +398,12 @@ def parse_args():
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
+    )
+    parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=10,
+        help="Log every X updates steps. Default to 10.",
     )
 
     args = parser.parse_args()
@@ -816,133 +824,151 @@ def main():
     progress_bar.set_description("Steps")
 
     output_list = []
-    start_time = time.time()
-    for epoch in range(first_epoch, args.num_train_epochs):
-        start_time_epoch = time.time()
-        unet.train()
-        train_loss = 0.0
-        for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
+    #Initialize mlflow
+    # mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    experiment_id = mlflow.create_experiment('{}_{}'.format(args.pretrained_model_name_or_path, current_datetime))
+    experiment = mlflow.get_experiment(experiment_id)
+    mlflow_runner = mlflow.start_run(run_name=args.pretrained_model_name_or_path, experiment_id=experiment.experiment_id)
+    with mlflow_runner:
+        start_time = time.time()
+        for epoch in range(first_epoch, args.num_train_epochs):
+            start_time_epoch = time.time()
+            unet.train()
+            train_loss = 0.0
+            for step, batch in enumerate(train_dataloader):
+                # Skip steps until we reach the resumed step
+                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                    if step % args.gradient_accumulation_steps == 0:
+                        progress_bar.update(1)
+                    continue
 
-            with accelerator.accumulate(unet):
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
+                with accelerator.accumulate(unet):
+                    # Convert images to latent space
+                    latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
+                    latents = latents * vae.config.scaling_factor
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                if args.noise_offset:
-                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                    noise += args.noise_offset * torch.randn(
-                        (latents.shape[0], latents.shape[1], 1, 1), device=latents.device
-                    )
-                if args.input_pertubation:
-                    new_noise = noise + args.input_pertubation * torch.randn_like(noise)
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+                    # Sample noise that we'll add to the latents
+                    noise = torch.randn_like(latents)
+                    if args.noise_offset:
+                        # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                        noise += args.noise_offset * torch.randn(
+                            (latents.shape[0], latents.shape[1], 1, 1), device=latents.device
+                        )
+                    if args.input_pertubation:
+                        new_noise = noise + args.input_pertubation * torch.randn_like(noise)
+                    bsz = latents.shape[0]
+                    # Sample a random timestep for each image
+                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                    timesteps = timesteps.long()
 
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                if args.input_pertubation:
-                    noisy_latents = noise_scheduler.add_noise(latents, new_noise, timesteps)
-                else:
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                    # Add noise to the latents according to the noise magnitude at each timestep
+                    # (this is the forward diffusion process)
+                    if args.input_pertubation:
+                        noisy_latents = noise_scheduler.add_noise(latents, new_noise, timesteps)
+                    else:
+                        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    # Get the text embedding for conditioning
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    # Get the target for loss depending on the prediction type
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                    else:
+                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    # Predict the noise residual and compute loss
+                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-                if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                    # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(timesteps)
-                    mse_loss_weights = (
-                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
-                    )
-                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
-                    # rebalance the sample-wise losses with their respective loss weights.
-                    # Finally, we take the mean of the rebalanced loss.
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
-                    loss = loss.mean()
+                    if args.snr_gamma is None:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    else:
+                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                        # This is discussed in Section 4.2 of the same paper.
+                        snr = compute_snr(timesteps)
+                        mse_loss_weights = (
+                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                        )
+                        # We first calculate the original loss. Then we mean over the non-batch dimensions and
+                        # rebalance the sample-wise losses with their respective loss weights.
+                        # Finally, we take the mean of the rebalanced loss.
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                        loss = loss.mean()
 
-                # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+                    # Gather the losses across all processes for logging (if we use distributed training).
+                    avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                    train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
-                # Backpropagate
-                accelerator.backward(loss)
+                    # Backpropagate
+                    accelerator.backward(loss)
+                    if accelerator.sync_gradients:
+                        accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad()
+
+                # Checks if the accelerator has performed an optimization step behind the scenes
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
+                    if args.use_ema:
+                        ema_unet.step(unet.parameters())
+                    progress_bar.update(1)
+                    global_step += 1
+                    accelerator.log({"train_loss": train_loss}, step=global_step)
+                    train_loss = 0.0
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
-                progress_bar.update(1)
-                global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
+                    if global_step % args.checkpointing_steps == 0:
+                        if accelerator.is_main_process:
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                if (step+1) % args.logging_steps == 0:
+                    logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                    # Log loss to MLflow
+                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
+                    progress_bar.set_postfix(**logs)
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
+                if global_step >= args.max_train_steps:
+                    break
 
-            if global_step >= args.max_train_steps:
-                break
-
-        if accelerator.is_main_process:
-            if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
-                log_validation(
-                    vae,
-                    text_encoder,
-                    tokenizer,
-                    unet,
-                    args,
-                    accelerator,
-                    weight_dtype,
-                    global_step,
-                )
-                if args.use_ema:
-                    # Switch back to the original UNet parameters.
-                    ema_unet.restore(unet.parameters())
-        elapsed_time = time.time() - start_time_epoch
-        throughput = (len(train_dataset)) / elapsed_time
-        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
-        output_list.append(output_dict)
+            if accelerator.is_main_process:
+                if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+                    if args.use_ema:
+                        # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                        ema_unet.store(unet.parameters())
+                        ema_unet.copy_to(unet.parameters())
+                    log_validation(
+                        vae,
+                        text_encoder,
+                        tokenizer,
+                        unet,
+                        args,
+                        accelerator,
+                        weight_dtype,
+                        global_step,
+                    )
+                    if args.use_ema:
+                        # Switch back to the original UNet parameters.
+                        ema_unet.restore(unet.parameters())
+            # Log epoch throughput
+            elapsed_time = time.time() - start_time_epoch
+            epoch_throughput = (len(train_dataset)) / elapsed_time
+            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
+            output_list.append(output_dict)
+            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
         
-    elapsed_time = time.time() - start_time
+        # Log summary throughput
+        elapsed_time = time.time() - start_time
+        throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
+        output_list.append(output_dict)
+        mlflow.log_metric('avg_throughput', throughput)
+        mlflow.log_params({'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size})
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -967,9 +993,6 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
     
-    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-    output_list.append(output_dict)
     
     import json
     with open(args.log_dir, "w") as f:

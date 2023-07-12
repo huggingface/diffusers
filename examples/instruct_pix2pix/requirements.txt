@@ -7,3 +7,4 @@ ftfy
 tensorboard
 matplotlib
 opencv-python
+mlflow

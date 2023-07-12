@@ -58,12 +58,12 @@ execute_training() {
             mkdir -p ../log_terminal/${task}
             bash $train_script -t $task -m $model -o $output_dir -l $log_dir -b $batch_size >> "../log_terminal/${task}/${model_name}.log" 2>&1 &
             pid=$!
-            bash ../all_scripts/memory_record_moreh.sh $pid $task $model $batch_size
+            bash ../all_scripts/memory_record_hac.sh $pid $task $model $batch_size
             echo Done training model $model for task $task
 }
 
 # Function to delete env
-base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (read only)//' | tr -d ' ')
+base_env=$(conda info | grep -i 'base environment' | awk -F': ' '{print $2}' | sed 's/ (writable)//' | tr -d ' ')
 execute_deleting_env() {
             task=$1
             echo "deleting env for task $task.."

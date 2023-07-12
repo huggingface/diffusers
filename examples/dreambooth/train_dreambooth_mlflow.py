@@ -23,6 +23,8 @@ import os
 import time
 import warnings
 from pathlib import Path
+import mlflow
+import datetime
 
 import numpy as np
 import torch
@@ -266,13 +268,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="text-inversion-model",
+        default="dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
         "--log_dir",
         type=str,
-        default="logs",
+        default="logs/dreambooth.json",
         help="The logs directory where the model output such as throughput and loss will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -521,6 +523,12 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--skip_save_text_encoder", action="store_true", required=False, help="Set to not save text encoder"
+    )
+    parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=10,
+        help="Log every X updates steps. Default to 10.",
     )
 
     if input_args is not None:
@@ -1134,139 +1142,155 @@ def main(args):
     progress_bar.set_description("Steps")
 
     output_list = []
-    start_time = time.time()
-    for epoch in range(first_epoch, args.num_train_epochs):
-        start_time_epoch = time.time()
-        unet.train()
-        if args.train_text_encoder:
-            text_encoder.train()
-        for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
+    
+    #Initialize mlflow
+    # mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    experiment_id = mlflow.create_experiment('{}_{}'.format(args.pretrained_model_name_or_path, current_datetime))
+    experiment = mlflow.get_experiment(experiment_id)
+    mlflow_runner = mlflow.start_run(run_name=args.pretrained_model_name_or_path, experiment_id=experiment.experiment_id)
+    with mlflow_runner:
+        start_time = time.time()
+        for epoch in range(first_epoch, args.num_train_epochs):
+            start_time_epoch = time.time()
+            unet.train()
+            if args.train_text_encoder:
+                text_encoder.train()
+            for step, batch in enumerate(train_dataloader):
+                # Skip steps until we reach the resumed step
+                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                    if step % args.gradient_accumulation_steps == 0:
+                        progress_bar.update(1)
+                    continue
 
-            with accelerator.accumulate(unet):
-                pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                with accelerator.accumulate(unet):
+                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
-                if vae is not None:
-                    # Convert images to latent space
-                    model_input = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                    model_input = model_input * vae.config.scaling_factor
-                else:
-                    model_input = pixel_values
+                    if vae is not None:
+                        # Convert images to latent space
+                        model_input = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+                        model_input = model_input * vae.config.scaling_factor
+                    else:
+                        model_input = pixel_values
 
-                # Sample noise that we'll add to the model input
-                if args.offset_noise:
-                    noise = torch.randn_like(model_input) + 0.1 * torch.randn(
-                        model_input.shape[0], model_input.shape[1], 1, 1, device=model_input.device
+                    # Sample noise that we'll add to the model input
+                    if args.offset_noise:
+                        noise = torch.randn_like(model_input) + 0.1 * torch.randn(
+                            model_input.shape[0], model_input.shape[1], 1, 1, device=model_input.device
+                        )
+                    else:
+                        noise = torch.randn_like(model_input)
+                    bsz = model_input.shape[0]
+                    # Sample a random timestep for each image
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                     )
-                else:
-                    noise = torch.randn_like(model_input)
-                bsz = model_input.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
-                )
-                timesteps = timesteps.long()
+                    timesteps = timesteps.long()
 
-                # Add noise to the model input according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+                    # Add noise to the model input according to the noise magnitude at each timestep
+                    # (this is the forward diffusion process)
+                    noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
-                # Get the text embedding for conditioning
-                if args.pre_compute_text_embeddings:
-                    encoder_hidden_states = batch["input_ids"]
-                else:
-                    encoder_hidden_states = encode_prompt(
-                        text_encoder,
-                        batch["input_ids"],
-                        batch["attention_mask"],
-                        text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
-                    )
-
-                # Predict the noise residual
-                model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
-
-                if model_pred.shape[1] == 6:
-                    model_pred, _ = torch.chunk(model_pred, 2, dim=1)
-
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(model_input, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                if args.with_prior_preservation:
-                    # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
-                    model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
-                    target, target_prior = torch.chunk(target, 2, dim=0)
-
-                    # Compute instance loss
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
-                    # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
-
-                    # Add the prior loss to the instance loss.
-                    loss = loss + args.prior_loss_weight * prior_loss
-                else:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
-                accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
-                        if args.train_text_encoder
-                        else unet.parameters()
-                    )
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
-
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
-
-                if accelerator.is_main_process:
-                    images = []
-                    if global_step % args.checkpointing_steps == 0:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
-
-                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        images = log_validation(
+                    # Get the text embedding for conditioning
+                    if args.pre_compute_text_embeddings:
+                        encoder_hidden_states = batch["input_ids"]
+                    else:
+                        encoder_hidden_states = encode_prompt(
                             text_encoder,
-                            tokenizer,
-                            unet,
-                            vae,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            epoch,
-                            validation_prompt_encoder_hidden_states,
-                            validation_prompt_negative_prompt_embeds,
+                            batch["input_ids"],
+                            batch["attention_mask"],
+                            text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                         )
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
+                    # Predict the noise residual
+                    model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
 
-            if global_step >= args.max_train_steps:
-                break
-        
-        elapsed_time = time.time() - start_time_epoch
-        throughput = (len(train_dataset)) / elapsed_time
-        output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": throughput}
+                    if model_pred.shape[1] == 6:
+                        model_pred, _ = torch.chunk(model_pred, 2, dim=1)
+
+                    # Get the target for loss depending on the prediction type
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        target = noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    else:
+                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                    if args.with_prior_preservation:
+                        # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
+                        model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+                        target, target_prior = torch.chunk(target, 2, dim=0)
+
+                        # Compute instance loss
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                        # Compute prior loss
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+
+                        # Add the prior loss to the instance loss.
+                        loss = loss + args.prior_loss_weight * prior_loss
+                    else:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                    accelerator.backward(loss)
+                    if accelerator.sync_gradients:
+                        params_to_clip = (
+                            itertools.chain(unet.parameters(), text_encoder.parameters())
+                            if args.train_text_encoder
+                            else unet.parameters()
+                        )
+                        accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+
+                # Checks if the accelerator has performed an optimization step behind the scenes
+                if accelerator.sync_gradients:
+                    progress_bar.update(1)
+                    global_step += 1
+
+                    if accelerator.is_main_process:
+                        images = []
+                        if global_step % args.checkpointing_steps == 0:
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
+
+                        if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                            images = log_validation(
+                                text_encoder,
+                                tokenizer,
+                                unet,
+                                vae,
+                                args,
+                                accelerator,
+                                weight_dtype,
+                                epoch,
+                                validation_prompt_encoder_hidden_states,
+                                validation_prompt_negative_prompt_embeds,
+                            )
+
+                if (step+1) % args.logging_steps == 0:
+                    logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}                    
+                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
+                    progress_bar.set_postfix(**logs)
+                    accelerator.log(logs, step=global_step)
+
+                if global_step >= args.max_train_steps:
+                    break
+            
+            elapsed_time = time.time() - start_time_epoch
+            epoch_throughput = (len(train_dataset)) / elapsed_time
+            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
+            output_list.append(output_dict)
+            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
+            
+        elapsed_time = time.time() - start_time
+        throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
+        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
         output_list.append(output_dict)
-        
-    elapsed_time = time.time() - start_time
+        mlflow.log_metric('avg_throughput', throughput)
+        mlflow.log_params({'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size})
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1315,10 +1339,6 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-    
-    throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-    output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-    output_list.append(output_dict)
     
     import json
     with open(args.log_dir, "w") as f:

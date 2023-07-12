@@ -24,13 +24,13 @@ fi
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=4
+  batch_size=800
 fi
 
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_unconditional.py \
+conda run -n ${env_name} python3 train_unconditional_mlflow.py \
   --model_config_name_or_path ${model_name} \
   --dataset_name="huggan/pokemon" \
   --resolution=64 --center_crop --random_flip \
@@ -44,3 +44,4 @@ conda run -n ${env_name} python3 train_unconditional.py \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \
+  --logging_steps=100 \

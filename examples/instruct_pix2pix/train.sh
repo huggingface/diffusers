@@ -22,19 +22,18 @@ fi
 
 DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-moreh-switch-model -M 1
 
 # Check if $batch_size is provided , if not use default value of 4
 if expr "$batch_size" + 0 > /dev/null 2>&1; then
   batch_size=$batch_size
 else
-  batch_size=4
+  batch_size=60
 fi
 
 # Run training script
 echo "# ========================================================= #"
 echo "training ${model_name}.."
-conda run -n ${env_name} python3 train_instruct_pix2pix.py \
+conda run -n ${env_name} python3 train_instruct_pix2pix_mlflow.py \
     --pretrained_model_name_or_path ${model_name} \
     --dataset_name=$DATASET_ID \
     --resolution=256 --random_flip \
@@ -45,3 +44,4 @@ conda run -n ${env_name} python3 train_instruct_pix2pix.py \
     --seed=42 \
     --output_dir ${output_dir} \
     --log_dir "${log_dir}" \
+    --logging_steps=100 \
