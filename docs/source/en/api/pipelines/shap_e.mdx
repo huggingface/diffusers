@@ -153,7 +153,37 @@ ply_path = export_to_ply(images[0], "3d_cake.ply")
 print(f"saved to folder: {ply_path}")
 ```
 
+Huggingface Datasets supports mesh visualization for mesh files in `glb` format. Below we will show you how to convert your mesh file into `glb` format so that you can use the Dataset viewer to render 3D objects. 
 
+We need to install `trimesh` library.
+
+```
+pip install trimesh
+```
+
+To convert the mesh file into `glb` format, 
+
+```python
+import trimesh
+
+mesh = trimesh.load("3d_cake.ply")
+mesh.export("3d_cake.glb", file_type="glb")
+```
+
+By default, the mesh output of Shap-E is from the bottom viewpoint; you can change the default viewpoint by applying a rotation transformation
+
+```python
+import trimesh
+import numpy as np
+
+mesh = trimesh.load("3d_cake.ply")
+rot = trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0])
+mesh = mesh.apply_transform(rot)
+mesh.export("3d_cake.glb", file_type="glb")
+```
+
+Now you can upload your mesh file to your dataset and visualize it! Here is the link to the 3D cake we just generated
+https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/shap_e/3d_cake.glb
 
 ## ShapEPipeline
 [[autodoc]] ShapEPipeline
