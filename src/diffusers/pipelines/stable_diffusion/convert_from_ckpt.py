@@ -1172,6 +1172,11 @@ def download_from_original_stable_diffusion_ckpt(
         StableUnCLIPPipeline,
     )
 
+    if not is_accelerate_available():
+        raise ImportError(
+            "To correctly use `from_single_file`, please make sure that `accelerate` is installed. You can install it with `pip install accelerate`."
+        )
+
     if pipeline_class is None:
         pipeline_class = StableDiffusionPipeline
 
