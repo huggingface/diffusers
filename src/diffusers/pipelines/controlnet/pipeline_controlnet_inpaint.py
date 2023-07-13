@@ -1275,9 +1275,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         # 7.1 Create tensor stating which controlnets to keep
         controlnet_keep = []
-        for i in range(num_inference_steps):
+        for i in range(len(timesteps)):
             keeps = [
-                1.0 - float(i / num_inference_steps < s or (i + 1) / num_inference_steps > e)
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
             controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)

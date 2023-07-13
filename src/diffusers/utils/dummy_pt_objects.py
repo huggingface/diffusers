@@ -210,6 +210,21 @@ class AudioPipelineOutput(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class ConsistencyModelPipeline(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class DanceDiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -376,6 +391,21 @@ class RePaintPipeline(metaclass=DummyObject):
 
 
 class ScoreSdeVePipeline(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class CMStochasticIterativeScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

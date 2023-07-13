@@ -114,6 +114,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.sample_size = sample_size
 
+        if num_attention_heads is not None:
+            raise NotImplementedError(
+                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
+            )
+
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
         # The reason for this behavior is to correct for incorrectly named variables that were introduced
@@ -389,6 +394,46 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
+    def enable_forward_chunking(self, chunk_size=None, dim=0):
+        """
+        Sets the attention processor to use [feed forward
+        chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
+
+        Parameters:
+            chunk_size (`int`, *optional*):
+                The chunk size of the feed-forward layers. If not specified, will run feed-forward layer individually
+                over each tensor of dim=`dim`.
+            dim (`int`, *optional*, defaults to `0`):
+                The dimension over which the feed-forward computation should be chunked. Choose between dim=0 (batch)
+                or dim=1 (sequence length).
+        """
+        if dim not in [0, 1]:
+            raise ValueError(f"Make sure to set `dim` to either 0 or 1, not {dim}")
+
+        # By default chunk size is 1
+        chunk_size = chunk_size or 1
+
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, chunk_size, dim)
+
+    def disable_forward_chunking(self):
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, None, 0)
+
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
@@ -486,8 +531,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_in(sample)
 
         sample = self.transformer_in(
-            sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-        ).sample
+            sample,
+            num_frames=num_frames,
+            cross_attention_kwargs=cross_attention_kwargs,
+            return_dict=False,
+        )[0]
 
         # 3. down
         down_block_res_samples = (sample,)

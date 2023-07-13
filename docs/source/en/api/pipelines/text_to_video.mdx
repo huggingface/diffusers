@@ -37,8 +37,11 @@ Resources:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [TextToVideoSDPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py) | *Text-to-Video Generation* | [🤗 Spaces](https://huggingface.co/spaces/damo-vilab/modelscope-text-to-video-synthesis)
+| [VideoToVideoSDPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth_img2img.py) | *Text-Guided Video-to-Video Generation* | [(TODO)🤗 Spaces]()
 
 ## Usage example 
+
+### `text-to-video-ms-1.7b`
 
 Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
 
@@ -119,12 +122,98 @@ Here are some sample outputs:
     </tr>
 </table>
 
+### `cerspense/zeroscope_v2_576w` & `cerspense/zeroscope_v2_XL`
+
+Zeroscope are watermark-free model and have been trained on specific sizes such as `576x320` and `1024x576`.
+One should first generate a video using the lower resolution checkpoint [`cerspense/zeroscope_v2_576w`](https://huggingface.co/cerspense/zeroscope_v2_576w) with [`TextToVideoSDPipeline`],
+which can then be upscaled using [`VideoToVideoSDPipeline`] and [`cerspense/zeroscope_v2_XL`](https://huggingface.co/cerspense/zeroscope_v2_XL).
+
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
+
+pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+# memory optimization
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
+pipe.enable_vae_slicing()
+
+prompt = "Darth Vader surfing a wave"
+video_frames = pipe(prompt, num_frames=24).frames
+video_path = export_to_video(video_frames)
+video_path
+```
+
+Now the video can be upscaled:
+
+```py
+pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.enable_model_cpu_offload()
+
+# memory optimization
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
+pipe.enable_vae_slicing()
+
+video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
+
+video_frames = pipe(prompt, video=video, strength=0.6).frames
+video_path = export_to_video(video_frames)
+video_path
+```
+
+Here are some sample outputs: 
+
+<table>
+    <tr>
+        <td ><center>
+        Darth vader surfing in waves.
+        <br>
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/darthvader_cerpense.gif"
+            alt="Darth vader surfing in waves."
+            style="width: 576px;" />
+        </center></td>
+    </tr>
+</table>
+
+### Memory optimizations
+
+Text-guided video generation with [`~TextToVideoSDPipeline`] and [`~VideoToVideoSDPipeline`] is very memory intensive both
+when denoising with [`~UNet3DConditionModel`] and when decoding with [`~AutoencoderKL`]. It is possible though to reduce 
+memory usage at the cost of increased runtime to achieve the exact same result. To do so, it is recommended to enable
+**forward chunking** and **vae slicing**:
+
+Forward chunking via [`~UNet3DConditionModel.enable_forward_chunking`]is explained in [this blog post](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers) and 
+allows to significantly reduce the required memory for the unet. You can chunk the feed forward layer over the `num_frames`
+dimension by doing:
+
+```py
+pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
+```
+
+Vae slicing via [`~TextToVideoSDPipeline.enable_vae_slicing`] and [`~VideoToVideoSDPipeline.enable_vae_slicing`] also 
+gives significant memory savings since the two pipelines decode all image frames at once.
+
+```py
+pipe.enable_vae_slicing()
+```
+
 ## Available checkpoints 
 
 * [damo-vilab/text-to-video-ms-1.7b](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b/)
 * [damo-vilab/text-to-video-ms-1.7b-legacy](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b-legacy)
+* [cerspense/zeroscope_v2_576w](https://huggingface.co/cerspense/zeroscope_v2_576w)
+* [cerspense/zeroscope_v2_XL](https://huggingface.co/cerspense/zeroscope_v2_XL)
 
 ## TextToVideoSDPipeline
 [[autodoc]] TextToVideoSDPipeline
+	- all
+	- __call__
+
+## VideoToVideoSDPipeline
+[[autodoc]] VideoToVideoSDPipeline
 	- all
 	- __call__
