@@ -130,7 +130,7 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 
 ### Generate mesh
 
-For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the `export_to_ply` utility function to save the output as `ply` file. We also provide a `export_to_obj` function that you can use to save mesh output as `obj` files.
+For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the `export_to_ply` utility function to save the output as a `ply` file. We also provide a `export_to_obj` function that you can use to save mesh outputs as `obj` files.
 
 ```python
 import torch
@@ -141,7 +141,7 @@ from diffusers.utils import export_to_ply
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 repo = "openai/shap-e"
-pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16, variant="fp16")
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
