@@ -199,6 +199,8 @@ def parse_args():
     parser.add_argument("--ema_power", type=float, default=3 / 4, help="The power value for the EMA decay.")
     parser.add_argument("--ema_max_decay", type=float, default=0.9999, help="The maximum decay magnitude for EMA.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
+    parser.add_argument("--testing", action="store_true", help="If running a test")
+
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
     parser.add_argument(
         "--hub_model_id",
@@ -354,14 +356,23 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo_id = create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo_id = create_repo(repo_name, exist_ok=True, token=args.hub_token).repo_id
             repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Initialize the model, using a smaller model than the one defined in the original paper by default
-    if args.model_config_name_or_path is None:
+    # For testing use a dummy model
+    if args.testing: 
+        config = UNet2DModel.load_config('diffusers/consistency-models-test', subfolder="test_unet")
+    elif args.model_config_name_or_path is not None:
+        config = UNet2DModel.load_config(args.model_config_name_or_path)
+    # Use the config if provided, model and target model have the same structure
+    if config is not None:
+        model = UNet2DModel.from_config(config)
+        target_model = UNet2DModel.from_config(config)
+    # Otherwise, use a default config
+    else:
         model = UNet2DModel(
                 sample_size= args.resolution,
                 in_channels=3,
@@ -401,15 +412,12 @@ def main(args):
                 resnet_time_scale_shift="scale_shift",
                 upsample_type="resnet",
                 downsample_type="resnet"
-                )
+                )    
+    if args.testing:
+        teacher_model = UNet2DModel.from_config(config)
     else:
-        config = UNet2DModel.load_config(args.model_config_name_or_path)
-        model = UNet2DModel.from_config(config)
-        target_model = UNet2DModel.from_config(config)
-
-    
-    # load the model to distill into a consistency model
-    teacher_model = DDPMPipeline.from_pretrained(args.pretrained_teacher_model_name_or_path).unet
+        # load the model to distill into a consistency model
+        teacher_model = DDPMPipeline.from_pretrained(args.pretrained_teacher_model_name_or_path).unet
     noise_scheduler = CMStochasticIterativeScheduler()
     num_scales = 40
 
@@ -421,12 +429,12 @@ def main(args):
 
     if accelerator.unwrap_model(model).dtype != torch.float32:
         raise ValueError(
-            f"Unet loaded as datatype {accelerator.unwrap_model(model).dtype}. {low_precision_error_string}"
+            f"Consistency Model loaded as datatype {accelerator.unwrap_model(model).dtype}. {low_precision_error_string}"
         )
 
-    if args.train_text_encoder and accelerator.unwrap_model(teacher_model).dtype != torch.float32:
+    if accelerator.unwrap_model(teacher_model).dtype != torch.float32:
         raise ValueError(
-            f"Text encoder loaded as datatype {accelerator.unwrap_model(teacher_model).dtype}."
+            f"Teacher_model loaded as datatype {accelerator.unwrap_model(teacher_model).dtype}."
             f" {low_precision_error_string}"
         )
 
@@ -442,7 +450,7 @@ def main(args):
         model_config=model.config,
     )
 
-    # Initialize the optimizer
+    # Initialize the optimizer # TODO: Change this to match the paper, RAdam
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -480,12 +488,16 @@ def main(args):
     )
 
     def transform_images(examples):
-        images = [augmentations(image.convert("RGB")) for image in examples["img"]]
+        img_key = "image" if "image" in examples else "img"
+        images = [augmentations(image.convert("RGB")) for image in examples[img_key]]
         labels = [torch.tensor(label) for label in examples["label"]]
         return {"input": images, "labels": labels}
 
+
+
     logger.info(f"Dataset size: {len(dataset)}")
     dataset.set_transform(transform_images)
+
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
@@ -499,10 +511,11 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema = accelerator.prepare(
-        model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model, target_model_ema
+    model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model = accelerator.prepare(
+        model, optimizer, noise_scheduler, train_dataloader, lr_scheduler, teacher_model, target_model
     )
     noise_scheduler.set_timesteps(num_scales, device=accelerator.device)
+    target_model_ema.to(accelerator.device) # TODO accelerate.prepare doesn't work on this for some reason
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -668,7 +681,6 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 unet = accelerator.unwrap_model(model)
-
                 target_model_ema.store(unet.parameters())
                 target_model_ema.copy_to(unet.parameters())
 
@@ -683,7 +695,7 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     num_inference_steps=1,
-                    output_type="numpy",
+                    output_type="np",
                 ).images
 
                 target_model_ema.restore(unet.parameters())
@@ -707,7 +719,6 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 unet = accelerator.unwrap_model(model)
-
                 target_model_ema.store(unet.parameters())
                 target_model_ema.copy_to(unet.parameters())
 
@@ -717,24 +728,39 @@ def main(args):
                 )
 
                 pipeline.save_pretrained(args.output_dir)
-
                 target_model_ema.restore(unet.parameters())
+        
+    if accelerator.is_main_process and args.push_to_hub:
+        unet = accelerator.unwrap_model(model)
+        target_model_ema.copy_to(unet.parameters())
 
-                if args.push_to_hub:
-                    save_model_card(
-                        repo_id,
-                        images=images,
-                        base_model=args.pretrained_teacher_model_name_or_path,
-                        repo_folder=args.output_dir,
-                        pipeline=pipeline,
-                    )
-                    upload_folder(
-                        repo_id=repo_id,
-                        folder_path=args.output_dir,
-                        commit_message="End of training",
-                        ignore_patterns=["step_*", "epoch_*"],
-                    )
-                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
+        pipeline = ConsistencyModelPipeline(
+            unet=unet,
+            scheduler=noise_scheduler,
+        )
+
+        generator = torch.Generator(device=pipeline.device).manual_seed(0)
+        # run pipeline in inference (sample random noise and denoise)
+        images = pipeline(
+            generator=generator,
+            batch_size=args.eval_batch_size,
+            num_inference_steps=1,
+            output_type="pil",
+        ).images
+
+        save_model_card(
+            repo_id,
+            images=images,
+            base_model=args.pretrained_teacher_model_name_or_path,
+            repo_folder=args.output_dir,
+            pipeline=pipeline,
+        )
+        upload_folder(
+            repo_id=repo_id,
+            folder_path=args.output_dir,
+            commit_message="End of training",
+            ignore_patterns=["step_*", "epoch_*"],
+        )
 
     accelerator.end_training()
 
