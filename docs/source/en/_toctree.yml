@@ -224,7 +224,7 @@
       title: Score SDE VE
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
-    - local: api/pipelines/self-segmentation-stable-diffusion
+    - local: api/pipelines/self_segmentation_stable_diffusion
       title: Self-Segmentation Stable Diffusion
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
