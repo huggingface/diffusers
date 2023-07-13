@@ -556,7 +556,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -819,9 +818,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                         callback(i, t, latents)
 
         # make sure the VAE is in float32 mode, as it overflows in float16
-        if self.vae.dtype == torch.float16 and self.vae.config.upcast_precision:
+        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
             self.upcast_vae()
-            latents = latents.to(self.vae.post_quant_conv.dtype)
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]

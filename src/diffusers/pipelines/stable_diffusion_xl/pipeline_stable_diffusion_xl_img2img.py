@@ -542,8 +542,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
-            image = image.float()
-            self.vae.to(dtype=torch.float32)
+            if self.vae.config.force_upcast:
+                image = image.float()
+                self.vae.to(dtype=torch.float32)
 
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
@@ -559,9 +560,10 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
             else:
                 init_latents = self.vae.encode(image).latent_dist.sample(generator)
 
-            self.vae.to(dtype)
-            init_latents = init_latents.to(dtype)
+            if self.vae.config.force_upcast:
+                self.vae.to(dtype)
 
+            init_latents = init_latents.to(dtype)
             init_latents = self.vae.config.scaling_factor * init_latents
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
@@ -643,7 +645,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -953,9 +954,9 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
                         callback(i, t, latents)
 
         # make sure the VAE is in float32 mode, as it overflows in float16
-        if self.vae.dtype == torch.float16 and self.vae.config.upcast_precision:
+        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
             self.upcast_vae()
-            latents = latents.to(self.vae.post_quant_conv.dtype)
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
