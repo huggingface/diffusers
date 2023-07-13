@@ -57,7 +57,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionPipeline
 
-        >>> pipe = SelfSegmentationStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = SelfSegmentationStableDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a cat with sunglasses"

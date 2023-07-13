@@ -29,9 +29,16 @@ from diffusers import (
 )
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
-
-from tests.pipelines.pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from tests.pipelines.test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from tests.pipelines.pipeline_params import (
+    TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_TO_IMAGE_PARAMS,
+)
+from tests.pipelines.test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -135,7 +142,6 @@ class SelfSegmentationStableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-
     def test_self_segmentation_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -188,7 +194,6 @@ class SelfSegmentationStableDiffusionPipelineFastTests(
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
 
-
 @slow
 @require_torch_gpu
 class SelfSegmentationStableDiffusionSlowTests(unittest.TestCase):
@@ -228,12 +233,11 @@ class SelfSegmentationStableDiffusionSlowTests(unittest.TestCase):
 
         expected_image_slice = np.array([0.7193, 0.7838, 0.7939, 0.6914, 0.8129, 0.8475, 0.8973, 0.9721, 0.9805])
         expected_seg_map_slice = np.array([1, 5, 5, 1, 1, 5, 0, 4, 1])
-        expected_labels = {0: 'background', 1: 3, 2: 'background', 3: 1, 4: 1, 5: 3}
+        expected_labels = {0: "background", 1: 3, 2: "background", 3: 1, 4: 1, 5: 3}
 
         assert np.abs(expected_image_slice - image_slice).max() < 1e-2
         assert np.abs(expected_seg_map_slice - seg_map_slice).max() < 1e-2
         assert seg_labels == expected_labels
-
 
     def test_self_segmentation_stable_diffusion_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
