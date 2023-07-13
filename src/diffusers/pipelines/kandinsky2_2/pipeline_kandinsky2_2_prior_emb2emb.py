@@ -459,10 +459,10 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `emb`. Must be between 0 and 1. `image`
+                Conceptually, indicates how much to transform the reference image embedding. Must be between 0 and 1. `image`
                 will be used as a starting point, adding more noise to it the larger the `strength`. The number of
                 denoising steps depends on the amount of noise initially added.
-            image (`PIL.Image.Image` or `torch.FloatTensor`):
+            image (`PIL.Image.Image`, `List[PIL.Image.Image]`, `torch.FloatTensor`, or `List[torch.FloatTensor]`):
                 The image embedding that will be used as the starting point for the prior diffusion process. Can accpet
                 image or image embedding. If passing an image as `image`, either as a PIL.Image.Image, or a pytorch
                 tensor represent the image batch, it will first be encoded into image embedding using image_encoder; If
