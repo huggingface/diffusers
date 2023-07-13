@@ -192,7 +192,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 list of weights for each condition in `images_and_prompts`
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -442,7 +442,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: Optional[str] = "pt",
         return_dict: bool = True,
     ):
         """
@@ -456,7 +456,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):

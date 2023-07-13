@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
 import unittest
 
@@ -23,12 +22,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (
@@ -165,38 +163,71 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
     def test_save_load_optional_components(self):
         pass
 
+    def test_stable_diffusion_xl_img2img_negative_prompt_embeds(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-@slow
-@require_torch_gpu
-class StableDiffusionXLImg2ImgPipelineSlowTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+        # forward without prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        negative_prompt = 3 * ["this is a negative prompt"]
+        inputs["negative_prompt"] = negative_prompt
+        inputs["prompt"] = 3 * [inputs["prompt"]]
 
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
-        inputs = {
-            "prompt": "a photograph of an astronaut riding a horse",
-            "latents": latents,
-            "generator": generator,
-            "num_inference_steps": 3,
-            "guidance_scale": 7.5,
-            "output_type": "numpy",
-        }
-        return inputs
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
 
-    def test_stable_diffusion_default_euler(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        # forward with prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        negative_prompt = 3 * ["this is a negative prompt"]
+        prompt = 3 * [inputs.pop("prompt")]
 
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = sd_pipe.encode_prompt(prompt, negative_prompt=negative_prompt)
 
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
-        assert np.abs(image_slice - expected_slice).max() < 7e-3
+        output = sd_pipe(
+            **inputs,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+        )
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # make sure that it's equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    @require_torch_gpu
+    def test_stable_diffusion_xl_offloads(self):
+        pipes = []
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipes.append(sd_pipe)
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe.enable_model_cpu_offload()
+        pipes.append(sd_pipe)
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe.enable_sequential_cpu_offload()
+        pipes.append(sd_pipe)
+
+        image_slices = []
+        for pipe in pipes:
+            pipe.unet.set_default_attn_processor()
+
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs).images
+
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
