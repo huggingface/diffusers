@@ -147,15 +147,9 @@ pipe = pipe.to(device)
 guidance_scale = 15.0
 prompt = "A birthday cupcake"
 
-images = pipe(
-    prompt,
-    guidance_scale=guidance_scale,
-    num_inference_steps=64,
-    frame_size=256,
-    output_type="mesh"
-).images
+images = pipe(prompt, guidance_scale=guidance_scale, num_inference_steps=64, frame_size=256, output_type="mesh").images
 
-ply_path= export_to_ply(images[0], "3d_cake.ply")
+ply_path = export_to_ply(images[0], "3d_cake.ply")
 print(f"saved to folder: {ply_path}")
 ```
 

@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import random
 import re
+import struct
 import tempfile
 import unittest
 import urllib.parse
@@ -13,8 +14,6 @@ from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import List, Optional, Union
-
-import struct
 
 import numpy as np
 import PIL.Image
@@ -329,7 +328,7 @@ def buffered_writer(raw_f):
 def export_to_ply(mesh, output_ply_path: str = None):
     """
     Write a PLY file for a mesh.
-    """ 
+    """
     if output_ply_path is None:
         output_ply_path = tempfile.NamedTemporaryFile(suffix=".ply").name
 
