@@ -463,9 +463,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 will be used as a starting point, adding more noise to it the larger the `strength`. The number of
                 denoising steps depends on the amount of noise initially added.
             image (`PIL.Image.Image` or `torch.FloatTensor`):
-                The image embedding that will be used as the starting point for the prior diffusion process. Can accpet
-                image or image embedding. If passing an image as `image`, either as a PIL.Image.Image, or a pytorch
-                tensor represent the image batch, it will first be encoded into image embedding using image_encoder; If
+                The image embedding that will be used as the starting point for the prior diffusion process. Can accept
+                image or image embedding. If passing an image as `image`, either as a PIL.Image.Image, or a PyTorch
+                tensor, it will first be encoded into image embedding using `image_encoder`. If
                 passing image embedding directly, it will not be encoded again.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
