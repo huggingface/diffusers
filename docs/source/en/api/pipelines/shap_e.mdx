@@ -128,6 +128,39 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 ```
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_out.gif)
 
+### Generate mesh
+
+For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the `export_to_ply` utility function to save the output as `ply` file. We also provide a `export_to_obj` function that you can use to save mesh output as `obj` files.
+
+```python
+import torch
+
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_ply
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+repo = "openai/shap-e"
+pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
+pipe = pipe.to(device)
+
+guidance_scale = 15.0
+prompt = "A birthday cupcake"
+
+images = pipe(
+    prompt,
+    guidance_scale=guidance_scale,
+    num_inference_steps=64,
+    frame_size=256,
+    output_type="mesh"
+).images
+
+ply_path= export_to_ply(images[0], "3d_cake.ply")
+print(f"saved to folder: {ply_path}")
+```
+
+
+
 ## ShapEPipeline
 [[autodoc]] ShapEPipeline
 	- all
