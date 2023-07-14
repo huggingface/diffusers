@@ -234,7 +234,7 @@ The refiner can also very well be used in an in-painting setting. To do so just 
 
 </Tip>
 
-To use the refiner in the Ensemble of Expert Denoisers setting you can do the following:
+To use the refiner for inpainting in the Ensemble of Expert Denoisers setting you can do the following:
 
 ```py
 from diffusers import StableDiffusionXLInpaintPipeline
@@ -283,7 +283,7 @@ image = refiner(
 ).images[0]
 ```
 
-To use the refiner in the standard SDE-style setting, simply remove `denoising_end` and `denoising_start` and choose a smaller
+To use the refiner for inpainting in the standard SDE-style setting, simply remove `denoising_end` and `denoising_start` and choose a smaller
 number of inference steps for the refiner.
 
 ### Loading single file checkpoints / original file format
