@@ -181,7 +181,7 @@
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/attend_and_excite
-      title: Attend and Excite
+      title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
     - local: api/pipelines/audioldm
@@ -211,7 +211,7 @@
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
-      title: MultiDiffusion Panorama
+      title: MultiDiffusion
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
@@ -265,11 +265,11 @@
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
     - local: api/pipelines/model_editing
-      title: Text-to-Image Model Editing
+      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
-      title: Text-to-Video
+      title: Text-to-video
     - local: api/pipelines/text_to_video_zero
-      title: Text-to-Video Zero
+      title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
