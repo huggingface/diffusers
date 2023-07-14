@@ -75,10 +75,8 @@ class WuerstchenGeneratorPipelineOutput(BaseOutput):
     Output class for WuerstchenPriorPipeline.
 
     Args:
-        image_embeds (`torch.FloatTensor` or `np.ndarray`)
-            Prior image embeddings for text prompt
-        text_embeds (`torch.FloatTensor` or `np.ndarray`)
-            Clip text embeddings for unconditional tokens
+        images (`torch.FloatTensor` or `np.ndarray`)
+            Generated images for text prompt.
     """
 
     images: Union[torch.FloatTensor, np.ndarray]
@@ -320,20 +318,20 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(total_num_inference_steps, device=device)
         prior_timesteps_tensor = self.scheduler.timesteps
 
-        def seed_everything(seed: int):
-            import random, os
-            import numpy as np
-            import torch
+        # def seed_everything(seed: int):
+        #     import random, os
+        #     import numpy as np
+        #     import torch
 
-            random.seed(seed)
-            os.environ["PYTHONHASHSEED"] = str(seed)
-            np.random.seed(seed)
-            torch.manual_seed(seed)
-            torch.cuda.manual_seed(seed)
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = True
+        #     random.seed(seed)
+        #     os.environ["PYTHONHASHSEED"] = str(seed)
+        #     np.random.seed(seed)
+        #     torch.manual_seed(seed)
+        #     torch.cuda.manual_seed(seed)
+        #     torch.backends.cudnn.deterministic = True
+        #     torch.backends.cudnn.benchmark = True
 
-        seed_everything(42)
+        # seed_everything(42)
 
         latents = self.prepare_latents(
             effnet_features_shape,
@@ -358,8 +356,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
             if do_classifier_free_guidance:
                 predicted_image_embedding_text, predicted_image_embedding_uncond = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                predicted_image_embedding = torch.lerp(
+                    predicted_image_embedding_uncond, predicted_image_embedding_text, guidance_scale
                 )
 
             latents = self.scheduler.step(
@@ -588,8 +586,8 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
             if do_classifier_free_guidance:
                 predicted_image_embedding_text, predicted_image_embedding_uncond = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                predicted_image_embedding = torch.lerp(
+                    predicted_image_embedding_uncond, predicted_image_embedding_text, guidance_scale
                 )
 
             latents = self.scheduler.step(
