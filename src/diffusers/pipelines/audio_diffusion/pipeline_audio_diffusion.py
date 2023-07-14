@@ -38,12 +38,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         vqae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         mel ([`Mel`]):
             Transform audio into a spectrogram.
-        scheduler ([`DDIMScheduler` or `DDPMScheduler`]):
+        scheduler ([`DDIMScheduler`] or [`DDPMScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler` or `DDPMScheduler`].
+            [`DDIMScheduler`] or [`DDPMScheduler`].
     """
 
     _optional_components = ["vqvae"]
@@ -59,10 +59,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
 
     def get_default_steps(self) -> int:
-        """Returns default number of steps recommended for inference
+        """Returns default number of steps recommended for inference.
 
         Returns:
-            `int`: number of steps
+            `int`:
+                The number of steps.
         """
         return 50 if isinstance(self.scheduler, DDIMScheduler) else 1000
 
@@ -119,9 +120,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             noise (`torch.Tensor`):
                 A noise tensor of shape `(batch_size, 1, height, width)` or `None`.
             encoding (`torch.Tensor`):
-                for UNet2DConditionModel shape (batch_size, seq_length, cross_attention_dim)
+                A tensor for [`UNet2DConditionModel`] of shape `(batch_size, seq_length, cross_attention_dim)`.
             return_dict (`bool`):
-                Whether or not to return a [`AudioPipelineOutput`], [`ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`AudioPipelineOutput`], [`ImagePipelineOutput`] or a plain tuple.
 
         Examples:
 
@@ -275,7 +276,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             images (`List[PIL Image]`):
                 List of images to encode.
             steps (`int`):
-                Number of encoding steps to perform (defaults to `50`)
+                Number of encoding steps to perform (defaults to `50`).
 
         Returns:
             `np.ndarray`:
@@ -309,7 +310,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
     @staticmethod
     def slerp(x0: torch.Tensor, x1: torch.Tensor, alpha: float) -> torch.Tensor:
-        """Spherical Linear intERPolation
+        """Spherical Linear intERPolation.
 
         Args:
             x0 (`torch.Tensor`):

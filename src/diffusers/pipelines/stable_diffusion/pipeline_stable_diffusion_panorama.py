@@ -58,31 +58,24 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
-    <Tip>
-
-    To generate panorama-like images make sure you pass the `width` parameter accordingly. We recommend a `width` value
-    of 2048 which is the default.
-
-    </Tip>
-
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
+        text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            `DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`CLIPImageProcessor`]):
-            A [`CLIPImageProcessor`] to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
@@ -487,8 +480,8 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             view_batch_size (`int`, *optional*, defaults to 1):
-                The batch size to denoise splited views. For some GPUs with high performance, higher view batch size
-                can speedup the generation and increase the VRAM usage.
+                The batch size to denoise split views. For some GPUs with high performance, higher view batch size can
+                speedup the generation and increase the VRAM usage.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -526,7 +519,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             circular_padding (`bool`, *optional*, defaults to `False`):
-                If set to True, circular padding is applied to ensure there are no stitching artifacts. Circular
+                If set to `True`, circular padding is applied to ensure there are no stitching artifacts. Circular
                 padding allows the model to seamlessly generate a transition from the rightmost part of the image to
                 the leftmost part, maintaining consistency in a 360-degree sense.
 

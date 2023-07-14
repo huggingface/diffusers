@@ -60,12 +60,12 @@ class VQDiffusionPipeline(DiffusionPipeline):
         vqvae ([`VQModel`]):
             Vector Quantized Variational Auto-Encoder (VAE) model to encode and decode images to and from latent
             representations.
-        text_encoder ([`CLIPTextModel`]):
+        text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-base-patch32](https://huggingface.co/openai/clip-vit-base-patch32)).
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         transformer ([`Transformer2DModel`]):
-            A [`Transformer2DModel`] to denoise the encoded image latents.
+            A conditional `Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`VQDiffusionScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
@@ -303,8 +303,9 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
     def truncate(self, log_p_x_0: torch.FloatTensor, truncation_rate: float) -> torch.FloatTensor:
         """
-        Truncates log_p_x_0 such that for each column vector, the total cumulative probability is `truncation_rate` The
-        lowest probabilities that would increase the cumulative probability above `truncation_rate` are set to zero.
+        Truncates `log_p_x_0` such that for each column vector, the total cumulative probability is `truncation_rate`
+        The lowest probabilities that would increase the cumulative probability above `truncation_rate` are set to
+        zero.
         """
         sorted_log_p_x_0, indices = torch.sort(log_p_x_0, 1, descending=True)
         sorted_p_x_0 = torch.exp(sorted_log_p_x_0)

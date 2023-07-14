@@ -136,7 +136,7 @@ def prepare_mask_and_masked_image(image, mask):
 
 class PaintByExamplePipeline(DiffusionPipeline):
     r"""
-    <Tip warning={true}
+    <Tip warning={true}>
 
     🧪 This is an experimental feature!
 
@@ -151,11 +151,11 @@ class PaintByExamplePipeline(DiffusionPipeline):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         image_encoder ([`PaintByExampleImageEncoder`]):
-            Encodes the example input image. The UNet is conditioned on the example image instead of a text prompt.
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+            Encodes the example input image. The `unet` is conditioned on the example image instead of a text prompt.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -163,8 +163,9 @@ class PaintByExamplePipeline(DiffusionPipeline):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`CLIPImageProcessor`]):
-            A [`CLIPImageProcessor`] to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+
     """
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
@@ -438,8 +439,6 @@ class PaintByExamplePipeline(DiffusionPipeline):
         Example:
 
         ```py
-        >>> # !pip install diffusers transformers
-
         >>> import PIL
         >>> import requests
         >>> import torch

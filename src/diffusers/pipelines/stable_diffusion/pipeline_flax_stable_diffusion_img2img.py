@@ -104,7 +104,7 @@ EXAMPLE_DOC_STRING = """
 
 class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
-    Pipeline for text-guided image-to-image generation using Stable Diffusion.
+    Flax-based pipeline for text-guided image-to-image generation using Stable Diffusion.
 
     This model inherits from [`FlaxDiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -114,19 +114,20 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         text_encoder ([`~transformers.FlaxCLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         unet ([`FlaxUNet2DConditionModel`]):
-            A [`FlaxUNet2DConditionModel`] to denoise the encoded image latents.
+            A `FlaxUNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            `FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], or [`FlaxPNDMScheduler`].
+            [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
+            [`FlaxDPMSolverMultistepScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`CLIPImageProcessor`]):
-            A [`CLIPImageProcessor`] to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
     def __init__(
@@ -355,13 +356,13 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         Args:
             prompt_ids (`jnp.array`):
-                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+                The prompt or prompts to guide image generation.
             image (`jnp.array`):
                 Array representing an image batch to be used as the starting point.
             params (`Dict` or `FrozenDict`):
-                Dictionary containing the model parameters/weights
+                Dictionary containing the model parameters/weights.
             prng_seed (`jax.random.KeyArray` or `jax.Array`):
-                Array containing random number generator key
+                Array containing random number generator key.
             strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
@@ -371,9 +372,9 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text

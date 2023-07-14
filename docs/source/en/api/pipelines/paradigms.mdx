@@ -39,6 +39,12 @@ by setting `parallel=80` and `tolerance=0.1`.
 🤗 Diffusers offers [distributed inference support](../training/distributed_inference) for generating multiple prompts
 in parallel on multiple GPUs. But [`StableDiffusionParadigmsPipeline`] is designed for speeding up sampling of a single prompt by using multiple GPUs.
 
+<Tip>
+
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
+
 ## StableDiffusionParadigmsPipeline
 [[autodoc]] StableDiffusionParadigmsPipeline
 	- __call__

@@ -30,7 +30,7 @@ class DDIMPipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image latents.
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
@@ -82,7 +82,6 @@ class DDIMPipeline(DiffusionPipeline):
         Example:
 
         ```py
-        >>> # !pip install diffusers
         >>> from diffusers import DDIMPipeline
         >>> import PIL.Image
         >>> import numpy as np

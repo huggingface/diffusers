@@ -58,18 +58,18 @@ class AudioLDMPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`ClapTextModelWithProjection`]):
-            Frozen text-encoder ([`~transformers.ClapTextModelWithProjection`], specifically the
+        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
+            Frozen text-encoder (`ClapTextModelWithProjection`, specifically the
             [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
         tokenizer ([`PreTrainedTokenizer`]):
             A [`~transformers.RobertaTokenizer`] to tokenize text.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded audio latents.
+            A `UNet2DConditionModel` to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        vocoder ([`SpeechT5HifiGan`]):
-            Vocoder of class [`~transformers.SpeechT5HifiGan`].
+        vocoder ([`~transformers.SpeechT5HifiGan`]):
+            Vocoder of class `SpeechT5HifiGan`.
     """
 
     def __init__(

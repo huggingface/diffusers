@@ -44,9 +44,9 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         bert ([`LDMBertModel`]):
             Text-encoder model based on [`~transformers.BERT`].
         tokenizer ([`~transformers.BertTokenizer`]):
-            A [`~transformers.BertTokenizer`].
+            A `BertTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].

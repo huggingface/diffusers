@@ -85,9 +85,9 @@ class RePaintPipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image latents.
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`RePaintScheduler`]):
-            A [`RePaintScheduler`] to be used in combination with `unet` to denoise the encoded image.
+            A `RePaintScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
 
     unet: UNet2DModel
@@ -117,7 +117,7 @@ class RePaintPipeline(DiffusionPipeline):
             image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                The mask_image where `0.0` define which part of the original image to inpaint.
+                The mask_image where 0.0 define which part of the original image to inpaint.
             num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -126,10 +126,10 @@ class RePaintPipeline(DiffusionPipeline):
                 DDIM and 1.0 is the DDPM scheduler.
             jump_length (`int`, *optional*, defaults to 10):
                 The number of steps taken forward in time before going backward in time for a single jump ("j" in
-                RePaint paper). Take a look at Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
+                RePaint paper). Take a look at Figure 9 and 10 in the [paper](https://arxiv.org/pdf/2201.09865.pdf).
             jump_n_sample (`int`, *optional*, defaults to 10):
                 The number of times to make a forward time jump for a given chosen time sample. Take a look at Figure 9
-                and 10 in https://arxiv.org/pdf/2201.09865.pdf.
+                and 10 in the [paper](https://arxiv.org/pdf/2201.09865.pdf).
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.

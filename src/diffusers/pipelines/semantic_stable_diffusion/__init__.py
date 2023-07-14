@@ -20,7 +20,7 @@ class SemanticStableDiffusionPipelineOutput(BaseOutput):
             num_channels)`.
         nsfw_content_detected (`List[bool]`)
             List indicating whether the corresponding generated image contains “not-safe-for-work” (nsfw) content or
-            None if safety checking could not be performed.
+            `None` if safety checking could not be performed.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]

@@ -22,12 +22,18 @@ The abstract from the paper is:
 
 You can load the more memory intensive "all-in-one" [`VersatileDiffusionPipeline`] that supports all the tasks or use the individual pipelines which are more memory efficient.
 
-| **Pipeline**                               | **Supported tasks**               |
-|--------------------------------------------|-----------------------------------|
-| `VersatileDiffusion`                       | all of the below                  |
-| `VersatileDiffusionTextToImagePipeline`    | text-to-image                     |
-| `VersatileDiffusionImageVariationPipeline` | image variation                   |
-| `VersatileDiffusionDualGuidedPipeline`     | image-text dual guided generation |
+| **Pipeline**                                         | **Supported tasks**               |
+|------------------------------------------------------|-----------------------------------|
+| [`VersatileDiffusionPipeline`]                       | all of the below                  |
+| [`VersatileDiffusionTextToImagePipeline`]            | text-to-image                     |
+| [`VersatileDiffusionImageVariationPipeline`]         | image variation                   |
+| [`VersatileDiffusionDualGuidedPipeline`]             | image-text dual guided generation |
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## VersatileDiffusionPipeline
 [[autodoc]] VersatileDiffusionPipeline

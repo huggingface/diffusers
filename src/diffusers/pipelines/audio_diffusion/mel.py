@@ -127,12 +127,12 @@ class Mel(ConfigMixin, SchedulerMixin):
 
         Returns:
             `np.ndarray`:
-                The audio slice as a NumPy array
+                The audio slice as a NumPy array.
         """
         return self.audio[self.slice_size * slice : self.slice_size * (slice + 1)]
 
     def get_sample_rate(self) -> int:
-        """Get sample rate:
+        """Get sample rate.
 
         Returns:
             `int`:

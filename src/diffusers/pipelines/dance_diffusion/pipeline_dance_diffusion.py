@@ -33,7 +33,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet1DModel`]):
-            A [`UNet1DModel`] to denoise the encoded audio.
+            A `UNet1DModel` to denoise the encoded audio.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`IPNDMScheduler`].
@@ -72,7 +72,6 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         Example:
 
         ```py
-        # !pip install diffusers[torch] accelerate scipy
         from diffusers import DiffusionPipeline
         from scipy.io.wavfile import write
 

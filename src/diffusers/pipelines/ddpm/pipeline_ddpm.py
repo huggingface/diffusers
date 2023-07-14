@@ -30,7 +30,7 @@ class DDPMPipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image latents.
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
@@ -58,7 +58,7 @@ class DDPMPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -69,7 +69,6 @@ class DDPMPipeline(DiffusionPipeline):
         Example:
 
         ```py
-        >>> # !pip install diffusers
         >>> from diffusers import DDPMPipeline
 
         >>> # load model and scheduler

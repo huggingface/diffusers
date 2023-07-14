@@ -97,7 +97,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
     [`FlaxDiffusionPipeline`] stores all components (models, schedulers, and processors) for diffusion pipelines and
     provides methods for loading, downloading and saving models. It also includes methods to:
 
-        - enabling/disabling the progress bar for the denoising iteration
+        - enable/disable the progress bar for the denoising iteration
 
     Class attributes:
 
@@ -191,9 +191,9 @@ class FlaxDiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-        Instantiate a Flax diffusion pipeline from pretrained pipeline weights.
+        Instantiate a Flax-based diffusion pipeline from pretrained pipeline weights.
 
-        The pipeline is set in evaluation mode - `model.eval()` - by default, and dropout modules are deactivated.
+        The pipeline is set in evaluation mode (`model.eval()) by default and dropout modules are deactivated.
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
@@ -228,7 +228,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in ~/.huggingface) is used.
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.

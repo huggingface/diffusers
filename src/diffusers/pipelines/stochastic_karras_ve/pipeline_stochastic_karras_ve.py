@@ -28,7 +28,7 @@ class KarrasVePipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image.
+            A `UNet2DModel` to denoise the encoded image.
         scheduler ([`KarrasVeScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image.
     """
@@ -69,10 +69,6 @@ class KarrasVePipeline(DiffusionPipeline):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
         Example:
-
-        ```py
-
-        ```
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`:

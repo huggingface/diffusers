@@ -37,19 +37,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class UnCLIPImageVariationPipeline(DiffusionPipeline):
     """
-    Pipeline for image-guided image generation using UnCLIP.
+    Pipeline to generate image variations from an input image using UnCLIP.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        text_encoder ([`CLIPTextModelWithProjection`]):
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
-        feature_extractor ([`CLIPImageProcessor`]):
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
-        image_encoder ([`CLIPVisionModelWithProjection`]):
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         text_proj ([`UnCLIPTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.

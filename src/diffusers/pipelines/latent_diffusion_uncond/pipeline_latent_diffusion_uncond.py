@@ -34,7 +34,7 @@ class LDMPipeline(DiffusionPipeline):
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) model to encode and decode images to and from latent representations.
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image latents.
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             [`DDIMScheduler`] is used in combination with `unet` to denoise the encoded image latents.
     """
@@ -69,12 +69,11 @@ class LDMPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Example:
 
         ```py
-        >>> # !pip install diffusers transformers
         >>> from diffusers import LDMPipeline
 
         >>> # load model and scheduler

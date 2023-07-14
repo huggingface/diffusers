@@ -31,9 +31,9 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image.
+            A `UNet2DModel` to denoise the encoded image.
         scheduler ([`ScoreSdeVeScheduler`]):
-            A [`ScoreSdeVeScheduler`] scheduler to be used in combination with `unet` to denoise the encoded image.
+            A `ScoreSdeVeScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
@@ -58,19 +58,13 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
-            generator (`torch.Generator`, `optional`): A [torch
+            generator (`torch.Generator`, `optional`):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             output_type (`str`, `optional`, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
-
-        Example:
-
-        ```py
-
-        ```
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`:

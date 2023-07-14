@@ -37,7 +37,7 @@ class DiTPipeline(DiffusionPipeline):
 
     Parameters:
         transformer ([`Transformer2DModel`]):
-            A [`Transformer2DModel`] to denoise the encoded image latents.
+            A class conditioned `Transformer2DModel` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         scheduler ([`DDIMScheduler`]):

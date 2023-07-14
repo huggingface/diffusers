@@ -12,13 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # Pipelines
 
-Pipelines provide a simple way to run state-of-the-art diffusion models in inference by bundling all of the necessary components (multiple independently-trained models, schedulers, and processors) into a single end-to-end class. Pipelines are flexible, and they can be adapted to use different scheduler or even model components.
+Pipelines provide a simple way to run state-of-the-art diffusion models in inference by bundling all of the necessary components (multiple independently-trained models, schedulers, and processors) into a single end-to-end class. Pipelines are flexible and they can be adapted to use different scheduler or even model components.
 
 All pipelines are built from the base [`DiffusionPipeline`] class which provides basic functionality for loading, downloading, and saving all the components.
 
 <Tip warning={true}>
 
-Pipelines do not offer any training functionality. If you're interested in training, please take a look at the [Training](../traininig/overview) guides instead!
+Pipelines do not offer any training functionality. You'll notice PyTorch's autograd is disabled by decorating the [`~DiffusionPipeline.__call__`] method with a [`torch.no_grad`](https://pytorch.org/docs/stable/generated/torch.no_grad.html) decorator because pipelines should not be used for training. If you're interested in training, please take a look at the [Training](../traininig/overview) guides instead!
 
 </Tip>
 

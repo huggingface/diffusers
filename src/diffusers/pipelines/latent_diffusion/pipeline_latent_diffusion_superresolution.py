@@ -31,7 +31,7 @@ def preprocess(image):
 
 class LDMSuperResolutionPipeline(DiffusionPipeline):
     r"""
-    A pipeline for image super-resolution using latent diffusion
+    A pipeline for image super-resolution using latent diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -40,7 +40,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) model to encode and decode images to and from latent representations.
         unet ([`UNet2DModel`]):
-            A [`UNet2DModel`] to denoise the encoded image.
+            A `UNet2DModel` to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
@@ -99,7 +99,6 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         Example:
 
         ```py
-        >>> #!pip install git+https://github.com/huggingface/diffusers.git
         >>> import requests
         >>> from PIL import Image
         >>> from io import BytesIO

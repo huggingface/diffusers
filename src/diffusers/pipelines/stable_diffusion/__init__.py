@@ -119,11 +119,11 @@ if is_transformers_available() and is_flax_available():
         Output class for Flax-based Stable Diffusion pipelines.
 
         Args:
-            images (`np.ndarray`)
+            images (`np.ndarray`):
                 Denoised images of array shape of `(batch_size, height, width, num_channels)`.
-            nsfw_content_detected (`List[bool]`)
-                List indicating whether the corresponding generated image contains "not-safe-for-work"
-            (nsfw) content or `None` if safety checking could not be performed.
+            nsfw_content_detected (`List[bool]`):
+                List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content
+                or `None` if safety checking could not be performed.
         """
 
         images: np.ndarray

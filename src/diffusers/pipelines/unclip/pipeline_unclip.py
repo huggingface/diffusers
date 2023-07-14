@@ -39,10 +39,10 @@ class UnCLIPPipeline(DiffusionPipeline):
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        text_encoder ([`CLIPTextModelWithProjection`]):
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         prior ([`PriorTransformer`]):
             The canonical unCLIP prior to approximate the image embedding from the text embedding.
         text_proj ([`UnCLIPTextProjModel`]):
