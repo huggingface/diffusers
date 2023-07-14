@@ -963,6 +963,8 @@ def main(args):
         return unet_added_cond_kwargs
 
     if not args.train_text_encoder:
+        tokenizers = [tokenizer_one, tokenizer_two]
+        text_encoders = [text_encoder_one, text_encoder_two]
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
@@ -974,19 +976,24 @@ def main(args):
     instance_unet_added_conditions = compute_additional_embeddings()
     instance_prompt_hidden_states, instance_pooled_prompt_embeds = None, None
     if not args.train_text_encoder:
-        instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings()
+        instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
+            args.instance_prompt, text_encoders, tokenizers
+        )
         instance_unet_added_conditions.update({"text_embeds": instance_pooled_prompt_embeds})
 
     class_prompt_hidden_states, class_unet_added_conditions, class_pooled_prompt_embeds = None, None, None
     if args.with_prior_preservation:
         class_unet_added_conditions = compute_additional_embeddings()
         if not args.train_text_encoder:
-            class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings()
+            class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
+                args.class_prompt, text_encoders, tokenizers
+            )
             class_unet_added_conditions.update({"text_embeds": class_pooled_prompt_embeds})
 
-            del tokenizers, text_encoders
-            gc.collect()
-            torch.cuda.empty_cache()
+    if not args.train_text_encoder:
+        del tokenizers, text_encoders
+        gc.collect()
+        torch.cuda.empty_cache()
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
