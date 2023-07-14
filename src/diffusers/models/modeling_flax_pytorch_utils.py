@@ -53,8 +53,8 @@ def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dic
                 weight_name = 'kernel' if weight_name == 'weight' else weight_name
                 renamed_pt_tuple_key = pt_tuple_key[:-2] + (rename_to, weight_name)
                 if renamed_pt_tuple_key in random_flax_state_dict:
-                    assert random_flax_state_dict[renamed_pt_tuple_key].shape == pt_tensor.shape
-                    return renamed_pt_tuple_key, pt_tensor
+                    assert random_flax_state_dict[renamed_pt_tuple_key].shape == pt_tensor.T.shape
+                    return renamed_pt_tuple_key, pt_tensor.T
 
     if (
         any("norm" in str_ for str_ in pt_tuple_key)
