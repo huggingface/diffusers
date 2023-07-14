@@ -682,9 +682,9 @@ class GlobalResponseNorm(nn.Module):
         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
 
     def forward(self, inputs):
-        Gx = torch.norm(inputs, p=2, dim=(1, 2), keepdim=True)
-        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
-        return self.gamma * (inputs * Nx) + self.beta + inputs
+        gx = torch.norm(inputs, p=2, dim=(1, 2), keepdim=True)
+        nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (inputs * nx) + self.beta + inputs
 
 
 class GlobalResponseResidualBlock(nn.Module):
