@@ -1121,8 +1121,6 @@ def main(args):
                         vae.to(dtype=weight_dtype)
 
                 # Convert images to latent space
-                # if args.pretrained_vae_model_name_or_path is not None and vae.dtype != weight_dtype:
-                #     vae.to(dtype=weight_dtype)
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
