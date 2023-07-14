@@ -1119,6 +1119,7 @@ def main(args):
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
                 # Convert images to latent space
+                print(f"vae: {vae.dtype} pixel_values: {pixel_values.dtype}")
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
