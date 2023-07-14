@@ -356,7 +356,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 # duplicate text embeddings for each generation per prompt, using mps friendly method
                 prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
                 prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-
+                
                 prompt_embeds_list.append(prompt_embeds)
 
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
@@ -855,6 +855,10 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
+        add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[0].unsqueeze(0)), dim=0)
+        add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[0].unsqueeze(0)), dim=0)
+        prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[0].unsqueeze(0)), dim=0)
+
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
@@ -874,14 +878,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                noise_pred = self.unet(
-                    scaled_latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+                noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds, cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
 
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
