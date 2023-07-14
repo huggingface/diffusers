@@ -242,6 +242,12 @@ def parse_args(input_args=None):
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--pretrained_vae_name_or_path",
+        type=str,
+        default=None,
+        help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
+    )
+    parser.add_argument(
         "--controlnet_model_name_or_path",
         type=str,
         default=None,
@@ -823,9 +829,14 @@ def main(args):
     text_encoder_two = text_encoder_cls_two.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
+    vae_path = (
+        args.pretrained_model_name_or_path
+        if args.pretrained_vae_name_or_path is None
+        else args.pretrained_vae_name_or_path
+    )
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="vae",
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_name_or_path is None else None,
         revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
