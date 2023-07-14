@@ -1,78 +1,76 @@
 import argparse
-import os
-import numpy as np
-from PIL import Image, ImageOps
-from tqdm import tqdm
-import pandas as pd
 import math
-from packaging import version
+import os
 
+import accelerate
+import pandas as pd
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import accelerate
+import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
-from torchvision import transforms
-import transformers
+from PIL import Image
+from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
-from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import PriorTransformer, UnCLIPScheduler, DDPMScheduler
-from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available
-from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers import DDPMScheduler, PriorTransformer
 from diffusers.loaders import AttnProcsLayers
-if is_wandb_available():
-    import wandb
+from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.optimization import get_scheduler
+from diffusers.utils import is_wandb_available
 
-logger = get_logger(__name__, log_level="INFO")    
+
+if is_wandb_available():
+    pass
+
+logger = get_logger(__name__, log_level="INFO")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of finetuning Kandinsky 2.2.")
     parser.add_argument(
         "--pretrained_prior_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to pretrained prior model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--pretrained_image_encoder",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to pretrained image encoder.",
     )
     parser.add_argument(
         "--scheduler_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to scheduler.",
     )
     parser.add_argument(
         "--image_processor_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to image_processor.",
     )
     parser.add_argument(
         "--text_encoder_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to text_encoder.",
     )
     parser.add_argument(
         "--tokenizer_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to tokenizer.",
     )
@@ -251,7 +249,7 @@ def parse_args():
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -269,11 +267,12 @@ class ImageDataset(torch.utils.data.Dataset):
         self.image_processor = image_processor
         self.tokenizer = tokenizer
         df = pd.read_csv(images_paths_csv)
-        self.paths = df['paths'].values
-        self.captions = df['caption'].values
+        self.paths = df["paths"].values
+        self.captions = df["caption"].values
+
     def __len__(self):
         return len(self.paths)
-    
+
     def __getitem__(self, i):
         img = Image.open(self.paths[i])
         clip_image = self.image_processor(img, return_tensors="pt")
@@ -288,6 +287,7 @@ class ImageDataset(torch.utils.data.Dataset):
         text_mask = text_inputs.attention_mask.bool()[0]
 
         return text_input_ids, text_mask, clip_image.pixel_values[0]
+
 
 def main():
     args = parse_args()
@@ -308,16 +308,17 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
-        
+
     if args.seed is not None:
         set_seed(args.seed)
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
-            
-    noise_scheduler = DDPMScheduler(beta_schedule='squaredcos_cap_v2', prediction_type='sample')
-    image_processor = CLIPImageProcessor.from_pretrained(args.image_processor_path, subfolder='image_processor')
-    tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_path, subfolder='tokenizer')
+
+    noise_scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", prediction_type="sample")
+    image_processor = CLIPImageProcessor.from_pretrained(args.image_processor_path, subfolder="image_processor")
+    tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_path, subfolder="tokenizer")
+
     def deepspeed_zero_init_disabled_context_manager():
         """
         returns either a context list that includes one that will disable zero.Init or an empty context list
@@ -327,17 +328,20 @@ def main():
             return []
 
         return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
-    weight_dtype = torch.float32        
+
+    weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16  
-    image_encoder = CLIPVisionModelWithProjection.from_pretrained(args.pretrained_image_encoder, subfolder='image_encoder', torch_dtype=weight_dtype).eval()
-    text_encoder = CLIPTextModelWithProjection.from_pretrained(args.text_encoder_path, subfolder='text_encoder', torch_dtype=weight_dtype).eval()
-    print('args.pretrained_prior_path =', args.pretrained_prior_path)
-    prior = PriorTransformer.from_pretrained(
-        args.pretrained_prior_path, subfolder="prior", torch_dtype=weight_dtype
-    )
+        weight_dtype = torch.bfloat16
+    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        args.pretrained_image_encoder, subfolder="image_encoder", torch_dtype=weight_dtype
+    ).eval()
+    text_encoder = CLIPTextModelWithProjection.from_pretrained(
+        args.text_encoder_path, subfolder="text_encoder", torch_dtype=weight_dtype
+    ).eval()
+    print("args.pretrained_prior_path =", args.pretrained_prior_path)
+    prior = PriorTransformer.from_pretrained(args.pretrained_prior_path, subfolder="prior", torch_dtype=weight_dtype)
 
     # Freeze text_encoder and image_encoder
     text_encoder.requires_grad_(False)
@@ -351,6 +355,7 @@ def main():
         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=2048, rank=args.rank)
 
     prior.set_attn_processor(lora_attn_procs)
+
     def compute_snr(timesteps):
         """
         Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
@@ -374,11 +379,12 @@ def main():
         # Compute SNR.
         snr = (alpha / sigma) ** 2
         return snr
+
     lora_layers = AttnProcsLayers(prior.attn_processors)
-        
+
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
-        
+
     if args.use_8bit_adam:
         try:
             import bitsandbytes as bnb
@@ -397,15 +403,22 @@ def main():
         weight_decay=args.weight_decay,
         eps=args.adam_epsilon,
     )
-    
-    train_dataset = ImageDataset(images_paths_csv=args.train_images_paths_csv, image_processor=image_processor, tokenizer=tokenizer)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=args.dataloader_num_workers)
+
+    train_dataset = ImageDataset(
+        images_paths_csv=args.train_images_paths_csv, image_processor=image_processor, tokenizer=tokenizer
+    )
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.train_batch_size, num_workers=args.dataloader_num_workers
+    )
     if args.val_images_paths_csv is not None:
-        do_val = True
-        val_dataset = ImageDataset(images_paths_csv=args.val_images_paths_csv, image_processor=image_processor, tokenizer=tokenizer)
-        val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=args.dataloader_num_workers)
+        val_dataset = ImageDataset(
+            images_paths_csv=args.val_images_paths_csv, image_processor=image_processor, tokenizer=tokenizer
+        )
+        torch.utils.data.DataLoader(
+            val_dataset, batch_size=args.val_batch_size, num_workers=args.dataloader_num_workers
+        )
     else:
-        do_val = False
+        pass
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
@@ -424,7 +437,6 @@ def main():
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
 
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -436,7 +448,7 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        accelerator.init_trackers('test', tracker_config)#args.tracker_project_name
+        accelerator.init_trackers("test", tracker_config)  # args.tracker_project_name
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -472,7 +484,7 @@ def main():
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
-            
+
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("training goes brrr")
     clip_mean = clip_mean.to(weight_dtype).to(accelerator.device)
@@ -496,17 +508,18 @@ def main():
                     prompt_embeds = text_encoder_output.text_embeds
                     text_encoder_hidden_states = text_encoder_output.last_hidden_state
 
-
                     image_embeds = image_encoder(clip_images).image_embeds
                     # Sample noise that we'll add to the image_embeds
                     noise = torch.randn_like(image_embeds)
                     bsz = image_embeds.shape[0]
                     # Sample a random timestep for each image
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=image_embeds.device)
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=image_embeds.device
+                    )
                     timesteps = timesteps.long()
                     image_embeds = (image_embeds - clip_mean) / clip_std
                     noisy_latents = noise_scheduler.add_noise(image_embeds, noise, timesteps)
-                    
+
                     target = image_embeds
 
                 # Predict the noise residual and compute loss
@@ -551,7 +564,7 @@ def main():
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                #print(train_loss)
+                # print(train_loss)
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 

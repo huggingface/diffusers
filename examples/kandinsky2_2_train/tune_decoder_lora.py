@@ -1,37 +1,34 @@
 import argparse
-import os
-import numpy as np
-from PIL import Image, ImageOps
-from tqdm import tqdm
-import pandas as pd
 import math
-from packaging import version
+import os
 
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-import accelerate
+import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
-from torchvision import transforms
-import transformers
+from PIL import Image
+from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
-from transformers.utils import ContextManagers
 
 import diffusers
 from diffusers import DDPMScheduler, UNet2DConditionModel, VQModel
-from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, deprecate, is_wandb_available
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnAddedKVProcessor
 from diffusers.loaders import AttnProcsLayers
+from diffusers.models.attention_processor import LoRAAttnAddedKVProcessor
+from diffusers.optimization import get_scheduler
+from diffusers.utils import is_wandb_available
+
 
 if is_wandb_available():
-    import wandb
+    pass
 
-logger = get_logger(__name__, log_level="INFO")    
-    
+logger = get_logger(__name__, log_level="INFO")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of finetuning Kandinsky 2.2.")
     parser.add_argument(
@@ -44,35 +41,35 @@ def parse_args():
     parser.add_argument(
         "--pretrained_kandinsky_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-decoder',
+        default="kandinsky-community/kandinsky-2-2-decoder",
         required=False,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--pretrained_vae_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-decoder',
+        default="kandinsky-community/kandinsky-2-2-decoder",
         required=False,
         help="Path to pretrained vae.",
     )
     parser.add_argument(
         "--pretrained_image_encoder",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to pretrained image encoder.",
     )
     parser.add_argument(
         "--scheduler_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-decoder',
+        default="kandinsky-community/kandinsky-2-2-decoder",
         required=False,
         help="Path to scheduler.",
     )
     parser.add_argument(
         "--image_processor_path",
         type=str,
-        default='kandinsky-community/kandinsky-2-2-prior',
+        default="kandinsky-community/kandinsky-2-2-prior",
         required=False,
         help="Path to image_processor.",
     )
@@ -264,7 +261,7 @@ def parse_args():
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -276,6 +273,7 @@ def parse_args():
 
     return args
 
+
 def center_crop(image):
     width, height = image.size
     new_size = min(width, height)
@@ -285,28 +283,33 @@ def center_crop(image):
     bottom = (height + new_size) / 2
     return image.crop((left, top, right, bottom))
 
+
 class ImageDataset(torch.utils.data.Dataset):
     def __init__(self, image_folder=None, images_paths_csv=None, image_processor=None, img_size=512):
         assert image_folder is None or images_paths_csv is None
         self.image_processor = image_processor
         self.img_size = img_size
         if images_paths_csv is not None:
-            self.paths = pd.read_csv(images_paths_csv)['paths'].values
+            self.paths = pd.read_csv(images_paths_csv)["paths"].values
         else:
-            self.paths = [os.path.join(image_folder, path) for path in os.listdir(image_folder) if '.jpg' in path.lower() or '.png' in path.lower()]
-            
+            self.paths = [
+                os.path.join(image_folder, path)
+                for path in os.listdir(image_folder)
+                if ".jpg" in path.lower() or ".png" in path.lower()
+            ]
+
     def __len__(self):
         return len(self.paths)
-    
+
     def __getitem__(self, i):
         img = Image.open(self.paths[i])
         clip_image = self.image_processor(img)
         img = center_crop(img)
-        img = img.resize((self.img_size, self.img_size), resample=Image.BICUBIC,
-                                                      reducing_gap=1)
+        img = img.resize((self.img_size, self.img_size), resample=Image.BICUBIC, reducing_gap=1)
         img = np.array(img.convert("RGB"))
         img = img.astype(np.float32) / 127.5 - 1
         return np.transpose(img, [2, 0, 1]), clip_image.pixel_values[0]
+
 
 def main():
     args = parse_args()
@@ -327,23 +330,25 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
-        
+
     if args.seed is not None:
         set_seed(args.seed)
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
-            
+
     noise_scheduler = DDPMScheduler.from_pretrained(args.scheduler_path, subfolder="scheduler")
-    image_processor = CLIPImageProcessor.from_pretrained(args.image_processor_path, subfolder='image_processor')
+    image_processor = CLIPImageProcessor.from_pretrained(args.image_processor_path, subfolder="image_processor")
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16  
-    vae = VQModel.from_pretrained(args.pretrained_vae_path, subfolder='movq', torch_dtype=weight_dtype).eval()
-    image_encoder = CLIPVisionModelWithProjection.from_pretrained(args.pretrained_image_encoder, subfolder='image_encoder', torch_dtype=weight_dtype).eval()
-        
+        weight_dtype = torch.bfloat16
+    vae = VQModel.from_pretrained(args.pretrained_vae_path, subfolder="movq", torch_dtype=weight_dtype).eval()
+    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        args.pretrained_image_encoder, subfolder="image_encoder", torch_dtype=weight_dtype
+    ).eval()
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_kandinsky_path, subfolder="unet", torch_dtype=weight_dtype
     )
@@ -373,6 +378,7 @@ def main():
         )
 
     unet.set_attn_processor(lora_attn_procs)
+
     def compute_snr(timesteps):
         """
         Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
@@ -396,11 +402,12 @@ def main():
         # Compute SNR.
         snr = (alpha / sigma) ** 2
         return snr
+
     lora_layers = AttnProcsLayers(unet.attn_processors)
-        
+
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
-        
+
     if args.use_8bit_adam:
         try:
             import bitsandbytes as bnb
@@ -419,15 +426,28 @@ def main():
         weight_decay=args.weight_decay,
         eps=args.adam_epsilon,
     )
-    
-    train_dataset = ImageDataset(image_folder=args.train_image_folder, images_paths_csv=args.train_images_paths_csv, image_processor=image_processor, img_size=args.image_resolution)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=args.dataloader_num_workers)
+
+    train_dataset = ImageDataset(
+        image_folder=args.train_image_folder,
+        images_paths_csv=args.train_images_paths_csv,
+        image_processor=image_processor,
+        img_size=args.image_resolution,
+    )
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.train_batch_size, num_workers=args.dataloader_num_workers
+    )
     if args.val_image_folder is not None or args.val_images_paths_csv is not None:
-        do_val = True
-        val_dataset = ImageDataset(image_folder=args.val_image_folder, images_paths_csv=args.val_images_paths_csv, image_processor=image_processor, img_size=args.image_resolution)
-        val_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.val_batch_size, num_workers=args.dataloader_num_workers)
+        ImageDataset(
+            image_folder=args.val_image_folder,
+            images_paths_csv=args.val_images_paths_csv,
+            image_processor=image_processor,
+            img_size=args.image_resolution,
+        )
+        torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.val_batch_size, num_workers=args.dataloader_num_workers
+        )
     else:
-        do_val = False
+        pass
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
@@ -444,7 +464,6 @@ def main():
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
 
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -456,7 +475,7 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        accelerator.init_trackers('test', tracker_config)#args.tracker_project_name
+        accelerator.init_trackers("test", tracker_config)  # args.tracker_project_name
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -492,7 +511,7 @@ def main():
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
-            
+
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("training goes brrr")
     for epoch in range(first_epoch, args.num_train_epochs):
