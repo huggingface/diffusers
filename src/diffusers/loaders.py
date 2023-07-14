@@ -50,7 +50,7 @@ if is_safetensors_available():
     import safetensors
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
 
 
 logger = logging.get_logger(__name__)
@@ -96,7 +96,7 @@ class PatchedLoraProjection(nn.Module):
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
 
-    if isinstance(text_encoder, CLIPTextModel):
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
             name = f"text_model.encoder.layers.{i}.self_attn"
             mod = layer.self_attn
