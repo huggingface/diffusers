@@ -1322,7 +1322,7 @@ class DiffusionPipeline(ConfigMixin):
             snapshot_folder = Path(config_file).parent
             pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-            if pipeline_is_cached:
+            if pipeline_is_cached and not force_download:
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
                 return snapshot_folder

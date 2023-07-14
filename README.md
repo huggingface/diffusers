@@ -146,6 +146,11 @@ just hang out ☕.
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
   </tr>
+  <tr>
+    <td>Text-to-Image</td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/kandinsky">Kandinsky</a></td>
+      <td><a href="https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder"> kandinsky-community/kandinsky-2-2-decoder </a></td>
+  </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image-to-Image</td>
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
