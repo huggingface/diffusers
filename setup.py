@@ -89,7 +89,7 @@ _deps = [
     "huggingface-hub>=0.13.2",
     "requests-mock==1.10.0",
     "importlib_metadata",
-    "invisible-watermark",
+    "invisible-watermark>=0.2.0",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
@@ -232,7 +232,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.18.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.19.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
