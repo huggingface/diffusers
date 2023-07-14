@@ -109,10 +109,8 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     if isinstance(image, torch.Tensor):
         if not isinstance(mask, torch.Tensor):
             mask = mask_pil_to_torch(mask, height, width)
-            # raise TypeError(f"`image` is a torch.Tensor but `mask` (type: {type(mask)} is not")
 
         if image.ndim == 3:
-            assert image.shape[0] == 3, "Image outside a batch should be of shape (3, H, W)"
             image = image.unsqueeze(0)
 
         # Batch and add channel dim for single mask
