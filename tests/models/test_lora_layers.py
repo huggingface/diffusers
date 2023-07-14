@@ -155,7 +155,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         }
         return pipeline_components, lora_components
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
         sequence_length = 10
         num_channels = 4
@@ -167,11 +167,12 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "np",
         }
+        if with_generator:
+            pipeline_inputs.update({"generator": generator})
 
         return noise, input_ids, pipeline_inputs
 
@@ -397,6 +398,45 @@ class LoraLoaderMixinTests(unittest.TestCase):
                         LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
                     )
                     self.assertIsInstance(module.processor, attn_proc_class)
+
+    def test_unload_lora(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+        sd_pipe = StableDiffusionPipeline(**pipeline_components)
+
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            LoraLoaderMixin.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Unload LoRA parameters.
+        sd_pipe.unload_lora_weights()
+        original_images_two = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice_two = original_images_two[0, -3:, -3:, -1]
+
+        assert not np.allclose(
+            orig_image_slice, lora_image_slice
+        ), "LoRA parameters should lead to a different image slice."
+        assert not np.allclose(
+            orig_image_slice_two, lora_image_slice
+        ), "LoRA parameters should lead to a different image slice."
+        assert np.allclose(
+            orig_image_slice, orig_image_slice_two, atol=1e-3
+        ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_lora_unet_attn_processors_with_xformers(self):
