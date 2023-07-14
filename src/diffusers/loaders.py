@@ -1032,12 +1032,17 @@ class LoraLoaderMixin:
         keys = list(state_dict.keys())
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(cls.text_encoder_name)]
+            if isinstance(text_encoder, CLIPTextModel):
+                prefix = cls.text_encoder_name
+                text_encoder_keys = [k for k in keys if k.startswith(prefix)]
+            elif isinstance(text_encoder, CLIPTextModelWithProjection):
+                prefix = f"{cls.text_encoder_name}_2"
+                text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
-                k.replace(f"{cls.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+                k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                logger.info(f"Loading {cls.text_encoder_name}.")
+                logger.info(f"Loading {prefix}.")
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
