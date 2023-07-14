@@ -1102,6 +1102,9 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder_one.train()
+            text_encoder_two.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -1276,9 +1279,11 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                images = [
-                    pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)
-                ]
+                with torch.cuda.amp.autocast():
+                    images = [
+                        pipeline(**pipeline_args, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
