@@ -1034,7 +1034,7 @@ class LoraLoaderMixin:
         keys = list(state_dict.keys())
         print(f"From loaders: {keys}")
         prefix = None
-
+        print(f"From loaders: {all(key.startswith(cls.unet_name) for key in keys)}")
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
             for k in keys:
