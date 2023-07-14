@@ -1037,13 +1037,14 @@ class LoraLoaderMixin:
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
+            for k in keys:
+                if "text_encoder" in k: 
+                    print(f"From loader: {k}")
             if isinstance(text_encoder, CLIPTextModel):
                 prefix = cls.text_encoder_name
             elif isinstance(text_encoder, CLIPTextModelWithProjection):
                 prefix = f"{cls.text_encoder_name}_2"
-            for k in keys:
-                if "text_encoder" in k: 
-                    print(f"From loader: {k}")
+    
             text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
                 k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
