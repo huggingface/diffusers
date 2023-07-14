@@ -656,7 +656,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
             added_cond_kwargs (`dict`):
                 Additional conditions for the Stable Diffusion XL UNet.
-            cross_attention_kwargs(`dict[str]`, *optional*, defaults to `None`):
+            cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
             guess_mode (`bool`, defaults to `False`):
                 In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
