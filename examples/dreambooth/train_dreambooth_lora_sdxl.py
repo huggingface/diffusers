@@ -894,7 +894,7 @@ def main(args):
                 unet_ = model
             elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
                 text_encoder_one_ = model
-            elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
                 text_encoder_two_ = model
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
@@ -1250,8 +1250,10 @@ def main(args):
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap(text_encoder_one) if args.train_text_encoder else text_encoder_one,
-                    text_encoder_2=accelerator.unwrap(text_encoder_two)
+                    text_encoder=accelerator.unwrap_model(text_encoder_one)
+                    if args.train_text_encoder
+                    else text_encoder_one,
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_two)
                     if args.train_text_encoder
                     else text_encoder_two,
                     unet=accelerator.unwrap_model(unet),
@@ -1311,12 +1313,22 @@ def main(args):
         unet = unet.to(torch.float32)
         unet_lora_layers = unet_attn_processors_state_dict(unet)
 
+        if args.train_text_encoder:
+            text_encoder_one = accelerator.unwrap_model(text_encoder_one)
+            text_encoder_one = text_encoder_one.to(torch.float32)
+            text_encoder_two = accelerator.unwrap_model(text_encoder_two)
+            text_encoder_two = text_encoder_two.to(torch.float32)
+            text_encoder_lora_layers = [
+                text_encoder_lora_state_dict(text_encoder_one),
+                text_encoder_lora_state_dict(text_encoder_two),
+            ]
+        else:
+            text_encoder_lora_layers = None
+
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
-            text_encoder_lora_layers=[text_lora_parameters_one, text_lora_parameters_two]
-            if args.train_text_encoder
-            else None,
+            text_encoder_lora_layers=text_encoder_lora_layers,
         )
 
         # Final inference
