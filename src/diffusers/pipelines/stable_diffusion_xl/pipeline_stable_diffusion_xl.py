@@ -59,6 +59,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -75,7 +76,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-image generation using Stable Diffusion XL.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -92,11 +93,20 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
+            Frozen text-encoder. Stable Diffusion XL uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([` CLIPTextModelWithProjection`]):
+            Second frozen text-encoder. Stable Diffusion XL uses the text and pool portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
+            specifically the
+            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
+            variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`CLIPTokenizer`):
+            Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):

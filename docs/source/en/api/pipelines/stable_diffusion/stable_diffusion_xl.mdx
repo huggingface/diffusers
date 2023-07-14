@@ -57,6 +57,50 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt=prompt).images[0]
 ```
 
+### Image-to-image 
+
+You can use SDXL as follows for *image-to-image*:
+
+```py 
+import torch
+from diffusers import StableDiffusionXLImg2ImgPipeline
+from diffusers.utils import load_image
+
+pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+pipe = pipe.to("cuda")
+url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
+
+init_image = load_image(url).convert("RGB")
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt, image=init_image).images[0]
+```
+
+### Inpainting
+
+You can use SDXL as follows for *inpainting*
+
+```py 
+import torch
+from diffusers import StableDiffusionXLInpaintPipeline
+from diffusers.utils import load_image
+
+pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+pipe.to("cuda")
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).convert("RGB")
+mask_image = load_image(mask_url).convert("RGB")
+
+prompt = "A majestic tiger sitting on a bench"
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80).images[0]
+```
+
 ### Refining the image output
 
 In addition to the [base model checkpoint](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9), 
@@ -183,23 +227,64 @@ image = refiner(prompt=prompt, image=image[None, :]).images[0]
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
 
-### Image-to-image 
+<Tip>
 
-```py 
-import torch
-from diffusers import StableDiffusionXLImg2ImgPipeline
+The refiner can also very well be used in an in-painting setting. To do so just make
+  sure you use the [`StableDiffusionXLInpaintPipeline`] classes as shown below
+
+</Tip>
+
+To use the refiner for inpainting in the Ensemble of Expert Denoisers setting you can do the following:
+
+```py
+from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
 
-pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
+pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
-pipe = pipe.to("cuda")
-url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
+pipe.to("cuda")
 
-init_image = load_image(url).convert("RGB")
-prompt = "a photo of an astronaut riding a horse on mars"
-image = pipe(prompt, image=init_image).images[0]
+refiner = StableDiffusionXLInpaintPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    text_encoder_2=pipe.text_encoder_2,
+    vae=pipe.vae,
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16",
+)
+refiner.to("cuda")
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).convert("RGB")
+mask_image = load_image(mask_url).convert("RGB")
+
+prompt = "A majestic tiger sitting on a bench"
+num_inference_steps = 75
+high_noise_frac = 0.7
+
+image = pipe(
+    prompt=prompt,
+    image=init_image,
+    mask_image=mask_image,
+    num_inference_steps=num_inference_steps,
+    strength=0.80,
+    denoising_start=high_noise_frac,
+    output_type="latent",
+).images
+image = refiner(
+    prompt=prompt,
+    image=image,
+    mask_image=mask_image,
+    num_inference_steps=num_inference_steps,
+    denoising_start=high_noise_frac,
+).images[0]
 ```
+
+To use the refiner for inpainting in the standard SDE-style setting, simply remove `denoising_end` and `denoising_start` and choose a smaller
+number of inference steps for the refiner.
 
 ### Loading single file checkpoints / original file format
 
@@ -269,5 +354,11 @@ pip install xformers
 ## StableDiffusionXLImg2ImgPipeline
 
 [[autodoc]] StableDiffusionXLImg2ImgPipeline
+	- all
+	- __call__
+
+## StableDiffusionXLInpaintPipeline
+
+[[autodoc]] StableDiffusionXLInpaintPipeline
 	- all
 	- __call__
