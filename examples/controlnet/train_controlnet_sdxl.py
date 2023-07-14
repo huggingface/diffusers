@@ -242,7 +242,7 @@ def parse_args(input_args=None):
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--pretrained_model_name_or_path",
+        "--pretrained_vae_model_name_or_path",
         type=str,
         default=None,
         help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
@@ -831,12 +831,12 @@ def main(args):
     )
     vae_path = (
         args.pretrained_model_name_or_path
-        if args.pretrained_model_name_or_path is None
-        else args.pretrained_model_name_or_path
+        if args.pretrained_vae_model_name_or_path is None
+        else args.pretrained_vae_model_name_or_path
     )
     vae = AutoencoderKL.from_pretrained(
         vae_path,
-        subfolder="vae" if args.pretrained_model_name_or_path is None else None,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
         revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
@@ -957,7 +957,7 @@ def main(args):
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
-    if args.pretrained_model_name_or_path is not None:
+    if args.pretrained_vae_model_name_or_path is not None:
         vae.to(accelerator.device, dtype=weight_dtype)
     else:
         vae.to(accelerator.device, dtype=torch.float32)
@@ -1112,8 +1112,10 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
-                if args.pretrained_model_name_or_path is not None:
+                if args.pretrained_vae_model_name_or_path is not None:
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                    if vae.dtype != weight_dtype:
+                        vae.to(dtype=weight_dtype)
                 else:
                     pixel_values = batch["pixel_values"]
                 latents = vae.encode(pixel_values).latent_dist.sample()
