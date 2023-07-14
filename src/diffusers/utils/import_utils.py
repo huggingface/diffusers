@@ -172,6 +172,22 @@ if _onnx_available:
     if _onnx_available:
         logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
 
+_faiss_available = importlib.util.find_spec("faiss") is not None
+if _faiss_available:
+    candidates = (
+        "faiss",
+    )
+    _faiss_version = None
+    # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
+    for pkg in candidates:
+        try:
+            _faiss_version = importlib_metadata.version(pkg)
+            break
+        except importlib_metadata.PackageNotFoundError:
+            pass
+    _faiss_available = _faiss_version is not None
+    if _faiss_available:
+        logger.debug(f"Successfully imported faiss version {_faiss_version}")
 # (sayakpaul): importlib.util.find_spec("opencv-python") returns None even when it's installed.
 # _opencv_available = importlib.util.find_spec("opencv-python") is not None
 try:
@@ -326,6 +342,8 @@ def is_unidecode_available():
 def is_onnx_available():
     return _onnx_available
 
+def is_faiss_available():
+    return _faiss_available
 
 def is_opencv_available():
     return _opencv_available

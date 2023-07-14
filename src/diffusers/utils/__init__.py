@@ -76,6 +76,7 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
+    is_faiss_available,
     requires_backends,
 )
 from .logging import get_logger
