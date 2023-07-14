@@ -981,8 +981,6 @@ class StableDiffusionInpaintPipeline(
             generator,
             do_classifier_free_guidance,
         )
-        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
