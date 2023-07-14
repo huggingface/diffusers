@@ -22,7 +22,7 @@ $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
       --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e/renderer\
+      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e-img2img/renderer\
       --debug renderer
 ```
 """
@@ -881,7 +881,7 @@ def renderer_model_original_checkpoint_to_diffusers_checkpoint(model, checkpoint
         }
     )
 
-    diffusers_checkpoint.update({"void.background": torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32)})
+    diffusers_checkpoint.update({"void.background": model.state_dict()["void.background"]})
 
     cases, masks = create_mc_lookup_table()
 
