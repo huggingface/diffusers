@@ -61,7 +61,7 @@ prior_pipeline = WuerstchenPriorPipeline(
     scheduler=scheduler,
 )
 
-prior_pipeline.save_pretrained("kashif/WuerstchenPriorPipeline")
+prior_pipeline.save_pretrained("warp-diffusion/WuerstchenPriorPipeline")
 
 generator_pipeline = WuerstchenGeneratorPipeline(
     vqgan=vqmodel,
@@ -69,4 +69,4 @@ generator_pipeline = WuerstchenGeneratorPipeline(
     efficient_net=efficient_net,
     scheduler=scheduler,
 )
-generator_pipeline.save_pretrained("kashif/WuerstchenGeneratorPipeline")
+generator_pipeline.save_pretrained("warp-diffusion/WuerstchenGeneratorPipeline")
