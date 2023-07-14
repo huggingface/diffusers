@@ -1030,6 +1030,8 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
+        prefix = None
+        
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
             if isinstance(text_encoder, CLIPTextModel):
