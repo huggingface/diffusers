@@ -960,7 +960,7 @@ def main(args):
     if args.pretrained_vae_name_or_path is not None:
         vae.to(accelerator.device, dtype=weight_dtype)
     else:
-         vae.to(accelerator.device, dtype=torch.float32)
+        vae.to(accelerator.device, dtype=torch.float32)
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
