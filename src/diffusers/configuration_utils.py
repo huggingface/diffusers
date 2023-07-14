@@ -519,7 +519,7 @@ class ConfigMixin:
         return f"{self.__class__.__name__} {self.to_json_string()}"
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def config(self) -> Any:
         """
         Returns the config of the class as a frozen dictionary
 
