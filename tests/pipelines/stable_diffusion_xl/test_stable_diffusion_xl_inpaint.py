@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import copy
+import random
 import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
@@ -26,27 +28,27 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
-    StableDiffusionXLImg2ImgPipeline,
-    StableDiffusionXLPipeline,
+    StableDiffusionXLInpaintPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils import torch_device
+from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionXLPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableDiffusionXLInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])
+    # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -113,29 +115,34 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
-            # "feature_extractor": None,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "image": init_image,
+            "mask_image": mask_image,
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 6.0,
             "output_type": "numpy",
         }
         return inputs
 
-    def test_stable_diffusion_xl_euler(self):
+    def test_stable_diffusion_xl_inpaint_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -144,13 +151,24 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5873, 0.6128, 0.4797, 0.5122, 0.5674, 0.4639, 0.5227, 0.5149, 0.4747])
+
+        expected_slice = np.array([0.4924, 0.4966, 0.4100, 0.5233, 0.5322, 0.4532, 0.5804, 0.5876, 0.4150])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_xl_negative_prompt_embeds(self):
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    def test_save_load_optional_components(self):
+        pass
+
+    def test_stable_diffusion_xl_inpaint_negative_prompt_embeds(self):
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -188,26 +206,20 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
-
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components).to(torch_device)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
         sd_pipe.enable_model_cpu_offload()
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
         sd_pipe.enable_sequential_cpu_offload()
         pipes.append(sd_pipe)
 
@@ -225,9 +237,9 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
-        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_1.unet.set_default_attn_processor()
-        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
 
         def assert_run_mixture(num_steps, split, scheduler_cls_orig):
@@ -283,11 +295,11 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
     def test_stable_diffusion_three_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
-        pipe_1 = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_1.unet.set_default_attn_processor()
-        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_2 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
-        pipe_3 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
+        pipe_3 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_3.unet.set_default_attn_processor()
 
         def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls_orig):
