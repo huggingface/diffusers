@@ -85,8 +85,8 @@ faster. The drawback is that one cannot really inspect the output of the base mo
 
 To use the base model and refiner as an ensemble of expert denoisers, make sure to define the fraction
 of timesteps which should be run through the high-noise denoising stage (*i.e.* the base model) and the low-noise
-denoising stage (*i.e.* the refiner model) respectively. This fraction should be set as the [`~StableDiffusionXLPipeline.__call__.denoising_end`] of the base model 
-and as the [`~StableDiffusionXLImg2ImgPipeline.__call__.denoising_start`] of the refiner model.
+denoising stage (*i.e.* the refiner model) respectively. This fraction should be set as the [`denoising_end`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.denoising_end) of the base model 
+and as the [`denoising_start`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLImg2ImgPipeline.__call__.denoising_start) of the refiner model.
 
 Let's look at an example.
 First, we import the two pipelines. Since the text encoders and variational autoencoder are the same
@@ -246,7 +246,7 @@ You can speed up inference by making use of `torch.compile`. This should give yo
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-### Running with `torch` \< 2.0
+### Running with `torch < 2.0`
 
 **Note** that if you want to run Stable Diffusion XL with `torch` < 2.0, please make sure to enable xformers 
 attention:
