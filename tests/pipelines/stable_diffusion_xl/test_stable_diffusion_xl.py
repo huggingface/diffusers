@@ -230,9 +230,12 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split, scheduler_cls):
+        def assert_run_mixture(num_steps, split, scheduler_cls_orig):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
 
             pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
             pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
@@ -287,9 +290,12 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         pipe_3 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
         pipe_3.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls):
+        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls_orig):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
 
             pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
             pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
