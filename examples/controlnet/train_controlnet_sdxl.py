@@ -957,7 +957,10 @@ def main(args):
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
-    vae.to(accelerator.device, dtype=torch.float32)
+    if args.pretrained_vae_name_or_path is not None:
+        vae.to(accelerator.device, dtype=weight_dtype)
+    else:
+         vae.to(accelerator.device, dtype=torch.float32)
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
@@ -1109,9 +1112,14 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                if args.pretrained_vae_name_or_path is not None:
+                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                else:
+                    pixel_values = batch["pixel_values"]
+                latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
-                latents = latents.to(weight_dtype)
+                if args.pretrained_vae_name_or_path is None:
+                    latents = latents.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
