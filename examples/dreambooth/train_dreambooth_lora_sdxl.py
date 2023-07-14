@@ -1393,7 +1393,7 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
-                vae_path=args.vae_path,
+                vae_path=args.pretrained_vae_model_name_or_path,
             )
             upload_folder(
                 repo_id=repo_id,
