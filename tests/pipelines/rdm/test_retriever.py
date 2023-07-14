@@ -33,7 +33,7 @@ from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
-from diffusers.utils.testing_utils import is_faiss_availble, require_faiss
+from diffusers.utils.testing_utils import is_faiss_available, require_faiss
 torch.backends.cuda.matmul.allow_tf32 = False
 
 

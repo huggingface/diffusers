@@ -7,6 +7,7 @@ from ..utils import (
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
+    is_faiss_available,
 )
 
 
@@ -86,7 +87,7 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
-    from .rdm import RDMPipeline, IndexConfig, Index, Retriever
+    from .rdm import RDMPipeline
 
 try:
     if not is_onnx_available():
@@ -111,6 +112,13 @@ else:
         StableDiffusionOnnxPipeline,
     )
 
+try:
+    if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_and_faiss import *
+else:
+    from .rdm import Retriever, Index, IndexConfig
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()

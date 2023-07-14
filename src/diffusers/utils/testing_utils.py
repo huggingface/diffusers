@@ -16,7 +16,7 @@ import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
-
+print("attempt import")
 from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,

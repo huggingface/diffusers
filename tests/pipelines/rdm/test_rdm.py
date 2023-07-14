@@ -90,7 +90,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "retrieved_images": [Image.fromarray(np.zeros((3, 64, 64)).astype(np.uint8))],
+            "retrieved_images": [Image.fromarray(np.zeros((224, 224, 3)).astype(np.uint8))],
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
