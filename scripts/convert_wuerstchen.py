@@ -51,7 +51,10 @@ prior_model.load_state_dict(state_dict["ema_state_dict"])
 trained_betas = []
 
 # scheduler
-scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2")
+scheduler = DDPMScheduler(
+    beta_schedule="squaredcos_cap_v2",
+    clip_sample=False,
+)
 
 # Prior pipeline
 prior_pipeline = WuerstchenPriorPipeline(
