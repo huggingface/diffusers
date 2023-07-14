@@ -1338,6 +1338,8 @@ def main(args):
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
             revision=args.revision,
         )
+        if args.pretrained_vae_model_name_or_path is not None:
+            vae.to(dtype=weight_dtype)
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, vae=vae, revision=args.revision, torch_dtype=weight_dtype
         )
