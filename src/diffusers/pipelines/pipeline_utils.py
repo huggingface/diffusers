@@ -1134,8 +1134,8 @@ class DiffusionPipeline(ConfigMixin):
 
             # make sure to offload buffers if not all high level weights
             # are of type nn.Module
-            offload_buffers = len(model._parameters) > 0 
-            cpu_offload(cpu_offloaded_model, device, offload_buffers=offload_buffers)
+            offload_buffers = len(model._parameters) > 0
+            cpu_offload(model, device, offload_buffers=offload_buffers)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:

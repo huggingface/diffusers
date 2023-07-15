@@ -25,7 +25,6 @@ from ...pipelines import DiffusionPipeline
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
     logging,
     randn_tensor,
     replace_example_docstring,

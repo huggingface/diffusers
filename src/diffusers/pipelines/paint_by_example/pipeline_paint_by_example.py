@@ -21,8 +21,6 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor
 
-from diffusers.utils import is_accelerate_available
-
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
