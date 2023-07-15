@@ -1024,7 +1024,7 @@ def main():
     pipeline = pipeline.to(accelerator.device)
 
     # load attention processors
-    pipeline.load_lora_weights(args.output_dir)
+    pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.bin")
 
     # run inference
     generator = torch.Generator(device=accelerator.device)
