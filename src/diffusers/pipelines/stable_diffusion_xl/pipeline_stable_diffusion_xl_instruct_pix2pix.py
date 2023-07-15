@@ -528,7 +528,8 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
-
+        
+        tmp_img = torch.load('/home/users/u5689359/gitRepo_mill/Lycium/tmp_image.pt').to('cuda')
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -536,6 +537,11 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         if image.shape[1] == 4:
             image_latents = image
         else:
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            if self.vae.config.force_upcast:
+                image = image.float()
+                self.vae.to(dtype=torch.float32)
+            
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -859,11 +865,12 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[0].unsqueeze(0)), dim=0)
         prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[0].unsqueeze(0)), dim=0)
 
-        prompt_embeds = prompt_embeds.to(device)
-        add_text_embeds = add_text_embeds.to(device)
+        prompt_embeds = prompt_embeds.to(device).to(torch.float32)
+        add_text_embeds = add_text_embeds.to(device).to(torch.float32)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 11. Denoising loop
+        self.unet = self.unet.to(torch.float32)
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -878,6 +885,8 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                tar_idx = 2; added_cond_kwargs_tmp = {"text_embeds": add_text_embeds[tar_idx].unsqueeze(0), "time_ids": add_time_ids[tar_idx].unsqueeze(0)}
+                # self.unet(scaled_latent_model_input[tar_idx].unsqueeze(0), t, encoder_hidden_states=prompt_embeds[tar_idx].unsqueeze(0), cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs_tmp, return_dict=False)[0]
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds, cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
 
                 # Hack:
