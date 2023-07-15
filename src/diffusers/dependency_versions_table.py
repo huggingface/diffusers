@@ -3,6 +3,7 @@
 # 2. run `make deps_table_update``
 deps = {
     "Pillow": "Pillow",
+    "faiss": "faiss",
     "accelerate": "accelerate>=0.11.0",
     "compel": "compel==0.1.8",
     "black": "black~=23.1",
