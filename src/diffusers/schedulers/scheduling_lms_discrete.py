@@ -218,9 +218,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self.derivatives = []
 
     # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
