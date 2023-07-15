@@ -22,6 +22,7 @@ import os
 import random
 import shutil
 from pathlib import Path
+from typing import Dict
 
 import datasets
 import numpy as np
@@ -41,10 +42,10 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
-from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -373,6 +374,22 @@ DATASET_NAME_MAPPING = {
 }
 
 
+def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
+    r"""
+    Returns:
+        a state dict containing just the attention processor parameters.
+    """
+    attn_processors = unet.attn_processors
+
+    attn_processors_state_dict = {}
+
+    for attn_processor_key, attn_processor in attn_processors.items():
+        for parameter_key, parameter in attn_processor.state_dict().items():
+            attn_processors_state_dict[f"{attn_processor_key}.{parameter_key}"] = parameter
+
+    return attn_processors_state_dict
+
+
 def main():
     args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -465,6 +482,7 @@ def main():
 
     # Set correct lora layers
     unet_lora_attn_procs = {}
+    unet_lora_parameters = []
     for name in unet.attn_processors.keys():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
@@ -476,11 +494,9 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        unet_lora_attn_procs[name] = LoRAAttnProcessor(
-            hidden_size=hidden_size,
-            cross_attention_dim=cross_attention_dim,
-            rank=args.rank,
-        )
+        module = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank)
+        unet_lora_attn_procs[name] = module
+        unet_lora_parameters.extend(module.parameters())
 
     unet.set_attn_processor(unet_lora_attn_procs)
 
@@ -521,28 +537,11 @@ def main():
         snr = (alpha / sigma) ** 2
         return snr
 
-    unet_lora_layers = AttnProcsLayers(unet.attn_processors)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
-    # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
-    # we first load a dummy pipeline with the text encoder and then do the monkey-patching.
-    text_encoder_lora_layers = None
+    # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
-        text_lora_attn_procs = {}
-        for name, module in text_encoder.named_modules():
-            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-                text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_proj.out_features,
-                    cross_attention_dim=None,
-                    rank=args.rank,
-                )
-        text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, text_encoder=text_encoder
-        )
-        temp_pipeline._modify_text_encoder(text_lora_attn_procs)
-        text_encoder = temp_pipeline.text_encoder
-        del temp_pipeline
+        text_lora_parameters = LoraLoaderMixin._modify_text_encoder(text_encoder, dtype=torch.float32, rank=args.rank)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -551,23 +550,13 @@ def main():
         unet_lora_layers_to_save = None
         text_encoder_lora_layers_to_save = None
 
-        if args.train_text_encoder:
-            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
-        unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
-
         for model in models:
-            state_dict = model.state_dict()
-
-            if (
-                text_encoder_lora_layers is not None
-                and text_encoder_keys is not None
-                and state_dict.keys() == text_encoder_keys
-            ):
-                # text encoder
-                text_encoder_lora_layers_to_save = state_dict
-            elif state_dict.keys() == unet_keys:
-                # unet
-                unet_lora_layers_to_save = state_dict
+            if isinstance(model, type(accelerator.unwrap_model(unet))):
+                unet_lora_layers_to_save = unet_attn_processors_state_dict(model)
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_lora_layers_to_save = text_encoder_lora_state_dict(model)
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
@@ -579,27 +568,23 @@ def main():
         )
 
     def load_model_hook(models, input_dir):
-        # Note we DON'T pass the unet and text encoder here an purpose
-        # so that the we don't accidentally override the LoRA layers of
-        # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
-        # with new torch.nn.Modules / weights. We simply use the pipeline class as
-        # an easy way to load the lora checkpoints
-        temp_pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            revision=args.revision,
-            torch_dtype=weight_dtype,
+        unet_ = None
+        text_encoder_ = None
+
+        while len(models) > 0:
+            model = models.pop()
+            if isinstance(model, type(accelerator.unwrap_model(unet))):
+                unet_ = model
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_ = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
+
+        lora_state_dict, network_alpha = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alpha=network_alpha, unet=unet_)
+        LoraLoaderMixin.load_lora_into_text_encoder(
+            lora_state_dict, network_alpha=network_alpha, text_encoder=text_encoder_
         )
-        temp_pipeline.load_lora_weights(input_dir)
-
-        # load lora weights into models
-        models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
-        if len(models) > 1:
-            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
-
-        # delete temporary pipeline and pop models
-        del temp_pipeline
-        for _ in range(len(models)):
-            models.pop()
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -628,9 +613,9 @@ def main():
         optimizer_cls = torch.optim.AdamW
 
     params_to_optimize = (
-        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+        itertools.chain(unet_lora_parameters, text_lora_parameters)
         if args.train_text_encoder
-        else unet_lora_layers.parameters()
+        else unet_lora_parameters
     )
     optimizer = optimizer_cls(
         params_to_optimize,
@@ -760,12 +745,12 @@ def main():
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler
+        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
-        unet_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet_lora_layers, optimizer, train_dataloader, lr_scheduler
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -899,9 +884,9 @@ def main():
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+                        itertools.chain(unet_lora_parameters, text_lora_parameters)
                         if args.train_text_encoder
-                        else unet_lora_layers.parameters()
+                        else unet_lora_parameters
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
@@ -954,6 +939,8 @@ def main():
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
+                print(weight_dtype)
+                kk
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
@@ -970,9 +957,9 @@ def main():
                     generator = generator.manual_seed(args.seed)
                 images = []
                 for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
+                    with torch.cuda.amp.autocast():
+                        image = pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                        images.append(image)
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -994,12 +981,16 @@ def main():
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+        unet_lora_layers = unet_attn_processors_state_dict(unet)
 
         if text_encoder is not None:
+            text_encoder = accelerator.unwrap_model(text_encoder)
             text_encoder = text_encoder.to(torch.float32)
-            text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
+            text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder)
+        else:
+            text_encoder_lora_layers = None
 
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
