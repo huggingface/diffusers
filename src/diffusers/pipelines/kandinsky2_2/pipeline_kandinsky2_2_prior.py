@@ -104,6 +104,8 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             A image_processor to be used to preprocess image from clip.
     """
 
+    _exclude_from_cpu_offload = ["prior"]
+
     def __init__(
         self,
         prior: PriorTransformer,

@@ -143,7 +143,9 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(latents_shape, generator=generator, device=self._execution_device, dtype=prompt_embeds.dtype)
+            latents = randn_tensor(
+                latents_shape, generator=generator, device=self._execution_device, dtype=prompt_embeds.dtype
+            )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

@@ -93,6 +93,8 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
     """
 
+    _exclude_from_cpu_offload = ["image_normalizer"]
+
     # image encoding components
     feature_extractor: CLIPImageProcessor
     image_encoder: CLIPVisionModelWithProjection

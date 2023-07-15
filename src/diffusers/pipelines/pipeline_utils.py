@@ -474,6 +474,7 @@ class DiffusionPipeline(ConfigMixin):
     """
     config_name = "model_index.json"
     _optional_components = []
+    _exclude_from_cpu_offload = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -1093,8 +1094,8 @@ class DiffusionPipeline(ConfigMixin):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        for model in self.components.values():
-            if not isinstance(model, torch.nn.Module):
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
                 continue
 
             if not hasattr(model, "_hf_hook"):
@@ -1128,14 +1129,17 @@ class DiffusionPipeline(ConfigMixin):
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
-        for model in self.components.values():
+        for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
 
-            # make sure to offload buffers if not all high level weights
-            # are of type nn.Module
-            offload_buffers = len(model._parameters) > 0
-            cpu_offload(model, device, offload_buffers=offload_buffers)
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                # make sure to offload buffers if not all high level weights
+                # are of type nn.Module
+                offload_buffers = len(model._parameters) > 0
+                cpu_offload(model, device, offload_buffers=offload_buffers)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:

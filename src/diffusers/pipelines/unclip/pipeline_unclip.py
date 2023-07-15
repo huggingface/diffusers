@@ -63,6 +63,8 @@ class UnCLIPPipeline(DiffusionPipeline):
 
     """
 
+    _exclude_from_cpu_offload = ["prior"]
+
     prior: PriorTransformer
     decoder: UNet2DConditionModel
     text_proj: UnCLIPTextProjModel
