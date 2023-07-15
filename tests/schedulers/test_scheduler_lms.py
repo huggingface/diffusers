@@ -2,6 +2,7 @@ import torch
 
 from diffusers import LMSDiscreteScheduler
 from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import skip_mps
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -138,3 +139,51 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 3812.9927) < 2e-2
         assert abs(result_mean.item() - 4.9648) < 1e-3
+
+    @skip_mps
+    def test_fp32_fp64_quivalency(self):
+        def full_loop(scheduler, device, dtype):
+            scheduler.set_timesteps(self.num_inference_steps)
+            scheduler.timesteps = scheduler.timesteps.to(dtype=dtype, device=device)
+
+            model = self.dummy_model()
+            sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+            sample = sample.to(device)
+
+            for i, t in enumerate(scheduler.timesteps):
+                sample = scheduler.scale_model_input(sample, t)
+
+                model_output = model(sample, t)
+
+                output = scheduler.step(model_output, t, sample)
+                sample = output.prev_sample
+            return sample
+
+        scheduler_class = self.scheduler_classes[0]
+
+        schedulers = []
+
+        # base
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+        schedulers.append(scheduler)
+
+        # v_prediction
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+        schedulers.append(scheduler)
+
+        for scheduler in schedulers:
+            for device in ["cpu", torch_device]:
+                out_fp32 = full_loop(scheduler, device, torch.float32)
+                out_fp64 = full_loop(scheduler, device, torch.float64)
+
+                self.assertTrue(
+                    torch.allclose(out_fp32, out_fp64, atol=1e-5),
+                    msg=(
+                        "full loop scheduler output are not equal when timesteps is set to float32 and float64. Difference:"
+                        f" {torch.max(torch.abs(out_fp32 - out_fp64))}."
+                        f" scheduler config: {scheduler}"
+                        f" device: {device}"
+                    ),
+                )
