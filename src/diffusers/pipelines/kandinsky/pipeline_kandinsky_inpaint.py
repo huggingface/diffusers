@@ -275,6 +275,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -431,9 +432,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook

@@ -47,7 +47,11 @@ class DDIMSchedulerOutput(BaseOutput):
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
+def betas_for_alpha_bar(
+    num_diffusion_timesteps,
+    max_beta=0.999,
+    alpha_transform_type="cosine",
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -60,19 +64,30 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
+                     Choose from `cosine` or `exp`
 
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
+    if alpha_transform_type == "cosine":
 
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+        def alpha_bar_fn(t):
+            return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "exp":
+
+        def alpha_bar_fn(t):
+            return math.exp(t * -12.0)
+
+    else:
+        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+        betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
 
 
@@ -302,8 +317,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.num_inference_steps = num_inference_steps
 
-        # "leading" and "trailing" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
-        if self.config.timestep_spacing == "leading":
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = (
+                np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
+                .round()[::-1]
+                .copy()
+                .astype(np.int64)
+            )
+        elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3

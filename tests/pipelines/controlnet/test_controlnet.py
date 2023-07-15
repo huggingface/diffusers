@@ -46,7 +46,11 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -97,7 +101,9 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     out_queue.join()
 
 
-class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class ControlNetPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -207,7 +213,9 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
 
-class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionMultiControlNetPipelineFastTests(
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS

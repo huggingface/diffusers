@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
@@ -153,7 +153,9 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     return mask, masked_image
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionInpaintPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion.
 
@@ -979,8 +981,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             generator,
             do_classifier_free_guidance,
         )
-        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
