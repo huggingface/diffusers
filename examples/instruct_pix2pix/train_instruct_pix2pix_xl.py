@@ -448,7 +448,6 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
-    import pdb; pdb.set_trace()
 
     # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
     # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
@@ -878,7 +877,6 @@ def main():
                 
                 # Predict the noise residual and compute loss
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                import pdb; pdb.set_trace()
                 model_pred = unet(concatenated_noisy_latents[:, :4, :, :], timesteps, encoder_hidden_states, cross_attention_kwargs=None, added_cond_kwargs=added_cond_kwargs, return_dict=False).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
