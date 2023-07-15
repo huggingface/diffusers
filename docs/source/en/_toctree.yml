@@ -200,8 +200,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
-    - local: api/pipelines/if
-      title: IF
+    - local: api/pipelines/deepfloyd_if
+      title: DeepFloyd IF 
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
