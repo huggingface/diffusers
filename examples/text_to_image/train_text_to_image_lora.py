@@ -537,7 +537,6 @@ def main():
         snr = (alpha / sigma) ** 2
         return snr
 
-
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
@@ -939,8 +938,6 @@ def main():
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                print(weight_dtype)
-                kk
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
