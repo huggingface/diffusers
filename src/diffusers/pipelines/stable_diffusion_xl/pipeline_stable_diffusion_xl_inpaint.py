@@ -684,8 +684,8 @@ class StableDiffusionXLInpaintPipeline(
         return outputs
 
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        dtype = image.dtype
         if self.vae.config.force_upcast:
-            dtype = image.dtype
             image = image.float()
             self.vae.to(dtype=torch.float32)
 
