@@ -4,24 +4,30 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-from transformers import (CLIPTextModel, CLIPTextModelWithProjection,
-                          CLIPTokenizer)
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import (FromSingleFileMixin, LoraLoaderMixin,
-                        TextualInversionLoaderMixin)
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import (AttnProcessor2_0,
-                                           LoRAAttnProcessor2_0,
-                                           LoRAXFormersAttnProcessor,
-                                           XFormersAttnProcessor)
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (deprecate, is_accelerate_available,
-                      is_accelerate_version, logging, randn_tensor,
-                      replace_example_docstring)
+from ...utils import (
+    deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 from .watermark import StableDiffusionXLWatermarker
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
