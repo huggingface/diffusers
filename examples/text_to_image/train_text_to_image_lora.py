@@ -988,7 +988,7 @@ def main():
         unet = unet.to(torch.float32)
         unet_lora_layers = unet_attn_processors_state_dict(unet)
 
-        if text_encoder is not None:
+        if text_encoder is not None and args.train_text_encoder:
             text_encoder = accelerator.unwrap_model(text_encoder)
             text_encoder = text_encoder.to(torch.float32)
             text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder)
