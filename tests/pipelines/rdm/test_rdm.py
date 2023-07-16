@@ -70,7 +70,10 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_channels=4,
         )
         torch.manual_seed(0)
-        clip = CLIPModel.from_pretrained("hf-internal-testing/tiny-random-clip")
+        clip_config = CLIPConfig.from_pretrained("hf-internal-testing/tiny-random-clip")
+        clip_config.text_config.vocab_size = 49408
+
+        clip = CLIPModel.from_pretrained("hf-internal-testing/tiny-random-clip", config=clip_config, ignore_mismatched_sizes=True)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         feature_extractor = CLIPFeatureExtractor.from_pretrained("hf-internal-testing/tiny-random-clip", size={"shortest_edge": 30}, crop_size={"height": 30, "width": 30})
 
@@ -91,7 +94,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         # To work with tiny clip, the prompt tokens need to be in the range of 0 to 100 when tokenized
         inputs = {
-            "prompt": "",
+            "prompt": "A painting of a squirrel eating a burger",
             "retrieved_images": [Image.fromarray(np.zeros((224, 224, 3)).astype(np.uint8))],
             "generator": generator,
             "num_inference_steps": 2,
@@ -279,7 +282,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = ""
+        prompt = "A painting of a squirrel eating a burger"
 
         # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
         generator = torch.Generator(device=device).manual_seed(0)
@@ -334,7 +337,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
         assert cap_logger.out.count("@") == 25
-        assert cap_logger_3.out == ""
+        assert cap_logger_3.out == "A painting of a squirrel eating a burger"
 
     def test_rdm_height_width_opt(self):
         components = self.get_dummy_components()
@@ -343,7 +346,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = ""
+        prompt = "A painting of a squirrel eating a burger"
 
         output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]

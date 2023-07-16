@@ -287,6 +287,7 @@ class RDMPipeline(DiffusionPipeline):
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
+            truncation=True,
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
@@ -311,7 +312,7 @@ class RDMPipeline(DiffusionPipeline):
             image_embeddings = self.clip.get_image_features(retrieved_images)
             image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
             image_embeddings = image_embeddings[None, ...]
-
+            image_embeddings = image_embeddings.repeat(batch_size, 1, 1)
             text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
