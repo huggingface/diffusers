@@ -175,6 +175,7 @@ class NoWatermark:
 pipe.watermark = NoWatermark()
 # ...
 ```
+
 ## Notes
 
 In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
