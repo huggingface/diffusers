@@ -116,7 +116,7 @@ try:
     if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils.dummy_torch_and_transformers_and_faiss import *
+    from ..utils.dummy_torch_and_transformers_and_faiss_objects import *
 else:
     from .rdm import Index, IndexConfig, Retriever
 try:
