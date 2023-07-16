@@ -292,7 +292,7 @@ class PipelineTesterMixin:
 
             if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
                 batched_inputs.pop("output_type")
-
+            print(batched_inputs)
             output = pipe(**batched_inputs)
 
             assert len(output[0]) == batch_size

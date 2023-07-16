@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
-from transformers import CLIPConfig, CLIPModel, CLIPTokenizer
+from transformers import CLIPConfig, CLIPModel, CLIPTokenizer, CLIPFeatureExtractor
 
 from diffusers import (
     AutoencoderKL,
@@ -51,7 +51,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=64,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -72,6 +72,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         clip = CLIPModel.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        feature_extractor = CLIPFeatureExtractor.from_pretrained("hf-internal-testing/tiny-random-clip", size={"shortest_edge": 30}, crop_size={"height": 30, "width": 30})
 
         components = {
             "unet": unet,
@@ -79,7 +80,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "clip": clip,
             "tokenizer": tokenizer,
-            "feature_extractor": None,
+            "feature_extractor": feature_extractor,
         }
         return components
 
@@ -88,8 +89,9 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        # To work with tiny clip, the prompt tokens need to be in the range of 0 to 100 when tokenized
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": "",
             "retrieved_images": [Image.fromarray(np.zeros((224, 224, 3)).astype(np.uint8))],
             "generator": generator,
             "num_inference_steps": 2,
@@ -273,12 +275,11 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
-        components["safety_checker"] = None
         sd_pipe = RDMPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
+        prompt = ""
 
         # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
         generator = torch.Generator(device=device).manual_seed(0)
@@ -342,7 +343,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "hey"
+        prompt = ""
 
         output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
@@ -399,21 +400,8 @@ class RDMPipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
-    def test_rdm_1_1_pndm(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
-
-    def test_rdm_1_4_pndm(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+    def test_rdm_pndm(self):
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -426,7 +414,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_ddim(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
         sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -440,7 +428,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_lms(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -454,7 +442,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_dpm(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
         sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -469,7 +457,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
     def test_rdm_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -495,7 +483,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
     def test_rdm_vae_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -527,7 +515,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
     def test_rdm_vae_tiling(self):
         torch.cuda.reset_peak_memory_stats()
-        model_id = "CompVis/stable-diffusion-v1-4"
+        model_id = "fusing/rdm"
         pipe = RDMPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -573,7 +561,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
     def test_rdm_fp16_vs_autocast(self):
         # this test makes sure that the original model with autocast
         # and the new model with fp16 yield the same result
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -618,7 +606,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
         callback_fn.has_been_called = False
 
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -629,7 +617,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert number_of_steps == inputs["num_inference_steps"]
 
     def test_rdm_low_cpu_mem_usage(self):
-        pipeline_id = "CompVis/stable-diffusion-v1-4"
+        pipeline_id = "fusing/rdm"
 
         start_time = time.time()
         pipeline_low_cpu_mem_usage = RDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
@@ -647,7 +635,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
@@ -670,7 +658,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         # Normal inference
 
         pipe = RDMPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
+            "fusing/rdm",
             torch_dtype=torch.float16,
         )
         pipe.unet.set_default_attn_processor()
@@ -683,7 +671,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
         # Reload but don't move to cuda
         pipe = RDMPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
+            "fusing/rdm",
             torch_dtype=torch.float16,
         )
         pipe.unet.set_default_attn_processor()
@@ -702,7 +690,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(outputs.images - outputs_offloaded.images).max() < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3.5 * 10**9
-        for module in pipe.text_encoder, pipe.unet, pipe.vae, pipe.safety_checker:
+        for module in pipe.text_encoder, pipe.unet, pipe.vae:
             assert module.device == torch.device("cpu")
 
         # With attention slicing
@@ -718,7 +706,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert mem_bytes_slicing < 3 * 10**9
 
     def test_rdm_textual_inversion(self):
-        pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
         pipe.load_textual_inversion("sd-concepts-library/low-poly-hd-logos-icons")
 
         a111_file = hf_hub_download("hf-internal-testing/text_inv_embedding_a1111_format", "winter_style.pt")
@@ -743,11 +731,11 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert max_diff < 5e-2
 
     def test_rdm_compile(self):
-        if version.parse(torch.__version__) < version.parse("2.0"):
-            print(f"Test `test_rdm_ddim` is skipped because {torch.__version__} is < 2.0")
+        if version.parse(torch._version_) < version.parse("2.0"):
+            print(f"Test `test_rdm_ddim` is skipped because {torch._version_} is < 2.0")
             return
 
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
         sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
 
@@ -842,8 +830,8 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         }
         return inputs
 
-    def test_rdm_1_4_pndm(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+    def test_rdm_pndm(self):
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -851,7 +839,7 @@ class RDMPipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
+            "/stable_diffusion_text2img/stable_diffusion_pndm.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
@@ -871,7 +859,7 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_rdm_ddim(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
         sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -880,13 +868,13 @@ class RDMPipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
+            "/stable_diffusion_text2img/stable_diffusion_ddim.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_rdm_lms(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -895,13 +883,13 @@ class RDMPipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_lms.npy"
+            "/stable_diffusion_text2img/stable_diffusion_lms.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_rdm_euler(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
         sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -910,13 +898,13 @@ class RDMPipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
+            "/stable_diffusion_text2img/stable_diffusion_euler.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_rdm_dpm(self):
-        sd_pipe = RDMPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
         sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -926,7 +914,7 @@ class RDMPipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
+            "/stable_diffusion_text2img/stable_diffusion_dpm_multi.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
