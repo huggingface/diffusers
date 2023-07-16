@@ -529,7 +529,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
         
-        tmp_img = torch.load('/home/users/u5689359/gitRepo_mill/Lycium/tmp_image.pt').to('cuda')
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -794,22 +793,26 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         )
 
         # 4. Preprocess image
-        image = self.image_processor.preprocess(image)
+        image = self.image_processor.preprocess(image).to(device)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare Image latents
-        image_latents = self.prepare_image_latents(
-            image,
-            batch_size,
-            num_images_per_prompt,
-            prompt_embeds.dtype,
-            device,
-            do_classifier_free_guidance,
-            generator,
-        )
+        # image_latents = self.prepare_image_latents(
+        #     image,
+        #     batch_size,
+        #     num_images_per_prompt,
+        #     prompt_embeds.dtype,
+        #     device,
+        #     do_classifier_free_guidance,
+        #     generator,
+        # )
+        image_latents = self.vae.encode(image).latent_dist.mode()
+        if do_classifier_free_guidance:
+            uncond_image_latents = torch.zeros_like(image_latents)
+            image_latents = torch.cat([uncond_image_latents, image_latents], dim=0)
 
         height, width = image_latents.shape[-2:]
         height = height * self.vae_scale_factor
@@ -861,9 +864,9 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
-        add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[0].unsqueeze(0)), dim=0)
-        add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[0].unsqueeze(0)), dim=0)
-        prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[0].unsqueeze(0)), dim=0)
+        # add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[0].unsqueeze(0)), dim=0)
+        # add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[0].unsqueeze(0)), dim=0)
+        # prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[0].unsqueeze(0)), dim=0)
 
         prompt_embeds = prompt_embeds.to(device).to(torch.float32)
         add_text_embeds = add_text_embeds.to(device).to(torch.float32)
@@ -877,7 +880,8 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
                 # is applied for both the text and the input image.
-                latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
+                # latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -885,7 +889,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                tar_idx = 2; added_cond_kwargs_tmp = {"text_embeds": add_text_embeds[tar_idx].unsqueeze(0), "time_ids": add_time_ids[tar_idx].unsqueeze(0)}
+                # tar_idx = 2; added_cond_kwargs_tmp = {"text_embeds": add_text_embeds[tar_idx].unsqueeze(0), "time_ids": add_time_ids[tar_idx].unsqueeze(0)}
                 # self.unet(scaled_latent_model_input[tar_idx].unsqueeze(0), t, encoder_hidden_states=prompt_embeds[tar_idx].unsqueeze(0), cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs_tmp, return_dict=False)[0]
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds, cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
 
@@ -900,12 +904,8 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
-                    noise_pred = (
-                            noise_pred_uncond
-                            + guidance_scale * (noise_pred_text - noise_pred_image)
-                            + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
-                    )
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
