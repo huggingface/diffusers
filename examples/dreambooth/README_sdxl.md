@@ -164,6 +164,17 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sks_dog.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_sks_dog.png) |
 
+Because of SD-XL model's licence there is an "invisible" watermark added to the generated images in the pipeline, if you want to override that behaviour you can use the code below:
+
+```python
+# ...
+class NoWatermark:
+    def apply_watermark(self, img):
+        return img
+
+pipe.watermark = NoWatermark()
+# ...
+```
 ## Notes
 
 In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
