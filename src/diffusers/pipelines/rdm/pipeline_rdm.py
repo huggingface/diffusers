@@ -19,7 +19,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, logging
+from ...utils import deprecate, logging, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -340,13 +340,7 @@ class RDMPipeline(DiffusionPipeline):
         latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 16, width // 16)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if self.device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
-            else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

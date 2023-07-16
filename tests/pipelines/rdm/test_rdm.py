@@ -38,7 +38,12 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = RDMPipeline
-    params = TEXT_TO_IMAGE_PARAMS
+    params = TEXT_TO_IMAGE_PARAMS - {
+        "negative_prompt",
+        "negative_prompt_embeds",
+        "cross_attention_kwargs",
+        "prompt_embeds",
+    }
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     def get_dummy_components(self):

@@ -215,7 +215,6 @@ class PipelineTesterMixin:
         )
 
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
-
         optional_parameters = set()
 
         for k, v in parameters.items():
@@ -227,7 +226,6 @@ class PipelineTesterMixin:
         parameters.discard("kwargs")  # kwargs can be added if arguments of pipeline call function are deprecated
 
         remaining_required_parameters = set()
-
         for param in self.params:
             if param not in parameters:
                 remaining_required_parameters.add(param)
