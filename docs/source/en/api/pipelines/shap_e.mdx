@@ -130,7 +130,7 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 
 ### Generate mesh
 
-For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the `export_to_ply` utility function to save the output as a `ply` file. We also provide a `export_to_obj` function that you can use to save mesh outputs as `obj` files.
+For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the [`ShapEPipeline.export_to_ply`] utility function to save the output as a `ply` file. We also provide a [`ShapEPipeline.export_to_obj`] function that you can use to save mesh outputs as `obj` files.
 
 ```python
 import torch
