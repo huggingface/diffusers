@@ -1,17 +1,3 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -356,7 +342,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 # duplicate text embeddings for each generation per prompt, using mps friendly method
                 prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
                 prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-                
+
                 prompt_embeds_list.append(prompt_embeds)
 
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
@@ -455,44 +441,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix
-    def check_inputs(
-            self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
-    ):
-        if (callback_steps is None) or (
-                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -519,7 +467,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     # Copy from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix
     def prepare_image_latents(
         self, image, batch_size, num_images_per_prompt, dtype, device, do_classifier_free_guidance, generator=None
@@ -528,7 +476,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
-        
+
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -540,7 +488,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             if self.vae.config.force_upcast:
                 image = image.float()
                 self.vae.to(dtype=torch.float32)
-            
+
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -576,7 +524,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             image_latents = torch.cat([image_latents, image_latents, uncond_image_latents], dim=0)
 
         return image_latents
-    
+
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
     ):
@@ -748,7 +696,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        # self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
@@ -891,7 +839,14 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 # tar_idx = 2; added_cond_kwargs_tmp = {"text_embeds": add_text_embeds[tar_idx].unsqueeze(0), "time_ids": add_time_ids[tar_idx].unsqueeze(0)}
                 # self.unet(scaled_latent_model_input[tar_idx].unsqueeze(0), t, encoder_hidden_states=prompt_embeds[tar_idx].unsqueeze(0), cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs_tmp, return_dict=False)[0]
-                noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds, cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
+                noise_pred = self.unet(
+                    scaled_latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )[0]
 
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
