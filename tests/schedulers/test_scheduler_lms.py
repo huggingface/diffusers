@@ -163,7 +163,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
         schedulers = []
 
-        # base
+        # default
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
         schedulers.append(scheduler)
@@ -171,6 +171,11 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         # v_prediction
         scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
         scheduler = scheduler_class(**scheduler_config)
+        schedulers.append(scheduler)
+
+        # karras_sigmas
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config, use_karras_sigmas=True)
         schedulers.append(scheduler)
 
         for scheduler in schedulers:
