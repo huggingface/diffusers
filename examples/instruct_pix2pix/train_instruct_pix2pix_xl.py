@@ -52,6 +52,8 @@ from diffusers.utils.import_utils import is_xformers_available
 
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
 
+from PIL import Image
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.18.0.dev0")
@@ -435,10 +437,13 @@ def main():
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    tokenizer = CLIPTokenizer.from_pretrained(
+    tokenizer_1 = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
-    text_encoder = CLIPTextModel.from_pretrained(
+    tokenizer_2 = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision
+    )
+    text_encoder_1 = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
     text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
@@ -455,8 +460,7 @@ def main():
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
     logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
-    # in_channels = 8
-    in_channels = 4
+    in_channels = 8
     out_channels = unet.conv_in.out_channels
     unet.register_to_config(in_channels=in_channels)
 
@@ -470,7 +474,8 @@ def main():
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    text_encoder_1.requires_grad_(False)
+    text_encoder_2.requires_grad_(False)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -614,9 +619,9 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
-    def tokenize_captions(captions):
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    def tokenize_captions(captions, a_tokenizer):
+        inputs = a_tokenizer(
+            captions, max_length=a_tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
         return inputs.input_ids
 
@@ -658,7 +663,8 @@ def main():
 
         # Preprocess the captions.
         captions = list(examples[edit_prompt_column])
-        examples["input_ids"] = tokenize_captions(captions)
+        examples["input_ids"] = tokenize_captions(captions, tokenizer_1)
+        examples["input_ids_2"] = tokenize_captions(captions, tokenizer_2)
         return examples
 
     with accelerator.main_process_first():
@@ -673,10 +679,12 @@ def main():
         edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
         edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
+        input_ids_2 = torch.stack([example["input_ids_2"] for example in examples])
         return {
             "original_pixel_values": original_pixel_values,
             "edited_pixel_values": edited_pixel_values,
             "input_ids": input_ids,
+            "input_ids_2": input_ids_2, 
         }
 
     # DataLoaders creation:
@@ -719,9 +727,9 @@ def main():
         weight_dtype = torch.bfloat16
 
     # Move text_encode and vae to gpu and cast to weight_dtype
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_1.to(accelerator.device, dtype=weight_dtype)
     text_encoder_2.to(accelerator.device, dtype=weight_dtype)
-    text_encoders = [text_encoder, text_encoder_2]
+    text_encoders = [text_encoder_1, text_encoder_2]
     vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -792,6 +800,7 @@ def main():
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
+                # tmp_pixel_value = torch.load('xl_image.pt').to('cuda')
                 latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
@@ -806,21 +815,24 @@ def main():
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning.
+                ### Begin encoder prompt
                 prompt_embeds_list = []
-                for text_encoder in text_encoders[1:]:
-                    prompt_embeds = text_encoder(batch["input_ids"], output_hidden_states=True)
+                for input_ids, text_encoder in zip((batch["input_ids"], batch["input_ids_2"]), text_encoders):
+                    prompt_embeds = text_encoder(input_ids, output_hidden_states=True)
+                    # We are only ALWAYS interested in the pooled output of the final text encoder
                     pooled_prompt_embeds = prompt_embeds[0]
-                    
                     prompt_embeds = prompt_embeds.hidden_states[-2]
+
                     bs_embed, seq_len, _ = prompt_embeds.shape
                     # duplicate text embeddings for each generation per prompt, using mps friendly method
                     prompt_embeds = prompt_embeds.repeat(1, 1, 1)
                     prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
 
                     prompt_embeds_list.append(prompt_embeds)
-                    
+
                 encoder_hidden_states = torch.concat(prompt_embeds_list, dim=-1)
+                pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, 1).view(bs_embed, -1)
+                ### End encoder prompt
 
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
@@ -834,7 +846,17 @@ def main():
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
                     # Final text conditioning.
-                    null_conditioning = text_encoder(tokenize_captions([""]).to(accelerator.device))[0]
+                    ### Begin: Get null conditioning
+                    null_conditioning_list = []
+                    for a_tokenizer, a_text_encoder in zip((tokenizer_1, tokenizer_2), (text_encoder_1, text_encoder_2)):
+                        null_conditioning_list.append(
+                            a_text_encoder(
+                                tokenize_captions([""], a_tokenizer=a_tokenizer).to(accelerator.device), 
+                                output_hidden_states=True
+                            ).hidden_states[-2]
+                        )
+                    ### End: Get null conditioning
+                    null_conditioning = torch.concat(null_conditioning_list, dim=-1)
                     encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
 
                     # Sample masks for the original images.
@@ -859,14 +881,10 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 ### Begin SDXL
-                bs_embed = pooled_prompt_embeds.shape[0]
-                pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, 1).view(
-                    bs_embed * 1, -1
-                )
                 add_text_embeds = pooled_prompt_embeds
                 
                 crops_coords_top_left = (0, 0)
-                target_size = (args.resolution, args.resolution)
+                target_size = (512, 512)
                 original_size = original_image_embeds.shape[-2:]
                 add_time_ids = list(original_size + crops_coords_top_left + target_size)
                 add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -876,8 +894,12 @@ def main():
                 ### End SDXL
                 
                 # Predict the noise residual and compute loss
+                # tmp_prompt_embeds = torch.load('xl_prompt_embeds.pt').to('cuda')
+                # tmp_concatenated_noisy_latents = torch.load('xl_latent_model_input.pt').to('cuda')
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                model_pred = unet(concatenated_noisy_latents[:, :4, :, :], timesteps, encoder_hidden_states, cross_attention_kwargs=None, added_cond_kwargs=added_cond_kwargs, return_dict=False).sample
+                
+                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
+                # model_pred = unet(concatenated_noisy_latents, timesteps, tmp_prompt_embeds, added_cond_kwargs=added_cond_kwargs).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -952,7 +974,10 @@ def main():
                 pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    text_encoder=accelerator.unwrap_model(text_encoder_1),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+                    tokenizer=accelerator.unwrap_model(tokenizer_1),
+                    tokenizer_2=accelerator.unwrap_model(tokenizer_2),
                     vae=accelerator.unwrap_model(vae),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
@@ -961,7 +986,8 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                original_image = download_image(args.val_image_url)
+                # original_image = download_image(args.val_image_url)
+                original_image = Image.open(args.val_image_url).convert("RGB")
                 edited_images = []
                 with torch.autocast(
                     str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
@@ -1002,7 +1028,10 @@ def main():
 
         pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            text_encoder=accelerator.unwrap_model(text_encoder),
+            text_encoder=accelerator.unwrap_model(text_encoder_1),
+            text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+            tokenizer=accelerator.unwrap_model(tokenizer_1),
+            tokenizer_2=accelerator.unwrap_model(tokenizer_2),
             vae=accelerator.unwrap_model(vae),
             unet=unet,
             revision=args.revision,
