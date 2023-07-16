@@ -188,6 +188,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
+        **kwargs,
     ):
         super().__init__()
 
