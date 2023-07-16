@@ -89,10 +89,6 @@ class RDMPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        if vae.config.latent_channels == 4:
-            self.scaling_factor = 0.18215
-        elif vae.config.latent_channels == 16:
-            self.scaling_factor = 0.22765929
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -128,6 +124,7 @@ class RDMPipeline(DiffusionPipeline):
             scheduler=scheduler,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     def enable_xformers_memory_efficient_attention(self):
         r"""
@@ -146,7 +143,37 @@ class RDMPipeline(DiffusionPipeline):
         Disable memory efficient attention as implemented in xformers.
         """
         self.unet.set_use_memory_efficient_attention_xformers(False)
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding.
 
+        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
+        steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
+        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -333,11 +360,7 @@ class RDMPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
         # get the initial random noise unless the user supplied it
-
-        # Unlike in other pipelines, latents need to be generated in the target device
-        # for 1-to-1 results reproducibility with the CompVis implementation.
-        # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 16, width // 16)
+        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // self.vae_scale_factor, width // self.vae_scale_factor)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
@@ -390,8 +413,9 @@ class RDMPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / self.scaling_factor * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
+
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
