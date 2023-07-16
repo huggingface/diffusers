@@ -19,6 +19,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
+    deprecate,
     logging,
     randn_tensor,
     replace_example_docstring,
