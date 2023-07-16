@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
@@ -153,7 +153,9 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     return mask, masked_image
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionInpaintPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion.
 
@@ -761,7 +763,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
-        force_unmasked_unchanged: bool = False,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
@@ -834,8 +835,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-            force_unmasked_unchanged: (`bool`, *optional*, defaults to False)
-                Force the unmasked area to be the same without any noise reduction.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -982,8 +981,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             generator,
             do_classifier_free_guidance,
         )
-        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
@@ -1040,24 +1037,19 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
-                    if force_unmasked_unchanged:
-                        noise = torch.randn_like(latents)
-
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
                         init_latents_proper = self.scheduler.add_noise(
                             init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
 
-                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-
-        latents = 1 / 0.18215 * latents
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
