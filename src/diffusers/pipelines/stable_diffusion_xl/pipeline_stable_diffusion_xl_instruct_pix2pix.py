@@ -32,22 +32,6 @@ from .watermark import StableDiffusionXLWatermarker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
-    Examples:
-        ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionXLImg2ImgPipeline
-        >>> from diffusers.utils import load_image
-
-        >>> pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-        >>> url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
-
-        >>> init_image = load_image(url).convert("RGB")
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, image=init_image).images[0]
-        ```
 """
 
 
