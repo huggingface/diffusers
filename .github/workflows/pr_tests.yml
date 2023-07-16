@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - ci-*
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -62,7 +65,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev -y
+        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m pip install -e .[quality,test]
 
     - name: Environment

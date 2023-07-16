@@ -52,6 +52,8 @@ pipeline = pipeline.to("cuda")
 To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility):
 
 ```python
+import torch
+
 generator = torch.Generator("cuda").manual_seed(0)
 ```
 
