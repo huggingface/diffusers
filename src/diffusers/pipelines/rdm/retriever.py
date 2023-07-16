@@ -79,11 +79,10 @@ class Index:
             feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(
                 self.config.clip_name_or_path
             )
-            self.dataset = get_dataset_with_emb_from_model(
+            self.dataset = get_dataset_with_emb_from_clip_model(
                 self.dataset,
                 model,
                 feature_extractor,
-                device=model.device,
                 image_column=self.config.image_column,
                 index_name=self.config.index_name,
             )
@@ -190,16 +189,13 @@ def map_img_to_model_feature(model, feature_extractor, imgs, device):
     image_embeddings = model(retrieved_images)
     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
     image_embeddings = image_embeddings[None, ...]
-    return image_embeddings
+    return image_embeddings.cpu().detach().numpy()[0][0]
 
 
 def get_dataset_with_emb_from_model(dataset, model, feature_extractor, image_column="image", index_name="embeddings"):
     return dataset.map(
         lambda example: {
             index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], model.device)
-            .cpu()
-            .detach()
-            .numpy()[0][0]
         }
     )
 
@@ -212,8 +208,5 @@ def get_dataset_with_emb_from_clip_model(
             index_name: map_img_to_model_feature(
                 clip_model.get_image_features, feature_extractor, [example[image_column]], clip_model.device
             )
-            .cpu()
-            .detach()
-            .numpy()[0][0]
         }
     )
