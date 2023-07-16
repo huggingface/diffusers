@@ -17,9 +17,9 @@ from ...models.attention_processor import (
 )
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
-    deprecate,
     logging,
     randn_tensor,
     replace_example_docstring,
