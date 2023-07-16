@@ -237,8 +237,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             frame_size (`int`, *optional*, default to 64):
                 the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
-                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`),`"latent"` (`torch.Tensor`), mesh (`MeshDecoderOutput`).
+                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
