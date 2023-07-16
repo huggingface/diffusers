@@ -761,6 +761,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        force_unmasked_unchanged: bool = False,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
@@ -833,6 +834,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            force_unmasked_unchanged: (`bool`, *optional*, defaults to False)
+                Force the unmasked area to be the same without any noise reduction.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -1043,7 +1046,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                             init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
 
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    if not force_unmasked_unchanged:
+                        latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    else:
+                        latents = latents * init_mask + init_latents_proper * (1 - init_mask)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
