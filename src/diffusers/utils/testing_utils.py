@@ -209,11 +209,13 @@ def require_onnxruntime(test_case):
     """
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
+
 def require_faiss(test_case):
     """
     Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
     """
     return unittest.skipUnless(is_faiss_available(), "test requires onnxruntime")(test_case)
+
 
 def require_note_seq(test_case):
     """

@@ -143,6 +143,7 @@ class RDMPipeline(DiffusionPipeline):
         Disable memory efficient attention as implemented in xformers.
         """
         self.unet.set_use_memory_efficient_attention_xformers(False)
+
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding.
@@ -174,6 +175,7 @@ class RDMPipeline(DiffusionPipeline):
         computing decoding in one step.
         """
         self.vae.disable_tiling()
+
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -360,7 +362,12 @@ class RDMPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
         # get the initial random noise unless the user supplied it
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            self.unet.in_channels,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         latents_dtype = text_embeddings.dtype
         if latents is None:
             latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
@@ -415,7 +422,6 @@ class RDMPipeline(DiffusionPipeline):
 
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
-
 
         image = (image / 2 + 0.5).clamp(0, 1)
 

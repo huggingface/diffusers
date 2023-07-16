@@ -174,9 +174,7 @@ if _onnx_available:
 
 _faiss_available = importlib.util.find_spec("faiss") is not None
 if _faiss_available:
-    candidates = (
-        "faiss",
-    )
+    candidates = ("faiss",)
     _faiss_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
     for pkg in candidates:
@@ -342,8 +340,10 @@ def is_unidecode_available():
 def is_onnx_available():
     return _onnx_available
 
+
 def is_faiss_available():
     return _faiss_available
+
 
 def is_opencv_available():
     return _opencv_available
