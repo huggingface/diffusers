@@ -41,6 +41,7 @@ from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
+
 # from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 from transformers import AutoTokenizer, PretrainedConfig
 
@@ -51,7 +52,9 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import (
+    StableDiffusionXLInstructPix2PixPipeline,
+)
 
 from PIL import Image
 
@@ -463,9 +466,7 @@ def main():
     tokenizer_2 = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
     )
-    text_encoder_cls_1 = import_model_class_from_model_name_or_path(
-        args.pretrained_model_name_or_path, args.revision
-    )
+    text_encoder_cls_1 = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
     text_encoder_cls_2 = import_model_class_from_model_name_or_path(
         args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
     )
@@ -651,7 +652,11 @@ def main():
     # We need to tokenize input captions and transform the images.
     def tokenize_captions(captions, a_tokenizer):
         inputs = a_tokenizer(
-            captions, max_length=a_tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            captions,
+            max_length=a_tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
         )
         return inputs.input_ids
 
@@ -714,7 +719,7 @@ def main():
             "original_pixel_values": original_pixel_values,
             "edited_pixel_values": edited_pixel_values,
             "input_ids": input_ids,
-            "input_ids_2": input_ids_2, 
+            "input_ids_2": input_ids_2,
         }
 
     # DataLoaders creation:
@@ -878,11 +883,13 @@ def main():
                     # Final text conditioning.
                     ### Begin: Get null conditioning
                     null_conditioning_list = []
-                    for a_tokenizer, a_text_encoder in zip((tokenizer_1, tokenizer_2), (text_encoder_1, text_encoder_2)):
+                    for a_tokenizer, a_text_encoder in zip(
+                        (tokenizer_1, tokenizer_2), (text_encoder_1, text_encoder_2)
+                    ):
                         null_conditioning_list.append(
                             a_text_encoder(
-                                tokenize_captions([""], a_tokenizer=a_tokenizer).to(accelerator.device), 
-                                output_hidden_states=True
+                                tokenize_captions([""], a_tokenizer=a_tokenizer).to(accelerator.device),
+                                output_hidden_states=True,
                             ).hidden_states[-2]
                         )
                     ### End: Get null conditioning
@@ -912,7 +919,7 @@ def main():
 
                 ### Begin SDXL
                 add_text_embeds = pooled_prompt_embeds
-                
+
                 crops_coords_top_left = (0, 0)
                 target_size = (512, 512)
                 original_size = original_image_embeds.shape[-2:]
@@ -922,13 +929,15 @@ def main():
                 add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=encoder_hidden_states.dtype)
                 add_time_ids = add_time_ids.to(encoder_hidden_states.device).repeat(args.train_batch_size, 1)
                 ### End SDXL
-                
+
                 # Predict the noise residual and compute loss
                 # tmp_prompt_embeds = torch.load('xl_prompt_embeds.pt').to('cuda')
                 # tmp_concatenated_noisy_latents = torch.load('xl_latent_model_input.pt').to('cuda')
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                
-                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
+
+                model_pred = unet(
+                    concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+                ).sample
                 # model_pred = unet(concatenated_noisy_latents, timesteps, tmp_prompt_embeds, added_cond_kwargs=added_cond_kwargs).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
@@ -983,11 +992,8 @@ def main():
             progress_bar.set_postfix(**logs)
 
             ### BEGIN: Perform validation every `validation_epochs` steps
-            if global_step % args.validation_epochs == 0 or global_step == 1: 
-                if (
-                    (args.val_image_url is not None)
-                    and (args.validation_prompt is not None)
-                ):
+            if global_step % args.validation_epochs == 0 or global_step == 1:
+                if (args.val_image_url is not None) and (args.validation_prompt is not None):
                     logger.info(
                         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
@@ -998,7 +1004,7 @@ def main():
                         # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                         ema_unet.store(unet.parameters())
                         ema_unet.copy_to(unet.parameters())
-                    
+
                     # The models need unwrapping because for compatibility in distributed training mode.
                     pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
@@ -1015,9 +1021,9 @@ def main():
                     pipeline.set_progress_bar_config(disable=True)
 
                     # run inference
-                    # Save validation images 
+                    # Save validation images
                     val_save_dir = os.path.join(args.output_dir, "validation_images")
-                    if not os.path.exists(val_save_dir): 
+                    if not os.path.exists(val_save_dir):
                         os.makedirs(val_save_dir)
 
                     # original_image = download_image(args.val_image_url)
@@ -1071,9 +1077,9 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                # Save validation images 
+                # Save validation images
                 val_save_dir = os.path.join(args.output_dir, "validation_images")
-                if not os.path.exists(val_save_dir): 
+                if not os.path.exists(val_save_dir):
                     os.makedirs(val_save_dir)
 
                 # original_image = download_image(args.val_image_url)
