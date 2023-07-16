@@ -144,7 +144,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=1,
+        default=100,
         help=(
             "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -952,6 +952,61 @@ def main():
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
+            ### BEGIN: Perform validation every `validation_epochs` steps
+            if global_step % args.validation_epochs == 0 or global_step == 1: 
+                if (
+                    (args.val_image_url is not None)
+                    and (args.validation_prompt is not None)
+                ):
+                    logger.info(
+                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+
+                    # create pipeline
+                    if args.use_ema:
+                        # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                        ema_unet.store(unet.parameters())
+                        ema_unet.copy_to(unet.parameters())
+                    
+                    # The models need unwrapping because for compatibility in distributed training mode.
+                    pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=accelerator.unwrap_model(unet),
+                        text_encoder=accelerator.unwrap_model(text_encoder_1),
+                        text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+                        tokenizer=accelerator.unwrap_model(tokenizer_1),
+                        tokenizer_2=accelerator.unwrap_model(tokenizer_2),
+                        vae=accelerator.unwrap_model(vae),
+                        revision=args.revision,
+                        torch_dtype=weight_dtype,
+                    )
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
+
+                    # run inference
+                    # Save validation images 
+                    val_save_dir = os.path.join(args.output_dir, "validation_images")
+                    if not os.path.exists(val_save_dir): 
+                        os.makedirs(val_save_dir)
+
+                    # original_image = download_image(args.val_image_url)
+                    original_image = Image.open(args.val_image_url).convert("RGB")
+                    with torch.autocast(
+                        str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                    ):
+                        for val_img_idx in range(args.num_validation_images):
+                            a_val_img = pipeline(
+                                args.validation_prompt,
+                                image=original_image,
+                                num_inference_steps=20,
+                                image_guidance_scale=1.5,
+                                guidance_scale=7,
+                                generator=generator,
+                            ).images[0]
+                            a_val_img.save(os.path.join(val_save_dir, f"step_{global_step}_val_img_{val_img_idx}.png"))
+            ### END: Perform validation every `validation_epochs` steps
+
             if global_step >= args.max_train_steps:
                 break
 
@@ -986,6 +1041,11 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
+                # Save validation images 
+                val_save_dir = os.path.join(args.output_dir, "validation_images")
+                if not os.path.exists(val_save_dir): 
+                    os.makedirs(val_save_dir)
+
                 # original_image = download_image(args.val_image_url)
                 original_image = Image.open(args.val_image_url).convert("RGB")
                 edited_images = []
