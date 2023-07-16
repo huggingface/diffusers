@@ -313,7 +313,7 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         mixed_precision=config.mixed_precision,
 ...         gradient_accumulation_steps=config.gradient_accumulation_steps,
 ...         log_with="tensorboard",
-...         logging_dir=os.path.join(config.output_dir, "logs"),
+...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
 ...         if config.push_to_hub:

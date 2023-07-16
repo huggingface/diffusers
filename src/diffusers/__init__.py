@@ -1,10 +1,11 @@
-__version__ = "0.18.0.dev0"
+__version__ = "0.19.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
     is_inflect_available,
+    is_invisible_watermark_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
@@ -58,6 +59,7 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
@@ -72,6 +74,7 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        CMStochasticIterativeScheduler,
         DDIMInverseScheduler,
         DDIMParallelScheduler,
         DDIMScheduler,
@@ -136,9 +139,18 @@ else:
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
+        KandinskyV22ControlnetImg2ImgPipeline,
+        KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintPipeline,
+        KandinskyV22Pipeline,
+        KandinskyV22PriorEmb2EmbPipeline,
+        KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
+        ShapEImg2ImgPipeline,
+        ShapEPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
@@ -173,7 +185,20 @@ else:
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
+        VideoToVideoSDPipeline,
         VQDiffusionPipeline,
+    )
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_invisible_watermark_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
+else:
+    from .pipelines import (
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLPipeline,
     )
 
 try:

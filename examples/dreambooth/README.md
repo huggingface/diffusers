@@ -737,3 +737,7 @@ accelerate launch train_dreambooth.py \
   --class_labels_conditioning timesteps \
   --push_to_hub
 ```
+
+## Stable Diffusion XL
+
+We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 

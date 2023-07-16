@@ -38,6 +38,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 | CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+|   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1707,3 +1708,62 @@ output = pipeline(
 ```
 ![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
 ![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)
+
+
+### IADB pipeline
+
+This pipeline is the implementation of the [α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486) paper.
+It is a simple and minimalist diffusion model.
+
+The following code shows how to use the IADB pipeline to generate images using a pretrained celebahq-256 model.
+
+```python
+
+pipeline_iadb = DiffusionPipeline.from_pretrained("thomasc4/iadb-celebahq-256", custom_pipeline='iadb')
+
+pipeline_iadb = pipeline_iadb.to('cuda')
+
+output = pipeline_iadb(batch_size=4,num_inference_steps=128)
+for i in range(len(output[0])):
+    plt.imshow(output[0][i])
+    plt.show()
+
+```
+
+Sampling with the IADB formulation is easy, and can be done in a few lines (the pipeline already implements it):
+
+```python
+
+def sample_iadb(model, x0, nb_step):
+    x_alpha = x0
+    for t in range(nb_step):
+        alpha = (t/nb_step)
+        alpha_next =((t+1)/nb_step)
+
+        d = model(x_alpha, torch.tensor(alpha, device=x_alpha.device))['sample']
+        x_alpha = x_alpha + (alpha_next-alpha)*d
+
+    return x_alpha
+
+```
+
+The training loop is also straightforward:
+
+```python
+
+# Training loop
+while True:
+    x0 = sample_noise()
+    x1 = sample_dataset()
+
+    alpha = torch.rand(batch_size)
+
+    # Blend
+    x_alpha = (1-alpha) * x0 + alpha * x1
+
+    # Loss
+    loss = torch.sum((D(x_alpha, alpha)- (x1-x0))**2)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+```
