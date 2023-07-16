@@ -1,5 +1,6 @@
 import os
 
+import faiss
 import numpy as np
 import torch
 from datasets import Dataset, load_dataset
@@ -8,7 +9,7 @@ from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
 from diffusers.pipelines.rdm.pipeline_rdm import normalize_images, preprocess_images
 
 from ...utils import logging
-import faiss
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

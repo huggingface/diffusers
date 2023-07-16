@@ -16,13 +16,14 @@ import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
+
 from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,
+    is_faiss_available,
     is_flax_available,
     is_note_seq_available,
     is_onnx_available,
-    is_faiss_available,
     is_opencv_available,
     is_torch_available,
     is_torch_version,

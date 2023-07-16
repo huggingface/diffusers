@@ -55,6 +55,7 @@ from .import_utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bs4_available,
+    is_faiss_available,
     is_flax_available,
     is_ftfy_available,
     is_inflect_available,
@@ -76,7 +77,6 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
-    is_faiss_available,
     requires_backends,
 )
 from .logging import get_logger

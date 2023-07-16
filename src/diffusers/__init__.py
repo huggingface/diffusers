@@ -3,6 +3,7 @@ __version__ = "0.17.0.dev0"
 from .configuration_utils import ConfigMixin
 from .utils import (
     OptionalDependencyNotAvailable,
+    is_faiss_available,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
@@ -16,7 +17,6 @@ from .utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
-    is_faiss_available,
     logging,
 )
 
@@ -131,6 +131,7 @@ else:
         IFSuperResolutionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        RDMPipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetPipeline,
@@ -160,7 +161,6 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
-        RDMPipeline,
     )
 try:
     if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
@@ -168,7 +168,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_and_faiss import *  # noqa F403
 else:
-    from .pipelines import Retriever, Index, IndexConfig
+    from .pipelines import Index, IndexConfig, Retriever
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()

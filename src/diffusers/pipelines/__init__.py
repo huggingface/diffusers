@@ -1,5 +1,6 @@
 from ..utils import (
     OptionalDependencyNotAvailable,
+    is_faiss_available,
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
@@ -7,7 +8,6 @@ from ..utils import (
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
-    is_faiss_available,
 )
 
 
@@ -55,6 +55,7 @@ else:
     )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
+    from .rdm import RDMPipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
@@ -87,7 +88,6 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
-    from .rdm import RDMPipeline
 
 try:
     if not is_onnx_available():
@@ -118,7 +118,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_transformers_and_faiss import *
 else:
-    from .rdm import Retriever, Index, IndexConfig
+    from .rdm import Index, IndexConfig, Retriever
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()

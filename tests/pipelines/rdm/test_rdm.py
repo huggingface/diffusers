@@ -1,14 +1,13 @@
 import gc
-import tempfile
 import time
 import unittest
 
-from PIL import Image
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
-from transformers import CLIPConfig, CLIPModel, CLIPTokenizer, CLIPFeatureExtractor
+from PIL import Image
+from transformers import CLIPConfig, CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -20,13 +19,10 @@ from diffusers import (
     PNDMScheduler,
     RDMPipeline,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 

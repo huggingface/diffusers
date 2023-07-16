@@ -1,21 +1,13 @@
-import gc
-import tempfile
-import time
 import unittest
 
-from PIL import Image
 import numpy as np
 import torch
-from huggingface_hub import hf_hub_download
-from packaging import version
-from transformers import CLIPConfig, CLIPModel, CLIPTokenizer, CLIPFeatureExtractor
+from PIL import Image
+from transformers import CLIPConfig, CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
-from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import is_faiss_available, require_faiss
 
-
-from diffusers.utils.testing_utils import require_faiss, is_faiss_available
 
 torch.backends.cuda.matmul.allow_tf32 = False
 if is_faiss_available():
@@ -24,8 +16,8 @@ if is_faiss_available():
         Retriever,
     )
     from diffusers.pipelines.rdm.retriever import (
-        map_txt_to_clip_feature,
         map_img_to_model_feature,
+        map_txt_to_clip_feature,
     )
 
 
@@ -95,6 +87,6 @@ class RetrieverFastTests(unittest.TestCase):
 
     def test_indexing(self):
         components = self.get_dummy_components()
-        retriever, clip = components["retriever"], components["clip"]
+        retriever = components["retriever"]
         assert retriever.config.index_name in retriever.index.dataset[0]
         assert np.array(retriever.index.dataset[0][retriever.config.index_name]).shape[0] == 64
