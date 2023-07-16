@@ -1,6 +1,5 @@
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+import inspect
 import numpy as np
 import PIL.Image
 import torch
@@ -27,7 +26,6 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 from .watermark import StableDiffusionXLWatermarker
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
