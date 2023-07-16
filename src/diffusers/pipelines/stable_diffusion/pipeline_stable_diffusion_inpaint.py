@@ -1040,22 +1040,24 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     init_latents_proper = image_latents[:1]
                     init_mask = mask[:1]
 
+                    if force_unmasked_unchanged:
+                        noise = torch.randn_like(latents)
+
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
                         init_latents_proper = self.scheduler.add_noise(
                             init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
 
-                    if not force_unmasked_unchanged:
                         latents = (1 - init_mask) * init_latents_proper + init_mask * latents
-                    else:
-                        latents = latents * init_mask + init_latents_proper * (1 - init_mask)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        latents = 1 / 0.18215 * latents
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
