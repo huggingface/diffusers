@@ -366,7 +366,6 @@ class CrossAttnDownBlock3D(nn.Module):
         attention_mask=None,
         num_frames=1,
         cross_attention_kwargs=None,
-        encoder_attention_mask=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
@@ -405,14 +404,12 @@ class CrossAttnDownBlock3D(nn.Module):
                     None,  # timestep
                     None,  # class_labels
                     cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask,
                     **ckpt_kwargs,
                 )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
+                    create_custom_forward(temp_attn, return_dict=False),
                     hidden_states,
-                    encoder_hidden_states,
+                    None,  # encoder_hidden_states
                     None,  # timestep
                     None,  # class_labels
                     num_frames,
@@ -426,12 +423,13 @@ class CrossAttnDownBlock3D(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
                 hidden_states = temp_attn(
-                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-                ).sample
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                )[0]
 
-                output_states += (hidden_states,)
+            output_states += (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -690,7 +688,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     **ckpt_kwargs,
                 )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
+                    create_custom_forward(temp_attn, return_dict=False),
                     hidden_states,
                     None,  # encoder_hidden_states
                     None,  # timestep
@@ -699,17 +697,18 @@ class CrossAttnUpBlock3D(nn.Module):
                     cross_attention_kwargs,
                     **ckpt_kwargs,
                 )[0]
-
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
-            hidden_states = attn(
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
-            hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-            ).sample
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
