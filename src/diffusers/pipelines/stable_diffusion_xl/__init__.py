@@ -24,3 +24,4 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
 if is_transformers_available() and is_torch_available() and is_invisible_watermark_available():
     from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
+    from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
