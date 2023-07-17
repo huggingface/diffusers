@@ -22,6 +22,7 @@ import PIL
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, MultiAdapter, T2IAdapter, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -61,6 +62,8 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> from PIL import Image
         >>> from diffusers.utils import load_image
+        >>> import torch
+        >>> from diffusers import StableDiffusionAdapterPipeline, T2IAdapter
 
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_ref.png"
@@ -69,10 +72,7 @@ EXAMPLE_DOC_STRING = """
         >>> color_palette = image.resize((8, 8))
         >>> color_palette = color_palette.resize((512, 512), resample=Image.Resampling.NEAREST)
 
-        >>> import torch
-        >>> from diffusers import StableDiffusionAdapterPipeline, T2IAdapter
-
-        >>> adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_color_sd14v1")
+        >>> adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_color_sd14v1", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionAdapterPipeline.from_pretrained(
         ...     "CompVis/stable-diffusion-v1-4",
         ...     adapter=adapter,
@@ -84,7 +84,6 @@ EXAMPLE_DOC_STRING = """
         >>> out_image = pipe(
         ...     "At night, glowing cubes in front of the beach",
         ...     image=color_palette,
-        ...     generator=generator,
         ... ).images[0]
         ```
 """
@@ -198,6 +197,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
