@@ -1146,6 +1146,9 @@ def main(args):
                 )
 
                 # Predict the noise residual
+                print(
+                    f"Unet: {unet.dtype}, noisy_latents: {noisy_latents.dtype}, batch['prompt_ids']: {batch['prompt_ids'].dtype}"
+                )
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
