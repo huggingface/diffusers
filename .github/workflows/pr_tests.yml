@@ -64,6 +64,9 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m pip install -e .[quality,test]
+        python3 -m pip install --no-cache-dir nltk
+        python3 -m nltk.downloader punkt
+        python3 -m nltk.downloader averaged_perceptron_tagger
 
     - name: Environment
       run: |
