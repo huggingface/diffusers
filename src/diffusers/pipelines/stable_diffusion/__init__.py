@@ -4,6 +4,7 @@ from typing import List, Optional, Union
 import numpy as np
 import PIL
 from PIL import Image
+from enum import Enum
 
 from ...utils import (
     BaseOutput,
@@ -35,6 +36,10 @@ class StableDiffusionPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 
+class StableDiffusionPipelines(Enum):
+    StableDiffusionPipeline = 1
+    StableDiffusionImg2ImgPipeline = 2
+    StableDiffusionInpaintPipeline = 3
 
 try:
     if not (is_transformers_available() and is_torch_available()):

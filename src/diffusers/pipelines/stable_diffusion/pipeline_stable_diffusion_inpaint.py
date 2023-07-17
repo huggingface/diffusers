@@ -29,7 +29,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from . import StableDiffusionPipelineOutput, StableDiffusionPipelines
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -200,6 +200,8 @@ class StableDiffusionInpaintPipeline(
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    _linked_pipelines = [e.name for e in StableDiffusionPipelines]
+    task = "Inpaint"
 
     def __init__(
         self,

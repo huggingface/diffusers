@@ -72,6 +72,9 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        AutoPipelineForTextToImage,
+        AutoPipelineForImageToImage,
+        AutoPipelineForInpainting,
     )
     from .schedulers import (
         CMStochasticIterativeScheduler,

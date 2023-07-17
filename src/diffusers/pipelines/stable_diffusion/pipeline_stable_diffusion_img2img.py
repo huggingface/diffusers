@@ -37,7 +37,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from . import StableDiffusionPipelineOutput, StableDiffusionPipelines
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -136,6 +136,8 @@ class StableDiffusionImg2ImgPipeline(
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    _linked_pipelines = [e.name for e in StableDiffusionPipelines]
+    task = "ImageToImage"
 
     def __init__(
         self,

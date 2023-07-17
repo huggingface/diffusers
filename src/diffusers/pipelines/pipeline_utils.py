@@ -336,7 +336,7 @@ def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None,
             custom_pipeline, module_file=file_name, cache_dir=cache_dir, revision=revision
         )
 
-    if class_obj != DiffusionPipeline:
+    if class_obj != DiffusionPipeline and not class_obj.__name__.startswith('Auto') :
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
@@ -474,6 +474,7 @@ class DiffusionPipeline(ConfigMixin):
     """
     config_name = "model_index.json"
     _optional_components = []
+    _linked_pipelines = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -923,6 +924,9 @@ class DiffusionPipeline(ConfigMixin):
         pipeline_class = _get_pipeline_class(
             cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
         )
+
+        if hasattr(cls, "task"):
+            pipeline_class = pipeline_class._get_linked_pipelines(cls.task)[0]
 
         # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
@@ -1509,3 +1513,23 @@ class DiffusionPipeline(ConfigMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+    
+    @classmethod
+    def _get_linked_pipelines(cls, task):
+        linked_classes_str = list(set([cls.__name__] + cls._linked_pipelines))
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+        linked_classes = [
+            getattr(diffusers_library, c) for c in linked_classes_str if hasattr(diffusers_library, c)
+        ]
+        linked_classes = [c for c in linked_classes if c.task == task]
+        return linked_classes
+
+
+class AutoPipelineForTextToImage(DiffusionPipeline):
+    task = "TextToImage"
+
+class AutoPipelineForImageToImage(DiffusionPipeline):
+    task = "ImageToImage"
+
+class AutoPipelineForInpainting(DiffusionPipeline):
+    task = "Inpaint"
