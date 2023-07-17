@@ -40,6 +40,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.hub_utils import PushToHubMixin
 
 
 logger = logging.get_logger(__name__)
@@ -150,7 +151,23 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     return error_msgs
 
 
-class ModelMixin(torch.nn.Module):
+# Taken from
+# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/modeling_utils.py#L3939C1-L3950C21
+def unwrap_model(model: nn.Module) -> nn.Module:
+    """
+    Recursively unwraps a model from potential containers (as used in distributed training).
+
+    Args:
+        model (`torch.nn.Module`): The model to unwrap.
+    """
+    # since there could be multiple levels of wrapping, unwrap recursively
+    if hasattr(model, "module"):
+        return unwrap_model(model.module)
+    else:
+        return model
+
+
+class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.
 
@@ -275,6 +292,8 @@ class ModelMixin(torch.nn.Module):
         save_function: Callable = None,
         safe_serialization: bool = False,
         variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save a model and its configuration file to a directory so that it can be reloaded using the
@@ -295,6 +314,12 @@ class ModelMixin(torch.nn.Module):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if safe_serialization and not is_safetensors_available():
             raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
@@ -305,7 +330,14 @@ class ModelMixin(torch.nn.Module):
 
         os.makedirs(save_directory, exist_ok=True)
 
-        model_to_save = self
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = self._create_repo(repo_id, **kwargs)
+            files_timestamps = self._get_files_timestamps(save_directory)
+
+        # Only save the model itself if we are using distributed training
+        model_to_save = unwrap_model(self)
 
         # Attach architecture to the config
         # Save the config
@@ -327,6 +359,15 @@ class ModelMixin(torch.nn.Module):
             torch.save(state_dict, os.path.join(save_directory, weights_name))
 
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+
+        if push_to_hub:
+            self._upload_modified_files(
+                save_directory,
+                repo_id,
+                files_timestamps,
+                commit_message=commit_message,
+                token=kwargs.get("use_auth_token"),
+            )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):

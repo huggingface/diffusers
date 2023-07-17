@@ -17,13 +17,24 @@
 import os
 import re
 import sys
+import tempfile
 import traceback
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-from huggingface_hub import HfFolder, ModelCard, ModelCardData, hf_hub_download, whoami
+from huggingface_hub import (
+    CommitOperationAdd,
+    HfFolder,
+    ModelCard,
+    ModelCardData,
+    create_commit,
+    create_repo,
+    hf_hub_download,
+    whoami,
+)
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
@@ -358,4 +369,211 @@ def _get_model_file(
                 "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
+            )
+
+
+# Taken from
+# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/generic.py#L453
+@contextmanager
+def working_or_temp_dir(working_dir, use_temp_dir: bool = False):
+    if use_temp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            yield tmp_dir
+    else:
+        yield working_dir
+
+
+# Taken from
+# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/hub.py#L628
+class PushToHubMixin:
+    """
+    A Mixin containing the functionality to push a model to the hub.
+    """
+
+    def _create_repo(
+        self,
+        repo_id: str,
+        private: Optional[bool] = None,
+        use_auth_token: Optional[Union[bool, str]] = None,
+        repo_url: Optional[str] = None,
+        organization: Optional[str] = None,
+    ) -> str:
+        """
+        Create the repo if needed, cleans up repo_id with deprecated kwargs `repo_url` and `organization`, retrieves
+        the token.
+        """
+        if repo_url is not None:
+            warnings.warn(
+                "The `repo_url` argument is deprecated and will be removed in v5 of Transformers. Use `repo_id` "
+                "instead."
+            )
+            repo_id = repo_url.replace(f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/", "")
+        if organization is not None:
+            warnings.warn(
+                "The `organization` argument is deprecated and will be removed in v5 of Transformers. Set your "
+                "organization directly in the `repo_id` passed instead (`repo_id={organization}/{model_id}`)."
+            )
+            if not repo_id.startswith(organization):
+                if "/" in repo_id:
+                    repo_id = repo_id.split("/")[-1]
+                repo_id = f"{organization}/{repo_id}"
+
+        url = create_repo(repo_id=repo_id, token=use_auth_token, private=private, exist_ok=True)
+
+        # If the namespace is not there, add it or `upload_file` will complain
+        if "/" not in repo_id and url != f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/{repo_id}":
+            repo_id = get_full_repo_name(repo_id, token=use_auth_token)
+        return repo_id
+
+    def _get_files_timestamps(self, working_dir: Union[str, os.PathLike]):
+        """
+        Returns the list of files with their last modification timestamp.
+        """
+        return {f: os.path.getmtime(os.path.join(working_dir, f)) for f in os.listdir(working_dir)}
+
+    def _upload_modified_files(
+        self,
+        working_dir: Union[str, os.PathLike],
+        repo_id: str,
+        files_timestamps: Dict[str, float],
+        commit_message: Optional[str] = None,
+        token: Optional[Union[bool, str]] = None,
+        create_pr: bool = False,
+    ):
+        """
+        Uploads all modified files in `working_dir` to `repo_id`, based on `files_timestamps`.
+        """
+        if commit_message is None:
+            if "Model" in self.__class__.__name__:
+                commit_message = "Upload model"
+            elif "Config" in self.__class__.__name__:
+                commit_message = "Upload config"
+            elif "Processor" in self.__class__.__name__:
+                commit_message = "Upload processor"
+            else:
+                commit_message = f"Upload {self.__class__.__name__}"
+        modified_files = [
+            f
+            for f in os.listdir(working_dir)
+            if f not in files_timestamps or os.path.getmtime(os.path.join(working_dir, f)) > files_timestamps[f]
+        ]
+
+        # filter for actual files + folders at the root level
+        modified_files = [
+            f
+            for f in modified_files
+            if os.path.isfile(os.path.join(working_dir, f)) or os.path.isdir(os.path.join(working_dir, f))
+        ]
+
+        operations = []
+        # upload standalone files
+        for file in modified_files:
+            if os.path.isdir(os.path.join(working_dir, file)):
+                # go over individual files of folder
+                for f in os.listdir(os.path.join(working_dir, file)):
+                    operations.append(
+                        CommitOperationAdd(
+                            path_or_fileobj=os.path.join(working_dir, file, f), path_in_repo=os.path.join(file, f)
+                        )
+                    )
+            else:
+                operations.append(
+                    CommitOperationAdd(path_or_fileobj=os.path.join(working_dir, file), path_in_repo=file)
+                )
+
+        logger.info(f"Uploading the following files to {repo_id}: {','.join(modified_files)}")
+        return create_commit(
+            repo_id=repo_id, operations=operations, commit_message=commit_message, token=token, create_pr=create_pr
+        )
+
+    def push_to_hub(
+        self,
+        repo_id: str,
+        use_temp_dir: Optional[bool] = None,
+        commit_message: Optional[str] = None,
+        private: Optional[bool] = None,
+        use_auth_token: Optional[Union[bool, str]] = None,
+        max_shard_size: Optional[Union[int, str]] = "10GB",
+        create_pr: bool = False,
+        safe_serialization: bool = False,
+        **deprecated_kwargs,
+    ) -> str:
+        """
+        Upload the {object_files} to the 🤗 Model Hub while synchronizing a local clone of the repo in
+        `repo_path_or_name`.
+
+        Parameters:
+            repo_id (`str`):
+                The name of the repository you want to push your {object} to. It should contain your organization name
+                when pushing to a given organization.
+            use_temp_dir (`bool`, *optional*):
+                Whether or not to use a temporary directory to store the files saved before they are pushed to the Hub.
+                Will default to `True` if there is no directory named like `repo_id`, `False` otherwise.
+            commit_message (`str`, *optional*):
+                Message to commit while pushing. Will default to `"Upload {object}"`.
+            private (`bool`, *optional*):
+                Whether or not the repository created should be private.
+            use_auth_token (`bool` or `str`, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `huggingface-cli login` (stored in `~/.huggingface`). Will default to `True` if `repo_url`
+                is not specified.
+            max_shard_size (`int` or `str`, *optional*, defaults to `"10GB"`):
+                Only applicable for models. The maximum size for a checkpoint before being sharded. Checkpoints shard
+                will then be each of size lower than this size. If expressed as a string, needs to be digits followed
+                by a unit (like `"5MB"`).
+            create_pr (`bool`, *optional*, defaults to `False`):
+                Whether or not to create a PR with the uploaded files or directly commit.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether or not to convert the model weights in safetensors format for safer serialization.
+
+        Examples:
+
+        ```python
+        from diffusers import UNet2DConditionModel
+
+        unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="unet")
+
+        # Push the `unet` to your namespace with the name "my-finetuned-unet".
+        unet.push_to_hub("my-finetuned-unet")
+
+        # Push the {object} to an organization with the name "my-finetuned-unet".
+        unet.push_to_hub("your-org/my-finetuned-unet")
+        ```
+        """
+        if "repo_path_or_name" in deprecated_kwargs:
+            warnings.warn(
+                "The `repo_path_or_name` argument is deprecated and will be removed in v5 of Transformers. Use "
+                "`repo_id` instead."
+            )
+            repo_id = deprecated_kwargs.pop("repo_path_or_name")
+        # Deprecation warning will be sent after for repo_url and organization
+        repo_url = deprecated_kwargs.pop("repo_url", None)
+        organization = deprecated_kwargs.pop("organization", None)
+
+        if os.path.isdir(repo_id):
+            working_dir = repo_id
+            repo_id = repo_id.split(os.path.sep)[-1]
+        else:
+            working_dir = repo_id.split("/")[-1]
+
+        repo_id = self._create_repo(
+            repo_id, private=private, use_auth_token=use_auth_token, repo_url=repo_url, organization=organization
+        )
+
+        if use_temp_dir is None:
+            use_temp_dir = not os.path.isdir(working_dir)
+
+        with working_or_temp_dir(working_dir=working_dir, use_temp_dir=use_temp_dir) as work_dir:
+            files_timestamps = self._get_files_timestamps(work_dir)
+
+            # Save all files.
+            self.save_pretrained(work_dir, max_shard_size=max_shard_size, safe_serialization=safe_serialization)
+
+            return self._upload_modified_files(
+                work_dir,
+                repo_id,
+                files_timestamps,
+                commit_message=commit_message,
+                token=use_auth_token,
+                create_pr=create_pr,
             )
