@@ -925,7 +925,7 @@ class DiffusionPipeline(ConfigMixin):
             cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
         )
 
-        if hasattr(cls, "task"):
+        if cls.__name__.startswith("Auto") and hasattr(cls, "task"):
             pipeline_class_linked = pipeline_class._get_linked_pipelines(cls.task)
             if len(pipeline_class_linked) == 0:
                 raise ValueError(f"can't find a pipeline with task {cls.task} for pipeline class {pipeline_class}")
