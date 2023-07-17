@@ -15,8 +15,8 @@
 """ Conversion script for the Stable Diffusion checkpoints."""
 
 import re
-from io import BytesIO
 from contextlib import nullcontext
+from io import BytesIO
 from typing import Optional
 
 import requests
@@ -1180,11 +1180,6 @@ def download_from_original_stable_diffusion_ckpt(
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
-
-    if not is_accelerate_available():
-        raise ImportError(
-            "To correctly use `from_single_file`, please make sure that `accelerate` is installed. You can install it with `pip install accelerate`."
-        )
 
     if pipeline_class is None:
         pipeline_class = StableDiffusionPipeline
