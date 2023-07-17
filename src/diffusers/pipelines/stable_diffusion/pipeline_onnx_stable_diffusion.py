@@ -119,6 +119,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         negative_prompt: Optional[str],
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
+        text_encoder_additional_inputs: dict = {},
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -140,6 +141,9 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            text_encoder_additional_inputs (`dict`):
+                Additional inputs to provide to text_encoder. Can be used with models that have additional inputs used to
+                override initializers (e.g. LoRA weights).
         """
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -169,7 +173,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+            prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32), **text_encoder_additional_inputs)[0]
 
         prompt_embeds = np.repeat(prompt_embeds, num_images_per_prompt, axis=0)
 
@@ -202,7 +206,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="np",
             )
-            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32), **text_encoder_additional_inputs)[0]
 
         if do_classifier_free_guidance:
             negative_prompt_embeds = np.repeat(negative_prompt_embeds, num_images_per_prompt, axis=0)
@@ -279,6 +283,8 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
         callback_steps: int = 1,
+        unet_additional_inputs: dict = {},
+        text_encoder_additional_inputs: dict = {},
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -332,6 +338,12 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            unet_additional_inputs (`dict`):
+                Additional inputs to provide to unet. Can be used with models that have additional inputs used to
+                override initializers (e.g. LoRA weights).
+            text_encoder_additional_inputs (`dict`):
+                Additional inputs to provide to text_encoder. Can be used with models that have additional inputs used to
+                override initializers (e.g. LoRA weights).
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -369,6 +381,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            text_encoder_additional_inputs=text_encoder_additional_inputs,
         )
 
         # get the initial random noise unless the user supplied it
@@ -406,7 +419,11 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
             # predict the noise residual
             timestep = np.array([t], dtype=timestep_dtype)
-            noise_pred = self.unet(sample=latent_model_input, timestep=timestep, encoder_hidden_states=prompt_embeds)
+            noise_pred = self.unet(
+                sample=latent_model_input,
+                timestep=timestep,
+                encoder_hidden_states=prompt_embeds,
+                **unet_additional_inputs)
             noise_pred = noise_pred[0]
 
             # perform guidance
