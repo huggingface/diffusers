@@ -24,7 +24,14 @@ else:
     from .dit import DiTPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
-    from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput, AutoPipelineForTextToImage, AutoPipelineForImageToImage, AutoPipelineForInpainting
+    from .pipeline_utils import (
+        AudioPipelineOutput,
+        AutoPipelineForImageToImage,
+        AutoPipelineForInpainting,
+        AutoPipelineForTextToImage,
+        DiffusionPipeline,
+        ImagePipelineOutput,
+    )
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline

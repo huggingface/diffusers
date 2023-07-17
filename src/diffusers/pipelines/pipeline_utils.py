@@ -336,7 +336,7 @@ def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None,
             custom_pipeline, module_file=file_name, cache_dir=cache_dir, revision=revision
         )
 
-    if class_obj != DiffusionPipeline and not class_obj.__name__.startswith('Auto') :
+    if class_obj != DiffusionPipeline and not class_obj.__name__.startswith("Auto"):
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
@@ -1513,14 +1513,12 @@ class DiffusionPipeline(ConfigMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
-    
+
     @classmethod
     def _get_linked_pipelines(cls, task):
         linked_classes_str = list(set([cls.__name__] + cls._linked_pipelines))
         diffusers_library = importlib.import_module(__name__.split(".")[0])
-        linked_classes = [
-            getattr(diffusers_library, c) for c in linked_classes_str if hasattr(diffusers_library, c)
-        ]
+        linked_classes = [getattr(diffusers_library, c) for c in linked_classes_str if hasattr(diffusers_library, c)]
         linked_classes = [c for c in linked_classes if c.task == task]
         return linked_classes
 
@@ -1528,8 +1526,10 @@ class DiffusionPipeline(ConfigMixin):
 class AutoPipelineForTextToImage(DiffusionPipeline):
     task = "TextToImage"
 
+
 class AutoPipelineForImageToImage(DiffusionPipeline):
     task = "ImageToImage"
+
 
 class AutoPipelineForInpainting(DiffusionPipeline):
     task = "Inpaint"

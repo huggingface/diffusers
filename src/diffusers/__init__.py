@@ -59,6 +59,9 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        AutoPipelineForImageToImage,
+        AutoPipelineForInpainting,
+        AutoPipelineForTextToImage,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
@@ -72,9 +75,6 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
-        AutoPipelineForTextToImage,
-        AutoPipelineForImageToImage,
-        AutoPipelineForInpainting,
     )
     from .schedulers import (
         CMStochasticIterativeScheduler,
