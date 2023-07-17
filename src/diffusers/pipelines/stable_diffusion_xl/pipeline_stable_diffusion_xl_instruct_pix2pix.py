@@ -548,7 +548,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         return image_latents
 
-    # Copied from diffusers.src.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
     ):
