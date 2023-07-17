@@ -1407,7 +1407,9 @@ class CrossAttnDownBlockFlat(nn.Module):
     ):
         output_states = ()
 
-        for resnet, attn in zip(self.resnets, self.attentions):
+        blocks = list(zip(self.resnets, self.attentions))
+
+        for i, (resnet, attn) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -1448,11 +1450,11 @@ class CrossAttnDownBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
 
-            output_states = output_states + (hidden_states,)
+            # apply additional residuals to the output of the last pair of resnet and attention blocks
+            if i == len(blocks) - 1 and additional_residuals is not None:
+                hidden_states = hidden_states + additional_residuals
 
-        if additional_residuals is not None:
-            hidden_states += additional_residuals
-            output_states = output_states[:-1] + (output_states[-1] + additional_residuals,)
+            output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
