@@ -280,6 +280,10 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
 **Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs,
 refer to the respective docstrings.
 
+## Unloading LoRA parameters
+
+You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pipeline to unload the LoRA parameters.
+
 ## Supporting A1111 themed LoRA checkpoints from Diffusers
 
 To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted

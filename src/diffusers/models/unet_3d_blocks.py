@@ -250,10 +250,11 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
             hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-            ).sample
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+            )[0]
             hidden_states = resnet(hidden_states, temb)
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
@@ -377,10 +378,11 @@ class CrossAttnDownBlock3D(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
             hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-            ).sample
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+            )[0]
 
             output_states += (hidden_states,)
 
@@ -590,10 +592,11 @@ class CrossAttnUpBlock3D(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
             hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
-            ).sample
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+            )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
