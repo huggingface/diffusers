@@ -40,9 +40,7 @@ rich features that are used to synthesize the given image. This allows for deali
 fish with a transparent fin or a non-realistic image such as the sketch of the cup.
 Note that while the resolution of the segmentation map is rather low, it is easy to induce them to a higher resolution.
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/self_seg_comparison.png"/>
-</p>
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/self_seg_comparison.png)
 
 ### What would be a good usecase to use this segmentation technique?
 As shown in our [paper](https://arxiv.org/abs/2303.11306) , this technique is useful for image editing. It allows to
@@ -51,7 +49,8 @@ localize edis by taking segments that should not be edited from the original ima
 than using it as a heavy segmentation model.
 
 ## Available Pipelines:
-| Pipeline | Tasks | Demo
+
+| Pipeline | Tasks 
 |---|---|:---:|
 | [SelfSegmentationStableDiffusionPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/self_segmentation_stable_diffusion_pipeline.py) | *Text-to-Image Generation, Segmentation* | - |
 
