@@ -926,7 +926,11 @@ class DiffusionPipeline(ConfigMixin):
         )
 
         if hasattr(cls, "task"):
-            pipeline_class = pipeline_class._get_linked_pipelines(cls.task)[0]
+            pipeline_class_linked = pipeline_class._get_linked_pipelines(cls.task)
+            if len(pipeline_class_linked) == 0:
+                raise ValueError(f"can't find a pipeline with task {cls.task} for pipeline class {pipeline_class}")
+            else:
+                pipeline_class = pipeline_class_linked[0]
 
         # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
@@ -1526,10 +1530,46 @@ class DiffusionPipeline(ConfigMixin):
 class AutoPipelineForTextToImage(DiffusionPipeline):
     task = "TextToImage"
 
+    @classmethod
+    def from_pipe(cls, pipeline):
+        pipeline_class = pipeline.__class__
+        pipeline_class_linked = pipeline_class._get_linked_pipelines(cls.task)
+        if len(pipeline_class_linked) == 0:
+            raise ValueError(f"can't find linked pipeline with task {cls.task} for pipeline class {pipeline_class}")
+        else:
+            pipeline_class = pipeline_class_linked[0]
+
+        model = pipeline_class(**pipeline.components)
+        return model
+
 
 class AutoPipelineForImageToImage(DiffusionPipeline):
     task = "ImageToImage"
 
+    @classmethod
+    def from_pipe(cls, pipeline):
+        pipeline_class = pipeline.__class__
+        pipeline_class_linked = pipeline_class._get_linked_pipelines(cls.task)
+        if len(pipeline_class_linked) == 0:
+            raise ValueError(f"can't find linked pipeline with task {cls.task} for pipeline class {pipeline_class}")
+        else:
+            pipeline_class = pipeline_class_linked[0]
+
+        model = pipeline_class(**pipeline.components)
+        return model
+
 
 class AutoPipelineForInpainting(DiffusionPipeline):
     task = "Inpaint"
+
+    @classmethod
+    def from_pipe(cls, pipeline):
+        pipeline_class = pipeline.__class__
+        pipeline_class_linked = pipeline_class._get_linked_pipelines(cls.task)
+        if len(pipeline_class_linked) == 0:
+            raise ValueError(f"can't find linked pipeline with task {cls.task} for pipeline class {pipeline_class}")
+        else:
+            pipeline_class = pipeline_class_linked[0]
+
+        model = pipeline_class(**pipeline.components)
+        return model
