@@ -235,7 +235,7 @@ class OutConv1DBlock(nn.Module):
 
 
 class OutValueFunctionBlock(nn.Module):
-    def __init__(self, fc_dim, embed_dim, act_fn):
+    def __init__(self, fc_dim, embed_dim, act_fn="mish"):
         super().__init__()
         self.final_block = nn.ModuleList(
             [
