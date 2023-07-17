@@ -131,7 +131,6 @@ else:
         IFSuperResolutionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
-        RDMPipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetPipeline,
@@ -161,6 +160,7 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
+        RDMPipeline,
     )
 try:
     if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
