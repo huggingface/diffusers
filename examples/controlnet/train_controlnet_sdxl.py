@@ -1120,13 +1120,13 @@ def main(args):
                     pixel_values = batch["pixel_values"]
                 latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
-                if args.pretrained_model_name_or_path is None:
+                if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
-                print(f"Noise: {noise.dtype}, latents: {latents.dtype}")
                 bsz = latents.shape[0]
+
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
@@ -1134,7 +1134,6 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-                print(f"noisy_latents: {noisy_latents.dtype}")
 
                 # ControlNet conditioning.
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
@@ -1148,7 +1147,6 @@ def main(args):
                 )
 
                 # Predict the noise residual
-                print(f"noisy_latents: {noisy_latents.dtype}")
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
