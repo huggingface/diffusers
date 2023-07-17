@@ -183,7 +183,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_adapter(self):
         test_cases = [
             (
-                "diffusers/t2iadapter_color_sd14v1",
+                "TencentARC/t2iadapter_color_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "snail",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/color.png",
@@ -191,7 +191,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_color_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_depth_sd14v1",
+                "TencentARC/t2iadapter_depth_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "desk",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/desk_depth.png",
@@ -199,7 +199,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_depth_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_depth_sd15v2",
+                "TencentARC/t2iadapter_depth_sd15v2",
                 "runwayml/stable-diffusion-v1-5",
                 "desk",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/desk_depth.png",
@@ -207,7 +207,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_depth_sd15v2.npy",
             ),
             (
-                "diffusers/t2iadapter_keypose_sd14v1",
+                "TencentARC/t2iadapter_keypose_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "person",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/person_keypose.png",
@@ -215,7 +215,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_keypose_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_openpose_sd14v1",
+                "TencentARC/t2iadapter_openpose_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "person",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/iron_man_pose.png",
@@ -223,7 +223,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_openpose_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_seg_sd14v1",
+                "TencentARC/t2iadapter_seg_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "motorcycle",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motor.png",
@@ -231,7 +231,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_seg_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_zoedepth_sd15v1",
+                "TencentARC/t2iadapter_zoedepth_sd15v1",
                 "runwayml/stable-diffusion-v1-5",
                 "motorcycle",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motorcycle.png",
@@ -239,7 +239,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_zoedepth_sd15v1.npy",
             ),
             (
-                "diffusers/t2iadapter_canny_sd14v1",
+                "TencentARC/t2iadapter_canny_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "toy",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png",
@@ -247,7 +247,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_canny_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_canny_sd15v2",
+                "TencentARC/t2iadapter_canny_sd15v2",
                 "runwayml/stable-diffusion-v1-5",
                 "toy",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png",
@@ -255,7 +255,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_canny_sd15v2.npy",
             ),
             (
-                "diffusers/t2iadapter_sketch_sd14v1",
+                "TencentARC/t2iadapter_sketch_sd14v1",
                 "CompVis/stable-diffusion-v1-4",
                 "cat",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/edge.png",
@@ -263,7 +263,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_sketch_sd14v1.npy",
             ),
             (
-                "diffusers/t2iadapter_sketch_sd15v2",
+                "TencentARC/t2iadapter_sketch_sd15v2",
                 "runwayml/stable-diffusion-v1-5",
                 "cat",
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/edge.png",
@@ -297,7 +297,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        adapter = T2IAdapter.from_pretrained("diffusers/t2iadapter_seg_sd14v1")
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_seg_sd14v1")
         pipe = StableDiffusionAdapterPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", adapter=adapter, safety_checker=None
         )
