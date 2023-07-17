@@ -143,7 +143,7 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">DeepFloyd IF</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
   </tr>
   <tr>
@@ -158,7 +158,7 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>
