@@ -616,6 +616,7 @@ class VQDiffusionPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class RDMPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
