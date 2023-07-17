@@ -285,49 +285,19 @@ class UpSample(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        activate_before: str = "none",
-        activate_after: str = "none",
-        upsample_type: str = "deconv",
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.activate_before = activate_before
-        self.activate_after = activate_after
-        self.upsample_type = upsample_type
-        if self.upsample_type == "deconv":
-            self.deconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
-        else:
-            if self.upsample_type in ["bilinear", "nearest"]:
-                self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-            else:
-                raise NotImplementedError
+        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        if self.activate_before == "relu":
-            x = torch.relu(x)
-        elif self.activate_before == "none":
-            pass
-        else:
-            raise NotImplementedError
-
-        if self.upsample_type == "deconv":
-            x = self.deconv(x)
-        else:
-            x = nn.functional.interpolate(x, scale_factor=2.0, mode=self.upsample_type)
-            x = self.conv(x)
-
-        if self.activate_after == "relu":
-            x = torch.relu(x)
-        elif self.activate_after == "none":
-            pass
-        else:
-            raise NotImplementedError
-
+        x = torch.relu(x)
+        x = self.deconv(x)
         return x
 
 
-class ConditionEncoder(nn.Module):
+class MaskConditionEncoder(nn.Module):
     """
     used in AsymmetricAutoencoderKL
     """
@@ -338,12 +308,10 @@ class ConditionEncoder(nn.Module):
         out_ch: int = 192,
         res_ch: int = 768,
         stride: int = 16,
-        upsample_type: str = "deconv",
-        downsample_layer: str = "conv",
     ) -> None:
         super().__init__()
 
-        up_layers = []
+        channels = []
         while stride > 1:
             stride = stride // 2
             in_ch_ = out_ch * 2
@@ -351,16 +319,13 @@ class ConditionEncoder(nn.Module):
                 out_ch = res_ch
             if stride == 1:
                 in_ch_ = res_ch
-            up_layers.append(
-                UpSample(in_ch_, out_ch, activate_before="relu", activate_after="none", upsample_type=upsample_type)
-            )
+            channels.append((in_ch_, out_ch))
             out_ch *= 2
-        self.up_layers = nn.Sequential(*reversed(up_layers))
 
         out_channels = []
-        for layer in up_layers:
-            out_channels.append(layer.out_channels)
-        out_channels.append(up_layers[-1].in_channels)
+        for _in_ch, _out_ch in channels:
+            out_channels.append(_out_ch)
+        out_channels.append(channels[-1][0])
 
         layers = []
         in_ch_ = in_ch
@@ -369,14 +334,10 @@ class ConditionEncoder(nn.Module):
             if l == 0 or l == 1:
                 layers.append(nn.Conv2d(in_ch_, out_ch_, kernel_size=3, stride=1, padding=1))
             else:
-                if downsample_layer == "conv":
-                    layers.append(nn.Conv2d(in_ch_, out_ch_, kernel_size=4, stride=2, padding=1))
-                else:
-                    raise NotImplementedError
+                layers.append(nn.Conv2d(in_ch_, out_ch_, kernel_size=4, stride=2, padding=1))
             in_ch_ = out_ch_
 
         self.layers = nn.Sequential(*layers)
-        self.downsample_layer = downsample_layer
 
     def forward(self, x: torch.FloatTensor, mask=None) -> torch.FloatTensor:
         out = {}
@@ -384,14 +345,11 @@ class ConditionEncoder(nn.Module):
             layer = self.layers[l]
             x = layer(x)
             out[str(tuple(x.shape))] = x
-            if self.downsample_layer == "conv":
-                x = torch.relu(x)
-            else:
-                raise NotImplementedError
+            x = torch.relu(x)
         return out
 
 
-class ConditionDecoder(nn.Module):
+class MaskConditionDecoder(nn.Module):
     def __init__(
         self,
         in_channels=3,
@@ -458,7 +416,7 @@ class ConditionDecoder(nn.Module):
             prev_output_channel = output_channel
 
         # condition encoder
-        self.condition_encoder = ConditionEncoder(
+        self.condition_encoder = MaskConditionEncoder(
             in_ch=out_channels,
             out_ch=block_out_channels[0],
             res_ch=block_out_channels[-1],
