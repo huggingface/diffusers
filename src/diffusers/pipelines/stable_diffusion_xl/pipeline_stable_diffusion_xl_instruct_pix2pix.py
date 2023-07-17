@@ -22,7 +22,6 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
@@ -30,9 +29,6 @@ from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-EXAMPLE_DOC_STRING = """
-"""
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -51,7 +47,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for pixel-level image editing by following text instructions. Based on Stable Diffusion XL.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -59,7 +55,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
         - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
-        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
     as well as the following saving methods:
         - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
@@ -68,18 +63,26 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
+            Frozen text-encoder. Stable Diffusion XL uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([` CLIPTextModelWithProjection`]):
+            Second frozen text-encoder. Stable Diffusion XL uses the text and pool portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
+            specifically the
+            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
+            variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`CLIPTokenizer`):
+            Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-    _optional_components = ["tokenizer", "text_encoder"]
 
     def __init__(
         self,
@@ -221,7 +224,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt,
@@ -435,6 +437,43 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         return timesteps, num_inference_steps - t_start
 
+    def check_inputs(
+        self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
+    ):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -453,7 +492,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copy from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix
     def prepare_image_latents(
         self, image, batch_size, num_images_per_prompt, dtype, device, do_classifier_free_guidance, generator=None
     ):
@@ -510,6 +548,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         return image_latents
 
+    # Copied from diffusers.src.diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
     ):
@@ -550,7 +589,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         return add_time_ids, add_neg_time_ids
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -681,7 +719,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs. Raise error if not correct
-        # self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
@@ -733,25 +771,21 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare Image latents
-        # image_latents = self.prepare_image_latents(
-        #     image,
-        #     batch_size,
-        #     num_images_per_prompt,
-        #     prompt_embeds.dtype,
-        #     device,
-        #     do_classifier_free_guidance,
-        #     generator,
-        # )
-        image_latents = self.vae.encode(image).latent_dist.mode()
-        if do_classifier_free_guidance:
-            uncond_image_latents = torch.zeros_like(image_latents)
-            image_latents = torch.cat([uncond_image_latents, image_latents], dim=0)
+        image_latents = self.prepare_image_latents(
+            image,
+            batch_size,
+            num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            do_classifier_free_guidance,
+            generator,
+        )
 
         height, width = image_latents.shape[-2:]
         height = height * self.vae_scale_factor
         width = width * self.vae_scale_factor
 
-        # 6. Prepare latent variables
+        # 7. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -793,13 +827,14 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         )
 
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([add_text_embeds, negative_pooled_prompt_embeds], dim=0)
+            add_time_ids = torch.cat([add_time_ids, add_neg_time_ids], dim=0)
 
-        # add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[0].unsqueeze(0)), dim=0)
-        # add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[0].unsqueeze(0)), dim=0)
-        # prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[0].unsqueeze(0)), dim=0)
+        # Make dimension 3
+        add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[-1].unsqueeze(0)), dim=0)
+        add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[-1].unsqueeze(0)), dim=0)
+        prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[-1].unsqueeze(0)), dim=0)
 
         prompt_embeds = prompt_embeds.to(device).to(torch.float32)
         add_text_embeds = add_text_embeds.to(device).to(torch.float32)
@@ -813,8 +848,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
                 # is applied for both the text and the input image.
-                # latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -822,8 +856,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                # tar_idx = 2; added_cond_kwargs_tmp = {"text_embeds": add_text_embeds[tar_idx].unsqueeze(0), "time_ids": add_time_ids[tar_idx].unsqueeze(0)}
-                # self.unet(scaled_latent_model_input[tar_idx].unsqueeze(0), t, encoder_hidden_states=prompt_embeds[tar_idx].unsqueeze(0), cross_attention_kwargs=cross_attention_kwargs, added_cond_kwargs=added_cond_kwargs_tmp, return_dict=False)[0]
                 noise_pred = self.unet(
                     scaled_latent_model_input,
                     t,
@@ -844,8 +876,12 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
+                    noise_pred = (
+                        noise_pred_uncond
+                        + guidance_scale * (noise_pred_text - noise_pred_image)
+                        + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
+                    )
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf

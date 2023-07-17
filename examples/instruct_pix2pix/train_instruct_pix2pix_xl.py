@@ -5,7 +5,9 @@ import logging
 import math
 import os
 import shutil
+import warnings
 from pathlib import Path
+from urllib.parse import urlparse
 
 import accelerate
 import datasets
@@ -48,6 +50,14 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("file_name", "edited_image", "edit_prompt"),
 }
 WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
+
+
+def is_url(string):
+    try:
+        result = urlparse(string)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
 
 
 def import_model_class_from_model_name_or_path(
@@ -131,7 +141,7 @@ def parse_args():
         help="The column of the dataset containing the edit instruction.",
     )
     parser.add_argument(
-        "--val_image_url",
+        "--val_image_url_or_path",
         type=str,
         default=None,
         help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
@@ -146,11 +156,11 @@ def parse_args():
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
-        "--validation_epochs",
+        "--validation_steps",
         type=int,
         default=100,
         help=(
-            "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
+            "Run fine-tuning validation every X steps. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
         ),
     )
@@ -738,8 +748,11 @@ def main():
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
+        warnings.warn(f"weight_dtype {weight_dtype} may cause nan during vae encoding", UserWarning)
+
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+        warnings.warn(f"weight_dtype {weight_dtype} may cause nan during vae encoding", UserWarning)
 
     # Move text_encode and vae to gpu and cast to weight_dtype
     text_encoder_1.to(accelerator.device, dtype=weight_dtype)
@@ -815,7 +828,6 @@ def main():
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
-                # tmp_pixel_value = torch.load('xl_image.pt').to('cuda')
                 latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
@@ -840,7 +852,7 @@ def main():
 
                     bs_embed, seq_len, _ = prompt_embeds.shape
                     # duplicate text embeddings for each generation per prompt, using mps friendly method
-                    prompt_embeds = prompt_embeds.repeat(1, 1, 1)
+                    # prompt_embeds = prompt_embeds.repeat(1, 1, 1)
                     prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
 
                     prompt_embeds_list.append(prompt_embeds)
@@ -901,7 +913,7 @@ def main():
                 add_text_embeds = pooled_prompt_embeds
 
                 crops_coords_top_left = (0, 0)
-                target_size = (512, 512)
+                target_size = (args.resolution, args.resolution)
                 original_size = original_image_embeds.shape[-2:]
                 add_time_ids = list(original_size + crops_coords_top_left + target_size)
                 add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -911,14 +923,11 @@ def main():
                 ### End SDXL
 
                 # Predict the noise residual and compute loss
-                # tmp_prompt_embeds = torch.load('xl_prompt_embeds.pt').to('cuda')
-                # tmp_concatenated_noisy_latents = torch.load('xl_latent_model_input.pt').to('cuda')
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 model_pred = unet(
                     concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 ).sample
-                # model_pred = unet(concatenated_noisy_latents, timesteps, tmp_prompt_embeds, added_cond_kwargs=added_cond_kwargs).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -972,8 +981,8 @@ def main():
             progress_bar.set_postfix(**logs)
 
             ### BEGIN: Perform validation every `validation_epochs` steps
-            if global_step % args.validation_epochs == 0 or global_step == 1:
-                if (args.val_image_url is not None) and (args.validation_prompt is not None):
+            if global_step % args.validation_steps == 0 or global_step == 1:
+                if (args.val_image_url_or_path is not None) and (args.validation_prompt is not None):
                     logger.info(
                         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
@@ -1006,11 +1015,14 @@ def main():
                     if not os.path.exists(val_save_dir):
                         os.makedirs(val_save_dir)
 
-                    # original_image = download_image(args.val_image_url)
-                    original_image = Image.open(args.val_image_url).convert("RGB")
+                    if is_url(args.val_image_url_or_path):
+                        original_image = download_image(args.val_image_url_or_path)
+                    else:
+                        original_image = Image.open(args.val_image_url_or_path).convert("RGB")
                     with torch.autocast(
                         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
                     ):
+                        edited_images = []
                         for val_img_idx in range(args.num_validation_images):
                             a_val_img = pipeline(
                                 args.validation_prompt,
@@ -1020,80 +1032,27 @@ def main():
                                 guidance_scale=7,
                                 generator=generator,
                             ).images[0]
+                            edited_images.append(a_val_img)
                             a_val_img.save(os.path.join(val_save_dir, f"step_{global_step}_val_img_{val_img_idx}.png"))
+
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "wandb":
+                            wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
+                            for edited_image in edited_images:
+                                wandb_table.add_data(
+                                    wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
+                                )
+                            tracker.log({"validation": wandb_table})
+                    if args.use_ema:
+                        # Switch back to the original UNet parameters.
+                        ema_unet.restore(unet.parameters())
+
+                    del pipeline
+                    torch.cuda.empty_cache()
             ### END: Perform validation every `validation_epochs` steps
 
             if global_step >= args.max_train_steps:
                 break
-
-        if accelerator.is_main_process:
-            if (
-                (args.val_image_url is not None)
-                and (args.validation_prompt is not None)
-                and (epoch % args.validation_epochs == 0)
-            ):
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                # create pipeline
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
-                # The models need unwrapping because for compatibility in distributed training mode.
-                pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder_1),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_2),
-                    tokenizer=accelerator.unwrap_model(tokenizer_1),
-                    tokenizer_2=accelerator.unwrap_model(tokenizer_2),
-                    vae=accelerator.unwrap_model(vae),
-                    revision=args.revision,
-                    torch_dtype=weight_dtype,
-                )
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
-
-                # run inference
-                # Save validation images
-                val_save_dir = os.path.join(args.output_dir, "validation_images")
-                if not os.path.exists(val_save_dir):
-                    os.makedirs(val_save_dir)
-
-                # original_image = download_image(args.val_image_url)
-                original_image = Image.open(args.val_image_url).convert("RGB")
-                edited_images = []
-                with torch.autocast(
-                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                ):
-                    for _ in range(args.num_validation_images):
-                        edited_images.append(
-                            pipeline(
-                                args.validation_prompt,
-                                image=original_image,
-                                num_inference_steps=20,
-                                image_guidance_scale=1.5,
-                                guidance_scale=7,
-                                generator=generator,
-                            ).images[0]
-                        )
-
-                for tracker in accelerator.trackers:
-                    if tracker.name == "wandb":
-                        wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                        for edited_image in edited_images:
-                            wandb_table.add_data(
-                                wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                            )
-                        tracker.log({"validation": wandb_table})
-                if args.use_ema:
-                    # Switch back to the original UNet parameters.
-                    ema_unet.restore(unet.parameters())
-
-                del pipeline
-                torch.cuda.empty_cache()
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
