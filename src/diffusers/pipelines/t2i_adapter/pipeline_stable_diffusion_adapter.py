@@ -62,7 +62,9 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers.utils import load_image
 
-        >>> image = load_image("https://huggingface.co/RzZ/sd-v1-4-adapter-color/resolve/main/color_ref.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_ref.png"
+        ... )
 
         >>> color_palette = image.resize((8, 8))
         >>> color_palette = color_palette.resize((512, 512), resample=Image.Resampling.NEAREST)
@@ -70,7 +72,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableDiffusionAdapterPipeline, T2IAdapter
 
-        >>> adapter = T2IAdapter.from_pretrained("RzZ/sd-v1-4-adapter-color")
+        >>> adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_color_sd14v1")
         >>> pipe = StableDiffusionAdapterPipeline.from_pretrained(
         ...     "CompVis/stable-diffusion-v1-4",
         ...     adapter=adapter,

@@ -196,12 +196,12 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/deepfloyd_if
+      title: DeepFloyd IF
     - local: api/pipelines/diffedit
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
-    - local: api/pipelines/deepfloyd_if
-      title: DeepFloyd IF 
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
