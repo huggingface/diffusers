@@ -33,6 +33,7 @@ The abstract of the paper is the following:
 ## FAQ
 
 ### How well it performs compared to dedicated segmentation networks?
+
 The self-segmentation technique leverages the generative prior of large diffusion models,
 rather than an external segmentation model. It is true that large segmentation models (e.g., SAM, ODISE) trained with a
 lot of supervision, are strong enough, but also come with heavy computational costs. Our self-segmentation utilizes the
@@ -43,7 +44,8 @@ Note that while the resolution of the segmentation map is rather low, it is easy
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/self_seg_comparison.png)
 
 ### What would be a good usecase to use this segmentation technique?
-As shown in our paper, this technique is useful for image editing. It allows to
+
+As shown in our [paper](https://huggingface.co/papers/2303.11306), this technique is useful for image editing. It allows to
 localize edis by taking segments that should not be edited from the original image. Since we get this segmentation
 "for free" when generating an image, we believe that localizing an edit is the best use-case for this technique, rather
 than using it as a heavy segmentation model.
