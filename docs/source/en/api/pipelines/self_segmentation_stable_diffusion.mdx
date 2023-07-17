@@ -56,9 +56,11 @@ than using it as a heavy segmentation model.
 
 
 ## Usage
+
 The usage of this pipeline is very similar to the vanilla Stable Diffusion pipeline. We describe the differences below.
 
 ### Inputs
+
 - `segmentation_resolution` - This is the resolution of the self-attention maps used for the clustering. The default is
 32, since we found it to be a good trade-off between the segmentation resolution and the semantics encoded in the
 self-attention maps.
@@ -72,6 +74,7 @@ whose cross-attention map has the highest intersection with the segment. This ar
 If not provided, we automatically extract indices of nouns from the prompt and use them.
 
 ### Outputs
+
 In addition to the outputted generated image, this pipeline outputs the following:
 - `seg_map` - The segmentation map of the generated image before merging clusters.
 - `seg_labels` - A dictionary that maps each segment to its label.
