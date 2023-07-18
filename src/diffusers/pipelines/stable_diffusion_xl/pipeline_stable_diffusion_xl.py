@@ -840,3 +840,22 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             return (image,)
 
         return StableDiffusionXLPipelineOutput(images=image)
+
+    # Overrride to properly handle the loading and unloading of the additional text encoder.
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+        state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alpha=network_alpha,
+            text_encoder=self.text_encoder,
+            prefix="text_encoder",
+            lora_scale=self.lora_scale,
+        )
+        self.load_lora_weights(
+            state_dict,
+            network_alpha=network_alpha,
+            text_encoder=self.text_encoder_2,
+            prefix="text_encoder_2",
+            lora_scale=self.lora_scale,
+        )

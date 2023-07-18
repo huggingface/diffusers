@@ -830,11 +830,6 @@ class LoraLoaderMixin:
         self.load_lora_into_text_encoder(
             state_dict, network_alpha=network_alpha, text_encoder=self.text_encoder, lora_scale=self.lora_scale
         )
-        is_sdxl = any("text_encoder_2" in key for key in state_dict)
-        if is_sdxl:
-            self.load_lora_into_text_encoder(
-                state_dict, network_alpha=network_alpha, text_encoder=self.text_encoder_2, lora_scale=self.lora_scale
-            )
 
     @classmethod
     def lora_state_dict(
@@ -1011,7 +1006,7 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, lora_scale=1.0):
+    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, prefix=None, lora_scale=1.0):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
@@ -1032,15 +1027,10 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        prefix = None
+        prefix = cls.text_encoder_name if prefix is None else prefix
 
         if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            if isinstance(text_encoder, CLIPTextModel):
-                prefix = cls.text_encoder_name
-            elif isinstance(text_encoder, CLIPTextModelWithProjection):
-                prefix = f"{cls.text_encoder_name}_2"
-
             text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
                 k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
@@ -1099,12 +1089,9 @@ class LoraLoaderMixin:
 
                 load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                 if len(load_state_dict_results.unexpected_keys) != 0:
-                    unexpected_keys = load_state_dict_results.unexpected_keys
-                    is_sdxl_ckpt = any("text_encoder_" in k for k in unexpected_keys)
-                    if not is_sdxl_ckpt:
-                        raise ValueError(
-                            f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
-                        )
+                    raise ValueError(
+                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                    )
 
     @property
     def lora_scale(self) -> float:
@@ -1170,11 +1157,12 @@ class LoraLoaderMixin:
         ] = None,
         is_main_process: bool = True,
         weight_name: str = None,
+        text_encoder_weight_prefix: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the LoRA parameters corresponding to the UNet and text encoder(s).
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -1188,6 +1176,10 @@ class LoraLoaderMixin:
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
                 process to avoid race conditions.
+            weight_name (`str`, *optional*, defaults to `None`):
+                Exact name of the weight file to use during serialization (`my_trained_lora_weights.bin`, for example).
+            text_encoder_weight_prefix (`str`, *optional*, defaults to `None`):
+                Prefix to use for serializing the LoRA parameters corresponding to the text encoder.
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
@@ -1219,6 +1211,9 @@ class LoraLoaderMixin:
             state_dict.update(unet_lora_state_dict)
 
         if text_encoder_lora_layers is not None:
+            text_encoder_weight_prefix = (
+                self.text_encoder_name if text_encoder_weight_prefix is None else text_encoder_weight_prefix
+            )
 
             def get_te_params(te_state_dict):
                 weights = te_state_dict.state_dict() if isinstance(te_state_dict, torch.nn.Module) else te_state_dict
@@ -1227,15 +1222,15 @@ class LoraLoaderMixin:
             if not isinstance(text_encoder_lora_layers, list):
                 weights = get_te_params(text_encoder_lora_layers)
                 text_encoder_lora_state_dict = {
-                    f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
+                    f"{text_encoder_weight_prefix}.{module_name}": param for module_name, param in weights.items()
                 }
                 state_dict.update(text_encoder_lora_state_dict)
             else:
                 for i in range(len(text_encoder_lora_layers)):
                     weights = get_te_params(text_encoder_lora_layers[i])
-                    weight_suffix = f"{self.text_encoder_name}_{i+1}" if i > 0 else self.text_encoder_name
+                    modified_prefix = f"{text_encoder_weight_prefix}_{i+1}" if i > 0 else text_encoder_weight_prefix
                     text_encoder_lora_state_dict = {
-                        f"{weight_suffix}.{module_name}": param for module_name, param in weights.items()
+                        f"{modified_prefix}.{module_name}": param for module_name, param in weights.items()
                     }
                     state_dict.update(text_encoder_lora_state_dict)
 
