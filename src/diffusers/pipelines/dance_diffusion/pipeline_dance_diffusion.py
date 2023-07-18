@@ -102,7 +102,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        audio = randn_tensor(shape, generator=generator, device=self.device, dtype=dtype)
+        audio = randn_tensor(shape, generator=generator, device=self._execution_device, dtype=dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
