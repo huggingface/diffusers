@@ -61,14 +61,14 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        AutoPipelineForImage2Image,
+        AutoPipelineForInpainting,
+        AutoPipelineForText2Image,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         DiffusionPipeline,
-        AutoPipelineForInpainting,
-        AutoPipelineForImage2Image,
-        AutoPipelineForText2Image,
         DiTPipeline,
         ImagePipelineOutput,
         KarrasVePipeline,

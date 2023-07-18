@@ -14,24 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..configuration_utils import ConfigMixin
 from collections import OrderedDict
 
+from ..configuration_utils import ConfigMixin
+from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
+from .kandinsky2_2 import KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22Pipeline
+from .pipeline_utils import DiffusionPipeline
 from .stable_diffusion import (
-    StableDiffusionPipeline, 
-    StableDiffusionImg2ImgPipeline, 
+    StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline,
 )
 from .stable_diffusion_xl import (
-    StableDiffusionXLPipeline, 
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
+    StableDiffusionXLPipeline,
 )
-from .deepfloyd_if import IFPipeline, IFImg2ImgPipeline, IFInpaintingPipeline
-from .kandinsky import KandinskyPipeline, KandinskyImg2ImgPipeline, KandinskyInpaintPipeline
-from .kandinsky2_2 import KandinskyV22Pipeline, KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline
-
-from .pipeline_utils import DiffusionPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -64,13 +63,15 @@ AUTO_INPAINTING_PIPELINES_MAPPING = OrderedDict(
     ]
 )
 
-SUPPORTED_TASKS_MAPPINGS = [AUTO_TEXT2IMAGE_PIPELINES_MAPPING, AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, AUTO_INPAINTING_PIPELINES_MAPPING]
+SUPPORTED_TASKS_MAPPINGS = [
+    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
+    AUTO_INPAINTING_PIPELINES_MAPPING,
+]
 
 
 def _get_task_class(mapping, pipeline_class_name):
-
     def get_model(pipeline_class_name):
-
         for task_mapping in SUPPORTED_TASKS_MAPPINGS:
             for model_name, pipeline in task_mapping.items():
                 if pipeline.__name__ == pipeline_class_name:
@@ -88,7 +89,6 @@ def _get_task_class(mapping, pipeline_class_name):
 
 
 class AutoPipelineForText2Image(ConfigMixin):
-
     config_name = "model_index.json"
 
     @classmethod
@@ -98,7 +98,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, config["_class_name"])
 
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
-        
+
     @classmethod
     def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
         print(pipeline.config.keys())
@@ -108,7 +108,6 @@ class AutoPipelineForText2Image(ConfigMixin):
 
 
 class AutoPipelineForImage2Image(ConfigMixin):
-
     config_name = "model_index.json"
 
     @classmethod
@@ -118,15 +117,15 @@ class AutoPipelineForImage2Image(ConfigMixin):
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
 
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
-        
+
     @classmethod
     def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline.__class__.__name__)
 
         return image_2_image_cls(**pipeline.components, **kwargs)
 
-class AutoPipelineForInpainting(ConfigMixin):
 
+class AutoPipelineForInpainting(ConfigMixin):
     config_name = "model_index.json"
 
     @classmethod
@@ -136,7 +135,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, config["_class_name"])
 
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
-        
+
     @classmethod
     def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
         inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, pipeline.__class__.__name__)

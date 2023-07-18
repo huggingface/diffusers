@@ -17,6 +17,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .auto_pipeline import AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image
     from .consistency_models import ConsistencyModelPipeline
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
@@ -25,7 +26,6 @@ else:
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
-    from .auto_pipeline import AutoPipelineForText2Image, AutoPipelineForImage2Image, AutoPipelineForInpainting
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
