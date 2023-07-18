@@ -227,7 +227,7 @@ class PipelineTesterMixin:
 
     # set these parameters to False in the child class if the pipeline does not support the corresponding functionality
     test_attention_slicing = True
-    test_cpu_offload = True
+
     test_xformers_attention = True
 
     def get_generator(self, seed):
@@ -671,9 +671,6 @@ class PipelineTesterMixin:
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
-        if not self.test_cpu_offload:
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
