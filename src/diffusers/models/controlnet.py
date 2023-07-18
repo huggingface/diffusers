@@ -22,6 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
+from ..loaders import FromOriginalControlnetMixin
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -100,7 +101,7 @@ class ControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class ControlNetModel(ModelMixin, ConfigMixin):
+class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
     """
     A ControlNet model.
 
