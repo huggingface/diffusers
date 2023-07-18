@@ -621,8 +621,8 @@ def convert_ldm_unet_checkpoint(
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
-    vae_key = "first_stage_model."
     keys = list(checkpoint.keys())
+    vae_key = "first_stage_model." if any(k.startswith("first_stage_model.") for k in keys) else ""
     for key in keys:
         if key.startswith(vae_key):
             vae_state_dict[key.replace(vae_key, "")] = checkpoint.get(key)
@@ -1172,7 +1172,6 @@ def download_from_original_stable_diffusion_ckpt(
     from diffusers import (
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
-        StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
@@ -1261,10 +1260,7 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 1024
 
-    if num_in_channels is None and pipeline_class in [
-        StableDiffusionInpaintPipeline,
-        StableDiffusionControlNetInpaintPipeline,
-    ]:
+    if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
         num_in_channels = 9
     elif num_in_channels is None:
         num_in_channels = 4
@@ -1619,7 +1615,6 @@ def download_controlnet_from_original_ckpt(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    import ipdb; ipdb.set_trace()
     original_config = OmegaConf.load(original_config_file)
 
     if num_in_channels is not None:

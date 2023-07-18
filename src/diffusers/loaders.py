@@ -13,17 +13,17 @@
 # limitations under the License.
 import os
 import warnings
-import requests
 from collections import defaultdict
+from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import requests
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
-from transformers.utils import download_url
 
 from .models.attention_processor import (
     AttnAddedKVProcessor,
@@ -45,10 +45,13 @@ from .utils import (
     HF_HUB_OFFLINE,
     _get_model_file,
     deprecate,
+    is_accelerate_available,
+    is_omegaconf_available,
     is_safetensors_available,
     is_transformers_available,
     logging,
 )
+from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_safetensors_available():
@@ -57,6 +60,9 @@ if is_safetensors_available():
 if is_transformers_available():
     from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
 
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
 
@@ -1536,8 +1542,8 @@ class FromOriginalVAEMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
-        is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
+        format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1596,10 +1602,21 @@ class FromOriginalVAEMixin:
         Examples:
 
         ```py
+
         ```
         """
+        if not is_omegaconf_available():
+            raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
+
+        from omegaconf import OmegaConf
+
+        from .models import AutoencoderKL
+
         # import here to avoid circular dependency
-        from .pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
+        from .pipelines.stable_diffusion.convert_from_ckpt import (
+            convert_ldm_vae_checkpoint,
+            create_vae_diffusers_config,
+        )
 
         config_file = kwargs.pop("config_file", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -1608,17 +1625,15 @@ class FromOriginalVAEMixin:
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
-        num_in_channels = kwargs.pop("num_in_channels", None)
         revision = kwargs.pop("revision", None)
-        extract_ema = kwargs.pop("extract_ema", False)
         image_size = kwargs.pop("image_size", None)
-        upcast_attention = kwargs.pop("upcast_attention", None)
+        scaling_factor = kwargs.pop("scaling_factor", None)
+        kwargs.pop("upcast_attention", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
-        pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
@@ -1655,29 +1670,52 @@ class FromOriginalVAEMixin:
                 force_download=force_download,
             )
 
+        if from_safetensors:
+            from safetensors import safe_open
+
+            checkpoint = {}
+            with safe_open(pretrained_model_link_or_path, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    checkpoint[key] = f.get_tensor(key)
+        else:
+            checkpoint = torch.load(pretrained_model_link_or_path, map_location="cpu")
+
+        if "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
         if config_file is None:
-            config_url = "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml"
+            config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
             config_file = BytesIO(requests.get(config_url).content)
 
-        vae_config = create_vae_diffusers_config(config_file, image_size=image_size)
+        original_config = OmegaConf.load(config_file)
+
+        # default to sd-v1-5
+        image_size = image_size or 512
+
+        vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-        if (
-            "model" in original_config
-            and "params" in original_config.model
-            and "scale_factor" in original_config.model.params
-        ):
-            vae_scaling_factor = original_config.model.params.scale_factor
-        else:
-            vae_scaling_factor = 0.18215  # default SD scaling factor
+        if scaling_factor is None:
+            if (
+                "model" in original_config
+                and "params" in original_config.model
+                and "scale_factor" in original_config.model.params
+            ):
+                vae_scaling_factor = original_config.model.params.scale_factor
+            else:
+                vae_scaling_factor = 0.18215  # default SD scaling factor
 
         vae_config["scaling_factor"] = vae_scaling_factor
 
-        with init_empty_weights():
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
             vae = AutoencoderKL(**vae_config)
 
-        for param_name, param in converted_vae_checkpoint.items():
-            set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        if is_accelerate_available():
+            for param_name, param in converted_vae_checkpoint.items():
+                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        else:
+            vae.load_state_dict(converted_vae_checkpoint)
 
         if torch_dtype is not None:
             vae.to(torch_dtype=torch_dtype)
@@ -1686,12 +1724,11 @@ class FromOriginalVAEMixin:
 
 
 class FromOriginalControlnetMixin:
-
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
-        is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline is
+        set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1750,6 +1787,7 @@ class FromOriginalControlnetMixin:
         Examples:
 
         ```py
+
         ```
         """
         # import here to avoid circular dependency

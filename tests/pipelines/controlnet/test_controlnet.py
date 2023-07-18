@@ -758,9 +758,13 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
 
-        controlnet = ControlNetModel.from_single_file("https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth")
+        controlnet = ControlNetModel.from_single_file(
+            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
+        )
         pipe_2 = StableDiffusionControlNetPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors", safety_checker=None, controlnet=controlnet
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            safety_checker=None,
+            controlnet=controlnet,
         )
         pipes = [pipe_1, pipe_2]
         images = []
