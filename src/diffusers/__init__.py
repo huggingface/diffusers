@@ -195,7 +195,6 @@ else:
     )
 
 try:
-
     if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -203,6 +202,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .pipelines import Index, IndexConfig, Retriever
 
+try:
     if not (is_torch_available() and is_transformers_available() and is_invisible_watermark_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
