@@ -350,7 +350,9 @@ class MaskConditionEncoder(nn.Module):
 
 
 class MaskConditionDecoder(nn.Module):
-    """ The `MaskConditionDecoder` should be used in combination with [`AsymmetricAutoencoderKL`] to enhance the model's decoder with a conditioner on the mask and masked image. """
+    """The `MaskConditionDecoder` should be used in combination with [`AsymmetricAutoencoderKL`] to enhance the model's
+    decoder with a conditioner on the mask and masked image."""
+
     def __init__(
         self,
         in_channels=3,

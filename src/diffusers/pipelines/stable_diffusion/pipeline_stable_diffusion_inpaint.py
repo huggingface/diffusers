@@ -982,9 +982,6 @@ class StableDiffusionInpaintPipeline(
             generator,
             do_classifier_free_guidance,
         )
-        init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-        init_image_condition = init_image.clone()
-        init_image = self._encode_vae_image(init_image, generator=generator)
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
@@ -1058,6 +1055,9 @@ class StableDiffusionInpaintPipeline(
         if not output_type == "latent":
             condition_kwargs = {}
             if isinstance(self.vae, AsymmetricAutoencoderKL):
+                init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+                init_image_condition = init_image.clone()
+                init_image = self._encode_vae_image(init_image, generator=generator)
                 mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
                 condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **condition_kwargs)[0]
