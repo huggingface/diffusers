@@ -72,8 +72,8 @@ class KarrasVePipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.utils.ImagePipelineOutput`] is returned, otherwise a `tuple`
-                is returned where the first element is a list with the generated images.
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
 
         img_size = self.unet.config.sample_size

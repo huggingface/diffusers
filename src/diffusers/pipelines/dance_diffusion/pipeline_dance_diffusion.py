@@ -94,8 +94,8 @@ class DanceDiffusionPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.AudioPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.utils.AudioPipelineOutput`] is returned, otherwise a `tuple`
-                is returned where the first element is a list with the generated audio.
+                If `return_dict` is `True`, [`~pipelines.AudioPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated audio.
         """
 
         if audio_length_in_s is None:

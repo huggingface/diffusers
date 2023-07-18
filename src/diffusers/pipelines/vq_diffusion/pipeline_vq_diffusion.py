@@ -212,9 +212,9 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 every step.
 
         Returns:
-            [`~pipelines.stable_diffusion.ImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.ImagePipelineOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         if isinstance(prompt, str):
             batch_size = 1

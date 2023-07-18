@@ -103,7 +103,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
         Example:
 

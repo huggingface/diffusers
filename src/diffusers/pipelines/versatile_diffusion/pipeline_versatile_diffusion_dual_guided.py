@@ -430,8 +430,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
                 following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -471,9 +470,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         ```
 
         Returns:
-            [`~pipelines.stable_diffusion.ImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.ImagePipelineOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.image_unet.config.sample_size * self.vae_scale_factor
