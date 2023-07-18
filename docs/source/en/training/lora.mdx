@@ -182,18 +182,16 @@ If you used `--train_text_encoder` during training, then use `pipe.load_lora_wei
 weights. For example:
 
 ```python
-from huggingface_hub.repocard import RepoCard
 from diffusers import StableDiffusionPipeline
 import torch
 
-lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
-card = RepoCard.load(lora_model_id)
-base_model_id = card.data.to_dict()["base_model"]
+lora_model_id = "takuoko/classic-anime-expressions-lora"
+base_model_id = "stablediffusionapi/anything-v5"
 
 pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
-pipe.load_lora_weights(lora_model_id)
-image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+pipe.load_lora_weights(lora_model_id, weight_name="pytorch_lora_weights.bin")
+image = pipe("1girl, >_<", num_inference_steps=50).images[0]
 ```
 
 
