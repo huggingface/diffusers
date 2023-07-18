@@ -2,6 +2,21 @@
 from ..utils import DummyObject, requires_backends
 
 
+class StableDiffusionXLControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers", "invisible_watermark"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers", "invisible_watermark"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers", "invisible_watermark"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers", "invisible_watermark"])
+
+
 class StableDiffusionXLImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers", "invisible_watermark"]
 
