@@ -151,6 +151,7 @@ else:
         KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        RDMPipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
         ShapEPipeline,
@@ -191,7 +192,6 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
-        RDMPipeline,
     )
 
 try:
