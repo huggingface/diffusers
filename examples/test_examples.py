@@ -853,10 +853,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Run training script with checkpointing
-            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
-            # Should create checkpoints at steps 2, 4, 6
-            # with checkpoint at step 2 deleted
 
             initial_run_args = f"""
                 examples/text_to_image/train_text_to_image_lora.py
