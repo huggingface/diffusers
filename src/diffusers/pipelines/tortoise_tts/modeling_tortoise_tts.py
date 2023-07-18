@@ -4,9 +4,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
 
-class ResnetBlock2D(nn.Module):
+
+class Mish(torch.nn.Module):
+    def forward(self, hidden_states):
+        return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
+
+
+class ResnetBlock1D(nn.Module):
     def __init__(
         self,
         *,
@@ -164,6 +171,118 @@ class ResnetBlock2D(nn.Module):
         return output_tensor
 
 
-class Mish(torch.nn.Module):
-    def forward(self, hidden_states):
-        return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
+# Note: for now copy __init__ arguments from Attention + relative_pos_embeddings arg
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py#L35
+class AttentionBlock(nn.Module):
+    def __init__(
+        self,
+        query_dim: int,
+        cross_attention_dim: Optional[int] = None,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias=False,
+        upcast_attention: bool = False,
+        upcast_softmax: bool = False,
+        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm_num_groups: int = 32,
+        added_kv_proj_dim: Optional[int] = None,
+        norm_num_groups: Optional[int] = None,
+        spatial_norm_dim: Optional[int] = None,
+        out_bias: bool = True,
+        scale_qk: bool = True,
+        only_cross_attention: bool = False,
+        eps: float = 1e-5,
+        rescale_output_factor: float = 1.0,
+        residual_connection: bool = False,
+        _from_deprecated_attn_block=False,
+        processor: Optional[AttnProcessor] = None,
+        relative_pos_embeddings: bool = False,
+    ):
+        pass
+
+
+class ConditioningEncoder(nn.Module):
+    """
+    Conditioning encoder for the Tortoise TTS model with architecture
+
+    (input transform) => [AttentionBlock] x num_layers => (output transform)
+    """
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_layers: int,
+        attention_head_dim: int = 1,
+        relative_pos_embeddings: bool = False,
+        input_transform: Optional[str] = None,
+        input_conv_kernel_size: int = 1,
+        input_conv_stride: int = 1,
+        input_conv_padding: int = 0,
+        conv2_hidden_dim: Optional[int] = None,
+        output_transform: Optional[str] = None,
+        output_num_groups: int = 32,
+    ):
+        super().__init__()
+
+        if input_transform is None:
+            self.input_transform = nn.Identity()
+        elif input_transform == "conv":
+            self.input_transform = nn.Conv1d(
+                in_channels,
+                out_channels,
+                input_conv_kernel_size,
+                stride=input_conv_stride,
+                padding=input_conv_padding,
+            )
+        elif input_transform == "conv2":
+            if conv2_hidden_dim is None:
+                conv2_hidden_dim = in_channels
+            self.input_transform = nn.Sequential(
+                nn.Conv1d(
+                    in_channels,
+                    conv2_hidden_dim,
+                    input_conv_kernel_size,
+                    stride=input_conv_stride,
+                    padding=input_conv_padding,
+                ),
+                nn.Conv1d(
+                    conv2_hidden_dim,
+                    out_channels,
+                    input_conv_kernel_size,
+                    stride=input_conv_stride,
+                    padding=input_conv_padding,
+                ),
+            )
+        else:
+            raise ValueError(
+                f"`input_transform` {input_transform} is not currently supported."
+            )
+        
+        self.attention = nn.ModuleList(
+            [
+                AttentionBlock(
+                    out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
+                    relative_pos_embeddings=relative_pos_embeddings,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        
+        if output_transform is None:
+            self.output_transform = nn.Identity()
+        elif output_transform == "groupnorm":
+            self.output_transform = nn.GroupNorm(output_num_groups, out_channels)
+        else:
+            raise ValueError(
+                f"`output_transform` {output_transform} is not currently supported."
+            )
+    
+    def forward(self, x):
+        x = self.input_transform(x)
+        x = self.attention(x)
+        x = self.output_transform(x)
+        return x
+
