@@ -3,6 +3,8 @@ import inspect
 import logging
 import math
 import os
+import shutil
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +12,7 @@ import accelerate
 import datasets
 import torch
 import torch.nn.functional as F
-from accelerate import Accelerator
+from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
@@ -28,7 +30,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.19.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -245,11 +247,7 @@ def parse_args():
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=(
-            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
-            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
-        ),
+        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -287,15 +285,15 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
-
+    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))  # a big number for high resolution or big dataset
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
+        kwargs_handlers=[kwargs],
     )
 
     if args.logger == "tensorboard":
@@ -562,7 +560,9 @@ def main(args):
 
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
-            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            noise = torch.randn(
+                clean_images.shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
+            ).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
@@ -607,6 +607,26 @@ def main(args):
                 global_step += 1
 
                 if global_step % args.checkpointing_steps == 0:
+                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                    if args.checkpoints_total_limit is not None:
+                        checkpoints = os.listdir(args.output_dir)
+                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                        if len(checkpoints) >= args.checkpoints_total_limit:
+                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                            removing_checkpoints = checkpoints[0:num_to_remove]
+
+                            logger.info(
+                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                            )
+                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                            for removing_checkpoint in removing_checkpoints:
+                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                shutil.rmtree(removing_checkpoint)
+
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)

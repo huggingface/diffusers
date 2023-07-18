@@ -10,13 +10,11 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# BaseOutputs
+# Outputs
 
-All models have outputs that are instances of subclasses of [`~utils.BaseOutput`]. Those are
-data structures containing all the information returned by the model, but that can also be used as tuples or
-dictionaries.
+All models outputs are subclasses of [`~utils.BaseOutput`], data structures containing all the information returned by the model. The outputs can also be used as tuples or dictionaries.
 
-Let's see how this looks in an example:
+For example:
 
 ```python
 from diffusers import DDIMPipeline
@@ -25,31 +23,45 @@ pipeline = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32")
 outputs = pipeline()
 ```
 
-The `outputs` object is a [`~pipelines.ImagePipelineOutput`], as we can see in the
-documentation of that class below, it means it has an image attribute.
+The `outputs` object is a [`~pipelines.ImagePipelineOutput`] which means it has an image attribute.
 
-You can access each attribute as you would usually do, and if that attribute has not been returned by the model, you will get `None`:
+You can access each attribute as you normally would or with a keyword lookup, and if that attribute is not returned by the model, you will get `None`:
 
 ```python
 outputs.images
-```
-
-or via keyword lookup
-
-```python
 outputs["images"]
 ```
 
-When considering our `outputs` object as tuple, it only considers the attributes that don't have `None` values.
-Here for instance, we could retrieve images via indexing:
+When considering the `outputs` object as a tuple, it only considers the attributes that don't have `None` values.
+For instance, retrieving an image by indexing into it returns the tuple `(outputs.images)`:
 
 ```python
 outputs[:1]
 ```
 
-which will return the tuple `(outputs.images)` for instance.
+<Tip>
+
+To check a specific pipeline or model output, refer to its corresponding API documentation.
+
+</Tip>
 
 ## BaseOutput
 
 [[autodoc]] utils.BaseOutput
     - to_tuple
+
+## ImagePipelineOutput
+
+[[autodoc]] pipelines.ImagePipelineOutput
+
+## FlaxImagePipelineOutput
+
+[[autodoc]] pipelines.pipeline_flax_utils.FlaxImagePipelineOutput
+
+## AudioPipelineOutput
+
+[[autodoc]] pipelines.AudioPipelineOutput
+
+## ImageTextPipelineOutput
+
+[[autodoc]] ImageTextPipelineOutput

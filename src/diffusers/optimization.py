@@ -318,7 +318,7 @@ def get_scheduler(
         return schedule_func(optimizer, last_epoch=last_epoch)
 
     if name == SchedulerType.PIECEWISE_CONSTANT:
-        return schedule_func(optimizer, rules=step_rules, last_epoch=last_epoch)
+        return schedule_func(optimizer, step_rules=step_rules, last_epoch=last_epoch)
 
     # All other schedulers require `num_warmup_steps`
     if num_warmup_steps is None:

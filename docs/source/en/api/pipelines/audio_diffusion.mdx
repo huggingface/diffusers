@@ -43,7 +43,7 @@ pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-256").to(devic
 
 output = pipe()
 display(output.images[0])
-display(Audio(output.audios[0], rate=mel.get_sample_rate()))
+display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
 ```
 
 ### Latent Audio Diffusion

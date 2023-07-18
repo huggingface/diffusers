@@ -20,7 +20,10 @@ import torch
 
 from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
-from diffusers.utils.testing_utils import skip_mps, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
+
+
+enable_full_determinism()
 
 
 class EMAModelTests(unittest.TestCase):

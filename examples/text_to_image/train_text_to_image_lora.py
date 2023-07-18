@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import random
+import shutil
 from pathlib import Path
 
 import datasets
@@ -47,7 +48,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.19.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -240,6 +241,13 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
@@ -265,6 +273,12 @@ def parse_args():
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--prediction_type",
+        type=str,
+        default=None,
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -314,11 +328,7 @@ def parse_args():
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=(
-            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
-            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
-        ),
+        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -333,6 +343,12 @@ def parse_args():
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -353,15 +369,14 @@ DATASET_NAME_MAPPING = {
 
 def main():
     args = parse_args()
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
     if args.report_to == "wandb":
@@ -416,8 +431,8 @@ def main():
 
     text_encoder.requires_grad_(False)
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
+    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -455,7 +470,11 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_procs[name] = LoRAAttnProcessor(
+            hidden_size=hidden_size,
+            cross_attention_dim=cross_attention_dim,
+            rank=args.rank,
+        )
 
     unet.set_attn_processor(lora_attn_procs)
 
@@ -471,6 +490,30 @@ def main():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+    def compute_snr(timesteps):
+        """
+        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+        """
+        alphas_cumprod = noise_scheduler.alphas_cumprod
+        sqrt_alphas_cumprod = alphas_cumprod**0.5
+        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+        # Expand the tensors.
+        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
+        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
+            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
+        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
+
+        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
+            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
+        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
+
+        # Compute SNR.
+        snr = (alpha / sigma) ** 2
+        return snr
 
     lora_layers = AttnProcsLayers(unet.attn_processors)
 
@@ -619,8 +662,8 @@ def main():
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
     # Prepare everything with our `accelerator`.
@@ -718,6 +761,10 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Get the target for loss depending on the prediction type
+                if args.prediction_type is not None:
+                    # set prediction_type of scheduler if defined
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
@@ -727,7 +774,23 @@ def main():
 
                 # Predict the noise residual and compute loss
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(timesteps)
+                    mse_loss_weights = (
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                    )
+                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
+                    # rebalance the sample-wise losses with their respective loss weights.
+                    # Finally, we take the mean of the rebalanced loss.
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
@@ -751,6 +814,26 @@ def main():
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
@@ -778,7 +861,9 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                generator = torch.Generator(device=accelerator.device)
+                if args.seed is not None:
+                    generator = generator.manual_seed(args.seed)
                 images = []
                 for _ in range(args.num_validation_images):
                     images.append(
@@ -834,25 +919,28 @@ def main():
     pipeline.unet.load_attn_procs(args.output_dir)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    generator = torch.Generator(device=accelerator.device)
+    if args.seed is not None:
+        generator = generator.manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
         images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
     if accelerator.is_main_process:
         for tracker in accelerator.trackers:
-            if tracker.name == "tensorboard":
-                np_images = np.stack([np.asarray(img) for img in images])
-                tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-            if tracker.name == "wandb":
-                tracker.log(
-                    {
-                        "test": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                            for i, image in enumerate(images)
-                        ]
-                    }
-                )
+            if len(images) != 0:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
     accelerator.end_training()
 

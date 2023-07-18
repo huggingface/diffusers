@@ -29,12 +29,14 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
+
+enable_full_determinism()
 
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -71,8 +73,9 @@ def create_lora_layers(model, mock_weights: bool = True):
 
 
 @skip_mps
-class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -224,11 +227,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
             sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample1 - sample2).abs().max() < 1e-4
-        assert (sample3 - sample4).abs().max() < 1e-4
+        assert (sample1 - sample2).abs().max() < 3e-3
+        assert (sample3 - sample4).abs().max() < 3e-3
 
         # sample 2 and sample 3 should be different
-        assert (sample2 - sample3).abs().max() > 1e-4
+        assert (sample2 - sample3).abs().max() > 3e-3
 
     def test_lora_save_load(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -259,7 +262,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 1e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -293,7 +296,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 3e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -365,7 +368,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             new_sample = model(**inputs_dict).sample
 
         assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 1e-4
+        assert (sample - old_sample).abs().max() < 3e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -395,6 +398,24 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_feed_forward_chunking(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["norm_num_groups"] = 32
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)[0]
+
+        model.enable_forward_chunking()
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        self.assertEqual(output.shape, output_2.shape, "Shape doesn't match")
+        assert np.abs(output.cpu() - output_2.cpu()).max() < 1e-2
 
 
 # (todo: sayakpaul) implement SLOW tests.

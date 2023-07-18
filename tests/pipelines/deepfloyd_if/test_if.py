@@ -28,6 +28,7 @@ from diffusers import (
     IFSuperResolutionPipeline,
 )
 from diffusers.models.attention_processor import AttnAddedKVProcessor
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -41,8 +42,6 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     params = TEXT_TO_IMAGE_PARAMS - {"width", "height", "latents"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
-
-    test_xformers_attention = False
 
     def get_dummy_components(self):
         return self._get_dummy_components()
@@ -68,7 +67,7 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
-        self._test_save_load_float16(expected_max_diff=1e-1)
+        super().test_save_load_float16(expected_max_diff=1e-1)
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(expected_max_diff=1e-2)
@@ -80,6 +79,13 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-2,
         )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
 @slow

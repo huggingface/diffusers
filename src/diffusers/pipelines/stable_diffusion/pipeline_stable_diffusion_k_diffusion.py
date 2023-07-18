@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import importlib
+import inspect
+import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
-from k_diffusion.sampling import get_sigmas_karras
+from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
 
-from ...loaders import TextualInversionLoaderMixin
+from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
 from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
@@ -43,7 +46,7 @@ class ModelWrapper:
         return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
-class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -111,6 +114,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
         if scheduler.config.prediction_type == "v_prediction":
@@ -207,6 +211,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -231,7 +236,14 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -288,7 +300,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -346,17 +358,26 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        else:
-            has_nsfw_concept = None
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -444,6 +465,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         use_karras_sigmas: Optional[bool] = False,
+        noise_sampler_seed: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -504,6 +526,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
                 Use karras sigmas. For example, specifying `sample_dpmpp_2m` to `set_scheduler` will be equivalent to
                 `DPM++2M` in stable-diffusion-webui. On top of that, setting this option to True will make it `DPM++2M
                 Karras`.
+            noise_sampler_seed (`int`, *optional*, defaults to `None`):
+                The random seed to use for the noise sampler. If `None`, a random seed will be generated.
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -588,17 +612,28 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             return noise_pred
 
         # 8. Run k-diffusion solver
-        latents = self.sampler(model_fn, latents, sigmas)
+        sampler_kwargs = {}
 
-        # 9. Post-processing
-        image = self.decode_latents(latents)
+        if "noise_sampler" in inspect.signature(self.sampler).parameters:
+            min_sigma, max_sigma = sigmas[sigmas > 0].min(), sigmas.max()
+            noise_sampler = BrownianTreeNoiseSampler(latents, min_sigma, max_sigma, noise_sampler_seed)
+            sampler_kwargs["noise_sampler"] = noise_sampler
 
-        # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        latents = self.sampler(model_fn, latents, sigmas, **sampler_kwargs)
 
-        # 11. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
+
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

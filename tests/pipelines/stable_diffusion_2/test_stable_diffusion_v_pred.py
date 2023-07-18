@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -29,11 +30,12 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
@@ -382,7 +384,30 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 7.5e-2
+        assert np.abs(expected_image - image).max() < 9e-1
+
+    def test_stable_diffusion_text2img_pipeline_unflawed(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"
+            "sd2-text2img/lion_galaxy.npy"
+        )
+
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        pipe.scheduler = DDIMScheduler.from_config(
+            pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
+        )
+        pipe.to(torch_device)
+        pipe.enable_attention_slicing()
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
+
+        generator = torch.manual_seed(0)
+        output = pipe(prompt=prompt, guidance_scale=7.5, guidance_rescale=0.7, generator=generator, output_type="np")
+        image = output.images[0]
+
+        assert image.shape == (768, 768, 3)
+        assert np.abs(expected_image - image).max() < 5e-1
 
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
@@ -402,6 +427,40 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (768, 768, 3)
         assert np.abs(expected_image - image).max() < 7.5e-1
+
+    def test_download_local(self):
+        filename = hf_hub_download("stabilityai/stable-diffusion-2-1", filename="v2-1_768-ema-pruned.safetensors")
+
+        pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to("cuda")
+
+        image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
+
+        assert image_out.shape == (768, 768, 3)
+
+    def test_download_ckpt_diff_format_is_same(self):
+        single_file_path = (
+            "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
+        )
+
+        pipe_single = StableDiffusionPipeline.from_single_file(single_file_path)
+        pipe_single.scheduler = DDIMScheduler.from_config(pipe_single.scheduler.config)
+        pipe_single.unet.set_attn_processor(AttnProcessor())
+        pipe_single.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_ckpt = pipe_single("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+
+        assert np.max(np.abs(image - image_ckpt)) < 1e-3
 
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0

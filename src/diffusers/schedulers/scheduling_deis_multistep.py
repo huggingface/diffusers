@@ -26,7 +26,11 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, Schedul
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(
+    num_diffusion_timesteps,
+    max_beta=0.999,
+    alpha_transform_type="cosine",
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -39,19 +43,30 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
+                     Choose from `cosine` or `exp`
 
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
+    if alpha_transform_type == "cosine":
 
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+        def alpha_bar_fn(t):
+            return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "exp":
+
+        def alpha_bar_fn(t):
+            return math.exp(t * -12.0)
+
+    else:
+        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+        betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
 
 
@@ -103,7 +118,17 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
             find this trick can stabilize the sampling of DEIS for steps < 15, especially for steps <= 10.
-
+        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
+             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
+             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
+             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        timestep_spacing (`str`, default `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -125,6 +150,9 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "deis",
         solver_type: str = "logrho",
         lower_order_final: bool = True,
+        use_karras_sigmas: Optional[bool] = False,
+        timestep_spacing: str = "linspace",
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -181,12 +209,39 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-        timesteps = (
-            np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
-            .round()[::-1][:-1]
-            .copy()
-            .astype(np.int64)
-        )
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = (
+                np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+                .round()[::-1][:-1]
+                .copy()
+                .astype(np.int64)
+            )
+        elif self.config.timestep_spacing == "leading":
+            step_ratio = self.config.num_train_timesteps // (num_inference_steps + 1)
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = np.arange(self.config.num_train_timesteps, 0, -step_ratio).round().copy().astype(np.int64)
+            timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+            )
+
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        if self.config.use_karras_sigmas:
+            log_sigmas = np.log(sigmas)
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps = np.flip(timesteps).copy().astype(np.int64)
+
+        self.sigmas = torch.from_numpy(sigmas)
 
         # when num_inference_steps == num_train_timesteps, we can end up with
         # duplicates in timesteps.

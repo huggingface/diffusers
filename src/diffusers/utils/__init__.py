@@ -30,7 +30,6 @@ from .constants import (
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
-    TEXT_ENCODER_TARGET_MODULES,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -59,6 +58,7 @@ from .import_utils import (
     is_flax_available,
     is_ftfy_available,
     is_inflect_available,
+    is_invisible_watermark_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
@@ -104,7 +104,7 @@ if is_torch_available():
     )
     from .torch_utils import maybe_allow_in_graph
 
-from .testing_utils import export_to_video
+from .testing_utils import export_to_gif, export_to_video
 
 
 logger = get_logger(__name__)

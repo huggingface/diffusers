@@ -29,6 +29,8 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "algorithm_type": "dpmsolver++",
             "solver_type": "midpoint",
             "lower_order_final": False,
+            "lambda_min_clipped": -float("inf"),
+            "variance_type": None,
         }
 
         config.update(**kwargs)
@@ -165,16 +167,20 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_solver_order_and_type(self):
-        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+        for algorithm_type in ["dpmsolver", "dpmsolver++", "sde-dpmsolver", "sde-dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
                     for prediction_type in ["epsilon", "sample"]:
-                        self.check_over_configs(
-                            solver_order=order,
-                            solver_type=solver_type,
-                            prediction_type=prediction_type,
-                            algorithm_type=algorithm_type,
-                        )
+                        if algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+                            if order == 3:
+                                continue
+                        else:
+                            self.check_over_configs(
+                                solver_order=order,
+                                solver_type=solver_type,
+                                prediction_type=prediction_type,
+                                algorithm_type=algorithm_type,
+                            )
                         sample = self.full_loop(
                             solver_order=order,
                             solver_type=solver_type,
@@ -186,6 +192,14 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     def test_lower_order_final(self):
         self.check_over_configs(lower_order_final=True)
         self.check_over_configs(lower_order_final=False)
+
+    def test_lambda_min_clipped(self):
+        self.check_over_configs(lambda_min_clipped=-float("inf"))
+        self.check_over_configs(lambda_min_clipped=-5.1)
+
+    def test_variance_type(self):
+        self.check_over_configs(variance_type=None)
+        self.check_over_configs(variance_type="learned_range")
 
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:

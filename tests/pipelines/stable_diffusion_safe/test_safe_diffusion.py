@@ -28,9 +28,6 @@ from diffusers.utils import floats_tensor, nightly, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-
-
 class SafeDiffusionPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
