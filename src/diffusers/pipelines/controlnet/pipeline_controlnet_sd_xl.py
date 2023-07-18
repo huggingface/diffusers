@@ -21,7 +21,7 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
@@ -42,81 +42,52 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion import StableDiffusionPipelineOutput
-from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
+from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 from .multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# TODO (sayakpaul): update this
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
-        >>> from diffusers.utils import load_image
-        >>> import numpy as np
-        >>> import torch
-
-        >>> import cv2
-        >>> from PIL import Image
-
-        >>> # download an image
-        >>> image = load_image(
-        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
-        ... )
-        >>> image = np.array(image)
-
-        >>> # get canny image
-        >>> image = cv2.Canny(image, 100, 200)
-        >>> image = image[:, :, None]
-        >>> image = np.concatenate([image, image, image], axis=2)
-        >>> canny_image = Image.fromarray(image)
-
-        >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
-
-        >>> # speed up diffusion process with faster scheduler and memory optimization
-        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        >>> # remove following line if xformers is not installed
-        >>> pipe.enable_xformers_memory_efficient_attention()
-
-        >>> pipe.enable_model_cpu_offload()
-
-        >>> # generate image
-        >>> generator = torch.manual_seed(0)
-        >>> image = pipe(
-        ...     "futuristic-looking woman", num_inference_steps=20, generator=generator, image=canny_image
-        ... ).images[0]
+        >>> # To be updated when there's a useful ControlNet checkpoint
+        >>> # compatible with SDXL.
         ```
 """
 
 
 class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
+    Pipeline for text-to-image generation using Stable Diffusion XL with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
 
     Args:
-        TODO (sayakpaul): Update docstrings.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder. Stable Diffusion uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([` CLIPTextModelWithProjection`]):
+            Second frozen text-encoder. Stable Diffusion XL uses the text and pool portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
+            specifically the
+            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
+            variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`CLIPTokenizer`):
+            Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
@@ -126,13 +97,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPImageProcessor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -144,28 +109,9 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         unet: UNet2DConditionModel,
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        requires_safety_checker: bool = True,
         force_zeros_for_empty_prompt: bool = True,
     ):
         super().__init__()
-
-        if safety_checker is None and requires_safety_checker:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
-
-        if safety_checker is not None and feature_extractor is None:
-            raise ValueError(
-                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
-                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
-            )
 
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)
@@ -179,17 +125,14 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
-            safety_checker=safety_checker,
-            feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
-        self.register_to_config(
-            requires_safety_checker=requires_safety_checker, force_zeros_for_empty_prompt=force_zeros_for_empty_prompt
-        )
+        self.watermark = StableDiffusionXLWatermarker()
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -245,9 +188,6 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
             cpu_offload(cpu_offloaded_model, device)
 
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -265,10 +205,6 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            # the safety checker can offload the vae again
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # control net hook has be manually offloaded as it alternates with unet
         cpu_offload_with_hook(self.controlnet, device)
@@ -481,21 +417,6 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is None:
-            has_nsfw_concept = None
-        else:
-            if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
-            else:
-                feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
@@ -890,10 +811,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple`
+            containing the output images.
         """
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
@@ -1144,23 +1063,18 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
-            has_nsfw_concept = None
+            return StableDiffusionXLPipelineOutput(images=image)
 
-        if has_nsfw_concept is None:
-            do_denormalize = [True] * image.shape[0]
-        else:
-            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
-
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.watermark.apply_watermark(image)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (image,)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionXLPipelineOutput(images=image)
