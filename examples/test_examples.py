@@ -849,6 +849,52 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
 
+    def test_text_to_image_lora_with_text_encoder(self):
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Run training script with checkpointing
+            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
+            # Should create checkpoints at steps 2, 4, 6
+            # with checkpoint at step 2 deleted
+
+            initial_run_args = f"""
+                examples/text_to_image/train_text_to_image_lora.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 7
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --checkpoints_total_limit=2
+                --seed=0
+                --train_text_encoder
+                --num_validation_images=0
+                """.split()
+
+            run_command(self._launch_args + initial_run_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # check `text_encoder` is present at all.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            keys = lora_state_dict.keys()
+            is_text_encoder_present = any(k.startswith("text_encoder") for k in keys)
+            self.assertTrue(is_text_encoder_present)
+
+            # the names of the keys of the state dict should either start with `unet`
+            # or `text_encoder`.
+            is_correct_naming = all(k.startswith("unet") or k.startswith("text_encoder") for k in keys)
+            self.assertTrue(is_correct_naming)
+
     def test_unconditional_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             initial_run_args = f"""
