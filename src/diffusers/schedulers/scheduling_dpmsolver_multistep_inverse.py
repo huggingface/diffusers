@@ -138,6 +138,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
             Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
             diffusion ODEs.
+        timestep_spacing (`str`, default `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -162,6 +169,8 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
+        timestep_spacing: str = "linspace",
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -221,18 +230,40 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         # Clipping the minimum of all lambda(t) for numerical stability.
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped)
+        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped).item()
         self.noisiest_timestep = self.config.num_train_timesteps - 1 - clipped_idx
-        timesteps = (
-            np.linspace(0, self.noisiest_timestep, num_inference_steps + 1).round()[:-1].copy().astype(np.int64)
-        )
 
-        if self.use_karras_sigmas:
-            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "linspace":
+            timesteps = (
+                np.linspace(0, self.noisiest_timestep, num_inference_steps + 1).round()[:-1].copy().astype(np.int64)
+            )
+        elif self.config.timestep_spacing == "leading":
+            step_ratio = (self.noisiest_timestep + 1) // (num_inference_steps + 1)
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[:-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = np.arange(self.noisiest_timestep + 1, 0, -step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', "
+                "'leading' or 'trailing'."
+            )
+
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        if self.config.use_karras_sigmas:
             log_sigmas = np.log(sigmas)
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
+
+        self.sigmas = torch.from_numpy(sigmas)
 
         # when num_inference_steps == num_train_timesteps, we can end up with
         # duplicates in timesteps.
@@ -397,7 +428,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
             return epsilon
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.dpm_solver_first_order_update
     def dpm_solver_first_order_update(
         self,
         model_output: torch.FloatTensor,
@@ -429,23 +459,12 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
         elif self.config.algorithm_type == "dpmsolver":
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            x_t = (
-                (sigma_t / sigma_s * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
-                + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-            )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            x_t = (
-                (alpha_t / alpha_s) * sample
-                - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * model_output
-                + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
+        elif "sde" in self.config.algorithm_type:
+            raise NotImplementedError(
+                f"Inversion step is not yet implemented for algorithm type {self.config.algorithm_type}."
             )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_second_order_update
     def multistep_dpm_solver_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
@@ -504,38 +523,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                     - (sigma_t * (torch.exp(h) - 1.0)) * D0
                     - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                 )
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - (sigma_t * (torch.exp(h) - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
-                )
+        elif "sde" in self.config.algorithm_type:
+            raise NotImplementedError(
+                f"Inversion step is not yet implemented for algorithm type {self.config.algorithm_type}."
+            )
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_third_order_update
