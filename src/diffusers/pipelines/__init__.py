@@ -102,6 +102,7 @@ else:
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
+    from .tortoise_tts import TortoiseTTSPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
     from .versatile_diffusion import (

@@ -176,6 +176,7 @@ else:
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
         TextToVideoZeroPipeline,
+        TortoiseTTSPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         UniDiffuserModel,
