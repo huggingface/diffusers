@@ -90,6 +90,43 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
+def rescale_zero_terminal_snr(betas):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.FloatTensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
+
+
 class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
     """
     DDIMInverseScheduler is the reverse scheduler of [`DDIMScheduler`].
@@ -126,9 +163,19 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        timestep_spacing (`str`, default `"leading"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        rescale_betas_zero_snr (`bool`, default `False`):
+            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
+            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
+            medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     order = 1
+    ignore_for_config = ["kwargs"]
+    _deprecated_kwargs = ["set_alpha_to_zero"]
 
     @register_to_config
     def __init__(
@@ -139,18 +186,20 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         clip_sample: bool = True,
-        set_alpha_to_zero: bool = True,
+        set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
         clip_sample_range: float = 1.0,
+        timestep_spacing: str = "leading",
+        rescale_betas_zero_snr: bool = False,
         **kwargs,
     ):
-        if kwargs.get("set_alpha_to_one", None) is not None:
+        if kwargs.get("set_alpha_to_zero", None) is not None:
             deprecation_message = (
-                "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
+                "The `set_alpha_to_zero` argument is deprecated. Please use `set_alpha_to_one` instead."
             )
-            deprecate("set_alpha_to_one", "1.0.0", deprecation_message, standard_warn=False)
-            set_alpha_to_zero = kwargs["set_alpha_to_one"]
+            deprecate("set_alpha_to_zero", "1.0.0", deprecation_message, standard_warn=False)
+            set_alpha_to_one = kwargs["set_alpha_to_zero"]
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -166,15 +215,19 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        # Rescale for zero SNR
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         # At every step in inverted ddim, we are looking into the next alphas_cumprod
-        # For the final step, there is no next alphas_cumprod, and the index is out of bounds
-        # `set_alpha_to_zero` decides whether we set this parameter simply to zero
+        # For the initial step, there is no current alphas_cumprod, and the index is out of bounds
+        # `set_alpha_to_one` decides whether we set this parameter simply to one
         # in this case, self.step() just output the predicted noise
-        # or whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(0.0) if set_alpha_to_zero else self.alphas_cumprod[-1]
+        # or whether we use the initial alpha used in training the diffusion model.
+        self.initial_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -215,12 +268,29 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.num_inference_steps = num_inference_steps
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-        # creates integer timesteps by multiplying by ratio
-        # casting to int to avoid issues when num_inference_step is power of 3
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round().copy().astype(np.int64)
+
+        # "leading" and "trailing" corresponds to annotation of Table 1. of https://arxiv.org/abs/2305.08891
+        if self.config.timestep_spacing == "leading":
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round().copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+        elif self.config.timestep_spacing == "trailing":
+            step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)[::-1]).astype(np.int64)
+            timesteps -= 1
+        else:
+            raise ValueError(
+                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
+            )
+
+        # Roll timesteps array by one to reflect reversed origin and destination semantics for each step
+        timesteps = np.roll(timesteps, 1)
+        timesteps[0] = int(timesteps[1] - step_ratio)
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps += self.config.steps_offset
 
     def step(
         self,
@@ -237,12 +307,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute alphas, betas
         # change original implementation to exactly match noise levels for analogous forward process
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = (
-            self.alphas_cumprod[prev_timestep]
-            if prev_timestep < self.config.num_train_timesteps
-            else self.final_alpha_cumprod
-        )
+        alpha_prod_t = self.alphas_cumprod[timestep] if timestep >= 0 else self.initial_alpha_cumprod
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep]
 
         beta_prod_t = 1 - alpha_prod_t
 

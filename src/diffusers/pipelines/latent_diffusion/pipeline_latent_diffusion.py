@@ -128,11 +128,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=77, truncation=True, return_tensors="pt"
             )
-            negative_prompt_embeds = self.bert(uncond_input.input_ids.to(self.device))[0]
+            negative_prompt_embeds = self.bert(uncond_input.input_ids.to(self._execution_device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, truncation=True, return_tensors="pt")
-        prompt_embeds = self.bert(text_input.input_ids.to(self.device))[0]
+        prompt_embeds = self.bert(text_input.input_ids.to(self._execution_device))[0]
 
         # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.config.in_channels, height // 8, width // 8)
@@ -143,11 +143,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=prompt_embeds.dtype)
+            latents = randn_tensor(
+                latents_shape, generator=generator, device=self._execution_device, dtype=prompt_embeds.dtype
+            )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-        latents = latents.to(self.device)
+        latents = latents.to(self._execution_device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
