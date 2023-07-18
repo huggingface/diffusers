@@ -1114,6 +1114,8 @@ class LoraLoaderMixin:
 
     def _remove_text_encoder_monkey_patch(self):
         self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
