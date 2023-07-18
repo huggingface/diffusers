@@ -1012,9 +1012,18 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         sample = self.conv_in(sample)
 
         # 3. down
+
+        is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
+        is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
+
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                # For t2i-adapter CrossAttnDownBlockFlat
+                additional_residuals = {}
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
+
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -1022,13 +1031,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
+                    **additional_residuals,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    sample += down_block_additional_residuals.pop(0)
+
             down_block_res_samples += res_samples
 
-        if down_block_additional_residuals is not None:
+        if is_controlnet:
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
@@ -1050,7 +1063,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 encoder_attention_mask=encoder_attention_mask,
             )
 
-        if mid_block_additional_residual is not None:
+        if is_controlnet:
             sample = sample + mid_block_additional_residual
 
         # 5. up
@@ -1390,10 +1403,13 @@ class CrossAttnDownBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        additional_residuals=None,
     ):
         output_states = ()
 
-        for resnet, attn in zip(self.resnets, self.attentions):
+        blocks = list(zip(self.resnets, self.attentions))
+
+        for i, (resnet, attn) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -1433,6 +1449,10 @@ class CrossAttnDownBlockFlat(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+
+            # apply additional residuals to the output of the last pair of resnet and attention blocks
+            if i == len(blocks) - 1 and additional_residuals is not None:
+                hidden_states = hidden_states + additional_residuals
 
             output_states = output_states + (hidden_states,)
 

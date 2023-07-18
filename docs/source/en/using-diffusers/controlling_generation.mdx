@@ -59,6 +59,7 @@ For convenience, we provide a table to denote which methods are inference-only a
 | [Custom Diffusion](#custom-diffusion) | ❌ | ✅ |  |
 | [Model Editing](#model-editing) | ✅ | ❌ |  |
 | [DiffEdit](#diffedit) | ✅ | ❌ |  |
+| [T2I-Adapter](#t2i-adapter) | ✅ | ❌ |  |
 
 ## Instruct Pix2Pix
 
@@ -216,3 +217,12 @@ To know more details, check out the [official doc](../api/pipelines/stable_diffu
 input prompts while preserving the original input images as much as possible. 
 
 To know more details, check out the [official doc](../api/pipelines/stable_diffusion/model_editing).
+## T2I-Adapter
+
+[Paper](https://arxiv.org/abs/2302.08453)
+
+[T2I-Adapter](../api/pipelines/stable_diffusion/adapter) is an auxiliary network which adds an extra condition.
+There are 8 canonical pre-trained adapters trained on different conditionings such as edge detection, sketch, 
+depth maps, and semantic segmentations.
+
+See [here](../api/pipelines/stable_diffusion/adapter) for more information on how to use it.

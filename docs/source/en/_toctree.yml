@@ -196,12 +196,12 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/deepfloyd_if
+      title: DeepFloyd IF
     - local: api/pipelines/diffedit
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
-    - local: api/pipelines/deepfloyd_if
-      title: DeepFloyd IF 
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -255,6 +255,8 @@
         title: Super-Resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
+      - local: api/pipelines/stable_diffusion/adapter
+        title: Stable Diffusion T2I-adapter
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
