@@ -85,6 +85,7 @@
     - local: in_translation
       title: Custom Diffusion
     title: Training
+  title: Diffusers 사용하기
 - sections:
   - local: optimization/opt_overview
     title: 개요
