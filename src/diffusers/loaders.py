@@ -25,6 +25,8 @@ from torch import nn
 from .models.attention_processor import (
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
+    AttnProcessor,
+    AttnProcessor2_0,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
@@ -1270,6 +1272,38 @@ class LoraLoaderMixin:
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alpha
 
+    def unload_lora_weights(self):
+        """
+        Unloads the LoRA parameters.
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
+        >>> pipeline.unload_lora_weights()
+        >>> ...
+        ```
+        """
+        is_unet_lora = all(
+            isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor, LoRAAttnAddedKVProcessor))
+            for _, processor in self.unet.attn_processors.items()
+        )
+        # Handle attention processors that are a mix of regular attention and AddedKV
+        # attention.
+        if is_unet_lora:
+            is_attn_procs_mixed = all(
+                isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor))
+                for _, processor in self.unet.attn_processors.items()
+            )
+            if not is_attn_procs_mixed:
+                unet_attn_proc_cls = AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                self.unet.set_attn_processor(unet_attn_proc_cls())
+            else:
+                self.unet.set_default_attn_processor()
+
+        # Safe to call the following regardless of LoRA.
+        self._remove_text_encoder_monkey_patch()
+
 
 class FromSingleFileMixin:
     """
@@ -1442,8 +1476,8 @@ class FromSingleFileMixin:
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = "/".join(ckpt_path.parts[:2])
-            file_path = "/".join(ckpt_path.parts[2:])
+            repo_id = os.path.join(*ckpt_path.parts[:2])
+            file_path = os.path.join(*ckpt_path.parts[2:])
 
             if file_path.startswith("blob/"):
                 file_path = file_path[len("blob/") :]
