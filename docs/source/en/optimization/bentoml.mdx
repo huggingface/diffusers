@@ -83,6 +83,7 @@ import typing as t
 
 from pydantic import BaseModel
 
+
 class SDArgs(BaseModel):
     prompt: str
     negative_prompt: t.Optional[str] = None
@@ -109,6 +110,7 @@ bento_model = bentoml.diffusers.get("sd2.1:latest")
 sd21_runner = bento_model.to_runner(name="sd21-runner")
 
 svc = bentoml.Service("stable-diffusion-21", runners=[sd21_runner])
+
 
 @svc.api(input=JSON(pydantic_model=SDArgs), output=Image())
 async def txt2img(input_data):
