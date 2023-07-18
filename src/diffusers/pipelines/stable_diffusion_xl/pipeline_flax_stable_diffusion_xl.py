@@ -98,6 +98,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+        do_classifier_free_guidance = guidance_scale > 1.0
 
         if isinstance(guidance_scale, float):
             # Convert to a tensor so each device gets a copy. Follow the prompt_ids for
@@ -115,7 +116,8 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             num_inference_steps,
             height,
             width,
-            guidance_scale
+            guidance_scale,
+            do_classifier_free_guidance
         )
 
     def get_embeddings(self, prompt_ids: jax.Array, params: Union[Dict, FrozenDict]):
@@ -123,14 +125,20 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             # using both CLIP models
             prompt_embeds = self.text_encoder(prompt_ids[0], params=params['text_encoder'], output_hidden_states=True)
             prompt_embeds = prompt_embeds['hidden_states'][-2]
-            prompt_embeds_2 = self.text_encoder_2(prompt_ids[1], params=params['text_encoder_2'], output_hidden_states=True)
-            prompt_embeds_2 = prompt_embeds_2['hidden_states'][-2]
+            prompt_embeds_2_out = self.text_encoder_2(prompt_ids[1], params=params['text_encoder_2'], output_hidden_states=True)
+            prompt_embeds_2 = prompt_embeds_2_out['hidden_states'][-2]
         else:
             prompt_embeds = jnp.array([])  # dummy embedding for first CLIP model
-            prompt_embeds_2 = self.text_encoder_2(prompt_ids[1], params=params['text_encoder_2'], output_hidden_states=True)
-            prompt_embeds_2 = prompt_embeds_2['hidden_states'][-2]
+            prompt_embeds_2_out = self.text_encoder_2(prompt_ids[1], params=params['text_encoder_2'], output_hidden_states=True)
+            prompt_embeds_2 = prompt_embeds_2_out['hidden_states'][-2]
+        pooled_embeds = prompt_embeds_2_out['pooler_output']  # use second text encoder's pooled output
         prompt_embeds = jnp.concatenate([prompt_embeds, prompt_embeds_2], axis=-1)
-        return prompt_embeds
+        return prompt_embeds, pooled_embeds
+
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)  # TODO: This is currently not jit'able - probably need pass add_time_ids as input to __call__
+        add_time_ids = jnp.array([add_time_ids], dtype=dtype)
+        return add_time_ids
 
     def _generate(
         self,
@@ -140,19 +148,66 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         num_inference_steps: int,
         height: int,
         width: int,
-        guidance_scale: float,
+        guidance_scale: float = 7.5,
+        do_classifier_free_guidance: bool = True,
+        latents: Optional[jax.Array] = None,
         neg_prompt_ids: Optional[jax.Array] = None,
+        original_size: tuple = (1024, 1024),
+        crops_coords_top_left: tuple = (0, 0),
+        target_size: tuple = (1024, 1024),
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # 1. Encode input prompt
-        prompt_embeds = self.get_embeddings(prompt_ids, params)
+        prompt_embeds, pooled_embeds = self.get_embeddings(prompt_ids, params)
 
         # 2. Get unconditional embeddings
         batch_size = prompt_embeds.shape[0]
         if neg_prompt_ids is None:
             neg_prompt_ids = self.prepare_inputs([""] * batch_size)
-        neg_prompt_embeds = self.get_embeddings(neg_prompt_ids, params)
-
+        # TODO: properly support without classifier guidance here (or drop support entirely)
+        neg_prompt_embeds, pooled_neg_embeds = self.get_embeddings(neg_prompt_ids, params)
         context = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
+
+        # 3. Create random latents
+        latents_shape = (
+            batch_size,
+            self.unet.config.in_channels,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
+        if latents is None:
+            latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=jnp.float32)
+        else:
+            if latents.shape != latents_shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * params["scheduler"].init_noise_sigma
+
+        # 4. Prepare scheduler state
+        scheduler_state = self.scheduler.set_timesteps(
+            params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
+        )
+
+        # 5. Prepare added embeddings
+        add_text_embeds = prompt_embeds
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
+
+        # 6. Denoising loop
+        def loop_body(step, args):
+            # TODO
+            pass
+        __import__('pdb').set_trace()
+
+        if DEBUG:
+            # run with python for loop
+            for i in range(num_inference_steps):
+                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
+        else:
+            latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
+
+        # 7. Deocde latents
+        # TODO
