@@ -17,9 +17,9 @@ import torch
 import tqdm
 
 from ...models.unet_1d import UNet1DModel
+from ...pipelines import DiffusionPipeline
 from ...utils import randn_tensor
 from ...utils.dummy_pt_objects import DDPMScheduler
-from ..pipeline_utils import DiffusionPipeline
 
 
 class ValueGuidedRLPipeline(DiffusionPipeline):
