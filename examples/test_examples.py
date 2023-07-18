@@ -853,7 +853,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-
             initial_run_args = f"""
                 examples/text_to_image/train_text_to_image_lora.py
                 --pretrained_model_name_or_path {pretrained_model_name_or_path}
