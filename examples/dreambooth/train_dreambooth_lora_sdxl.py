@@ -494,7 +494,7 @@ class DreamBoothDataset(Dataset):
         if tokenizers is not None:
             self.instance_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.instance_prompt)
             self.instance_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.instance_prompt)
-            if self.class_prompt is not None:
+            if class_data_root is not None:
                 self.class_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.class_prompt)
                 self.class_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.class_prompt)
 
