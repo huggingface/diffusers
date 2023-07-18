@@ -490,6 +490,14 @@ class DreamBoothDataset(Dataset):
             ]
         )
 
+        # Pre-tokenize so that we don't have to do it each time dataloader is iterated.
+        if tokenizers is not None:
+            self.instance_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.instance_prompt)
+            self.instance_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.instance_prompt)
+            if self.class_prompt is not None:
+                self.class_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.class_prompt)
+                self.class_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.class_prompt)
+
     def __len__(self):
         return self._length
 
@@ -505,8 +513,8 @@ class DreamBoothDataset(Dataset):
         if self.instance_prompt_hidden_states is not None:
             example["instance_prompt_ids"] = self.instance_prompt_hidden_states
         else:
-            example["instance_prompt_tokens_one"] = tokenize_prompt(self.tokenizer_one, self.instance_prompt)
-            example["instance_prompt_tokens_two"] = tokenize_prompt(self.tokenizer_two, self.instance_prompt)
+            example["instance_prompt_tokens_one"] = self.instance_prompt_tokens_one
+            example["instance_prompt_tokens_two"] = self.instance_prompt_tokens_two
         example["instance_added_cond_kwargs"] = self.instance_unet_added_conditions
 
         if self.class_data_root:
@@ -519,8 +527,8 @@ class DreamBoothDataset(Dataset):
             if self.class_prompt_hidden_states is not None:
                 example["class_prompt_ids"] = self.class_prompt_hidden_states
             else:
-                example["class_prompt_tokens_one"] = tokenize_prompt(self.tokenizer_one, self.class_prompt)
-                example["class_prompt_tokens_two"] = tokenize_prompt(self.tokenizer_two, self.class_prompt)
+                example["class_prompt_tokens_one"] = self.class_prompt_tokens_one
+                example["class_prompt_tokens_two"] = self.class_prompt_tokens_two
             example["class_added_cond_kwargs"] = self.class_unet_added_conditions
 
         return example
