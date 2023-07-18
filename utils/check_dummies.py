@@ -149,9 +149,6 @@ def check_dummies(overwrite=False):
 
     for backend in dummy_files.keys():
         if dummy_files[backend] != actual_dummies[backend]:
-            print(dummy_files[backend])
-            print('actual')
-            print(actual_dummies[backend])
             if overwrite:
                 print(
                     f"Updating diffusers.utils.dummy_{short_names.get(backend, backend)}_objects.py as the main "
