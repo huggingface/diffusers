@@ -200,7 +200,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         def loop_body(step, args):
             # TODO
             pass
-        __import__('pdb').set_trace()
 
         if DEBUG:
             # run with python for loop

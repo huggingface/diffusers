@@ -135,7 +135,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         added_cond_kwargs = None
         if self.addition_embed_type == 'text_time':
             added_cond_kwargs = {
-                    'text_embeds': jnp.zeros((1, 1280), dtype=jnp.float32),   # TODO: Check where this is comming from - block_out_channels[-1]?
+                    'text_embeds': jnp.zeros((1, 1280), dtype=jnp.float32),   # TODO: This should be set based on config
                     'time_ids': jnp.zeros((1, 6), dtype=jnp.float32)
                     }
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
@@ -215,7 +215,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
-                    dtype=self.dtype
+                    dtype=self.dtype,
                 )
             else:
                 down_block = FlaxDownBlock2D(
@@ -238,7 +238,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             transformer_layers_per_block=transformer_layers_per_block[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
-            dtype=self.dtype
+            dtype=self.dtype,
         )
 
         # up
