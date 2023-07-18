@@ -1,9 +1,14 @@
 from ...utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
+    is_invisible_watermark_available,
     is_torch_available,
     is_transformers_available,
 )
+
+
+if is_transformers_available() and is_torch_available() and is_invisible_watermark_available():
+    from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
 
 
 try:

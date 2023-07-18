@@ -45,17 +45,17 @@ class MultiControlNetModel(ModelMixin):
     ) -> Union[ControlNetOutput, Tuple]:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             down_samples, mid_sample = controlnet(
-                sample,
-                timestep,
-                encoder_hidden_states,
-                image,
-                scale,
-                class_labels,
-                timestep_cond,
-                attention_mask,
-                cross_attention_kwargs,
-                guess_mode,
-                return_dict,
+                sample=sample,
+                timestep=timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                controlnet_cond=image,
+                conditioning_scale=scale,
+                class_labels=class_labels,
+                timestep_cond=timestep_cond,
+                attention_mask=attention_mask,
+                cross_attention_kwargs=cross_attention_kwargs,
+                guess_mode=guess_mode,
+                return_dict=return_dict,
             )
 
             # merge samples
