@@ -1091,7 +1091,7 @@ class DiffusionPipeline(ConfigMixin):
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from Accelerate's module
         hooks.
         """
         for name, model in self.components.items():
