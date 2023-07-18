@@ -16,6 +16,7 @@ from ..utils import is_flax_available, is_torch_available
 
 
 if is_torch_available():
+    from .adapter import MultiAdapter, T2IAdapter
     from .autoencoder_asym_kl import AsymmetricAutoencoderKL
     from .autoencoder_kl import AutoencoderKL
     from .controlnet import ControlNetModel
