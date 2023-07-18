@@ -25,6 +25,7 @@ else:
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
+    from .auto_pipeline import AutoPipelineForText2Image, AutoPipelineForImage2Image, AutoPipelineForInpainting
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
