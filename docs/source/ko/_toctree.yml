@@ -8,14 +8,69 @@
   - local: installation
     title: "설치"
   title: "시작하기"
-
+- sections:
+  - local: tutorials/tutorial_overview
+    title: 개요
+  - local: using-diffusers/write_own_pipeline
+    title: 모델과 스케줄러 이해하기
+  - local: tutorials/basic_training
+    title: Diffusion 모델 학습하기
+  title: Tutorials
 - sections:
   - sections:
     - local: in_translation
       title: 개요
-    - local: in_translation
+    - local: using-diffusers/loading
+      title: 파이프라인, 모델, 스케줄러 불러오기
+    - local: using-diffusers/schedulers
+      title: 다른 스케줄러들을 가져오고 비교하기
+    - local: using-diffusers/custom_pipeline_overview
+      title: 커뮤니티 파이프라인 불러오기
+    - local: using-diffusers/using_safetensors
+      title: 세이프텐서 불러오기
+    - local: using-diffusers/other-formats
+      title: 다른 형식의 Stable Diffusion 불러오기
+    title: 불러오기 & 허브
+  - sections:
+    - local: using-diffusers/pipeline_overview
+      title: 개요
+    - local: using-diffusers/unconditional_image_generation
       title: Unconditional 이미지 생성
     - local: in_translation
+      title: Text-to-image 생성
+    - local: using-diffusers/img2img
+      title: Text-guided image-to-image
+    - local: using-diffusers/inpaint
+      title: Text-guided 이미지 인페인팅
+    - local: using-diffusers/depth2img
+      title: Text-guided depth-to-image
+    - local: in_translation
+      title: Textual inversion
+    - local: in_translation
+      title: 여러 GPU를 사용한 분산 추론
+    - local: using-diffusers/reusing_seeds
+      title: Deterministic 생성으로 이미지 퀄리티 높이기
+    - local: in_translation
+      title: 재현 가능한 파이프라인 생성하기
+    - local: using-diffusers/custom_pipeline_examples
+      title: 커뮤니티 파이프라인들
+    - local: in_translation
+      title: 커뮤티니 파이프라인에 기여하는 방법
+    - local: in_translation
+      title: JAX/Flax에서의 Stable Diffusion
+    - local: in_translation
+      title: Weighting Prompts
+    title: 추론을 위한 파이프라인
+  - sections:
+    - local: training/overview
+      title: 개요
+    - local: in_translation
+      title: 학습을 위한 데이터셋 생성하기
+    - local: training/adapt_a_model
+      title: 새로운 태스크에 모델 적용하기
+    - local: training/unconditional_training
+      title: Unconditional 이미지 생성
+    - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
       title: DreamBooth
@@ -27,13 +82,16 @@
       title: ControlNet
     - local: in_translation
       title: InstructPix2Pix 학습
-    title: 학습
+    - local: in_translation
+      title: Custom Diffusion
+    title: Training
+  title: Diffusers 사용하기
 - sections:
-  - local: in_translation
+  - local: optimization/opt_overview
     title: 개요
   - local: optimization/fp16
     title: 메모리와 속도
-  - local: in_translation
+  - local: optimization/torch2.0
     title: Torch2.0 지원
   - local: optimization/xformers
     title: xFormers
@@ -41,8 +99,12 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
+  - local: in_translation
+    title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: in_translation
+    title: Token Merging
   title: 최적화/특수 하드웨어
