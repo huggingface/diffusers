@@ -1328,8 +1328,8 @@ class FromSingleFileMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
-        is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
+        format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1542,8 +1542,9 @@ class FromOriginalVAEMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
-        format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`AutoencoderKL`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is format. The pipeline is set in evaluation mode (`model.eval()`) by
+        default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1575,34 +1576,41 @@ class FromOriginalVAEMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
-            load_safety_checker (`bool`, *optional*, defaults to `True`):
-                Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            scaling_factor (`float`, *optional*, defaults to 0.18215):
+                The component-wise standard deviation of the trained latent space computed using the first batch of the
+                training set. This is used to scale the latent space to have unit variance when training the diffusion
+                model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+                diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
+                = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
+                Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
                 method. See example below for more information.
 
+        <Tip warning={true}>
+
+            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you want to load
+            a VAE that does accompany a stable diffusion model of v2 or higher or SDXL.
+
+        </Tip>
+
         Examples:
 
         ```py
+        from diffusers import AutoencoderKL
 
+        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"  # can also be local file
+        model = AutoencoderKL.from_single_file(url)
         ```
         """
         if not is_omegaconf_available():
@@ -1727,8 +1735,8 @@ class FromOriginalControlnetMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline is
-        set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`ControlNetModel`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1764,21 +1772,11 @@ class FromOriginalControlnetMixin:
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
-            load_safety_checker (`bool`, *optional*, defaults to `True`):
-                Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1787,7 +1785,13 @@ class FromOriginalControlnetMixin:
         Examples:
 
         ```py
+        from diffusers import StableDiffusionControlnetPipeline, ControlNetModel
 
+        url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
+        model = ControlNetModel.from_single_file(url)
+
+        url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
+        pipe = StableDiffusionControlnetPipeline.from_single_file(url, controlnet=controlnet)
         ```
         """
         # import here to avoid circular dependency
