@@ -6,3 +6,4 @@ tensorboard
 Jinja2
 invisible-watermark>=0.2.0
 datasets
+wandb
