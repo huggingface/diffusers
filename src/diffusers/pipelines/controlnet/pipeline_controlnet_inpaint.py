@@ -1263,7 +1263,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
-                    cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
+                    if isinstance(controlnet_conditioning_scale, list):
+                        cond_scale = [controlnet_conditioning_scale[0] * controlnet_keep[i]]
+                    else: 
+                        cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
