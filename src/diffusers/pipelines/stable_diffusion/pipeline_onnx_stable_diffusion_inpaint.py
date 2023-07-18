@@ -170,6 +170,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         negative_prompt: Optional[str],
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
+        text_encoder_additional_inputs: dict = {},
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -191,6 +192,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            text_encoder_additional_inputs (`dict`):
+                Additional inputs to provide to text_encoder. Can be used with models that have additional inputs used to
+                override initializers (e.g. LoRA weights).
         """
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -220,7 +224,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+            prompt_embeds = self.text_encoder(
+                input_ids=text_input_ids.astype(np.int32), **text_encoder_additional_inputs
+            )[0]
 
         prompt_embeds = np.repeat(prompt_embeds, num_images_per_prompt, axis=0)
 
@@ -253,7 +259,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="np",
             )
-            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            negative_prompt_embeds = self.text_encoder(
+                input_ids=uncond_input.input_ids.astype(np.int32), **text_encoder_additional_inputs
+            )[0]
 
         if do_classifier_free_guidance:
             negative_prompt_embeds = np.repeat(negative_prompt_embeds, num_images_per_prompt, axis=0)

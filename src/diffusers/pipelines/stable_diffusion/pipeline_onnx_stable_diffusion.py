@@ -173,7 +173,9 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32), **text_encoder_additional_inputs)[0]
+            prompt_embeds = self.text_encoder(
+                input_ids=text_input_ids.astype(np.int32), **text_encoder_additional_inputs
+            )[0]
 
         prompt_embeds = np.repeat(prompt_embeds, num_images_per_prompt, axis=0)
 
@@ -206,7 +208,9 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="np",
             )
-            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32), **text_encoder_additional_inputs)[0]
+            negative_prompt_embeds = self.text_encoder(
+                input_ids=uncond_input.input_ids.astype(np.int32), **text_encoder_additional_inputs
+            )[0]
 
         if do_classifier_free_guidance:
             negative_prompt_embeds = np.repeat(negative_prompt_embeds, num_images_per_prompt, axis=0)
@@ -423,7 +427,8 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 sample=latent_model_input,
                 timestep=timestep,
                 encoder_hidden_states=prompt_embeds,
-                **unet_additional_inputs)
+                **unet_additional_inputs,
+            )
             noise_pred = noise_pred[0]
 
             # perform guidance
