@@ -22,7 +22,7 @@ import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import PriorTransformer
-from ...pipelines import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,

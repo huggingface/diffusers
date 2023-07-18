@@ -17,8 +17,7 @@ from typing import List, Optional, Union
 import torch
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDPMScheduler
 from ...utils import (
     is_accelerate_available,

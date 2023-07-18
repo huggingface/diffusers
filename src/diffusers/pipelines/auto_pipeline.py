@@ -20,7 +20,6 @@ from ..configuration_utils import ConfigMixin
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
 from .kandinsky2_2 import KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22Pipeline
-from .pipeline_utils import DiffusionPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -100,7 +99,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
-    def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
+    def from_pipe(cls, pipeline, **kwargs):
         print(pipeline.config.keys())
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline.__class__.__name__)
 
@@ -119,7 +118,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
-    def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
+    def from_pipe(cls, pipeline, **kwargs):
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline.__class__.__name__)
 
         return image_2_image_cls(**pipeline.components, **kwargs)
@@ -137,7 +136,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
-    def from_pipe(cls, pipeline: DiffusionPipeline, **kwargs):
+    def from_pipe(cls, pipeline, **kwargs):
         inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, pipeline.__class__.__name__)
 
         return inpainting_cls(**pipeline.components)

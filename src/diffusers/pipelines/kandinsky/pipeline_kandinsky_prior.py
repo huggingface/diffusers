@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
-from ...pipelines import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
