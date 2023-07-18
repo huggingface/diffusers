@@ -199,11 +199,11 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
 else:
     from .pipelines import (
+        StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
         StableDiffusionXLPipeline,
     )
-    from .pipelines import StableDiffusionXLControlNetPipeline
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
