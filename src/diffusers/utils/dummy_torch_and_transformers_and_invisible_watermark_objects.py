@@ -2,7 +2,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class StableDiffusionXLControlNetPipelin(metaclass=DummyObject):
+class StableDiffusionXLControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers", "invisible_watermark"]
 
     def __init__(self, *args, **kwargs):
