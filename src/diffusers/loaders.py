@@ -1089,9 +1089,12 @@ class LoraLoaderMixin:
 
                 load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                 if len(load_state_dict_results.unexpected_keys) != 0:
-                    raise ValueError(
-                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
-                    )
+                    unexpected_keys = load_state_dict_results.unexpected_keys
+                    is_sdxl_ckpt = any("text_encoder_" in k for k in unexpected_keys)
+                    if not is_sdxl_ckpt:
+                        raise ValueError(
+                            f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                        )
 
     @property
     def lora_scale(self) -> float:

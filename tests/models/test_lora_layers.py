@@ -157,7 +157,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
-            "text_encoder_one_lora_layers": text_encoder_lora_layers,
+            "text_encoder_lora_layers": text_encoder_lora_layers,
             "unet_lora_attn_procs": unet_lora_attn_procs,
         }
         return pipeline_components, lora_components
