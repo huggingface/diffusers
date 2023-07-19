@@ -390,7 +390,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
 
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
 
-            negative_prompt_embeds = torch.cat(negative_prompt_embeds_list, dim=-1)
+            negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
         bs_embed = pooled_prompt_embeds.shape[0]
         pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
