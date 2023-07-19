@@ -457,7 +457,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             )
         elif prompt is None and prompt_embeds is None:
             raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave `prompt` and `prompt_embeds` undefined."
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
