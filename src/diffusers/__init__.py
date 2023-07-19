@@ -199,6 +199,7 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
 else:
     from .pipelines import (
+        StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
         StableDiffusionXLPipeline,
