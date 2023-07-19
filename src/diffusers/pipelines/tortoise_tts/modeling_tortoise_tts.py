@@ -4,8 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from diffusers.models.attention_processor import AttnProcessor
-from diffusers.models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
+from ...models.attention_processor import AttnProcessor
+from ...models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
+from ...utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class Mish(torch.nn.Module):
@@ -219,7 +223,7 @@ class ConditioningEncoder(nn.Module):
         input_conv_kernel_size: int = 1,
         input_conv_stride: int = 1,
         input_conv_padding: int = 0,
-        conv2_hidden_dim: Optional[int] = None,
+        input_conv2_hidden_dim: Optional[int] = None,
         output_transform: Optional[str] = None,
         output_num_groups: int = 32,
     ):
@@ -236,18 +240,18 @@ class ConditioningEncoder(nn.Module):
                 padding=input_conv_padding,
             )
         elif input_transform == "conv2":
-            if conv2_hidden_dim is None:
-                conv2_hidden_dim = in_channels
+            if input_conv2_hidden_dim is None:
+                input_conv2_hidden_dim = in_channels
             self.input_transform = nn.Sequential(
                 nn.Conv1d(
                     in_channels,
-                    conv2_hidden_dim,
+                    input_conv2_hidden_dim,
                     input_conv_kernel_size,
                     stride=input_conv_stride,
                     padding=input_conv_padding,
                 ),
                 nn.Conv1d(
-                    conv2_hidden_dim,
+                    input_conv2_hidden_dim,
                     out_channels,
                     input_conv_kernel_size,
                     stride=input_conv_stride,
@@ -286,3 +290,80 @@ class ConditioningEncoder(nn.Module):
         x = self.output_transform(x)
         return x
 
+
+class AttnEncoderBlock1D(nn.Module):
+    """
+    1D U-Net style block with architecture (no down/upsampling)
+
+    ResnetBlock1d => AttentionBlock
+    """
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        attention_head_dim = 1,
+        relative_pos_embeddings: bool = False,
+        output_scale_factor: float = 1.0,
+    ):
+        super().__init__()
+        resnets = []
+        attentions = []
+
+        if attention_head_dim is None:
+            logger.warn(
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
+            )
+            attention_head_dim = out_channels
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock1D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            attentions.append(
+                AttentionBlock(
+                    out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
+                    rescale_output_factor=output_scale_factor,
+                    eps=resnet_eps,
+                    norm_num_groups=resnet_groups,
+                    residual_connection=True,
+                    bias=True,
+                    upcast_softmax=True,
+                    _from_deprecated_attn_block=True,
+                    relative_pos_embeddings=relative_pos_embeddings,
+                )
+            )
+        
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+
+    def forward(self, hidden_states, temb=None, upsample_size=None):
+        output_states = ()
+
+        for resnet, attn in zip(self.resnets, self.attentions):
+            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(hidden_states)
+            output_states = output_states + (hidden_states,)
+        
+        return hidden_states, output_states
