@@ -282,12 +282,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             # textual inversion: procecss multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
-            for i, (tokenizer, text_encoder) in enumerate(zip(tokenizers, text_encoders)):
+            for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
                 if isinstance(self, TextualInversionLoaderMixin):
-                    prompts[i] = self.maybe_convert_prompt(prompts[i], tokenizer)
+                    prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
                 text_inputs = tokenizer(
-                    prompts[i],
+                    prompt,
                     padding="max_length",
                     max_length=tokenizer.model_max_length,
                     truncation=True,
@@ -296,7 +296,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
 
                 text_input_ids = text_inputs.input_ids
                 untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-                untruncated_ids = tokenizer(prompts[i], padding="longest", return_tensors="pt").input_ids
+                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                     text_input_ids, untruncated_ids
@@ -352,13 +352,13 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 uncond_tokens = [negative_prompt, negative_prompt_2]
 
             negative_prompt_embeds_list = []
-            for i, (tokenizer, text_encoder) in enumerate(zip(tokenizers, text_encoders)):
+            for negative_prompt, tokenizer, text_encoder in zip(uncond_tokens, tokenizers, text_encoders):
                 if isinstance(self, TextualInversionLoaderMixin):
-                    uncond_tokens[i] = self.maybe_convert_prompt(uncond_tokens[i], tokenizer)
+                    negative_prompt = self.maybe_convert_prompt(negative_prompt, tokenizer)
 
                 max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
-                    uncond_tokens[i],
+                    negative_prompt,
                     padding="max_length",
                     max_length=max_length,
                     truncation=True,
