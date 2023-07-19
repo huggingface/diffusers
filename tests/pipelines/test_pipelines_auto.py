@@ -38,9 +38,19 @@ PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
     ]
 )
 
+class AutoPipelineFastTest(unittest.TestCase):
+
+    def test_from_pipe_consistent(self):
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False)
+        original_config = dict(pipe.config)
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
+        pipe = AutoPipelineForText2Image.from_pipe(pipe)
+
+        assert dict(pipe.config) == original_config
 
 @slow
-class AutoPipelineTest(unittest.TestCase):
+class AutoPipelineIntegrationTest(unittest.TestCase):
     def test_pipe_auto(self):
         for model_name, model_repo in PRETRAINED_MODEL_REPO_MAPPING.items():
             # test from_pretrained
@@ -63,3 +73,22 @@ class AutoPipelineTest(unittest.TestCase):
 
                 pipe_to = AutoPipelineForInpainting.from_pipe(pipe_from)
                 self.assertIsInstance(pipe_to, AUTO_INPAINTING_PIPELINES_MAPPING[model_name])
+
+    def test_from_pipe_consistent(self):
+        for model_name, model_repo in PRETRAINED_MODEL_REPO_MAPPING.items():
+            # test from_pretrained
+            pipe_txt2img = AutoPipelineForText2Image.from_pretrained(model_repo)
+            pipe_txt2img_config = dict(pipe_txt2img.config)
+            pipe_img2img = AutoPipelineForImage2Image.from_pretrained(model_repo)
+            pipe_img2img_config = dict(pipe_txt2img.config)
+            pipe_inpaint = AutoPipelineForInpainting.from_pretrained(model_repo)
+            pipe_inpaint_config = dict(pipe_txt2img.config)
+
+            # test from_pipe
+            for pipe_from in [pipe_txt2img, pipe_img2img, pipe_inpaint]:
+                pipe_to = AutoPipelineForText2Image.from_pipe(pipe_from)
+                pipe_to.config == pipe_txt2img_config
+                pipe_to = AutoPipelineForImage2Image.from_pipe(pipe_from)
+                pipe_to.config == pipe_img2img_config
+                pipe_to = AutoPipelineForInpainting.from_pipe(pipe_from)
+                pipe_to.config == pipe_inpaint_config
