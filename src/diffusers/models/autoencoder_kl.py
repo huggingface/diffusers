@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalVAEMixin
 from ..utils import BaseOutput, apply_forward_hook
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .modeling_utils import ModelMixin
@@ -38,7 +39,7 @@ class AutoencoderKLOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
