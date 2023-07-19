@@ -835,6 +835,7 @@ def main(args):
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
         revision=args.revision,
+        force_upcast=True if args.pretrained_vae_name_or_path is None else False,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
