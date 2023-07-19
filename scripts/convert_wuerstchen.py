@@ -6,7 +6,7 @@ from vqgan import VQModel
 
 from diffusers import (
     DDPMScheduler,
-    PaellaVQModel,
+    VQModelPaella,
     WuerstchenPriorPipeline,
     WuerstchenGeneratorPipeline,
 )
@@ -22,7 +22,7 @@ paella_vqmodel.load_state_dict(state_dict)
 
 state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
 state_dict.pop("vquantizer.codebook.weight")
-vqmodel = PaellaVQModel(
+vqmodel = VQModelPaella(
     codebook_size=paella_vqmodel.codebook_size,
     c_latent=paella_vqmodel.c_latent,
 )

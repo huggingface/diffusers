@@ -39,7 +39,7 @@ else:
         AutoencoderKL,
         ControlNetModel,
         ModelMixin,
-        PaellaVQModel,
+        VQModelPaella,
         MultiAdapter,
         PriorTransformer,
         T2IAdapter,

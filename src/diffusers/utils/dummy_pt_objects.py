@@ -197,7 +197,7 @@ class VQModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class PaellaVQModel(metaclass=DummyObject):
+class VQModelPaella(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

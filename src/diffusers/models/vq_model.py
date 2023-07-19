@@ -37,7 +37,7 @@ class VQEncoderOutput(BaseOutput):
     latents: torch.FloatTensor
 
 
-class PaellaVQModel(ModelMixin, ConfigMixin):
+class VQModelPaella(ModelMixin, ConfigMixin):
     r"""VQ-VAE model from Paella model.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library

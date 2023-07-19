@@ -3,7 +3,6 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 
@@ -114,6 +113,7 @@ class EfficientNetEncoder(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(self, c_latent=16, effnet="efficientnet_v2_s"):
         super().__init__()
+        from torchvision.models import efficientnet_v2_l, efficientnet_v2_s  # can't use `torchvision`
         if effnet == "efficientnet_v2_s":
             self.backbone = efficientnet_v2_s(weights="DEFAULT").features.eval()
         else:
@@ -126,79 +126,6 @@ class EfficientNetEncoder(ModelMixin, ConfigMixin):
 
     def forward(self, x):
         return self.mapper(self.backbone(x))
-
-
-class Prior(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, latent_size=(12, 12), dropout=0.1):
-        super().__init__()
-        self.c_r = c_r
-        self.projection = nn.Conv2d(c_in, c, kernel_size=1)
-        self.cond_mapper = nn.Sequential(
-            nn.Linear(c_cond, c),
-            nn.LeakyReLU(0.2),
-            nn.Linear(c, c),
-        )
-
-        self.blocks = nn.ModuleList()
-        for _ in range(depth):
-            self.blocks.append(ResBlock(c, dropout=dropout))
-            self.blocks.append(TimestepBlock(c, c_r))
-            self.blocks.append(AttnBlock(c, c, nhead, self_attn=True, dropout=dropout))
-        self.out = nn.Sequential(
-            LayerNorm2d(c, elementwise_affine=False, eps=1e-6),
-            nn.Conv2d(c, c_in * 2, kernel_size=1),
-        )
-
-        self.apply(self._init_weights)  # General init
-        nn.init.normal_(self.projection.weight, std=0.02)  # inputs
-        nn.init.normal_(self.cond_mapper[0].weight, std=0.02)  # conditionings
-        nn.init.normal_(self.cond_mapper[-1].weight, std=0.02)  # conditionings
-        nn.init.constant_(self.out[1].weight, 0)  # outputs
-
-        # blocks
-        for block in self.blocks:
-            if isinstance(block, ResBlock):
-                block.channelwise[-1].weight.data *= np.sqrt(1 / depth)
-            elif isinstance(block, TimestepBlock):
-                nn.init.constant_(block.mapper.weight, 0)
-
-    def _init_weights(self, m):
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            torch.nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-    def gen_r_embedding(self, r, max_positions=10000):
-        r = r * max_positions
-        half_dim = self.c_r // 2
-        emb = math.log(max_positions) / (half_dim - 1)
-        emb = torch.arange(half_dim, device=r.device).float().mul(-emb).exp()
-        emb = r[:, None] * emb[None, :]
-        emb = torch.cat([emb.sin(), emb.cos()], dim=1)
-        if self.c_r % 2 == 1:  # zero pad
-            emb = nn.functional.pad(emb, (0, 1), mode="constant")
-        return emb.to(dtype=r.dtype)
-
-    def forward(self, x, r, c):
-        x_in = x
-        x = self.projection(x)
-        c_embed = self.cond_mapper(c)
-        r_embed = self.gen_r_embedding(r)
-        for block in self.blocks:
-            if isinstance(block, AttnBlock):
-                x = block(x, c_embed)
-            elif isinstance(block, TimestepBlock):
-                x = block(x, r_embed)
-            else:
-                x = block(x)
-        a, b = self.out(x).chunk(2, dim=1)
-        # denoised = a / (1-(1-b).pow(2)).sqrt()
-        return (x_in - a) / ((1 - b).abs() + 1e-5)
-
-    def update_weights_ema(self, src_model, beta=0.999):
-        for self_params, src_params in zip(self.parameters(), src_model.parameters()):
-            self_params.data = self_params.data * beta + src_params.data * (1 - beta)
 
 
 class DiffNeXt(ModelMixin, ConfigMixin):
@@ -405,7 +332,3 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             return (x_in - a) / b
         else:
             return a, b
-
-    def update_weights_ema(self, src_model, beta=0.999):
-        for self_params, src_params in zip(self.parameters(), src_model.parameters()):
-            self_params.data = self_params.data * beta + src_params.data * (1 - beta)
