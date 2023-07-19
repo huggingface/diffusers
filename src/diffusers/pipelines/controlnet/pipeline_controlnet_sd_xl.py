@@ -911,7 +911,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
-        
+
         if guess_mode and do_classifier_free_guidance:
             # we will infer ControlNet only for the conditional batch
             controlnet_prompt_embeds = prompt_embeds
@@ -940,7 +940,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 scaled_latents = self.scheduler.scale_model_input(latents, t)
-                latent_model_input = torch.cat([scaled_latents] * 2) if do_classifier_free_guidance else scaled_latents                
+                latent_model_input = torch.cat([scaled_latents] * 2) if do_classifier_free_guidance else scaled_latents
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
@@ -1011,8 +1011,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
-            with torch.autocast(enabled=False, device_type="cuda"):
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
