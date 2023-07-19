@@ -911,11 +911,24 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
+        
+        if guess_mode and do_classifier_free_guidance:
+            # we will infer ControlNet only for the conditional batch
+            controlnet_prompt_embeds = prompt_embeds
+            controlnet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
         if do_classifier_free_guidance:
+            # expand all inputs if we are doing classifier free guidance
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        if not guess_mode:
+            # if guess_mode is off, controlnet inputs are the same as inputs of base unet model
+            controlnet_prompt_embeds = prompt_embeds
+            controlnet_added_cond_kwargs = added_cond_kwargs
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -926,25 +939,21 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                scaled_latents = self.scheduler.scale_model_input(latents, t)
+                latent_model_input = torch.cat([scaled_latents] * 2) if do_classifier_free_guidance else scaled_latents                
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                    control_model_input = scaled_latents
                 else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
+                    latent_model_input
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
                     cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
@@ -952,7 +961,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                     controlnet_cond=image,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
-                    added_cond_kwargs=added_cond_kwargs,
+                    added_cond_kwargs=controlnet_added_cond_kwargs,
                     return_dict=False,
                 )
 
@@ -1002,7 +1011,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            with torch.autocast(enabled=False, device_type="cuda"):
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
