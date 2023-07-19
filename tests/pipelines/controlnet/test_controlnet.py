@@ -46,7 +46,11 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -97,7 +101,9 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     out_queue.join()
 
 
-class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class ControlNetPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -207,7 +213,9 @@ class ControlNetPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
 
-class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionMultiControlNetPipelineFastTests(
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -743,6 +751,42 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         image_slice = image[-3:, -3:, -1]
         expected_slice = np.array([0.1338, 0.1597, 0.1202, 0.1687, 0.1377, 0.1017, 0.2070, 0.1574, 0.1348])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_load_local(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+        pipe_1 = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+
+        controlnet = ControlNetModel.from_single_file(
+            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
+        )
+        pipe_2 = StableDiffusionControlNetPipeline.from_single_file(
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            safety_checker=None,
+            controlnet=controlnet,
+        )
+        pipes = [pipe_1, pipe_2]
+        images = []
+
+        for pipe in pipes:
+            pipe.enable_model_cpu_offload()
+            pipe.set_progress_bar_config(disable=None)
+
+            generator = torch.Generator(device="cpu").manual_seed(0)
+            prompt = "bird"
+            image = load_image(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+            )
+
+            output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+            images.append(output.images[0])
+
+            del pipe
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        assert np.abs(images[0] - images[1]).sum() < 1e-3
 
 
 @slow

@@ -30,4 +30,3 @@ DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
-TEXT_ENCODER_ATTN_MODULE = ".self_attn"

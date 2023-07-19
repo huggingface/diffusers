@@ -60,6 +60,25 @@ and increase the VRAM usage.
 
 </Tip>
 
+<Tip>
+
+Circular padding is applied to ensure there are no stitching artifacts when working with 
+panoramas that needs to seamlessly transition from the rightmost part to the leftmost part. 
+By enabling circular padding (set `circular_padding=True`), the operation applies additional 
+crops after the rightmost point of the image, allowing the model to "see” the transition 
+from the rightmost part to the leftmost part. This helps maintain visual consistency in 
+a 360-degree sense and creates a proper “panorama” that can be viewed using 360-degree 
+panorama viewers. When decoding latents in StableDiffusion, circular padding is applied 
+to ensure that the decoded latents match in the RGB space.
+
+Without circular padding, there is a stitching artifact (default):
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/indoor_%20no_circular_padding.png)
+
+With circular padding, the right and the left parts are matching (`circular_padding=True`):
+![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/indoor_%20circular_padding.png)
+
+</Tip>
+
 ## StableDiffusionPanoramaPipeline
 [[autodoc]] StableDiffusionPanoramaPipeline
 	- __call__

@@ -23,7 +23,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -143,51 +143,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         computing decoding in one step.
         """
         self.vae.disable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -373,6 +328,19 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    def decode_latents_with_padding(self, latents, padding=8):
+        # Add padding to latents for circular inference
+        # padding is the number of latents to add on each side
+        # it would slightly increase the memory usage, but remove the boundary artifacts
+        latents = 1 / self.vae.config.scaling_factor * latents
+        latents_left = latents[..., :padding]
+        latents_right = latents[..., -padding:]
+        latents = torch.cat((latents_right, latents, latents_left), axis=-1)
+        image = self.vae.decode(latents, return_dict=False)[0]
+        padding_pix = self.vae_scale_factor * padding
+        image = image[..., padding_pix:-padding_pix]
+        return image
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -457,13 +425,16 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def get_views(self, panorama_height, panorama_width, window_size=64, stride=8):
+    def get_views(self, panorama_height, panorama_width, window_size=64, stride=8, circular_padding=False):
         # Here, we define the mappings F_i (see Eq. 7 in the MultiDiffusion paper https://arxiv.org/abs/2302.08113)
         # if panorama's height/width < window_size, num_blocks of height/width should return 1
         panorama_height /= 8
         panorama_width /= 8
         num_blocks_height = (panorama_height - window_size) // stride + 1 if panorama_height > window_size else 1
-        num_blocks_width = (panorama_width - window_size) // stride + 1 if panorama_width > window_size else 1
+        if circular_padding:
+            num_blocks_width = panorama_width // stride if panorama_width > window_size else 1
+        else:
+            num_blocks_width = (panorama_width - window_size) // stride + 1 if panorama_width > window_size else 1
         total_num_blocks = int(num_blocks_height * num_blocks_width)
         views = []
         for i in range(total_num_blocks):
@@ -496,6 +467,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        circular_padding: bool = False,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -560,6 +532,10 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            circular_padding (`bool`, *optional*, defaults to `False`):
+                If set to True, circular padding is applied to ensure there are no stitching artifacts. Circular
+                padding allows the model to seamlessly generate a transition from the rightmost part of the image to
+                the leftmost part, maintaining consistency in a 360-degree sense.
 
         Examples:
 
@@ -627,10 +603,9 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 6. Define panorama grid and initialize views for synthesis.
         # prepare batch grid
-        views = self.get_views(height, width)
+        views = self.get_views(height, width, circular_padding=circular_padding)
         views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
         views_scheduler_status = [copy.deepcopy(self.scheduler.__dict__)] * len(views_batch)
-
         count = torch.zeros_like(latents)
         value = torch.zeros_like(latents)
 
@@ -655,9 +630,29 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 for j, batch_view in enumerate(views_batch):
                     vb_size = len(batch_view)
                     # get the latents corresponding to the current view coordinates
-                    latents_for_view = torch.cat(
-                        [latents[:, :, h_start:h_end, w_start:w_end] for h_start, h_end, w_start, w_end in batch_view]
-                    )
+                    if circular_padding:
+                        latents_for_view = []
+                        for h_start, h_end, w_start, w_end in batch_view:
+                            if w_end > latents.shape[3]:
+                                # Add circular horizontal padding
+                                latent_view = torch.cat(
+                                    (
+                                        latents[:, :, h_start:h_end, w_start:],
+                                        latents[:, :, h_start:h_end, : w_end - latents.shape[3]],
+                                    ),
+                                    axis=-1,
+                                )
+                            else:
+                                latent_view = latents[:, :, h_start:h_end, w_start:w_end]
+                            latents_for_view.append(latent_view)
+                        latents_for_view = torch.cat(latents_for_view)
+                    else:
+                        latents_for_view = torch.cat(
+                            [
+                                latents[:, :, h_start:h_end, w_start:w_end]
+                                for h_start, h_end, w_start, w_end in batch_view
+                            ]
+                        )
 
                     # rematch block's scheduler status
                     self.scheduler.__dict__.update(views_scheduler_status[j])
@@ -698,8 +693,19 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     for latents_view_denoised, (h_start, h_end, w_start, w_end) in zip(
                         latents_denoised_batch.chunk(vb_size), batch_view
                     ):
-                        value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
-                        count[:, :, h_start:h_end, w_start:w_end] += 1
+                        if circular_padding and w_end > latents.shape[3]:
+                            # Case for circular padding
+                            value[:, :, h_start:h_end, w_start:] += latents_view_denoised[
+                                :, :, h_start:h_end, : latents.shape[3] - w_start
+                            ]
+                            value[:, :, h_start:h_end, : w_end - latents.shape[3]] += latents_view_denoised[
+                                :, :, h_start:h_end, latents.shape[3] - w_start :
+                            ]
+                            count[:, :, h_start:h_end, w_start:] += 1
+                            count[:, :, h_start:h_end, : w_end - latents.shape[3]] += 1
+                        else:
+                            value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
+                            count[:, :, h_start:h_end, w_start:w_end] += 1
 
                 # take the MultiDiffusion step. Eq. 5 in MultiDiffusion paper: https://arxiv.org/abs/2302.08113
                 latents = torch.where(count > 0, value / count, value)
@@ -711,7 +717,10 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         callback(i, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            if circular_padding:
+                image = self.decode_latents_with_padding(latents)
+            else:
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

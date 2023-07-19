@@ -204,7 +204,7 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
-        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetenstors`
+        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetensors`
         variant_file_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
@@ -213,7 +213,7 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
             rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
         )
 
-    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetenstors`
+    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
     non_variant_file_re = re.compile(
         rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
     )
@@ -474,6 +474,7 @@ class DiffusionPipeline(ConfigMixin):
     """
     config_name = "model_index.json"
     _optional_components = []
+    _exclude_from_cpu_offload = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -556,6 +557,7 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
+        model_index_dict.pop("_name_or_path", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -1013,7 +1015,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in init_dict.items():
+        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -1055,6 +1057,9 @@ class DiffusionPipeline(ConfigMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                 )
+                logger.info(
+                    f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
+                )
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
@@ -1073,7 +1078,68 @@ class DiffusionPipeline(ConfigMixin):
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        # 9. Save where the model was instantiated from
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
+
+    @property
+    def name_or_path(self) -> str:
+        return getattr(self.config, "_name_or_path", None)
+
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
+        Accelerate's module hooks.
+        """
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
+                continue
+
+            if not hasattr(model, "_hf_hook"):
+                return self.device
+            for module in model.modules():
+                if (
+                    hasattr(module, "_hf_hook")
+                    and hasattr(module._hf_hook, "execution_device")
+                    and module._hf_hook.execution_device is not None
+                ):
+                    return torch.device(module._hf_hook.execution_device)
+        return self.device
+
+    def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+
+        if device == "cuda":
+            device = torch.device(f"{device}:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                # make sure to offload buffers if not all high level weights
+                # are of type nn.Module
+                offload_buffers = len(model._parameters) > 0
+                cpu_offload(model, device, offload_buffers=offload_buffers)
 
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
@@ -1168,7 +1234,7 @@ class DiffusionPipeline(ConfigMixin):
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
             )
 
         allow_pickle = False
@@ -1212,6 +1278,15 @@ class DiffusionPipeline(ConfigMixin):
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
+            if len(variant_filenames) == 0 and variant is not None:
+                deprecation_message = (
+                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
+                    "if such variant modeling files are not available. Doing so will lead to an error in v0.22.0 as defaulting to non-variant"
+                    "modeling files is deprecated."
+                )
+                deprecate("no variant default", "0.22.0", deprecation_message, standard_warn=False)
 
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
@@ -1302,7 +1377,7 @@ class DiffusionPipeline(ConfigMixin):
             snapshot_folder = Path(config_file).parent
             pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-            if pipeline_is_cached:
+            if pipeline_is_cached and not force_download:
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
                 return snapshot_folder
