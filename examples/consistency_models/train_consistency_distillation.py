@@ -20,7 +20,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 import wandb
 import diffusers
-from diffusers import DDPMPipeline, UNet2DModel, CMStochasticIterativeScheduler, ConsistencyModelPipeline
+from diffusers import DiffusionPipeline, UNet2DModel, CMStochasticIterativeScheduler, ConsistencyModelPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available, is_xformers_available
@@ -362,63 +362,19 @@ def main(args):
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # For testing use a dummy model
-    if args.testing: 
-        config = UNet2DModel.load_config('diffusers/consistency-models-test', subfolder="test_unet")
-    elif args.model_config_name_or_path is not None:
-        config = UNet2DModel.load_config(args.model_config_name_or_path)
     # Use the config if provided, model and target model have the same structure
-    if config is not None:
-        model = UNet2DModel.from_config(config)
-        target_model = UNet2DModel.from_config(config)
-    # Otherwise, use a default config
+    if args.model_config_name_or_path is not None:
+        config = UNet2DModel.load_config(args.model_config_name_or_path)
+    # Else use a default config
     else:
-        model = UNet2DModel(
-                sample_size= args.resolution,
-                in_channels=3,
-                out_channels=3,
-                layers_per_block=2,
-                num_class_embeds=1000,
-                block_out_channels= [32, 64],
-                attention_head_dim=8,
-                down_block_types= [
-                    "ResnetDownsampleBlock2D",
-                    "AttnDownBlock2D",
-                ],
-                up_block_types= [
-                    "AttnUpBlock2D",
-                    "ResnetUpsampleBlock2D",
-                ],
-                resnet_time_scale_shift="scale_shift",
-                upsample_type="resnet",
-                downsample_type="resnet"
-                )
-        target_model = UNet2DModel(
-                sample_size= args.resolution,
-                in_channels=3,
-                out_channels=3,
-                layers_per_block=2,
-                num_class_embeds=1000,
-                block_out_channels= [32, 64],
-                attention_head_dim=8,
-                down_block_types= [
-                    "ResnetDownsampleBlock2D",
-                    "AttnDownBlock2D",
-                ],
-                up_block_types= [
-                    "AttnUpBlock2D",
-                    "ResnetUpsampleBlock2D",
-                ],
-                resnet_time_scale_shift="scale_shift",
-                upsample_type="resnet",
-                downsample_type="resnet"
-                )    
-    if args.testing:
-        teacher_model = UNet2DModel.from_config(config)
-    else:
-        # load the model to distill into a consistency model
-        teacher_model = DDPMPipeline.from_pretrained(args.pretrained_teacher_model_name_or_path).unet
+        config = UNet2DModel.load_config("ayushtues/consistency_tiny_unet")
+    model = UNet2DModel.from_config(config)
+    target_model = UNet2DModel.from_config(config)
     noise_scheduler = CMStochasticIterativeScheduler()
+    # load the model to distill into a consistency model
+    teacher_pipeline = DiffusionPipeline.from_pretrained(args.pretrained_teacher_model_name_or_path)
+    teacher_model = teacher_pipeline.unet
+    teacher_scheduler = teacher_pipeline.scheduler
     num_scales = 40
 
     # Check that all trainable models are in full precision
@@ -493,11 +449,8 @@ def main(args):
         labels = [torch.tensor(label) for label in examples["label"]]
         return {"input": images, "labels": labels}
 
-
-
     logger.info(f"Dataset size: {len(dataset)}")
     dataset.set_transform(transform_images)
-
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
@@ -572,6 +525,7 @@ def main(args):
     )
 
     timesteps = noise_scheduler.timesteps 
+    teacher_scheduler.set_timesteps(timesteps=timesteps, device=accelerator.device)
     sigmas = noise_scheduler.sigmas # in reverse order, sigma0 is sigma_max
 
 
@@ -614,6 +568,9 @@ def main(args):
                     ).prev_sample
                     d = (x - teacher_denoiser) / sigma[(...,) + (None,) * 3]
                     samples = x + d * (sigma_prev - sigma)[(...,) + (None,) * 3]
+                    # We probably want to use Sigma for an arbitrary teacher model here, since that corresponds to the unscaled timestep
+                    # We just want a denoised image from an input x, t using the teacher model, since that is used in the score function
+                    # So we should figure out how to get the denoised image from the teacher model
                     teacher_model_output = teacher_model(noise_scheduler.scale_model_input(samples, timestep_prev), timestep_prev, class_labels=labels).sample
                     teacher_denoiser = noise_scheduler.step(
                         teacher_model_output, timestep_prev, samples, use_noise=False
