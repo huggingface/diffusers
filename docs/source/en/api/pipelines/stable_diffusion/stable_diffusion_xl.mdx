@@ -379,9 +379,9 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
-#prompt will be passed to OAI CLIP-ViT/L-14
+# prompt will be passed to OAI CLIP-ViT/L-14
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
-#prompt_2 will be passed to OpenCLIP-ViT/bigG-14
+# prompt_2 will be passed to OpenCLIP-ViT/bigG-14
 prompt_2 = "monet painting"
 image = pipe(prompt=prompt, prompt_2=prompt_2).images[0]
 ```
