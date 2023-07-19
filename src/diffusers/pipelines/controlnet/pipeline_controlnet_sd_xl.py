@@ -947,7 +947,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = scaled_latents
                 else:
-                    latent_model_input
+                    control_model_input = latent_model_input
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
