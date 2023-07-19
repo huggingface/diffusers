@@ -38,7 +38,6 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "callback_steps",
     }
     batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
-    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
