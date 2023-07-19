@@ -22,7 +22,7 @@ from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
-from ...utils import is_accelerate_available, logging, randn_tensor
+from ...utils import logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
