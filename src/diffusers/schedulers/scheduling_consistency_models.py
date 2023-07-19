@@ -29,11 +29,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class CMStochasticIterativeSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the output of the scheduler's `step` function.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
@@ -42,17 +42,10 @@ class CMStochasticIterativeSchedulerOutput(BaseOutput):
 
 class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     """
-    Multistep and onestep sampling for consistency models from Song et al. 2023 [1]. This implements Algorithm 1 in the
-    paper [1].
+    Multistep and onestep sampling for Consistency Models.
 
-    [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
-    https://arxiv.org/pdf/2303.01469 [2] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based
-    Generative Models." https://arxiv.org/abs/2206.00364
-
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    This model inherits from DiffusionPipeline. Check the superclass documentation for the generic methods the library
+    implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
