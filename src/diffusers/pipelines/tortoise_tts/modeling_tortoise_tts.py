@@ -1,12 +1,16 @@
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...models import ModelMixin
 from ...models.attention_processor import AttnProcessor
+from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
-from ...utils import logging
+from ...utils import BaseOutput, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -206,91 +210,6 @@ class AttentionBlock(nn.Module):
         pass
 
 
-class ConditioningEncoder(nn.Module):
-    """
-    Conditioning encoder for the Tortoise TTS model with architecture
-
-    (input transform) => [AttentionBlock] x num_layers => (output transform)
-    """
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        num_layers: int,
-        attention_head_dim: int = 1,
-        relative_pos_embeddings: bool = False,
-        input_transform: Optional[str] = None,
-        input_conv_kernel_size: int = 1,
-        input_conv_stride: int = 1,
-        input_conv_padding: int = 0,
-        input_conv2_hidden_dim: Optional[int] = None,
-        output_transform: Optional[str] = None,
-        output_num_groups: int = 32,
-    ):
-        super().__init__()
-
-        if input_transform is None:
-            self.input_transform = nn.Identity()
-        elif input_transform == "conv":
-            self.input_transform = nn.Conv1d(
-                in_channels,
-                out_channels,
-                input_conv_kernel_size,
-                stride=input_conv_stride,
-                padding=input_conv_padding,
-            )
-        elif input_transform == "conv2":
-            if input_conv2_hidden_dim is None:
-                input_conv2_hidden_dim = in_channels
-            self.input_transform = nn.Sequential(
-                nn.Conv1d(
-                    in_channels,
-                    input_conv2_hidden_dim,
-                    input_conv_kernel_size,
-                    stride=input_conv_stride,
-                    padding=input_conv_padding,
-                ),
-                nn.Conv1d(
-                    input_conv2_hidden_dim,
-                    out_channels,
-                    input_conv_kernel_size,
-                    stride=input_conv_stride,
-                    padding=input_conv_padding,
-                ),
-            )
-        else:
-            raise ValueError(
-                f"`input_transform` {input_transform} is not currently supported."
-            )
-        
-        self.attention = nn.ModuleList(
-            [
-                AttentionBlock(
-                    out_channels,
-                    heads=out_channels // attention_head_dim,
-                    dim_head=attention_head_dim,
-                    relative_pos_embeddings=relative_pos_embeddings,
-                )
-                for _ in range(num_layers)
-            ]
-        )
-        
-        if output_transform is None:
-            self.output_transform = nn.Identity()
-        elif output_transform == "groupnorm":
-            self.output_transform = nn.GroupNorm(output_num_groups, out_channels)
-        else:
-            raise ValueError(
-                f"`output_transform` {output_transform} is not currently supported."
-            )
-    
-    def forward(self, x):
-        x = self.input_transform(x)
-        x = self.attention(x)
-        x = self.output_transform(x)
-        return x
-
-
 class AttnEncoderBlock1D(nn.Module):
     """
     1D U-Net style block with architecture (no down/upsampling)
@@ -367,3 +286,271 @@ class AttnEncoderBlock1D(nn.Module):
             output_states = output_states + (hidden_states,)
         
         return hidden_states, output_states
+    
+
+@dataclass
+class ConditioningEncoderOutput(BaseOutput):
+    """
+    The output of [`ConditioningEncoder`].
+
+    Args:
+        TODO: fix
+        embedding (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output from the last layer of the model.
+    """
+
+    embedding: torch.FloatTensor
+
+
+class ConditioningEncoder(ModelMixin, ConfigMixin):
+    """
+    Conditioning encoder for the Tortoise TTS model with architecture
+
+    (input transform) => [AttentionBlock] x num_layers => (output transform)
+    """
+    @register_to_config
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_layers: int,
+        attention_head_dim: int = 1,
+        relative_pos_embeddings: bool = False,
+        input_transform: Optional[str] = None,
+        input_conv_kernel_size: int = 1,
+        input_conv_stride: int = 1,
+        input_conv_padding: int = 0,
+        input_conv2_hidden_dim: Optional[int] = None,
+        output_transform: Optional[str] = None,
+        output_num_groups: int = 32,
+    ):
+        super().__init__()
+
+        if input_transform is None:
+            self.input_transform = nn.Identity()
+        elif input_transform == "conv":
+            self.input_transform = nn.Conv1d(
+                in_channels,
+                out_channels,
+                input_conv_kernel_size,
+                stride=input_conv_stride,
+                padding=input_conv_padding,
+            )
+        elif input_transform == "conv2":
+            if input_conv2_hidden_dim is None:
+                input_conv2_hidden_dim = in_channels
+            self.input_transform = nn.Sequential(
+                nn.Conv1d(
+                    in_channels,
+                    input_conv2_hidden_dim,
+                    input_conv_kernel_size,
+                    stride=input_conv_stride,
+                    padding=input_conv_padding,
+                ),
+                nn.Conv1d(
+                    input_conv2_hidden_dim,
+                    out_channels,
+                    input_conv_kernel_size,
+                    stride=input_conv_stride,
+                    padding=input_conv_padding,
+                ),
+            )
+        else:
+            raise ValueError(
+                f"`input_transform` {input_transform} is not currently supported."
+            )
+        
+        self.attention = nn.ModuleList(
+            [
+                AttentionBlock(
+                    out_channels,
+                    heads=out_channels // attention_head_dim,
+                    dim_head=attention_head_dim,
+                    relative_pos_embeddings=relative_pos_embeddings,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        
+        if output_transform is None:
+            self.output_transform = nn.Identity()
+        elif output_transform == "groupnorm":
+            self.output_transform = nn.GroupNorm(output_num_groups, out_channels)
+        else:
+            raise ValueError(
+                f"`output_transform` {output_transform} is not currently supported."
+            )
+    
+    def forward(self, x, return_dict: bool = True):
+        x = self.input_transform(x)
+        x = self.attention(x)
+        x = self.output_transform(x)
+
+        if not return_dict:
+            return (x,)
+        
+        return ConditioningEncoderOutput(embedding=x)
+
+
+@dataclass
+class TortoiseTTSDenoisingModelOutput(BaseOutput):
+    """
+    The output of [`TortoiseTTSDenoisingModel`].
+
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output from the last layer of the model.
+    """
+
+    sample: torch.FloatTensor
+
+
+class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
+    """
+    The denoising model used in the diffusion portion of the Tortoise TTS model.
+    """
+    @register_to_config
+    def __init__(
+        self,
+        in_channels: int = 100,
+        out_channels: int = 200,
+        in_latent_channels: int = 512,
+        hidden_channels: int = 512,
+        num_layers: int = 8,
+        num_latent_cond_layers: int = 4,
+        num_timestep_integrator_layers: int = 3,
+        num_post_res_blocks: int = 3,
+        flip_sin_to_cos: bool = True,
+        freq_shift: int = 0,
+        attention_head_dim: int = 32,  # hidden_channels / num_heads = 512 / 16 = 32
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+
+        # TODO: make sure all the blocks are initialized the same way as original code
+
+        # 1. Define latent conditioner, which processes the latent conditioning information
+        # from the autoregressive model
+        self.latent_conditioner = ConditioningEncoder(
+            in_channels=in_latent_channels,
+            out_channels=hidden_channels,
+            num_layers=num_latent_cond_layers,
+            attention_head_dim=attention_head_dim,
+            relative_pos_embeddings=True,
+            input_transform="conv",
+            input_conv_kernel_size=3,
+            input_conv_stride=1,
+            input_conv_padding=1,
+            output_transform="groupnorm",
+            output_num_groups=32,  # TODO: get accurate num_groups
+        )
+
+        # 2. Define unconditioned embedding (TODO: add more information)
+        self.unconditioned_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
+
+        # 3. Define conditioning timestep integrator, which combines the conditioning embedding from the
+        # autoregressive model with the time embedding
+        self.conditioning_timestep_integrator = AttnEncoderBlock1D(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            temb_channels=hidden_channels,
+            dropout=dropout,
+            num_layers=num_timestep_integrator_layers,
+        )
+
+        # 4. Define the timestep embedding. Only support positional embeddings for now.
+        time_embed_dim = hidden_channels
+        self.time_proj = Timesteps(hidden_channels, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift)
+        self.time_embedding = TimestepEmbedding(hidden_channels, time_embed_dim)
+
+        # 5. Define the inital Conv1d layers
+        self.conv_in = nn.Conv1d(in_channels, hidden_channels, 3, stride=1, padding=1)
+        self.conv_add_cond_emb_to_hidden = nn.Conv1d(2 * hidden_channels, hidden_channels, 1)
+
+        # 6. Define the trunk of the denoising model
+        self.blocks = AttnEncoderBlock1D(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            temb_channels=hidden_channels,
+            dropout=dropout,
+            num_layers=num_layers,
+        )
+        self.post_res_blocks = nn.ModuleList(
+            [
+                ResnetBlock1D(
+                    in_channels=hidden_channels,
+                    out_channels=hidden_channels,
+                    temb_channels=hidden_channels,
+                    dropout=dropout,
+                    time_embedding_norm="scale_shift",
+                )
+                for _ in range(num_post_res_blocks)
+            ]
+        )
+
+        # 7. Define the output layers
+        self.norm_out = nn.GroupNorm(32, hidden_channels)  # TODO: get right number of groups
+        self.conv_out = nn.Conv1d(hidden_channels, out_channels, 3, padding=1)
+    
+    def forward(
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        autoregressive_latents: torch.FloatTensor,
+        conditioning_audio_latents: torch.FloatTensor,
+        unconditional: bool = False,
+        return_dict: bool = True
+    ):
+        """
+        TODO
+        """
+        # 1. Handle the conditioning embedding
+        if unconditional:
+            cond_embedding = self.unconditioned_embedding.repeat(sample.shape[0], 1, sample.shape[-1])
+        else:
+            cond_scale, cond_shift = torch.chunk(conditioning_audio_latents, 2, dim=1)
+            cond_embedding = self.latent_conditioner(autoregressive_latents).embedding
+            cond_embedding = cond_embedding * (1 + cond_scale.unsqueeze(-1)) + cond_shift.unsqueeze(-1)
+            # Interpolate conditional embeddings...?
+            cond_embedding = F.interpolate(cond_embedding, size=sample.shape[-1], mode="nearest")
+        
+        # 2. Handle timestep embedding
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype, device=timesteps.device)
+
+        t_emb = self.time_proj(timesteps)
+
+        # timesteps does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=self.dtype)
+        emb = self.time_embedding(t_emb)
+
+        # 3. Combine conditioning embedding with timestep embedding
+        cond_embedding = self.conditioning_timestep_integrator(cond_embedding, temb=emb)[0]
+
+        # 4. Map inital sample to hidden states
+        sample = self.conv_in(sample)
+
+        # 5. Concatenate initial hidden states with conditioning embedding and process
+        sample = torch.cat([sample, cond_embedding], dim=1)
+        sample = self.conv_add_cond_emb_to_hidden(sample)
+
+        # 6. Run the hidden states through the trunk of the denoising model
+        sample = self.blocks(sample, temb=emb)[0]
+        sample = self.post_res_blocks(sample, emb)
+
+        # 7. Map hidden states out to a denoised sample
+        sample = F.silu(self.norm_out(sample))
+        sample = self.conv_out(sample)
+
+        if not return_dict:
+            return (sample,)
+        
+        return TortoiseTTSDenoisingModelOutput(sample=sample)
