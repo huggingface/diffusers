@@ -117,6 +117,8 @@
     title: Habana Gaudi
   - local: optimization/tome
     title: Token Merging
+  - local: optimization/bentoml
+    title: BentoML Integration
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
