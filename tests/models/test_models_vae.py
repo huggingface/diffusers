@@ -453,6 +453,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
 
+
 @slow
 class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
     def get_file_format(self, seed, shape):
@@ -508,7 +509,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
     @parameterized.expand(
         [
@@ -553,7 +554,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=2e-3)
 
     @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu

@@ -80,10 +80,9 @@ def convert_asymmetric_autoencoder_kl_state_dict(original_state_dict: Dict[str, 
                 .replace(".attn_1.proj_out.", ".attentions.0.to_out.0.")
                 .replace(".attn_1.norm.", ".attentions.0.group_norm.")
             ] = v
-        elif k.startswith("decoder."):
+        elif k.startswith("decoder.") and "up_layers" not in k:
             converted_state_dict[
-                k.replace("decoder.up_layers.", "decoder.condition_encoder.up_layers.")
-                .replace("decoder.encoder.", "decoder.condition_encoder.")
+                k.replace("decoder.encoder.", "decoder.condition_encoder.")
                 .replace(".norm_out.", ".conv_norm_out.")
                 .replace(".up.0.", ".up_blocks.3.")
                 .replace(".up.1.", ".up_blocks.2.")
