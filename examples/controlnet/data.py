@@ -37,16 +37,6 @@ import numpy as np
 import cv2
 from PIL import Image
 
-person_token = ["a person", "someone", "somebody"]
-
-
-def replace_person_token(t):
-    "Used for CC12M"
-    t = re.sub("<person>([,\s]*(and)*[,\s]*<person>)+", " people ", t)
-    while "<person>" in t:
-        t = t.replace("<person>", f" {random.choices(person_token)} ", 1)
-    return t
-
 
 def filter_keys(key_set):
     def _f(dictionary):
