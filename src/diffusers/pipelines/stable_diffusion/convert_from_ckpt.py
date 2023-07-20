@@ -1286,11 +1286,10 @@ def download_from_original_stable_diffusion_ckpt(
             image_size = 512
 
     if controlnet is None:
-        controlnet = "control_stage_config" in original_config.model.params
-
-        controlnet = convert_controlnet_checkpoint(
-            checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
-        )
+        if "control_stage_config" in original_config.model.params.keys():
+            controlnet = convert_controlnet_checkpoint(
+                checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
+            )
 
     num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
 
