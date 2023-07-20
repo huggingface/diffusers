@@ -20,6 +20,7 @@ from collections import OrderedDict
 from ..configuration_utils import ConfigMixin
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
+    StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
@@ -44,7 +45,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFPipeline),
         ("kandinsky", KandinskyPipeline),
         ("kdnsinskyv22", KandinskyV22Pipeline),
-        ("contronet", StableDiffusionControlNetPipeline),
+        ("controlnet", StableDiffusionControlNetPipeline),
     ]
 )
 
@@ -66,7 +67,7 @@ AUTO_INPAINTING_PIPELINES_MAPPING = OrderedDict(
         ("if", IFInpaintingPipeline),
         ("kandinsky", KandinskyInpaintPipeline),
         ("kdnsinskyv22", KandinskyV22InpaintPipeline),
-        ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )
 
@@ -115,9 +116,12 @@ class AutoPipelineForText2Image(ConfigMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
-        config = cls.load_config(pretrained_model_or_path)
+        if "controlnet" in kwargs:
+            text_2_image_cls = AUTO_TEXT2IMAGE_PIPELINES_MAPPING["controlnet"]
 
-        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, config["_class_name"])
+        else:
+            config = cls.load_config(pretrained_model_or_path)
+            text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, config["_class_name"])
 
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
@@ -184,9 +188,12 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
-        config = cls.load_config(pretrained_model_or_path)
+        if "controlnet" in kwargs:
+            image_2_image_cls = AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["controlnet"]
 
-        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
+        else:
+            config = cls.load_config(pretrained_model_or_path)
+            image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
 
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
@@ -246,9 +253,12 @@ class AutoPipelineForInpainting(ConfigMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
-        config = cls.load_config(pretrained_model_or_path)
+        if "controlnet" in kwargs:
+            inpainting_cls = AUTO_INPAINTING_PIPELINES_MAPPING["controlnet"]
 
-        inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, config["_class_name"])
+        else:
+            config = cls.load_config(pretrained_model_or_path)
+            inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, config["_class_name"])
 
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
