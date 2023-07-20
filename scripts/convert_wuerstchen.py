@@ -44,7 +44,7 @@ generator.load_state_dict(state_dict["state_dict"])
 
 # Prior
 state_dict = torch.load(os.path.join(model_path, "model_v3_stage_c.pt"), map_location=device)
-prior_model = Prior(c_in=16, c=1536, c_cond=1024, c_r=64, depth=32, nhead=24).to(device)
+prior_model = Prior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24).to(device)
 prior_model.load_state_dict(state_dict["ema_state_dict"])
 
 # Trained betas for scheduler via cosine
