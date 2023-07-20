@@ -181,7 +181,7 @@ class ControlNetPipelineSDXLFastTests(
 
     def test_stable_diffusion_xl_multi_prompts(self):
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLControlNetPipeline(**components).to(torch_device)
+        sd_pipe = self.pipeline_class(**components).to(torch_device)
 
         # forward with single prompt
         inputs = self.get_dummy_inputs(torch_device)
@@ -189,6 +189,7 @@ class ControlNetPipelineSDXLFastTests(
         image_slice_1 = output.images[0, -3:, -3:, -1]
 
         # forward with same prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt_2"] = inputs["prompt"]
         output = sd_pipe(**inputs)
         image_slice_2 = output.images[0, -3:, -3:, -1]
@@ -197,6 +198,7 @@ class ControlNetPipelineSDXLFastTests(
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
         # forward with different prompt
+        inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt_2"] = "different prompt"
         output = sd_pipe(**inputs)
         image_slice_3 = output.images[0, -3:, -3:, -1]
@@ -204,17 +206,15 @@ class ControlNetPipelineSDXLFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-        # reset inputs
-        inputs = self.get_dummy_inputs(torch_device)
-
         # manually set a negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
         inputs["negative_prompt"] = "negative prompt"
-
-        # forward with single negative_prompt
         output = sd_pipe(**inputs)
         image_slice_1 = output.images[0, -3:, -3:, -1]
 
         # forward with same negative_prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = inputs["negative_prompt"]
         output = sd_pipe(**inputs)
         image_slice_2 = output.images[0, -3:, -3:, -1]
@@ -223,6 +223,8 @@ class ControlNetPipelineSDXLFastTests(
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
         # forward with different negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = "different negative prompt"
         output = sd_pipe(**inputs)
         image_slice_3 = output.images[0, -3:, -3:, -1]
