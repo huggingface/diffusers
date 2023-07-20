@@ -470,6 +470,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         One step for the second-order multistep DPMSolver.
 
+        Args:
             model_output_list (`List[torch.FloatTensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`):

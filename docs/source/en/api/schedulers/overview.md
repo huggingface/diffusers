@@ -19,6 +19,32 @@ Depending on the context, a scheduler defines how to iteratively add noise to an
 - during *training*, a scheduler adds noise (there are different algorithms for how to add noise) to a sample to train a diffusion model
 - during *inference*, a scheduler defines how to update a sample based on a pretrained model's output
 
+Many schedulers are implemented from the [k-diffusion](https://github.com/crowsonkb/k-diffusion) library by [Katherine Crowson](https://github.com/crowsonkb/), and they're also widely used in A1111. To help you map the schedulers from k-diffusion and A1111 to the schedulers in 🤗 Diffusers, take a look at the table below:
+
+| A111/k-diffusion    | 🤗 Diffusers                         | Usage                                                                                                         |
+|---------------------|-------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| DPM++ 2M            | [`DPMSolverMultistepScheduler`]     |                                                                                                               |
+| DPM++ 2M Karras     | [`DPMSolverMultistepScheduler`]     | init with `use_karras_sigmas=True`                                                                            |
+| DPM++ 2M SDE        | [`DPMSolverMultistepScheduler`]     | init with `algorithm_type="sde-dpmsolver++"`                                                                  |
+| DPM++ 2M SDE Karras | [`DPMSolverMultistepScheduler`]     | init with `use_karras_sigmas=True` and `algorithm_type="sde-dpmsolver++"`                                     |
+| DPM++ 2S a          | N/A                                 | very similar to  `DPMSolverMultistepScheduler(algorithm_type="sde-dpmsolver++", ...)`                         |
+| DPM++ 2S a Karras   | N/A                                 | very similar to  `DPMSolverMultistepScheduler(use_karras_sigmas=True, algorithm_type="sde-dpmsolver++", ...)` |
+| DPM++ SDE           | [`DPMSolverSinglestepScheduler`]    |                                                                                                               |
+| DPM++ SDE Karras    | [`DPMSolverSinglestepScheduler`]    | init with `use_karras_sigmas=True`                                                                            |
+| DPM2                | [`KDPM2DiscreteScheduler`]          |                                                                                                               |
+| DPM2 Karras         | [`KDPM2DiscreteScheduler`]          | init with `use_karras_sigmas=True`                                                                            |
+| DPM2 a              | [`KDPM2AncestralDiscreteScheduler`] |                                                                                                               |
+| DPM2 a Karras       | [`KDPM2AncestralDiscreteScheduler`] | init with `use_karras_sigmas=True`                                                                            |
+| DPM adaptive        | N/A                                 |                                                                                                               |
+| DPM fast            | N/A                                 |                                                                                                               |
+| Euler               | [`EulerDiscreteScheduler`]          |                                                                                                               |
+| Euler a             | [`EulerAncestralDiscreteScheduler`] |                                                                                                               |
+| Heun                | [`HeunDiscreteScheduler`]           |                                                                                                               |
+| LMS                 | [`LMSDiscreteScheduler`]            |                                                                                                               |
+| LMS Karras          | [`LMSDiscreteScheduler`]            | init with `use_karras_sigmas=True`                                                                            |
+| N/A                 | [`DEISMultistepScheduler`]          |                                                                                                               |
+| N/A                 | [`UniPCMultistepScheduler`]         |                                                                                                               |
+
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
 ## SchedulerMixin

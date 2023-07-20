@@ -218,7 +218,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            custom_timesteps (`List[int]`, *optional*):
+            timesteps (`List[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
