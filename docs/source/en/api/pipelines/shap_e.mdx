@@ -128,6 +128,63 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 ```
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/burger_out.gif)
 
+### Generate mesh
+
+For both [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`], you can generate mesh output by passing `output_type` as `mesh` to the pipeline, and then use the [`ShapEPipeline.export_to_ply`] utility function to save the output as a `ply` file. We also provide a [`ShapEPipeline.export_to_obj`] function that you can use to save mesh outputs as `obj` files.
+
+```python
+import torch
+
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_ply
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+repo = "openai/shap-e"
+pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16, variant="fp16")
+pipe = pipe.to(device)
+
+guidance_scale = 15.0
+prompt = "A birthday cupcake"
+
+images = pipe(prompt, guidance_scale=guidance_scale, num_inference_steps=64, frame_size=256, output_type="mesh").images
+
+ply_path = export_to_ply(images[0], "3d_cake.ply")
+print(f"saved to folder: {ply_path}")
+```
+
+Huggingface Datasets supports mesh visualization for mesh files in `glb` format. Below we will show you how to convert your mesh file into `glb` format so that you can use the Dataset viewer to render 3D objects. 
+
+We need to install `trimesh` library.
+
+```
+pip install trimesh
+```
+
+To convert the mesh file into `glb` format, 
+
+```python
+import trimesh
+
+mesh = trimesh.load("3d_cake.ply")
+mesh.export("3d_cake.glb", file_type="glb")
+```
+
+By default, the mesh output of Shap-E is from the bottom viewpoint; you can change the default viewpoint by applying a rotation transformation
+
+```python
+import trimesh
+import numpy as np
+
+mesh = trimesh.load("3d_cake.ply")
+rot = trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0])
+mesh = mesh.apply_transform(rot)
+mesh.export("3d_cake.glb", file_type="glb")
+```
+
+Now you can upload your mesh file to your dataset and visualize it! Here is the link to the 3D cake we just generated
+https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/shap_e/3d_cake.glb
+
 ## ShapEPipeline
 [[autodoc]] ShapEPipeline
 	- all
