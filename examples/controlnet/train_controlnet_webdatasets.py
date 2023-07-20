@@ -1203,7 +1203,7 @@ def main(args):
         tokenizer=tokenizer_one,
         tokenizer_2=tokenizer_two,
         max_seq_length=MAX_SEQ_LENGTH,
-        num_train_examples=args.max_train_examples,
+        num_train_examples=args.max_train_samples,
         per_gpu_batch_size=args.train_batch_size,
         global_batch_size=args.train_batch_size * accelerator.num_processes,
         num_workers=args.dataloader_num_workers,
