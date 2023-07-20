@@ -73,7 +73,8 @@ class FlaxModelTesterMixin:
 
         # check if all params are still in float32 when dtype of computation is half-precision
         model = self.model_class(**init_dict, dtype=jnp.float16)
-        types = jax.tree_util.tree_map(lambda x: x.dtype, model.params)
+        params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
+        types = jax.tree_util.tree_map(lambda x: x.dtype, params)
         types = flatten_dict(types)
 
         for name, type_ in types.items():
@@ -83,9 +84,10 @@ class FlaxModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
+        params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
 
         # cast all params to bf16
-        params = model.to_bf16(model.params)
+        params = model.to_bf16(params)
         types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
         # test if all params are in bf16
         for name, type_ in types.items():
@@ -110,9 +112,10 @@ class FlaxModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
+        params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
 
         # cast all params to fp16
-        params = model.to_fp16(model.params)
+        params = model.to_fp16(params)
         types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
         # test if all params are in fp16
         for name, type_ in types.items():
@@ -137,9 +140,10 @@ class FlaxModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
+        params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
 
         # cast all params to fp16 and back to fp32
-        params = model.to_fp16(model.params)
+        params = model.to_fp16(params)
         params = model.to_fp32(params)
 
         # test if all params are in fp32
