@@ -167,13 +167,10 @@ class Text2ImageDataset:
         self,
         train_shards_path_or_url: Union[str, List[str]],
         eval_shards_path_or_url: Union[str, List[str]],
-        tokenizer: PreTrainedTokenizer,
-        max_seq_length: int,
         num_train_examples: int,
         per_gpu_batch_size: int,
         global_batch_size: int,
         num_workers: int,
-        tokenizer_two: Optional[PreTrainedTokenizer] = None,
         resolution: int = 256,
         center_crop: bool = True,
         random_flip: bool = False,
@@ -182,18 +179,6 @@ class Text2ImageDataset:
         persistent_workers: bool = False,
     ):
         transform = ImageNetTransform(resolution, center_crop, random_flip)
-
-        def tokenize(text):
-            input_ids = tokenizer(
-                text, max_length=max_seq_length, padding="max_length", truncation=True, return_tensors="pt"
-            ).input_ids
-            return input_ids[0]
-
-        def tokenize_2(text):
-            input_ids = tokenizer_two(
-                text, max_length=max_seq_length, padding="max_length", truncation=True, return_tensors="pt"
-            ).input_ids
-            return input_ids[0]
 
         if not isinstance(train_shards_path_or_url, str):
             train_shards_path_or_url = [list(braceexpand(urls)) for urls in train_shards_path_or_url]
@@ -207,10 +192,10 @@ class Text2ImageDataset:
 
         processing_pipeline = [
             wds.decode("pil", handler=wds.ignore_and_continue),
-            wds.rename(image="jpg;png;jpeg;webp", control_image="jpg;png;jpeg;webp", input_ids="text;txt;caption", input_ids_2="text;txt;caption", handler=wds.warn_and_continue),
-            wds.map(filter_keys(set(["image", "control_image", "input_ids", "input_ids_2"]))),
-            wds.map_dict(image=transform.train_transform, control_image=transform.train_control_transform, input_ids=tokenize, input_ids_2=tokenize_2),
-            wds.to_tuple("image", "control_image", "input_ids", "input_ids_2"),
+            wds.rename(image="jpg;png;jpeg;webp", control_image="jpg;png;jpeg;webp", text="text;txt;caption", handler=wds.warn_and_continue),
+            wds.map(filter_keys(set(["image", "control_image", "text"]))),
+            wds.map_dict(image=transform.train_transform, control_image=transform.train_control_transform),
+            wds.to_tuple("image", "control_image", "text"),
         ]
 
         # Create train dataset and loader
@@ -913,42 +898,6 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
     return prompt_embeds, pooled_prompt_embeds
 
 
-def prepare_train_dataset(dataset, accelerator):
-    image_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
-    conditioning_image_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-        ]
-    )
-
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[args.image_column]]
-        images = [image_transforms(image) for image in images]
-
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
-        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
-
-        examples["pixel_values"] = images
-        examples["conditioning_pixel_values"] = conditioning_images
-
-        return examples
-
-    with accelerator.main_process_first():
-        dataset = dataset.with_transform(preprocess_train)
-
-    return dataset
-
-
 def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -1174,12 +1123,10 @@ def main(args):
 
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
-    def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
+    def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        prompt_batch = batch[args.caption_column]
-
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
         )
@@ -1200,9 +1147,6 @@ def main(args):
     dataset = Text2ImageDataset(
         train_shards_path_or_url=args.train_shards_path_or_url,
         eval_shards_path_or_url=args.eval_shards_path_or_url,
-        tokenizer=tokenizer_one,
-        tokenizer_2=tokenizer_two,
-        max_seq_length=MAX_SEQ_LENGTH,
         num_train_examples=args.max_train_samples,
         per_gpu_batch_size=args.train_batch_size,
         global_batch_size=args.train_batch_size * accelerator.num_processes,
@@ -1321,11 +1265,11 @@ def main(args):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
                 if args.pretrained_vae_model_name_or_path is not None:
-                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                    pixel_values = batch["image"].to(dtype=weight_dtype)
                     if vae.dtype != weight_dtype:
                         vae.to(dtype=weight_dtype)
                 else:
-                    pixel_values = batch["pixel_values"]
+                    pixel_values = batch["image"]
                 latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
@@ -1343,10 +1287,10 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                encoded_text = compute_embeddings_fn(batch)
+                encoded_text = compute_embeddings_fn(batch["text"])
 
                 # ControlNet conditioning.
-                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                controlnet_image = batch["control_image"].to(dtype=weight_dtype)
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
