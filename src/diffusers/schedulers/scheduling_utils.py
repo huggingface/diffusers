@@ -67,10 +67,8 @@ class SchedulerMixin:
     [`SchedulerMixin`] contains common functions shared by all schedulers such as general loading and saving
     functionalities.
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    [`ConfigMixin`] takes care of storing the configuration attributes (like `num_train_timesteps`) that are passed to
+    the scheduler's `__init__` function, and the attributes can be accessed by `scheduler.config.num_train_timesteps`.
 
     Class attributes:
         - **_compatibles** (`List[str]`) -- A list of scheduler classes that are compatible with the parent scheduler
