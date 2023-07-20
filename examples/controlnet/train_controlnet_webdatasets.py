@@ -670,7 +670,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--dataset_name",
+        "--train_shards_path_or_url",
         type=str,
         default=None,
         help=(
@@ -680,7 +680,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--dataset_config_name",
+        "--eval_shards_path_or_url",
         type=str,
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
@@ -778,12 +778,6 @@ def parse_args(input_args=None):
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
-
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
-
-    if args.dataset_name is not None and args.train_data_dir is not None:
-        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
