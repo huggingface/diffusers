@@ -18,6 +18,10 @@ import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
+from .controlnet import (
+    StableDiffusionControlNetImg2ImgPipeline,
+    StableDiffusionControlNetPipeline,
+)
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
 from .kandinsky2_2 import KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22Pipeline
@@ -40,6 +44,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFPipeline),
         ("kandinsky", KandinskyPipeline),
         ("kdnsinskyv22", KandinskyV22Pipeline),
+        ("contronet", StableDiffusionControlNetPipeline),
     ]
 )
 
@@ -50,6 +55,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgPipeline),
         ("kdnsinskyv22", KandinskyV22Img2ImgPipeline),
+        ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
 
@@ -60,6 +66,7 @@ AUTO_INPAINTING_PIPELINES_MAPPING = OrderedDict(
         ("if", IFInpaintingPipeline),
         ("kandinsky", KandinskyInpaintPipeline),
         ("kdnsinskyv22", KandinskyV22InpaintPipeline),
+        ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
 
@@ -143,6 +150,12 @@ class AutoPipelineForText2Image(ConfigMixin):
             if k in optional_kwargs and k not in passed_pipe_kwargs
         }
 
+        unused_original_config = {
+            k: original_config[k]
+            for k, v in original_config.items()
+            if k not in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
         text_2_image_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
 
         missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(text_2_image_kwargs.keys())
@@ -154,6 +167,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         model = text_2_image_cls(**text_2_image_kwargs)
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(**unused_original_config)
 
         return model
 
