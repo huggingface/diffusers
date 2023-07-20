@@ -166,6 +166,8 @@
       title: VQModel
     - local: api/models/autoencoderkl
       title: AutoencoderKL
+    - local: api/models/asymmetricautoencoderkl
+      title: AsymmetricAutoencoderKL
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
