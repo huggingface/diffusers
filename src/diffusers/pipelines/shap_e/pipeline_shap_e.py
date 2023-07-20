@@ -106,7 +106,7 @@ class ShapEPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: HeunDiscreteScheduler,
-        renderer: ShapERenderer,
+        shap_e_renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -115,7 +115,7 @@ class ShapEPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=scheduler,
-            renderer=renderer,
+            shap_e_renderer=shap_e_renderer,
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -167,7 +167,7 @@ class ShapEPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.prior, self.renderer]:
+        for cpu_offloaded_model in [self.text_encoder, self.prior, self.shap_e_renderer]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -366,7 +366,7 @@ class ShapEPipeline(DiffusionPipeline):
         images = []
         if output_type == "mesh":
             for i, latent in enumerate(latents):
-                mesh = self.renderer.decode_to_mesh(
+                mesh = self.shap_e_renderer.decode_to_mesh(
                     latent[None, :],
                     device,
                 )
@@ -375,7 +375,7 @@ class ShapEPipeline(DiffusionPipeline):
         else:
             # np, pil
             for i, latent in enumerate(latents):
-                image = self.renderer.decode_to_image(
+                image = self.shap_e_renderer.decode_to_image(
                     latent[None, :],
                     device,
                     size=frame_size,
