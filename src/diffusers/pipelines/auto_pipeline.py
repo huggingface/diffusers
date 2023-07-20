@@ -127,7 +127,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
-        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        # allow users pass modules in `kwargs` to override the original pipeline's components
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         original_class_obj = {
             k: pipeline.components[k]
@@ -135,7 +135,7 @@ class AutoPipelineForText2Image(ConfigMixin):
             if k in expected_modules and k not in passed_class_obj
         }
 
-        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        # allow users pass optional kwargs to override the original pipelines config attribute
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         original_pipe_kwargs = {
             k: original_config[k]
@@ -189,7 +189,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
-        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        # allow users pass modules in `kwargs` to override the original pipeline's components
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         original_class_obj = {
             k: pipeline.components[k]
@@ -197,7 +197,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if k in expected_modules and k not in passed_class_obj
         }
 
-        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        # allow users pass optional kwargs to override the original pipelines config attribute
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         original_pipe_kwargs = {
             k: original_config[k]
@@ -251,7 +251,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
-        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        # allow users pass modules in `kwargs` to override the original pipeline's components
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         original_class_obj = {
             k: pipeline.components[k]
@@ -259,7 +259,7 @@ class AutoPipelineForInpainting(ConfigMixin):
             if k in expected_modules and k not in passed_class_obj
         }
 
-        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        # allow users pass optional kwargs to override the original pipelines config attribute
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         original_pipe_kwargs = {
             k: original_config[k]
