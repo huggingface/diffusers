@@ -22,7 +22,7 @@ $ python scripts/convert_shap_e_to_diffusers.py \
       --prior_checkpoint_path  /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/text_cond.pt \
       --prior_image_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/image_cond.pt \
       --transmitter_checkpoint_path /home/yiyi_huggingface_co/shap-e/shap_e_model_cache/transmitter.pt\
-      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e-img2img/renderer\
+      --dump_path /home/yiyi_huggingface_co/model_repo/shap-e-img2img/shap_e_renderer\
       --debug renderer
 ```
 """

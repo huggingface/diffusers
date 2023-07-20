@@ -95,7 +95,7 @@ class ShapEPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        renderer ([`ShapERenderer`]):
+        shap_e_renderer ([`ShapERenderer`]):
             Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
             with the NeRF rendering method
     """

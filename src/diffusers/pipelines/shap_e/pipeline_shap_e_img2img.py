@@ -95,7 +95,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        renderer ([`ShapERenderer`]):
+        shap_e_renderer ([`ShapERenderer`]):
             Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
             with the NeRF rendering method
     """
@@ -106,7 +106,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
         scheduler: HeunDiscreteScheduler,
-        renderer: ShapERenderer,
+        shap_e_renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -115,7 +115,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             image_encoder=image_encoder,
             image_processor=image_processor,
             scheduler=scheduler,
-            renderer=renderer,
+            shap_e_renderer=shap_e_renderer,
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -322,7 +322,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         images = []
         if output_type == "mesh":
             for i, latent in enumerate(latents):
-                mesh = self.renderer.decode_to_mesh(
+                mesh = self.shap_e_renderer.decode_to_mesh(
                     latent[None, :],
                     device,
                 )
@@ -331,7 +331,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         else:
             # np, pil
             for i, latent in enumerate(latents):
-                image = self.renderer.decode_to_image(
+                image = self.shap_e_renderer.decode_to_image(
                     latent[None, :],
                     device,
                     size=frame_size,
