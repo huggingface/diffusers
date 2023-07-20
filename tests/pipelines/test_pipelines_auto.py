@@ -38,16 +38,19 @@ PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
     ]
 )
 
-class AutoPipelineFastTest(unittest.TestCase):
 
+class AutoPipelineFastTest(unittest.TestCase):
     def test_from_pipe_consistent(self):
-        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False)
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
+        )
         original_config = dict(pipe.config)
 
         pipe = AutoPipelineForImage2Image.from_pipe(pipe)
         pipe = AutoPipelineForText2Image.from_pipe(pipe)
 
         assert dict(pipe.config) == original_config
+
 
 @slow
 class AutoPipelineIntegrationTest(unittest.TestCase):
@@ -87,8 +90,10 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
             # test from_pipe
             for pipe_from in [pipe_txt2img, pipe_img2img, pipe_inpaint]:
                 pipe_to = AutoPipelineForText2Image.from_pipe(pipe_from)
-                pipe_to.config == pipe_txt2img_config
+                self.assertEqual(dict(pipe_to.config), pipe_txt2img_config)
+
                 pipe_to = AutoPipelineForImage2Image.from_pipe(pipe_from)
-                pipe_to.config == pipe_img2img_config
+                self.assertEqual(dict(pipe_to.config), pipe_img2img_config)
+
                 pipe_to = AutoPipelineForInpainting.from_pipe(pipe_from)
-                pipe_to.config == pipe_inpaint_config
+                self.assertEqual(dict(pipe_to.config), pipe_inpaint_config)

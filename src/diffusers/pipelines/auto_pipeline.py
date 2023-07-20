@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
@@ -87,8 +88,23 @@ def _get_task_class(mapping, pipeline_class_name):
     )
 
 
+def _get_signature_keys(obj):
+    parameters = inspect.signature(obj.__init__).parameters
+    required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+    optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+    expected_modules = set(required_parameters.keys()) - {"self"}
+    return expected_modules, optional_parameters
+
+
 class AutoPipelineForText2Image(ConfigMixin):
     config_name = "model_index.json"
+
+    def __init__(self, *args, **kwargs):
+        raise EnvironmentError(
+            f"{self.__class__.__name__} is designed to be instantiated "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
+        )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
@@ -100,14 +116,57 @@ class AutoPipelineForText2Image(ConfigMixin):
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
-        print(pipeline.config.keys())
-        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline.__class__.__name__)
+        original_config = dict(pipeline.config)
+        original_cls_name = pipeline.__class__.__name__
 
-        return text_2_image_cls(**pipeline.components)
+        # derive the pipeline class to instantiate
+        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, original_cls_name)
+
+        # define expected module and optional kwargs given the pipeline signature
+        expected_modules, optional_kwargs = _get_signature_keys(text_2_image_cls)
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+
+        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        original_class_obj = {
+            k: pipeline.components[k]
+            for k, v in pipeline.components.items()
+            if k in expected_modules and k not in passed_class_obj
+        }
+
+        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k, v in original_config.items()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        text_2_image_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(text_2_image_kwargs.keys())
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {text_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+            )
+
+        model = text_2_image_cls(**text_2_image_kwargs)
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+        return model
 
 
 class AutoPipelineForImage2Image(ConfigMixin):
     config_name = "model_index.json"
+
+    def __init__(self, *args, **kwargs):
+        raise EnvironmentError(
+            f"{self.__class__.__name__} is designed to be instantiated "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
+        )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
@@ -119,13 +178,57 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
-        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline.__class__.__name__)
+        original_config = dict(pipeline.config)
+        original_cls_name = pipeline.__class__.__name__
 
-        return image_2_image_cls(**pipeline.components, **kwargs)
+        # derive the pipeline class to instantiate
+        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, original_cls_name)
+
+        # define expected module and optional kwargs given the pipeline signature
+        expected_modules, optional_kwargs = _get_signature_keys(image_2_image_cls)
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+
+        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        original_class_obj = {
+            k: pipeline.components[k]
+            for k, v in pipeline.components.items()
+            if k in expected_modules and k not in passed_class_obj
+        }
+
+        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k, v in original_config.items()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        image_2_image_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(image_2_image_kwargs.keys())
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {image_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+            )
+
+        model = image_2_image_cls(**image_2_image_kwargs)
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+        return model
 
 
 class AutoPipelineForInpainting(ConfigMixin):
     config_name = "model_index.json"
+
+    def __init__(self, *args, **kwargs):
+        raise EnvironmentError(
+            f"{self.__class__.__name__} is designed to be instantiated "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
+        )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
@@ -137,6 +240,43 @@ class AutoPipelineForInpainting(ConfigMixin):
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
-        inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, pipeline.__class__.__name__)
+        original_config = dict(pipeline.config)
+        original_cls_name = pipeline.__class__.__name__
 
-        return inpainting_cls(**pipeline.components)
+        # derive the pipeline class to instantiate
+        inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, original_cls_name)
+
+        # define expected module and optional kwargs given the pipeline signature
+        expected_modules, optional_kwargs = _get_signature_keys(inpainting_cls)
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+
+        # allow users pass modules in `kwargs` to overwrite the original pipeline's components
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        original_class_obj = {
+            k: pipeline.components[k]
+            for k, v in pipeline.components.items()
+            if k in expected_modules and k not in passed_class_obj
+        }
+
+        # allow users pass optional kwargs to overwrite the original pipelines config attribute
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k, v in original_config.items()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        inpainting_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(inpainting_kwargs.keys())
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {inpainting_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+            )
+
+        model = inpainting_cls(**inpainting_kwargs)
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+        return model
