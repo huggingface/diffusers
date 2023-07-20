@@ -30,8 +30,8 @@ vqmodel.load_state_dict(state_dict)
 # TODO: test vqmodel outputs match paella_vqmodel outputs
 
 # Clip Text encoder and tokenizer
-text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
 # EfficientNet
 state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)
