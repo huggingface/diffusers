@@ -931,7 +931,7 @@ def convert_open_clip_checkpoint(
             continue
         if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
-                value = checkpoint[key].T
+                value = checkpoint[key].T.contiguous()
             else:
                 value = checkpoint[key]
 
