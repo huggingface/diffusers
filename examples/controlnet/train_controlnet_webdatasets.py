@@ -37,6 +37,7 @@ from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms import ToPILImage
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 import webdataset as wds
@@ -207,7 +208,6 @@ class Text2ImageDataset:
             wds.batched(per_gpu_batch_size, partial=False, collation_fn=default_collate),
         ]
 
-        num_batches = math.ceil(num_train_examples / global_batch_size)
         num_worker_batches = math.ceil(num_train_examples / (global_batch_size * num_workers))  # per dataloader worker
         num_batches = num_worker_batches * num_workers
         num_samples = num_batches * global_batch_size
@@ -282,7 +282,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         vae=vae,
         unet=unet,
         controlnet=controlnet,
-        safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
@@ -527,7 +526,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=None,
+        default=3,
         help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
@@ -587,9 +586,9 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
-        default=0,
+        default=1,
         help=(
-            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+            "Number of subprocesses to use for data loading."
         ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
@@ -897,27 +896,6 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
     return prompt_embeds, pooled_prompt_embeds
 
-
-def collate_fn(examples):
-    pixel_values = torch.stack([example["pixel_values"] for example in examples])
-    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-
-    conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
-    conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
-
-    prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
-
-    add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
-    add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
-
-    return {
-        "pixel_values": pixel_values,
-        "conditioning_pixel_values": conditioning_pixel_values,
-        "prompt_ids": prompt_ids,
-        "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
-    }
-
-
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -1142,7 +1120,7 @@ def main(args):
         add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-        return {"prompt_embeds": prompt_embeds, "unet_added_conditions": unet_added_cond_kwargs}
+        return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
     dataset = Text2ImageDataset(
         train_shards_path_or_url=args.train_shards_path_or_url,
@@ -1174,7 +1152,7 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -1194,7 +1172,7 @@ def main(args):
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -1215,7 +1193,7 @@ def main(args):
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
+    logger.info(f"  Num batches each epoch = {train_dataloader.num_batches}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -1263,13 +1241,29 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
+
+                image, control_image, text = batch
+
+                # save image and control image
+                # for i, (img, c_img) in enumerate(zip(image, control_image)):
+                #     to_pil = ToPILImage()
+                #     pil_img = to_pil(img)
+                #     pil_c_img = to_pil(c_img)
+
+                #     pil_img.save(f"/admin/home/patrick/webdatasets_images/image_{i}.png")
+                #     pil_c_img.save(f"/admin/home/patrick/webdatasets_images/c_image_{i}.png")
+
+                encoded_text = compute_embeddings_fn(text)
+                image = image.to(accelerator.device, non_blocking=True)
+                control_image = control_image.to(accelerator.device, non_blocking=True)
+
                 # Convert images to latent space
                 if args.pretrained_vae_model_name_or_path is not None:
-                    pixel_values = batch["image"].to(dtype=weight_dtype)
+                    pixel_values = image.to(dtype=weight_dtype)
                     if vae.dtype != weight_dtype:
                         vae.to(dtype=weight_dtype)
                 else:
-                    pixel_values = batch["image"]
+                    pixel_values = image
                 latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
@@ -1287,15 +1281,14 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                encoded_text = compute_embeddings_fn(batch["text"])
-
                 # ControlNet conditioning.
-                controlnet_image = batch["control_image"].to(dtype=weight_dtype)
+                controlnet_image = control_image.to(dtype=weight_dtype)
+                prompt_embeds = encoded_text.pop("prompt_embeds")
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoded_text["prompt_embeds"],
-                    added_cond_kwargs=encoded_text["unet_added_conditions"],
+                    encoder_hidden_states=prompt_embeds,
+                    added_cond_kwargs=encoded_text,
                     controlnet_cond=controlnet_image,
                     return_dict=False,
                 )
@@ -1304,8 +1297,8 @@ def main(args):
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoded_text["prompt_embeds"],
-                    added_cond_kwargs=encoded_text["unet_added_conditions"],
+                    encoder_hidden_states=prompt_embeds,
+                    added_cond_kwargs=encoded_text,
                     down_block_additional_residuals=[
                         sample.to(dtype=weight_dtype) for sample in down_block_res_samples
                     ],
