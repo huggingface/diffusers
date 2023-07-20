@@ -435,6 +435,7 @@ class FlaxModelMixin:
             # make sure all arrays are stored as jnp.ndarray
             # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
             # https://github.com/google/flax/issues/1261
+        state = cls._cast_floating_to(state, dtype)
         state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), state)
 
         # flatten dicts
