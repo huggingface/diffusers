@@ -914,7 +914,7 @@ class StableDiffusionControlNetPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
