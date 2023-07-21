@@ -160,6 +160,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         negative_prompt = 3 * ["this is a negative prompt"]
         inputs["negative_prompt"] = negative_prompt
         inputs["prompt"] = 3 * [inputs["prompt"]]
+        inputs["num_images_per_prompt"] = 2
 
         output = sd_pipe(**inputs)
         image_slice_1 = output.images[0, -3:, -3:, -1]
