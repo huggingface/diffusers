@@ -25,7 +25,6 @@ from ...pipelines import DiffusionPipeline
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -95,7 +94,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        renderer ([`ShapERenderer`]):
+        shap_e_renderer ([`ShapERenderer`]):
             Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
             with the NeRF rendering method
     """
@@ -106,7 +105,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
         scheduler: HeunDiscreteScheduler,
-        renderer: ShapERenderer,
+        shap_e_renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -115,7 +114,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             image_encoder=image_encoder,
             image_processor=image_processor,
             scheduler=scheduler,
-            renderer=renderer,
+            shap_e_renderer=shap_e_renderer,
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -129,42 +128,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [self.image_encoder, self.prior]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.image_encoder, "_hf_hook"):
-            return self.device
-        for module in self.image_encoder.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def _encode_image(
         self,
@@ -207,7 +170,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent
+        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
@@ -237,8 +200,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             frame_size (`int`, *optional*, default to 64):
                 the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
-                The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
-                (`torch.Tensor`).
+                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -312,32 +274,39 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 sample=latents,
             ).prev_sample
 
+        if output_type not in ["np", "pil", "latent", "mesh"]:
+            raise ValueError(
+                f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
+            )
+
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
         images = []
-        for i, latent in enumerate(latents):
-            print()
-            image = self.renderer.decode(
-                latent[None, :],
-                device,
-                size=frame_size,
-                ray_batch_size=4096,
-                n_coarse_samples=64,
-                n_fine_samples=128,
-            )
+        if output_type == "mesh":
+            for i, latent in enumerate(latents):
+                mesh = self.shap_e_renderer.decode_to_mesh(
+                    latent[None, :],
+                    device,
+                )
+                images.append(mesh)
 
-            images.append(image)
+        else:
+            # np, pil
+            for i, latent in enumerate(latents):
+                image = self.shap_e_renderer.decode_to_image(
+                    latent[None, :],
+                    device,
+                    size=frame_size,
+                )
+                images.append(image)
 
-        images = torch.stack(images)
+            images = torch.stack(images)
 
-        if output_type not in ["np", "pil"]:
-            raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")
+            images = images.cpu().numpy()
 
-        images = images.cpu().numpy()
-
-        if output_type == "pil":
-            images = [self.numpy_to_pil(image) for image in images]
+            if output_type == "pil":
+                images = [self.numpy_to_pil(image) for image in images]
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

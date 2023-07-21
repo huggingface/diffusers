@@ -143,7 +143,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prior = self.dummy_prior
         image_encoder = self.dummy_image_encoder
         image_processor = self.dummy_image_processor
-        renderer = self.dummy_renderer
+        shap_e_renderer = self.dummy_renderer
 
         scheduler = HeunDiscreteScheduler(
             beta_schedule="exp",
@@ -157,7 +157,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prior": prior,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
-            "renderer": renderer,
+            "shap_e_renderer": shap_e_renderer,
             "scheduler": scheduler,
         }
 

@@ -25,7 +25,6 @@ from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -146,6 +145,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         scheduler ([`UnCLIPScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
+
+    _exclude_from_cpu_offload = ["prior"]
 
     def __init__(
         self,
@@ -294,45 +295,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         zero_image_emb = self.image_encoder(zero_img)["image_embeds"]
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.image_encoder,
-            self.text_encoder,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.text_encoder, "_hf_hook"):
-            return self.device
-        for module in self.text_encoder.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def _encode_prompt(
         self,
