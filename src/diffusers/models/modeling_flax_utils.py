@@ -62,7 +62,8 @@ class FlaxModelMixin:
         """
         return cls(config, **kwargs)
 
-    def _cast_floating_to(self, params: Union[Dict, FrozenDict], dtype: jnp.dtype, mask: Any = None) -> Any:
+    @classmethod
+    def _cast_floating_to(cls, params: Union[Dict, FrozenDict], dtype: jnp.dtype, mask: Any = None) -> Any:
         """
         Helper method to cast floating-point values of given parameter `PyTree` to given `dtype`.
         """
