@@ -1129,7 +1129,7 @@ class DiffusionPipeline(ConfigMixin):
             self.to("cpu", silence_dtype_warnings=True)
             device_mod = getattr(torch, self.device.type, None)
             if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache() # otherwise we don't see the memory savings (but they probably exist)
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
