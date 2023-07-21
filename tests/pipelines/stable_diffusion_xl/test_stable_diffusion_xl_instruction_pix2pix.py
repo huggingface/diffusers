@@ -1,6 +1,7 @@
 import random
 import unittest
 
+import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -9,10 +10,11 @@ from diffusers import (
     EulerDiscreteScheduler,
     UNet2DConditionModel,
 )
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import (
     StableDiffusionXLInstructPix2PixPipeline,
 )
-from diffusers.utils import floats_tensor
+from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import (
@@ -123,3 +125,31 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             "output_type": "numpy",
         }
         return inputs
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_attention_slicing_forward_pass(self):
+        super().test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    # Overwrite the default test_latents_inputs because pix2pix encode the image differently
+    def test_latents_input(self):
+        components = self.get_dummy_components()
+        pipe = StableDiffusionXLInstructPix2PixPipeline(**components)
+        pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
+
+        vae = components["vae"]
+        inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
+
+        for image_param in self.image_latents_params:
+            if image_param in inputs.keys():
+                inputs[image_param] = vae.encode(inputs[image_param]).latent_dist.mode()
+
+        out_latents_inputs = pipe(**inputs)[0]
+
+        max_diff = np.abs(out - out_latents_inputs).max()
+        self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
