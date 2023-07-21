@@ -65,10 +65,10 @@ EXAMPLE_DOC_STRING = """
 
 class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     """
-    Pipeline for text-guided image to image generation using stable unCLIP.
+    Pipeline for text-guided image-to-image generation using stable unCLIP.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         feature_extractor ([`CLIPImageProcessor`]):
@@ -80,13 +80,13 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             embeddings after the noise has been applied.
         image_noising_scheduler ([`KarrasDiffusionSchedulers`]):
             Noise schedule for adding noise to the predicted image embeddings. The amount of noise to add is determined
-            by `noise_level` in `StableUnCLIPPipeline.__call__`.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder.
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+            by the `noise_level`.
+        tokenizer (`~transformers.CLIPTokenizer`):
+            A [`~transformers.CLIPTokenizer`)].
+        text_encoder ([`~transformers.CLIPTextModel`]):
+            Frozen [`~transformers.CLIPTextModel`] text-encoder.
+        unet ([`UNet2DConditionModel`]):
+            A [`UNet2DConditionModel`] to denoise the encoded image latents.
         scheduler ([`KarrasDiffusionSchedulers`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
@@ -147,27 +147,25 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
+        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
+        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
+        iterative execution of the `unet`.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
@@ -542,8 +540,8 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         Add noise to the image embeddings. The amount of noise is controlled by a `noise_level` input. A higher
         `noise_level` increases the variance in the final un-noised images.
 
-        The noise is applied in two ways
-        1. A noise schedule is applied directly to the embeddings
+        The noise is applied in two ways:
+        1. A noise schedule is applied directly to the embeddings.
         2. A vector of sinusoidal time embeddings are appended to the output.
 
         In both cases, the amount of noise is controlled by the same `noise_level`.
@@ -603,82 +601,73 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         image_embeds: Optional[torch.FloatTensor] = None,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, either `prompt_embeds` will be
                 used or prompt is initialized to `""`.
             image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch. The image will be encoded to its CLIP embedding which
-                the unet will be conditioned on. Note that the image is _not_ encoded by the vae and then used as the
-                latents in the denoising process such as in the standard stable diffusion text guided image variation
-                process.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                `Image` or tensor representing an image batch. The image is encoded to its CLIP embedding which the
+                `unet` is conditioned on. The image is _not_ encoded by the `vae` and then used as the latents in the
+                denoising process like it is in the standard Stable Diffusion text-guided image variation process.
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 20):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 10.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
+                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
+                provided, text embeddings are generated from the `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
+                not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             noise_level (`int`, *optional*, defaults to `0`):
                 The amount of noise to add to the image embeddings. A higher `noise_level` increases the variance in
-                the final un-noised images. See `StableUnCLIPPipeline.noise_image_embeddings` for details.
+                the final un-noised images. See [`StableUnCLIPPipeline.noise_image_embeddings`] for more details.
             image_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated CLIP embeddings to condition the unet on. Note that these are not latents to be used in
-                the denoising process. If you want to provide pre-generated latents, pass them to `__call__` as
-                `latents`.
+                Pre-generated CLIP embeddings to condition the `unet` on. These latents are not used in the denoising
+                process. If you want to provide pre-generated latents, pass them to `__call__` as `latents`.
 
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                [`~ pipeline_utils.ImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When returning
+                a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

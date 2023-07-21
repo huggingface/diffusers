@@ -81,43 +81,33 @@ class ImageTextPipelineOutput(BaseOutput):
 
 class UniDiffuserPipeline(DiffusionPipeline):
     r"""
-    Pipeline for a bimodal image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model, which supports
-    unconditional text and image generation, text-conditioned image generation, image-conditioned text generation, and
-    joint image-text generation.
+    Pipeline for a bimodal image-text model which supports unconditional text and image generation, text-conditioned
+    image generation, image-conditioned text generation, and joint image-text generation.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. This
-            is part of the UniDiffuser image representation, along with the CLIP vision encoding.
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations. This
+            is part of the UniDiffuser image representation along with the CLIP vision encoding.
         text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Similar to Stable Diffusion, UniDiffuser uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to encode text
-            prompts.
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         image_encoder ([`CLIPVisionModel`]):
-            UniDiffuser uses the vision portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel) to encode
-            images as part of its image representation, along with the VAE latent representation.
+            A [`~transformers.CLIPVisionModel`] to encode images as part of its image representation along with the VAE
+            latent representation.
         image_processor ([`CLIPImageProcessor`]):
-            CLIP image processor of class
-            [CLIPImageProcessor](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPImageProcessor),
-            used to preprocess the image before CLIP encoding it with `image_encoder`.
+            [`~transformers.CLIPImageProcessor`] to preprocess an image before CLIP encoding it with `image_encoder`.
         clip_tokenizer ([`CLIPTokenizer`]):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTokenizer) which
-            is used to tokenizer a prompt before encoding it with `text_encoder`.
+             A [`~transformers.CLIPTokenizer`] to tokenize the prompt before encoding it with `text_encoder`.
         text_decoder ([`UniDiffuserTextDecoder`]):
             Frozen text decoder. This is a GPT-style model which is used to generate text from the UniDiffuser
             embedding.
         text_tokenizer ([`GPT2Tokenizer`]):
-            Tokenizer of class
-            [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) which
-            is used along with the `text_decoder` to decode text for text generation.
+            A [`~transformers.GPT2Tokenizer`] to decode text for text generation; used along with the `text_decoder`.
         unet ([`UniDiffuserModel`]):
-            UniDiffuser uses a [U-ViT](https://github.com/baofff/U-ViT) model architecture, which is similar to a
-            [`Transformer2DModel`] with U-Net-style skip connections between transformer layers.
+            A [U-ViT](https://github.com/baofff/U-ViT) model with UNNet-style skip connections between transformer
+            layers to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image and/or text latents. The
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
@@ -1062,14 +1052,14 @@ class UniDiffuserPipeline(DiffusionPipeline):
         callback_steps: int = 1,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
-                instead. Required for text-conditioned image generation (`text2img`) mode.
+                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+                Required for text-conditioned image generation (`text2img`) mode.
             image (`torch.FloatTensor` or `PIL.Image.Image`, *optional*):
-                `Image`, or tensor representing an image batch. Required for image-conditioned text generation
+                `Image` or tensor representing an image batch. Required for image-conditioned text generation
                 (`img2text`) mode.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -1077,78 +1067,74 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 The width in pixels of the generated image.
             data_type (`int`, *optional*, defaults to 1):
                 The data type (either 0 or 1). Only used if you are loading a checkpoint which supports a data type
-                embedding; this is added for compatibility with the UniDiffuser-v1 checkpoint.
+                embedding; this is added for compatibility with the
+                [UniDiffuser-v1](https://huggingface.co/thu-ml/unidiffuser-v1) checkpoint.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 8.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality. Note that the original [UniDiffuser
-                paper](https://arxiv.org/pdf/2303.06555.pdf) uses a different definition of the guidance scale `w'`,
-                which satisfies `w = w' + 1`.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`). Used in text-conditioned image generation (`text2img`) mode.
+                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
+                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`). Used in
+                text-conditioned image generation (`text2img`) mode.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt. Used in `text2img` (text-conditioned image generation) and
                 `img` mode. If the mode is joint and both `num_images_per_prompt` and `num_prompts_per_image` are
-                supplied, `min(num_images_per_prompt, num_prompts_per_image)` samples will be generated.
+                supplied, `min(num_images_per_prompt, num_prompts_per_image)` samples are generated.
             num_prompts_per_image (`int`, *optional*, defaults to 1):
                 The number of prompts to generate per image. Used in `img2text` (image-conditioned text generation) and
                 `text` mode. If the mode is joint and both `num_images_per_prompt` and `num_prompts_per_image` are
-                supplied, `min(num_images_per_prompt, num_prompts_per_image)` samples will be generated.
+                supplied, `min(num_images_per_prompt, num_prompts_per_image)` samples are generated.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for joint
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for joint
                 image-text generation. Can be used to tweak the same generation with different prompts. If not
-                provided, a latents tensor will be generated by sampling using the supplied random `generator`. Note
-                that this is assumed to be a full set of VAE, CLIP, and text latents, if supplied, this will override
-                the value of `prompt_latents`, `vae_latents`, and `clip_latents`.
+                provided, a latents tensor is generated by sampling using the supplied random `generator`. This assumes
+                a full set of VAE, CLIP, and text latents, if supplied, overrides the value of `prompt_latents`,
+                `vae_latents`, and `clip_latents`.
             prompt_latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for text
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for text
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             vae_latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             clip_latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument. Used in text-conditioned
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
+                provided, text embeddings are generated from the `prompt` input argument. Used in text-conditioned
                 image generation (`text2img`) mode.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument. Used in text-conditioned image generation (`text2img`) mode.
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
+                not provided, `negative_prompt_embeds` are be generated from the `negative_prompt` input argument. Used
+                in text-conditioned image generation (`text2img`) mode.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.unidiffuser.ImageTextPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImageTextPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
+
         Returns:
             [`~pipelines.unidiffuser.ImageTextPipelineOutput`] or `tuple`:
-            [`pipelines.unidiffuser.ImageTextPipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is a list with the generated images, and the second element is a list
-            of generated texts.
+                If `return_dict` is `True`, [`~pipelines.unidiffuser.ImageTextPipelineOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is a list with the generated images and the second element
+                is a list of generated texts.
         """
 
         # 0. Default height and width to unet

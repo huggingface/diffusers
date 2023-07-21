@@ -37,36 +37,32 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class UnCLIPImageVariationPipeline(DiffusionPipeline):
     """
-    Pipeline to generate variations from an input image using unCLIP
+    Pipeline to generate image variations from an input image using UnCLIP.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        text_encoder ([`CLIPTextModelWithProjection`]):
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        feature_extractor ([`CLIPImageProcessor`]):
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
-        image_encoder ([`CLIPVisionModelWithProjection`]):
-            Frozen CLIP image-encoder. unCLIP Image Variation uses the vision portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
-            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         text_proj ([`UnCLIPTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
         decoder ([`UNet2DConditionModel`]):
             The decoder to invert the image embedding into an image.
         super_res_first ([`UNet2DModel`]):
-            Super resolution unet. Used in all but the last step of the super resolution diffusion process.
+            Super resolution UNet. Used in all but the last step of the super resolution diffusion process.
         super_res_last ([`UNet2DModel`]):
-            Super resolution unet. Used in the last step of the super resolution diffusion process.
+            Super resolution UNet. Used in the last step of the super resolution diffusion process.
         decoder_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the decoder denoising process. Just a modified DDPMScheduler.
+            Scheduler used in the decoder denoising process (a modified [`DDPMScheduler`]).
         super_res_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the super resolution denoising process. Just a modified DDPMScheduler.
-
+            Scheduler used in the super resolution denoising process (a modified [`DDPMScheduler`]).
     """
 
     decoder: UNet2DConditionModel
@@ -214,14 +210,14 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
-                The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
-                configuration of
-                [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
-                `CLIPImageProcessor`. Can be left to `None` only when `image_embeddings` are passed.
+                `Image` or tensor representing an image batch to be used as the starting point. If you provide a
+                tensor, it needs to be compatible with the [`CLIPImageProcessor`]
+                [configuration](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
+                Can be left as `None` only when `image_embeddings` are passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             decoder_num_inference_steps (`int`, *optional*, defaults to 25):
@@ -231,26 +227,27 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 The number of denoising steps for super resolution. More denoising steps usually lead to a higher
                 quality image at the expense of slower inference.
             generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             image_embeddings (`torch.Tensor`, *optional*):
                 Pre-defined image embeddings that can be derived from the image encoder. Pre-defined image embeddings
-                can be passed for tasks like image interpolations. `image` can the be left to `None`.
+                can be passed for tasks like image interpolations. `image` can be left as `None`.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         if image is not None:
             if isinstance(image, PIL.Image.Image):

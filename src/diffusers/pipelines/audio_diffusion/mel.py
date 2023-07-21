@@ -37,13 +37,20 @@ from PIL import Image  # noqa: E402
 class Mel(ConfigMixin, SchedulerMixin):
     """
     Parameters:
-        x_res (`int`): x resolution of spectrogram (time)
-        y_res (`int`): y resolution of spectrogram (frequency bins)
-        sample_rate (`int`): sample rate of audio
-        n_fft (`int`): number of Fast Fourier Transforms
-        hop_length (`int`): hop length (a higher number is recommended for lower than 256 y_res)
-        top_db (`int`): loudest in decibels
-        n_iter (`int`): number of iterations for Griffin Linn mel inversion
+        x_res (`int`):
+            x resolution of spectrogram (time).
+        y_res (`int`):
+            y resolution of spectrogram (frequency bins).
+        sample_rate (`int`):
+            Sample rate of audio.
+        n_fft (`int`):
+            Number of Fast Fourier Transforms.
+        hop_length (`int`):
+            Hop length (a higher number is recommended if `y_res` < 256).
+        top_db (`int`):
+            Loudest decibel value.
+        n_iter (`int`):
+            Number of iterations for Griffin-Lim Mel inversion.
     """
 
     config_name = "mel_config.json"
@@ -74,8 +81,10 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Set resolution.
 
         Args:
-            x_res (`int`): x resolution of spectrogram (time)
-            y_res (`int`): y resolution of spectrogram (frequency bins)
+            x_res (`int`):
+                x resolution of spectrogram (time).
+            y_res (`int`):
+                y resolution of spectrogram (frequency bins).
         """
         self.x_res = x_res
         self.y_res = y_res
@@ -86,8 +95,10 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Load audio.
 
         Args:
-            audio_file (`str`): must be a file on disk due to Librosa limitation or
-            raw_audio (`np.ndarray`): audio as numpy array
+            audio_file (`str`):
+                An audio file that must be on disk due to [Librosa](https://librosa.org/) limitation.
+            raw_audio (`np.ndarray`):
+                The raw audio file as a NumPy array.
         """
         if audio_file is not None:
             self.audio, _ = librosa.load(audio_file, mono=True, sr=self.sr)
@@ -102,7 +113,8 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Get number of slices in audio.
 
         Returns:
-            `int`: number of spectograms audio can be sliced into
+            `int`:
+                Number of spectograms audio can be sliced into.
         """
         return len(self.audio) // self.slice_size
 
@@ -110,18 +122,21 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Get slice of audio.
 
         Args:
-            slice (`int`): slice number of audio (out of get_number_of_slices())
+            slice (`int`):
+                Slice number of audio (out of `get_number_of_slices()`).
 
         Returns:
-            `np.ndarray`: audio as numpy array
+            `np.ndarray`:
+                The audio slice as a NumPy array.
         """
         return self.audio[self.slice_size * slice : self.slice_size * (slice + 1)]
 
     def get_sample_rate(self) -> int:
-        """Get sample rate:
+        """Get sample rate.
 
         Returns:
-            `int`: sample rate of audio
+            `int`:
+                Sample rate of audio.
         """
         return self.sr
 
@@ -129,10 +144,12 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Convert slice of audio to spectrogram.
 
         Args:
-            slice (`int`): slice number of audio to convert (out of get_number_of_slices())
+            slice (`int`):
+                Slice number of audio to convert (out of `get_number_of_slices()`).
 
         Returns:
-            `PIL Image`: grayscale image of x_res x y_res
+            `PIL Image`:
+                A grayscale image of `x_res x y_res`.
         """
         S = librosa.feature.melspectrogram(
             y=self.get_audio_slice(slice), sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, n_mels=self.n_mels
@@ -146,10 +163,12 @@ class Mel(ConfigMixin, SchedulerMixin):
         """Converts spectrogram to audio.
 
         Args:
-            image (`PIL Image`): x_res x y_res grayscale image
+            image (`PIL Image`):
+                An grayscale image of `x_res x y_res`.
 
         Returns:
-            audio (`np.ndarray`): raw audio
+            audio (`np.ndarray`):
+                The audio as a NumPy array.
         """
         bytedata = np.frombuffer(image.tobytes(), dtype="uint8").reshape((image.height, image.width))
         log_S = bytedata.astype("float") * self.top_db / 255 - self.top_db
