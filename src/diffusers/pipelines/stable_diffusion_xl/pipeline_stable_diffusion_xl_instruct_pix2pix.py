@@ -842,15 +842,19 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             dtype=prompt_embeds.dtype,
         )
 
+        original_prompt_embeds_len = len(prompt_embeds)
+        original_add_text_embeds_len = len(add_text_embeds)
+        original_add_time_ids = len(add_time_ids)
+        
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, negative_pooled_prompt_embeds], dim=0)
             add_time_ids = torch.cat([add_time_ids, add_neg_time_ids], dim=0)
 
-        # Make dimension 3
-        add_text_embeds = torch.concat((add_text_embeds, add_text_embeds.clone()[-1].unsqueeze(0)), dim=0)
-        add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[-1].unsqueeze(0)), dim=0)
-        prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[-1].unsqueeze(0)), dim=0)
+        # Make dimensions consistent
+        add_text_embeds = torch.concat((add_text_embeds, add_text_embeds[:original_add_text_embeds_len]), dim=0)
+        add_time_ids = torch.concat((add_time_ids, add_time_ids.clone()[:original_add_time_ids]), dim=0)
+        prompt_embeds = torch.concat((prompt_embeds, prompt_embeds.clone()[:original_prompt_embeds_len]), dim=0)
 
         prompt_embeds = prompt_embeds.to(device).to(torch.float32)
         add_text_embeds = add_text_embeds.to(device).to(torch.float32)
