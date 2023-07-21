@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team and Harutatsu Akiyama. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -154,45 +154,6 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  --push_to_hub
 ```
 
-## Training with Stable Diffusion XL
-
-[Stable diffusion XL](https://github.com/Stability-AI/generative-models/blob/main/assets/sdxl_report.pdf) leverages a 
-three times larger UNet backbone. 
-
-### Training with a single GPU
-
-```bash 
-python train_instruct_pix2pix_xl.py \
-    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
-    --dataset_name=$DATASET_ID \
-    --use_ema \
-    --enable_xformers_memory_efficient_attention \
-    --resolution=512 --random_flip \
-    --train_batch_size=1 --gradient_accumulation_steps=1 --gradient_checkpointing \
-    --max_train_steps=15000 \
-    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
-    --learning_rate=5e-05 --lr_warmup_steps=0 \
-    --conditioning_dropout_prob=0.05 \
-    --seed=42
-```
-
-### Training with multiple GPUs
-
-```bash 
-accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_xl.py \
-    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
-    --dataset_name=$DATASET_ID \
-    --use_ema \
-    --enable_xformers_memory_efficient_attention \
-    --resolution=512 --random_flip \
-    --train_batch_size=1 --gradient_accumulation_steps=1 --gradient_checkpointing \
-    --max_train_steps=15000 \
-    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
-    --learning_rate=5e-05 --lr_warmup_steps=0 \
-    --conditioning_dropout_prob=0.05 \
-    --seed=42
-```
-
  ## Inference
 
  Once training is complete, we can perform inference:
@@ -202,11 +163,9 @@ import PIL
 import requests
 import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
-# or from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
 
 model_id = "your_model_id"  # <- replace this
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-# or pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float32).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
 url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"
@@ -249,4 +208,4 @@ speed and quality during performance:
 Particularly, `image_guidance_scale` and `guidance_scale` can have a profound impact
 on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
 
-If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd).
+If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
