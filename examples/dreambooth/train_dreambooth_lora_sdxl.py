@@ -873,21 +873,21 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    # Computes additional embeddings required by the SDXL UNet.
-    def compute_additional_embeddings():
+    # Computes additional embeddings/ids required by the SDXL UNet.
+    # regular text emebddings (when `train_text_encoder` is not True)
+    # pooled text embeddings
+    # time ids
+    
+    def compute_time_ids():
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
-
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-        unet_added_cond_kwargs = {"time_ids": add_time_ids}
+        return add_time_ids
 
-        return unet_added_cond_kwargs
-
-    # Pack the embeddings appropriately.
     if not args.train_text_encoder:
         tokenizers = [tokenizer_one, tokenizer_two]
         text_encoders = [text_encoder_one, text_encoder_two]
@@ -899,20 +899,20 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    instance_unet_added_conditions = compute_additional_embeddings()
+    # Handle instance prompt.
+    instance_time_ids = compute_time_ids()
     if not args.train_text_encoder:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
-        instance_unet_added_conditions.update({"text_embeds": instance_pooled_prompt_embeds})
 
+    # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_unet_added_conditions = compute_additional_embeddings()
+        class_time_ids = compute_time_ids()
         if not args.train_text_encoder:
             class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
             )
-            class_unet_added_conditions.update({"text_embeds": class_pooled_prompt_embeds})
 
     # Clear the memory here.
     if not args.train_text_encoder:
@@ -922,9 +922,9 @@ def main(args):
 
     # Pack the statically computed variables appropriately. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_unet_added_conditions["time_ids"]
+    add_time_ids = instance_time_ids
     if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_unet_added_conditions], dim=0)
+        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     if not args.train_text_encoder:
         prompt_embeds = instance_prompt_hidden_states
