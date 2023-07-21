@@ -430,34 +430,19 @@ def parse_args(input_args=None):
 class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
-    It pre-processes the images and the tokenizes prompts.
+    It pre-processes the images.
     """
 
     def __init__(
         self,
         instance_data_root,
-        instance_prompt,
         class_data_root=None,
-        class_prompt=None,
         class_num=None,
         size=1024,
         center_crop=False,
-        instance_prompt_hidden_states=None,
-        class_prompt_hidden_states=None,
-        instance_unet_added_conditions=None,
-        class_unet_added_conditions=None,
-        tokenizers=None,
     ):
         self.size = size
         self.center_crop = center_crop
-        self.instance_prompt_hidden_states = instance_prompt_hidden_states
-        self.class_prompt_hidden_states = class_prompt_hidden_states
-        self.instance_unet_added_conditions = instance_unet_added_conditions
-        self.class_unet_added_conditions = class_unet_added_conditions
-
-        if tokenizers is not None:
-            self.tokenizer_one = tokenizers[0]
-            self.tokenizer_two = tokenizers[1]
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
@@ -465,8 +450,6 @@ class DreamBoothDataset(Dataset):
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
         self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
-        self._length = self.num_instance_images
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -477,7 +460,6 @@ class DreamBoothDataset(Dataset):
             else:
                 self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
-            self.class_prompt = class_prompt
         else:
             self.class_data_root = None
 
@@ -489,14 +471,6 @@ class DreamBoothDataset(Dataset):
                 transforms.Normalize([0.5], [0.5]),
             ]
         )
-
-        # Pre-tokenize so that we don't have to do it each time dataloader is iterated.
-        if tokenizers is not None:
-            self.instance_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.instance_prompt)
-            self.instance_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.instance_prompt)
-            if class_data_root is not None:
-                self.class_prompt_tokens_one = tokenize_prompt(self.tokenizer_one, self.class_prompt)
-                self.class_prompt_tokens_two = tokenize_prompt(self.tokenizer_two, self.class_prompt)
 
     def __len__(self):
         return self._length
@@ -510,13 +484,6 @@ class DreamBoothDataset(Dataset):
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
 
-        if self.instance_prompt_hidden_states is not None:
-            example["instance_prompt_ids"] = self.instance_prompt_hidden_states
-        else:
-            example["instance_prompt_tokens_one"] = self.instance_prompt_tokens_one
-            example["instance_prompt_tokens_two"] = self.instance_prompt_tokens_two
-        example["instance_added_cond_kwargs"] = self.instance_unet_added_conditions
-
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
             class_image = exif_transpose(class_image)
@@ -524,73 +491,22 @@ class DreamBoothDataset(Dataset):
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
-            if self.class_prompt_hidden_states is not None:
-                example["class_prompt_ids"] = self.class_prompt_hidden_states
-            else:
-                example["class_prompt_tokens_one"] = self.class_prompt_tokens_one
-                example["class_prompt_tokens_two"] = self.class_prompt_tokens_two
-            example["class_added_cond_kwargs"] = self.class_unet_added_conditions
 
         return example
 
 
-def collate_fn(examples, train_text_encoder=False, with_prior_preservation=False):
-    has_attention_mask = "instance_attention_mask" in examples[0]
+def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
-    add_time_ids = [example["instance_added_cond_kwargs"]["time_ids"] for example in examples]
-
-    if not train_text_encoder:
-        input_ids = [example["instance_prompt_ids"] for example in examples]
-        add_text_embeds = [example["instance_added_cond_kwargs"]["text_embeds"] for example in examples]
-    else:
-        tokens_one = [example["instance_prompt_tokens_one"] for example in examples]
-        tokens_two = [example["instance_prompt_tokens_two"] for example in examples]
-
-    if has_attention_mask:
-        attention_mask = [example["instance_attention_mask"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
         pixel_values += [example["class_images"] for example in examples]
-        add_time_ids += [example["class_added_cond_kwargs"]["time_ids"] for example in examples]
-
-        if not train_text_encoder:
-            input_ids += [example["class_prompt_ids"] for example in examples]
-            add_text_embeds += [example["class_added_cond_kwargs"]["text_embeds"] for example in examples]
-        else:
-            tokens_one += [example["class_prompt_tokens_one"] for example in examples]
-            tokens_two += [example["class_prompt_tokens_two"] for example in examples]
-
-        if has_attention_mask:
-            attention_mask += [example["class_attention_mask"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-    add_time_ids = torch.cat(add_time_ids, dim=0)
 
-    if not train_text_encoder:
-        input_ids = torch.cat(input_ids, dim=0)
-        add_text_embeds = torch.cat(add_text_embeds, dim=0)
-    else:
-        tokens_one = torch.cat(tokens_one, dim=0)
-        tokens_two = torch.cat(tokens_two, dim=0)
-
-    unet_added_conditions = {"time_ids": add_time_ids}
-    if not train_text_encoder:
-        unet_added_conditions.update({"text_embeds": add_text_embeds})
-        batch = {"input_ids": input_ids, "pixel_values": pixel_values, "unet_added_conditions": unet_added_conditions}
-    else:
-        batch = {
-            "tokens_one": tokens_one,
-            "tokens_two": tokens_two,
-            "pixel_values": pixel_values,
-            "unet_added_conditions": unet_added_conditions,
-        }
-
-    if has_attention_mask:
-        batch["attention_mask"] = attention_mask
-
+    batch = {"pixel_values": pixel_values}
     return batch
 
 
@@ -970,6 +886,7 @@ def main(args):
 
         return unet_added_cond_kwargs
 
+    # Pack the embeddings appropriately.
     if not args.train_text_encoder:
         tokenizers = [tokenizer_one, tokenizer_two]
         text_encoders = [text_encoder_one, text_encoder_two]
@@ -982,14 +899,12 @@ def main(args):
             return prompt_embeds, pooled_prompt_embeds
 
     instance_unet_added_conditions = compute_additional_embeddings()
-    instance_prompt_hidden_states, instance_pooled_prompt_embeds = None, None
     if not args.train_text_encoder:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
         instance_unet_added_conditions.update({"text_embeds": instance_pooled_prompt_embeds})
 
-    class_prompt_hidden_states, class_unet_added_conditions, class_pooled_prompt_embeds = None, None, None
     if args.with_prior_preservation:
         class_unet_added_conditions = compute_additional_embeddings()
         if not args.train_text_encoder:
@@ -998,32 +913,47 @@ def main(args):
             )
             class_unet_added_conditions.update({"text_embeds": class_pooled_prompt_embeds})
 
+    # Clear the memory here.
     if not args.train_text_encoder:
         del tokenizers, text_encoders
         gc.collect()
         torch.cuda.empty_cache()
 
+    # Pack the statically computed variables appropriately. This is so that we don't
+    # have to pass them to the dataloader.
+    add_time_ids = instance_unet_added_conditions["time_ids"]
+    if args.with_prior_preservation:
+        add_time_ids = torch.cat([add_time_ids, class_unet_added_conditions], dim=0)
+
+    if not args.train_text_encoder:
+        prompt_embeds = instance_prompt_hidden_states
+        unet_add_text_embeds = instance_pooled_prompt_embeds
+        if args.with_prior_preservation:
+            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+            unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
+    else:
+        tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
+        tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
+        if args.with_prior_preservation:
+            class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
+            class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
+            tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
+            tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
         class_num=args.num_class_images,
         size=args.resolution,
         center_crop=args.center_crop,
-        instance_prompt_hidden_states=instance_prompt_hidden_states,
-        class_prompt_hidden_states=class_prompt_hidden_states,
-        instance_unet_added_conditions=instance_unet_added_conditions,
-        class_unet_added_conditions=class_unet_added_conditions,
-        tokenizers=[tokenizer_one, tokenizer_two] if args.train_text_encoder else None,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
         shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, args.train_text_encoder, args.with_prior_preservation),
+        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
         num_workers=args.dataloader_num_workers,
     )
 
@@ -1125,8 +1055,6 @@ def main(args):
                     pixel_values = batch["pixel_values"]
                 else:
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
-                    if vae.dtype != weight_dtype:
-                        vae.to(dtype=weight_dtype)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1149,22 +1077,28 @@ def main(args):
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
+                    unet_added_conditions = {
+                        "time_ids": add_time_ids.repeat(bsz, 1),
+                        "text_embeds": unet_add_text_embeds.repeat(bsz, 1),
+                    }
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
-                        batch["input_ids"],
-                        added_cond_kwargs=batch["unet_added_conditions"],
+                        prompt_embeds.repeat(bsz, 1, 1),
+                        added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
+                    unet_added_conditions = {"time_ids": add_time_ids.repeat(bsz, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
                         prompt=None,
-                        text_input_ids_list=[batch["tokens_one"], batch["tokens_two"]],
+                        text_input_ids_list=[tokens_one, tokens_two],
                     )
-                    batch["unet_added_conditions"].update({"text_embeds": pooled_prompt_embeds})
+                    unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(bsz, 1)})
+                    prompt_embeds = prompt_embeds.repeat(bsz, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=batch["unet_added_conditions"]
+                        noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                     ).sample
 
                 # Get the target for loss depending on the prediction type
