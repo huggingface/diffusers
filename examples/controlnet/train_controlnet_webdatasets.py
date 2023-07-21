@@ -195,9 +195,9 @@ class Text2ImageDataset:
             return (int(json.get("original_width", 0.0)), int(json.get("original_height", 0.0)))
 
         processing_pipeline = [
-            wds.decode("pil", "json", handler=wds.ignore_and_continue),
+            wds.decode("pil", handler=wds.ignore_and_continue),
             wds.rename(image="jpg;png;jpeg;webp", control_image="jpg;png;jpeg;webp", text="text;txt;caption", orig_size="json", handler=wds.warn_and_continue),
-            wds.map(filter_keys(set(["image", "control_image", "text", "json"]))),
+            wds.map(filter_keys(set(["image", "control_image", "text", "orig_size"]))),
             wds.map_dict(image=transform.train_transform, control_image=transform.train_control_transform, orig_size=get_orig_size),
             wds.to_tuple("image", "control_image", "text", "orig_size"),
         ]
@@ -1041,6 +1041,9 @@ def main(args):
     # needed for the SD XL UNet to operate.
     def compute_embeddings(prompt_batch, original_sizes, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
         target_size = (args.resolution, args.resolution)
+        hey = original_sizes
+        original_sizes = list(map(list, zip(*original_sizes)))
+
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
