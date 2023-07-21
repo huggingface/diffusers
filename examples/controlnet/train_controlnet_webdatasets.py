@@ -191,12 +191,15 @@ class Text2ImageDataset:
             # flatten list using itertools
             eval_shards_path_or_url = list(itertools.chain.from_iterable(eval_shards_path_or_url))
 
+        def get_orig_size(json):
+            return (int(json.get("original_width", 0.0)), int(json.get("original_height", 0.0)))
+
         processing_pipeline = [
-            wds.decode("pil", handler=wds.ignore_and_continue),
-            wds.rename(image="jpg;png;jpeg;webp", control_image="jpg;png;jpeg;webp", text="text;txt;caption", handler=wds.warn_and_continue),
-            wds.map(filter_keys(set(["image", "control_image", "text"]))),
-            wds.map_dict(image=transform.train_transform, control_image=transform.train_control_transform),
-            wds.to_tuple("image", "control_image", "text"),
+            wds.decode("pil", "json", handler=wds.ignore_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", control_image="jpg;png;jpeg;webp", text="text;txt;caption", orig_size="json", handler=wds.warn_and_continue),
+            wds.map(filter_keys(set(["image", "control_image", "text", "json"]))),
+            wds.map_dict(image=transform.train_transform, control_image=transform.train_control_transform, orig_size=get_orig_size),
+            wds.to_tuple("image", "control_image", "text", "orig_size"),
         ]
 
         # Create train dataset and loader
@@ -791,71 +794,6 @@ def parse_args(input_args=None):
 
     return args
 
-
-# def get_train_dataset(args, accelerator):
-#     # Get the datasets: you can either provide your own training and evaluation files (see below)
-#     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-# 
-#     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-#     # download the dataset.
-#     if args.dataset_name is not None:
-#         # Downloading and loading a dataset from the hub.
-#         dataset = load_dataset(
-#             args.dataset_name,
-#             args.dataset_config_name,
-#             cache_dir=args.cache_dir,
-#         )
-#     else:
-#         if args.train_data_dir is not None:
-#             dataset = load_dataset(
-#                 args.train_data_dir,
-#                 cache_dir=args.cache_dir,
-#             )
-#         # See more about loading custom images at
-#         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
-# 
-#     # Preprocessing the datasets.
-#     # We need to tokenize inputs and targets.
-#     column_names = dataset["train"].column_names
-# 
-#     # 6. Get the column names for input/target.
-#     if args.image_column is None:
-#         image_column = column_names[0]
-#         logger.info(f"image column defaulting to {image_column}")
-#     else:
-#         image_column = args.image_column
-#         if image_column not in column_names:
-#             raise ValueError(
-#                 f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-#             )
-# 
-#     if args.caption_column is None:
-#         caption_column = column_names[1]
-#         logger.info(f"caption column defaulting to {caption_column}")
-#     else:
-#         caption_column = args.caption_column
-#         if caption_column not in column_names:
-#             raise ValueError(
-#                 f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-#             )
-# 
-#     if args.conditioning_image_column is None:
-#         conditioning_image_column = column_names[2]
-#         logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
-#     else:
-#         conditioning_image_column = args.conditioning_image_column
-#         if conditioning_image_column not in column_names:
-#             raise ValueError(
-#                 f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-#             )
-# 
-#     with accelerator.main_process_first():
-#         train_dataset = dataset["train"].shuffle(seed=args.seed)
-#         if args.max_train_samples is not None:
-#             train_dataset = train_dataset.select(range(args.max_train_samples))
-#     return train_dataset
-
-
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
     prompt_embeds_list = []
@@ -1101,8 +1039,7 @@ def main(args):
 
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
-    def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
-        original_size = (args.resolution, args.resolution)
+    def compute_embeddings(prompt_batch, original_sizes, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
@@ -1111,13 +1048,14 @@ def main(args):
         add_text_embeds = pooled_prompt_embeds
 
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+        add_time_ids = list(crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
+        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
+        add_time_ids = torch.cat([torch.tensor(original_sizes, dtype=torch.long), add_time_ids], dim=-1)
+        add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
 
         prompt_embeds = prompt_embeds.to(accelerator.device)
         add_text_embeds = add_text_embeds.to(accelerator.device)
-        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
-        add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
@@ -1145,9 +1083,9 @@ def main(args):
 
     compute_embeddings_fn = functools.partial(
         compute_embeddings,
+        proportion_empty_prompts=args.proportion_empty_prompts,
         text_encoders=text_encoders,
         tokenizers=tokenizers,
-        proportion_empty_prompts=args.proportion_empty_prompts,
     )
 
     # Scheduler and math around the number of training steps.
@@ -1241,8 +1179,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
-
-                image, control_image, text = batch
+                image, control_image, text, orig_size = batch
 
                 # save image and control image
                 # for i, (img, c_img) in enumerate(zip(image, control_image)):
@@ -1253,7 +1190,7 @@ def main(args):
                 #     pil_img.save(f"/admin/home/patrick/webdatasets_images/image_{i}.png")
                 #     pil_c_img.save(f"/admin/home/patrick/webdatasets_images/c_image_{i}.png")
 
-                encoded_text = compute_embeddings_fn(text)
+                encoded_text = compute_embeddings_fn(text, orig_size)
                 image = image.to(accelerator.device, non_blocking=True)
                 control_image = control_image.to(accelerator.device, non_blocking=True)
 
