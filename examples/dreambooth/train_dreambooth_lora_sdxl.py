@@ -450,6 +450,7 @@ class DreamBoothDataset(Dataset):
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
         self.num_instance_images = len(self.instance_images_path)
+        self._length = self.num_instance_images
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
