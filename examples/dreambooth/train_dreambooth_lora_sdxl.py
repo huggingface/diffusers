@@ -46,8 +46,8 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
-    DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
@@ -635,7 +635,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
-            pipeline = DiffusionPipeline.from_pretrained(
+            pipeline = StableDiffusionXLPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 safety_checker=None,
@@ -801,10 +801,11 @@ def main(args):
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
 
-        LoraLoaderMixin.save_lora_weights(
+        StableDiffusionXLPipeline.save_lora_weights(
             output_dir,
             unet_lora_layers=unet_lora_layers_to_save,
-            text_encoder_lora_layers=[text_encoder_one_lora_layers_to_save, text_encoder_two_lora_layers_to_save],
+            text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+            text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
         )
 
     def load_model_hook(models, input_dir):
@@ -1190,7 +1191,7 @@ def main(args):
                     text_encoder_two = text_encoder_cls_two.from_pretrained(
                         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
                     )
-                pipeline = DiffusionPipeline.from_pretrained(
+                pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
                     text_encoder=accelerator.unwrap_model(text_encoder_one)
@@ -1258,20 +1259,18 @@ def main(args):
 
         if args.train_text_encoder:
             text_encoder_one = accelerator.unwrap_model(text_encoder_one)
-            text_encoder_one = text_encoder_one.to(torch.float32)
+            text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder_one.to(torch.float32))
             text_encoder_two = accelerator.unwrap_model(text_encoder_two)
-            text_encoder_two = text_encoder_two.to(torch.float32)
-            text_encoder_lora_layers = [
-                text_encoder_lora_state_dict(text_encoder_one),
-                text_encoder_lora_state_dict(text_encoder_two),
-            ]
+            text_encoder_2_lora_layers = text_encoder_lora_state_dict(text_encoder_two.to(torch.float32))
         else:
             text_encoder_lora_layers = None
+            text_encoder_2_lora_layers = None
 
-        LoraLoaderMixin.save_lora_weights(
+        StableDiffusionXLPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
+            text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
 
         # Final inference
@@ -1282,7 +1281,7 @@ def main(args):
             revision=args.revision,
             torch_dtype=weight_dtype,
         )
-        pipeline = DiffusionPipeline.from_pretrained(
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path, vae=vae, revision=args.revision, torch_dtype=weight_dtype
         )
 

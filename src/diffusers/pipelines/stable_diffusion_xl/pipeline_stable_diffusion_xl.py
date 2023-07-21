@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -814,17 +815,54 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alpha=network_alpha,
-            text_encoder=self.text_encoder,
-            prefix="text_encoder",
-            lora_scale=self.lora_scale,
+
+        text_encoder_state_dict = {k: v for k, v in state_dict if "text_encoder." in k}
+        if len(text_encoder_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_state_dict,
+                network_alpha=network_alpha,
+                text_encoder=self.text_encoder,
+                prefix="text_encoder",
+                lora_scale=self.lora_scale,
+            )
+
+        text_encoder_2_state_dict = {k: v for k, v in state_dict if "text_encoder_2." in k}
+        if len(text_encoder_2_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_2_state_dict,
+                network_alpha=network_alpha,
+                text_encoder=self.text_encoder_2,
+                prefix="text_encoder_2",
+                lora_scale=self.lora_scale,
+            )
+
+    @classmethod
+    def save_lora_weights(
+        self,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, torch.Tensor],
+        text_encoder_lora_layers: Dict[str, torch.Tensor],
+        text_encoder_2_lora_layers: Dict[str, torch.Tensor],
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = False,
+    ):
+        state_dict = {}
+        state_dict.update({f"unet.{k}": v for k, v in unet_lora_layers.state_dict()})
+        if text_encoder_lora_layers and text_encoder_2_lora_layers:
+            state_dict.update({f"text_encoder.{k}": v for k, v in text_encoder_lora_layers.state_dict()})
+            state_dict.update({f"text_encoder_2.{k}": v for k, v in text_encoder_2_lora_layers.state_dict()})
+
+        self.write_lora_weights(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
         )
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alpha=network_alpha,
-            text_encoder=self.text_encoder_2,
-            prefix="text_encoder_2",
-            lora_scale=self.lora_scale,
-        )
+
+    def _remove_text_encoder_monkey_patch(self):
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)

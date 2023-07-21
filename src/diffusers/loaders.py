@@ -1021,12 +1021,14 @@ class LoraLoaderMixin:
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key shoult be prefixed with an
+                A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alpha (`float`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
+            prefix (`str`):
+                Expected prefix of the `text_encoder` in the `state_dict`.
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
@@ -1098,12 +1100,9 @@ class LoraLoaderMixin:
 
                 load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                 if len(load_state_dict_results.unexpected_keys) != 0:
-                    unexpected_keys = load_state_dict_results.unexpected_keys
-                    is_sdxl_ckpt = any("text_encoder_" in k for k in unexpected_keys)
-                    if not is_sdxl_ckpt:
-                        raise ValueError(
-                            f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
-                        )
+                    raise ValueError(
+                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                    )
 
     @property
     def lora_scale(self) -> float:
@@ -1113,8 +1112,6 @@ class LoraLoaderMixin:
 
     def _remove_text_encoder_monkey_patch(self):
         self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
@@ -1164,39 +1161,76 @@ class LoraLoaderMixin:
         self,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Union[
-            Dict[str, Union[torch.nn.Module, torch.Tensor]], List[Dict[str, Union[torch.nn.Module, torch.Tensor]]]
-        ] = None,
+        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
-        text_encoder_weight_prefix: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder(s).
+        Save the LoRA parameters corresponding to the UNet and text encoder.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`) or `List`:
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
+                encoder LoRA state dict because it comes 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
                 process to avoid race conditions.
-            weight_name (`str`, *optional*, defaults to `None`):
-                Exact name of the weight file to use during serialization (`my_trained_lora_weights.bin`, for example).
-            text_encoder_weight_prefix (`str`, *optional*, defaults to `None`):
-                Prefix to use for serializing the LoRA parameters corresponding to the text encoder.
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
+        # Create a flat dictionary.
+        state_dict = {}
+
+        # Populate the dictionary.
+        if unet_lora_layers is not None:
+            weights = (
+                unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
+            )
+
+            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
+            state_dict.update(unet_lora_state_dict)
+
+        if text_encoder_lora_layers is not None:
+            weights = (
+                text_encoder_lora_layers.state_dict()
+                if isinstance(text_encoder_lora_layers, torch.nn.Module)
+                else text_encoder_lora_layers
+            )
+
+            text_encoder_lora_state_dict = {
+                f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
+            }
+            state_dict.update(text_encoder_lora_state_dict)
+
+        # Save the model
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    @classmethod
+    def write_lora_layers(
+        self,
+        state_dict: Dict[str, torch.Tensor],
+        save_directory: str,
+        is_main_process: bool,
+        weight_name: str,
+        save_function: Callable,
+        safe_serialization: bool,
+    ):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
@@ -1212,41 +1246,6 @@ class LoraLoaderMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        # Create a flat dictionary and populate.
-        state_dict = {}
-        if unet_lora_layers is not None:
-            weights = (
-                unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
-            )
-
-            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
-            state_dict.update(unet_lora_state_dict)
-
-        if text_encoder_lora_layers is not None:
-            text_encoder_weight_prefix = (
-                self.text_encoder_name if text_encoder_weight_prefix is None else text_encoder_weight_prefix
-            )
-
-            def get_te_params(te_state_dict):
-                weights = te_state_dict.state_dict() if isinstance(te_state_dict, torch.nn.Module) else te_state_dict
-                return weights
-
-            if not isinstance(text_encoder_lora_layers, list):
-                weights = get_te_params(text_encoder_lora_layers)
-                text_encoder_lora_state_dict = {
-                    f"{text_encoder_weight_prefix}.{module_name}": param for module_name, param in weights.items()
-                }
-                state_dict.update(text_encoder_lora_state_dict)
-            else:
-                for i in range(len(text_encoder_lora_layers)):
-                    weights = get_te_params(text_encoder_lora_layers[i])
-                    modified_prefix = f"{text_encoder_weight_prefix}_{i+1}" if i > 0 else text_encoder_weight_prefix
-                    text_encoder_lora_state_dict = {
-                        f"{modified_prefix}.{module_name}": param for module_name, param in weights.items()
-                    }
-                    state_dict.update(text_encoder_lora_state_dict)
-
-        # Save the model
         if weight_name is None:
             if safe_serialization:
                 weight_name = LORA_WEIGHT_NAME_SAFE
