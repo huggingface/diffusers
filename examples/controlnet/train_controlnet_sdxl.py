@@ -84,7 +84,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         vae=vae,
         unet=unet,
         controlnet=controlnet,
-        safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
