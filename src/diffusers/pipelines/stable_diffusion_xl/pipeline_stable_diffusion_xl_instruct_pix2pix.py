@@ -845,7 +845,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         original_prompt_embeds_len = len(prompt_embeds)
         original_add_text_embeds_len = len(add_text_embeds)
         original_add_time_ids = len(add_time_ids)
-        
+
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, negative_pooled_prompt_embeds], dim=0)
