@@ -113,8 +113,6 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
-            # "feature_extractor": None,
         }
         return components
 
@@ -238,11 +236,13 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # forward with single prompt
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
         output = sd_pipe(**inputs)
         image_slice_1 = output.images[0, -3:, -3:, -1]
 
         # forward with same prompt duplicated
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
         inputs["prompt_2"] = inputs["prompt"]
         output = sd_pipe(**inputs)
         image_slice_2 = output.images[0, -3:, -3:, -1]
@@ -252,6 +252,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # forward with different prompt
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
         inputs["prompt_2"] = "different prompt"
         output = sd_pipe(**inputs)
         image_slice_3 = output.images[0, -3:, -3:, -1]
@@ -261,12 +262,14 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # manually set a negative_prompt
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 10
         inputs["negative_prompt"] = "negative prompt"
         output = sd_pipe(**inputs)
         image_slice_1 = output.images[0, -3:, -3:, -1]
 
         # forward with same negative_prompt duplicated
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 10
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = inputs["negative_prompt"]
         output = sd_pipe(**inputs)
@@ -277,6 +280,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # forward with different negative_prompt
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 10
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = "different negative prompt"
         output = sd_pipe(**inputs)
