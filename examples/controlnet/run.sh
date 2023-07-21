@@ -17,7 +17,7 @@ accelerate launch train_controlnet_webdatasets.py \
  --train_shards_path_or_url "pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-data/{00000..01208}.tar -" \
  --eval_shards_path_or_url "pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-data/{01209..01210}.tar -" \
  --proportion_empty_prompts 0.5 \
- --validation_steps=2 \
+ --validation_steps=1000 \
  --train_batch_size=12 \
  --gradient_checkpointing \
  --use_8bit_adam \
