@@ -816,7 +816,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
 
-        text_encoder_state_dict = {k: v for k, v in state_dict if "text_encoder." in k}
+        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_state_dict,
@@ -826,7 +826,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 lora_scale=self.lora_scale,
             )
 
-        text_encoder_2_state_dict = {k: v for k, v in state_dict if "text_encoder_2." in k}
+        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
         if len(text_encoder_2_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_2_state_dict,
@@ -840,21 +840,28 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     def save_lora_weights(
         self,
         save_directory: Union[str, os.PathLike],
-        unet_lora_layers: Dict[str, torch.Tensor],
-        text_encoder_lora_layers: Dict[str, torch.Tensor],
-        text_encoder_2_lora_layers: Dict[str, torch.Tensor],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
     ):
         state_dict = {}
-        state_dict.update({f"unet.{k}": v for k, v in unet_lora_layers.state_dict()})
-        if text_encoder_lora_layers and text_encoder_2_lora_layers:
-            state_dict.update({f"text_encoder.{k}": v for k, v in text_encoder_lora_layers.state_dict()})
-            state_dict.update({f"text_encoder_2.{k}": v for k, v in text_encoder_2_lora_layers.state_dict()})
 
-        self.write_lora_weights(
+        def pack_weights(layers, prefix):
+            layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
+            layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            return layers_state_dict
+
+        state_dict.update(pack_weights(unet_lora_layers, "unet"))
+
+        if text_encoder_lora_layers and text_encoder_2_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+
+        self.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,

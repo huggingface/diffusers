@@ -1221,9 +1221,7 @@ class LoraLoaderMixin:
             safe_serialization=safe_serialization,
         )
 
-    @classmethod
     def write_lora_layers(
-        self,
         state_dict: Dict[str, torch.Tensor],
         save_directory: str,
         is_main_process: bool,
