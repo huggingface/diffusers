@@ -117,8 +117,6 @@
     title: Habana Gaudi
   - local: optimization/tome
     title: Token Merging
-  - local: optimization/bentoml
-    title: BentoML Integration
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -166,6 +164,8 @@
       title: VQModel
     - local: api/models/autoencoderkl
       title: AutoencoderKL
+    - local: api/models/asymmetricautoencoderkl
+      title: AsymmetricAutoencoderKL
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal

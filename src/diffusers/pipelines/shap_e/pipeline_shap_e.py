@@ -95,7 +95,7 @@ class ShapEPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        renderer ([`ShapERenderer`]):
+        shap_e_renderer ([`ShapERenderer`]):
             Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
             with the NeRF rendering method
     """
@@ -106,7 +106,7 @@ class ShapEPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: HeunDiscreteScheduler,
-        renderer: ShapERenderer,
+        shap_e_renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -115,7 +115,7 @@ class ShapEPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=scheduler,
-            renderer=renderer,
+            shap_e_renderer=shap_e_renderer,
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -149,7 +149,7 @@ class ShapEPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.prior, self.renderer]:
+        for cpu_offloaded_model in [self.text_encoder, self.prior, self.shap_e_renderer]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -218,7 +218,7 @@ class ShapEPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent
+        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
@@ -248,8 +248,8 @@ class ShapEPipeline(DiffusionPipeline):
             frame_size (`int`, *optional*, default to 64):
                 the width and height of each image frame of the generated 3d output
             output_type (`str`, *optional*, defaults to `"pt"`):
-                The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
-                (`torch.Tensor`).
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -319,30 +319,39 @@ class ShapEPipeline(DiffusionPipeline):
                 sample=latents,
             ).prev_sample
 
+        if output_type not in ["np", "pil", "latent", "mesh"]:
+            raise ValueError(
+                f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
+            )
+
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
         images = []
-        for i, latent in enumerate(latents):
-            image = self.renderer.decode(
-                latent[None, :],
-                device,
-                size=frame_size,
-                ray_batch_size=4096,
-                n_coarse_samples=64,
-                n_fine_samples=128,
-            )
-            images.append(image)
+        if output_type == "mesh":
+            for i, latent in enumerate(latents):
+                mesh = self.shap_e_renderer.decode_to_mesh(
+                    latent[None, :],
+                    device,
+                )
+                images.append(mesh)
 
-        images = torch.stack(images)
+        else:
+            # np, pil
+            for i, latent in enumerate(latents):
+                image = self.shap_e_renderer.decode_to_image(
+                    latent[None, :],
+                    device,
+                    size=frame_size,
+                )
+                images.append(image)
 
-        if output_type not in ["np", "pil"]:
-            raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")
+            images = torch.stack(images)
 
-        images = images.cpu().numpy()
+            images = images.cpu().numpy()
 
-        if output_type == "pil":
-            images = [self.numpy_to_pil(image) for image in images]
+            if output_type == "pil":
+                images = [self.numpy_to_pil(image) for image in images]
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

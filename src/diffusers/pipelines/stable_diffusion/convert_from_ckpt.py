@@ -931,7 +931,7 @@ def convert_open_clip_checkpoint(
             continue
         if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
-                value = checkpoint[key].T
+                value = checkpoint[key].T.contiguous()
             else:
                 value = checkpoint[key]
 
@@ -1285,9 +1285,7 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 512
 
-    if controlnet is None:
-        controlnet = "control_stage_config" in original_config.model.params
-
+    if controlnet is None and "control_stage_config" in original_config.model.params:
         controlnet = convert_controlnet_checkpoint(
             checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
         )
