@@ -20,6 +20,7 @@ import math
 import os
 import shutil
 import warnings
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -64,27 +65,6 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("file_name", "edited_image", "edit_prompt"),
 }
 WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
-
-
-# Load image from URL or path
-def create_image_loader():
-    def is_url(string):
-        try:
-            result = urlparse(string)
-            return all([result.scheme, result.netloc])
-        except ValueError:
-            return False
-
-    def load_image(image_url_or_path):
-        if is_url(image_url_or_path):
-            return download_image(image_url_or_path)
-        else:
-            return Image.open(image_url_or_path).convert("RGB")
-
-    return load_image
-
-
-load_image = create_image_loader()
 
 
 def import_model_class_from_model_name_or_path(
@@ -218,8 +198,7 @@ def parse_args():
         type=int,
         default=256,
         help=(
-            "The resolution for input images, all the images in the train/validation dataset will be resized to this"
-            " resolution."
+            "The resolution for input images, all the images in the train/validation dataset will be resized to this resolution."
         ),
     )
     parser.add_argument(
@@ -1105,7 +1084,13 @@ def main():
                     if not os.path.exists(val_save_dir):
                         os.makedirs(val_save_dir)
 
-                    original_image = load_image(args.val_image_url_or_path)
+                    original_image = (
+                        lambda image_url_or_path: Image.open(BytesIO(requests.get(image_url_or_path).content)).convert(
+                            "RGB"
+                        )
+                        if urlparse(image_url_or_path).scheme
+                        else Image.open(image_url_or_path).convert("RGB")
+                    )(args.val_image_url_or_path)
                     with torch.autocast(
                         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
                     ):
