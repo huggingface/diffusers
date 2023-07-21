@@ -877,7 +877,7 @@ def main(args):
     # regular text emebddings (when `train_text_encoder` is not True)
     # pooled text embeddings
     # time ids
-    
+
     def compute_time_ids():
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         original_size = (args.resolution, args.resolution)
