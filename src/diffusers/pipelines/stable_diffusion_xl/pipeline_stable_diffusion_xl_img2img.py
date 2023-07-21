@@ -372,7 +372,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
-    
+
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
