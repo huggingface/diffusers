@@ -646,10 +646,10 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
-    def tokenize_captions(captions, a_tokenizer):
-        inputs = a_tokenizer(
+    def tokenize_captions(captions, tokenizer):
+        inputs = tokenizer(
             captions,
-            max_length=a_tokenizer.model_max_length,
+            max_length=tokenizer.model_max_length,
             padding="max_length",
             truncation=True,
             return_tensors="pt",
@@ -698,8 +698,6 @@ def main():
     text_encoder_2 = text_encoder_cls_2.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
-    text_encoder_1.requires_grad_(False)
-    text_encoder_2.requires_grad_(False)
 
     # We ALWAYS pre-compute the additional condition embeddings needed for SDXL
     # UNet as the model is already big and it uses two text encoders.
@@ -707,6 +705,9 @@ def main():
     text_encoder_2.to(accelerator.device, dtype=weight_dtype)
     tokenizers = [tokenizer_1, tokenizer_2]
     text_encoders = [text_encoder_1, text_encoder_2]
+
+    text_encoder_1.requires_grad_(False)
+    text_encoder_2.requires_grad_(False)
 
     # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(text_encoders, tokenizers, prompt):
@@ -778,7 +779,7 @@ def main():
         for a_tokenizer, a_text_encoder in zip(tokenizers, text_encoders):
             null_conditioning_list.append(
                 a_text_encoder(
-                    tokenize_captions([""], a_tokenizer=a_tokenizer).to(accelerator.device),
+                    tokenize_captions([""], tokenizer=a_tokenizer).to(accelerator.device),
                     output_hidden_states=True,
                 ).hidden_states[-2]
             )
@@ -787,7 +788,7 @@ def main():
     null_conditioning = compute_null_conditioning()
 
     def compute_time_ids():
-        crops_coords_top_left = (0, 0)
+        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         original_size = target_size = (args.resolution, args.resolution)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids], dtype=weight_dtype)
@@ -880,7 +881,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("instruct-pix2pix", config=vars(args))
+        accelerator.init_trackers("instruct-pix2pix-xl", config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -938,8 +939,9 @@ def main():
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
-                latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
+                latents = vae.encode(batch["edited_pixel_values"]).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
+                latents = latents.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -958,7 +960,8 @@ def main():
 
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
-                original_image_embeds = vae.encode(batch["original_pixel_values"].to(weight_dtype)).latent_dist.mode()
+                original_image_embeds = vae.encode(batch["original_pixel_values"]).latent_dist.mode()
+                original_image_embeds = original_image_embeds.to(weight_dtype)
 
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
                 # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
@@ -1067,11 +1070,11 @@ def main():
                     pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=accelerator.unwrap_model(unet),
-                        text_encoder=accelerator.unwrap_model(text_encoder_1),
-                        text_encoder_2=accelerator.unwrap_model(text_encoder_2),
-                        tokenizer=accelerator.unwrap_model(tokenizer_1),
-                        tokenizer_2=accelerator.unwrap_model(tokenizer_2),
-                        vae=accelerator.unwrap_model(vae),
+                        text_encoder=text_encoder_1,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer=tokenizer_1,
+                        tokenizer_2=tokenizer_2,
+                        vae=vae,
                         revision=args.revision,
                         torch_dtype=weight_dtype,
                     )
@@ -1135,11 +1138,11 @@ def main():
 
         pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            text_encoder=accelerator.unwrap_model(text_encoder_1),
-            text_encoder_2=accelerator.unwrap_model(text_encoder_2),
-            tokenizer=accelerator.unwrap_model(tokenizer_1),
-            tokenizer_2=accelerator.unwrap_model(tokenizer_2),
-            vae=accelerator.unwrap_model(vae),
+            text_encoder=text_encoder_1,
+            text_encoder_2=text_encoder_2,
+            tokenizer=tokenizer_1,
+            tokenizer_2=tokenizer_2,
+            vae=vae,
             unet=unet,
             revision=args.revision,
         )
