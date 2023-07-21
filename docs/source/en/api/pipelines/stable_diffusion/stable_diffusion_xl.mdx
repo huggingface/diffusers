@@ -21,6 +21,7 @@ The abstract of the paper is the following:
 ## Tips
 
 - Stable Diffusion XL works especially well with images between 768 and 1024.
+- Stable Diffusion XL can pass a different prompt for each of the text encoders it was trained on as shown below. We can even pass different parts of the same prompt to the text encoders.
 - Stable Diffusion XL output image can be improved by making use of a refiner as shown below.
 
 ### Available checkpoints:
@@ -362,3 +363,25 @@ pip install xformers
 [[autodoc]] StableDiffusionXLInpaintPipeline
 	- all
 	- __call__
+
+### Passing different prompts to each text-encoder
+
+Stable Diffusion XL was trained on two text encoders. The default behavior is to pass the same prompt to each. But it is possible to pass a different prompt for each text-encoder, as [some users](https://github.com/huggingface/diffusers/issues/4004#issuecomment-1627764201) noted that it can boost quality.
+To do so, you can pass `prompt_2` and `negative_prompt_2` in addition to `prompt` and `negative_prompt`. By doing that, you will pass the original prompts and negative prompts (as in `prompt` and `negative_prompt`) to `text_encoder` (in official SDXL 0.9/1.0 that is [OpenAI CLIP-ViT/L-14](https://huggingface.co/openai/clip-vit-large-patch14)),
+and `prompt_2` and `negative_prompt_2` to `text_encoder_2` (in official SDXL 0.9/1.0 that is [OpenCLIP-ViT/bigG-14](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
+
+```py
+from diffusers import StableDiffusionXLPipeline
+import torch
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+pipe.to("cuda")
+
+# prompt will be passed to OAI CLIP-ViT/L-14
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+# prompt_2 will be passed to OpenCLIP-ViT/bigG-14
+prompt_2 = "monet painting"
+image = pipe(prompt=prompt, prompt_2=prompt_2).images[0]
+```
