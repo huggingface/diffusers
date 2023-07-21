@@ -403,32 +403,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -457,25 +431,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -1037,7 +992,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         )
 
         # 4. Preprocess image
-        image = preprocess(image).repeat_interleave(num_maps_per_mask, dim=0)
+        image = self.image_processor.preprocess(image).repeat_interleave(num_maps_per_mask, dim=0)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1221,7 +1176,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = self.image_processor.preprocess(image)
 
         # 4. Prepare latent variables
         num_images_per_prompt = 1
@@ -1246,9 +1201,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 7. Noising loop where we obtain the intermediate noised latent image for each timestep.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
-        inverted_latents = [latents.detach().clone()]
-        with self.progress_bar(total=num_inference_steps - 1) as progress_bar:
-            for i, t in enumerate(timesteps[:-1]):
+        inverted_latents = []
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
@@ -1315,7 +1270,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         # 8. Post-processing
         image = None
         if decode_latents:
-            image = self.decode_latents(latents.flatten(0, 1).detach())
+            image = self.decode_latents(latents.flatten(0, 1))
 
         # 9. Convert to PIL.
         if decode_latents and output_type == "pil":
@@ -1336,7 +1291,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        image_latents: torch.FloatTensor = None,
+        image_latents: Union[torch.FloatTensor, PIL.Image.Image] = None,
         inpaint_strength: Optional[float] = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
@@ -1492,7 +1447,13 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
 
         # 6. Preprocess image latents
-        image_latents = preprocess(image_latents)
+        if isinstance(image_latents, list) and any(isinstance(l, torch.Tensor) and l.ndim == 5 for l in image_latents):
+            image_latents = torch.cat(image_latents).detach()
+        elif isinstance(image_latents, torch.Tensor) and image_latents.ndim == 5:
+            image_latents = image_latents.detach()
+        else:
+            image_latents = self.image_processor.preprocess(image_latents).detach()
+
         latent_shape = (self.vae.config.latent_channels, latent_height, latent_width)
         if image_latents.shape[-3:] != latent_shape:
             raise ValueError(
@@ -1503,8 +1464,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             image_latents = image_latents.reshape(batch_size, len(timesteps), *latent_shape)
         if image_latents.shape[:2] != (batch_size, len(timesteps)):
             raise ValueError(
-                f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)} timesteps, "
-                f"but has batch size {image_latents.shape[0]} with latent images from {image_latents.shape[1]} timesteps."
+                f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)}"
+                f" timesteps, but has batch size {image_latents.shape[0]} with latent images from"
+                f" {image_latents.shape[1]} timesteps."
             )
         image_latents = image_latents.transpose(0, 1).repeat_interleave(num_images_per_prompt, dim=1)
         image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
@@ -1513,7 +1475,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 8. Denoising loop
-        latents = image_latents[0].detach().clone()
+        latents = image_latents[0].clone()
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):

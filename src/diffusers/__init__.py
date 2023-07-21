@@ -36,10 +36,13 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
     from .models import (
+        AsymmetricAutoencoderKL,
         AutoencoderKL,
         ControlNetModel,
         ModelMixin,
+        MultiAdapter,
         PriorTransformer,
+        T2IAdapter,
         T5FilmDecoder,
         Transformer2DModel,
         UNet1DModel,
@@ -151,6 +154,7 @@ else:
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
         ShapEPipeline,
+        StableDiffusionAdapterPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
@@ -195,7 +199,12 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
 else:
-    from .pipelines import StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline
+    from .pipelines import (
+        StableDiffusionXLControlNetPipeline,
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLPipeline,
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):

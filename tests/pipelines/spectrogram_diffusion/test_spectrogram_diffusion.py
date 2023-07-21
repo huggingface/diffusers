@@ -48,7 +48,7 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         "num_images_per_prompt",
     }
     test_attention_slicing = False
-    test_cpu_offload = False
+
     batch_params = TOKENS_TO_AUDIO_GENERATION_PARAMS
     params = TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS
 

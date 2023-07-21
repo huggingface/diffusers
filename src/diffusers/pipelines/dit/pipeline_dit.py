@@ -121,13 +121,13 @@ class DiTPipeline(DiffusionPipeline):
         latents = randn_tensor(
             shape=(batch_size, latent_channels, latent_size, latent_size),
             generator=generator,
-            device=self.device,
+            device=self._execution_device,
             dtype=self.transformer.dtype,
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
-        class_labels = torch.tensor(class_labels, device=self.device).reshape(-1)
-        class_null = torch.tensor([1000] * batch_size, device=self.device)
+        class_labels = torch.tensor(class_labels, device=self._execution_device).reshape(-1)
+        class_null = torch.tensor([1000] * batch_size, device=self._execution_device)
         class_labels_input = torch.cat([class_labels, class_null], 0) if guidance_scale > 1 else class_labels
 
         # set step values
