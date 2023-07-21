@@ -167,7 +167,7 @@ class Attention(nn.Module):
     ):
         is_lora = hasattr(self, "processor") and isinstance(
             self.processor,
-            (LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor),
+            LORA_ATTENTION_PROCESSORS,
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)
@@ -1622,6 +1622,13 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
 ]
+
+LORA_ATTENTION_PROCESSORS = (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+)
 
 
 class SpatialNorm(nn.Module):
