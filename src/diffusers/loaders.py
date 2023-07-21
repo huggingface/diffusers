@@ -816,7 +816,8 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
@@ -831,8 +832,7 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-
-            kwargs:
+            kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -1171,10 +1171,10 @@ class LoraLoaderMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes 🤗 Transformers.
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1353,7 +1353,7 @@ class FromSingleFileMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
@@ -1367,7 +1367,7 @@ class FromSingleFileMixin:
                 weights. If set to `False`, safetensors weights are not loaded.
             extract_ema (`bool`, *optional*, defaults to `False`):
                 Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better to continue finetuning.
+                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
             image_size (`int`, *optional*, defaults to 512):
@@ -1377,23 +1377,19 @@ class FromSingleFileMixin:
                 The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
                 the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
             num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it will be automatically inferred.
+                The number of input channels. If `None`, it is automatically inferred.
             scheduler_type (`str`, *optional*, defaults to `"pndm"`):
                 Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use, specifically the
+                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
+                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
+                of `CLIPTokenizer` by itself if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`

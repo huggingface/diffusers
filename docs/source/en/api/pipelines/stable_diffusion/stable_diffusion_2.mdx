@@ -10,36 +10,40 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Stable diffusion 2
+# Stable Diffusion 2
 
-Stable Diffusion 2 is a text-to-image _latent diffusion_ model built upon the work of [Stable Diffusion 1](https://stability.ai/blog/stable-diffusion-public-release). 
-The project to train Stable Diffusion 2 was led by Robin Rombach and Katherine Crowson from [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/).
+Stable Diffusion 2 is a text-to-image _latent diffusion_ model built upon the work of the original [Stable Diffusion](https://stability.ai/blog/stable-diffusion-public-release), and it was led by Robin Rombach and Katherine Crowson from [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/).
 
 *The Stable Diffusion 2.0 release includes robust text-to-image models trained using a brand new text encoder (OpenCLIP), developed by LAION with support from Stability AI, which greatly improves the quality of the generated images compared to earlier V1 releases. The text-to-image models in this release can generate images with default resolutions of both 512x512 pixels and 768x768 pixels. 
 These models are trained on an aesthetic subset of the [LAION-5B dataset](https://laion.ai/blog/laion-5b/) created by the DeepFloyd team at Stability AI, which is then further filtered to remove adult content using [LAION’s NSFW filter](https://openreview.net/forum?id=M3Y74vmsMcY).*
 
-For more details about how Stable Diffusion 2 works and how it differs from Stable Diffusion 1, please refer to the official [launch announcement post](https://stability.ai/blog/stable-diffusion-v2-release).
+For more details about how Stable Diffusion 2 works and how it differs from the original Stable Diffusion, please refer to the official [announcement post](https://stability.ai/blog/stable-diffusion-v2-release).
 
-## Tips
+The architecture of Stable Diffusion 2 is more or less identical to the original [Stable Diffusion model](./text2img) so check out it's API documentation for how to use Stable Diffusion 2. We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest scheduler.
 
-### Available checkpoints:
+Stable Diffusion 2 is available for tasks like text-to-image, inpainting, super-resolution, and depth-to-image:
 
-Note that the architecture is more or less identical to [Stable Diffusion 1](./stable_diffusion/overview) so please refer to [this page](./stable_diffusion/overview) for API documentation.
+| Task                    | Repository                                                                                                    |
+|-------------------------|---------------------------------------------------------------------------------------------------------------|
+| text-to-image (512x512) | [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base)             |
+| text-to-image (768x768) | [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2)                       |
+| inpainting              | [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) |
+| super-resolution        | [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler)               |
+| depth-to-image          | [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth)           |
 
-- *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
-- *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
-- *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
-- *Super-Resolution (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
-- *Depth-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) with [`StableDiffusionDepth2ImagePipeline`]
+Here are some examples for how to use Stable Diffusion 2 for each task:
 
-We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest scheduler there is.
+<Tip>
 
+Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently! 
 
-### Text-to-Image
+If you're interested in using one of the official checkpoints for a task, explore the [CompVis](https://huggingface.co/CompVis), [Runway](https://huggingface.co/runwayml), and [Stability AI](https://huggingface.co/stabilityai) Hub organizations!
 
-- *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
+</Tip>
 
-```python
+## Text-to-image
+
+```py
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 import torch
 
@@ -54,86 +58,9 @@ image = pipe(prompt, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
-- *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
-
-```python
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
-import torch
-
-repo_id = "stabilityai/stable-diffusion-2"
-pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, revision="fp16")
-
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
-
-prompt = "High quality photo of an astronaut riding a horse in space"
-image = pipe(prompt, guidance_scale=9, num_inference_steps=25).images[0]
-image.save("astronaut.png")
-```
-
-#### Experimental: "Common Diffusion Noise Schedules and Sample Steps are Flawed": 
-
-The paper **[Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/abs/2305.08891)** 
-claims that a mismatch between the training and inference settings leads to suboptimal inference generation results for Stable Diffusion.
-
-The abstract reads as follows:
-
-*We discover that common diffusion noise schedules do not enforce the last timestep to have zero signal-to-noise ratio (SNR),
-and some implementations of diffusion samplers do not start from the last timestep.
-Such designs are flawed and do not reflect the fact that the model is given pure Gaussian noise at inference, creating a discrepancy between training and inference.
-We show that the flawed design causes real problems in existing implementations. 
-In Stable Diffusion, it severely limits the model to only generate images with medium brightness and 
-prevents it from generating very bright and dark samples. We propose a few simple fixes: 
-- (1) rescale the noise schedule to enforce zero terminal SNR; 
-- (2) train the model with v prediction; 
-- (3) change the sampler to always start from the last timestep; 
-- (4) rescale classifier-free guidance to prevent over-exposure. 
-These simple changes ensure the diffusion process is congruent between training and inference and 
-allow the model to generate samples more faithful to the original data distribution.*
-
-You can apply all of these changes in `diffusers` when using [`DDIMScheduler`]:
-- (1) rescale the noise schedule to enforce zero terminal SNR; 
-```py
-pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, rescale_betas_zero_snr=True)
-```
-- (2) train the model with v prediction; 
-Continue fine-tuning a checkpoint with [`train_text_to_image.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) or [`train_text_to_image_lora.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)
-and `--prediction_type="v_prediction"`.
-- (3) change the sampler to always start from the last timestep; 
-```py
-pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-```
-- (4) rescale classifier-free guidance to prevent over-exposure. 
-```py
-pipe(..., guidance_rescale=0.7)
-```
-
-An example is to use [this checkpoint](https://huggingface.co/ptx0/pseudo-journey-v2) 
-which has been fine-tuned using the `"v_prediction"`.
-
-The checkpoint can then be run in inference as follows:
+## Inpainting
 
 ```py
-from diffusers import DiffusionPipeline, DDIMScheduler
-
-pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", torch_dtype=torch.float16)
-pipe.scheduler = DDIMScheduler.from_config(
-    pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-)
-pipe.to("cuda")
-
-prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
-image = pipeline(prompt, guidance_rescale=0.7).images[0]
-```
-
-## DDIMScheduler
-[[autodoc]] DDIMScheduler
-
-### Image Inpainting
-
-- *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
-
-```python
 import PIL
 import requests
 import torch
@@ -165,12 +92,9 @@ image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inferen
 image.save("yellow_cat.png")
 ```
 
-### Super-Resolution
+## Super-resolution
 
-- *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) with [`StableDiffusionUpscalePipeline`]
-
-
-```python
+```py
 import requests
 from PIL import Image
 from io import BytesIO
@@ -192,12 +116,9 @@ upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
 upscaled_image.save("upsampled_cat.png")
 ```
 
-### Depth-to-Image
+## Depth-to-image
 
-- *Depth-Guided Text-to-Image*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) [`StableDiffusionDepth2ImagePipeline`]
-
-
-```python
+```py
 import torch
 import requests
 from PIL import Image
@@ -215,20 +136,4 @@ init_image = Image.open(requests.get(url, stream=True).raw)
 prompt = "two tigers"
 n_propmt = "bad, deformed, ugly, bad anotomy"
 image = pipe(prompt=prompt, image=init_image, negative_prompt=n_propmt, strength=0.7).images[0]
-```
-
-### How to load and use different schedulers.
-
-The stable diffusion pipeline uses [`DDIMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
-To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
-
-```python
->>> from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
-
->>> pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2")
->>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-
->>> # or
->>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("stabilityai/stable-diffusion-2", subfolder="scheduler")
->>> pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", scheduler=euler_scheduler)
 ```
