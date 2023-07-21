@@ -106,7 +106,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "ruff>=0.0.241",
-    "safetensors",
+    "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "onnx",
@@ -227,6 +227,7 @@ install_requires = [
     deps["numpy"],
     deps["regex"],
     deps["requests"],
+    deps["safetensors"],
     deps["Pillow"],
 ]
 
