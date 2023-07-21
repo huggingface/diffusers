@@ -75,10 +75,11 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         original_config = dict(pipe.config)
 
-        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
-        assert dict(pipe.config) == original_config
 
         pipe = AutoPipelineForText2Image.from_pipe(pipe)
+        assert dict(pipe.config) == original_config
+        
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
         assert dict(pipe.config) == original_config
 
 
