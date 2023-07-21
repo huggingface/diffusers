@@ -712,7 +712,9 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                source_latent_model_input = torch.cat([source_latents] * 2) if do_classifier_free_guidance else source_latents
+                source_latent_model_input = (
+                    torch.cat([source_latents] * 2) if do_classifier_free_guidance else source_latents
+                )
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
@@ -761,25 +763,20 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
 
                 # perform guidance
                 if do_classifier_free_guidance:
-
                     (
                         source_noise_pred_uncond,
                         noise_pred_uncond,
                         source_noise_pred_text,
                         noise_pred_text,
                     ) = concat_noise_pred.chunk(4, dim=0)
-                    
+
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
                         source_noise_pred_text - source_noise_pred_uncond
                     )
 
-                else: 
-                    (
-                        source_noise_pred,
-                        noise_pred
-                    ) = concat_noise_pred.chunk(2, dim=0)
-
+                else:
+                    (source_noise_pred, noise_pred) = concat_noise_pred.chunk(2, dim=0)
 
                 # Sample source_latents from the posterior distribution.
                 prev_source_latents = posterior_sample(
