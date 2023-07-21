@@ -209,7 +209,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
 
-        dtype = text_encoder_hidden_states.dtype
+        dtype = predicted_image_embeddings.dtype
         latent_height = int(predicted_image_embeddings.size(2) * (256 / 24))
         latent_width = int(predicted_image_embeddings.size(3) * (256 / 24))
         effnet_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
@@ -235,7 +235,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 effnet=torch.cat([predicted_image_embeddings, torch.zeros_like(predicted_image_embeddings)])
                 if do_classifier_free_guidance
                 else predicted_image_embeddings,
-                clip=text_encoder_hidden_states,
+                clip=None,
             )
 
             if do_classifier_free_guidance:

@@ -32,11 +32,13 @@ class Attention2D(nn.Module):
         super().__init__()
         self.attn = nn.MultiheadAttention(c, nhead, dropout=dropout, bias=True, batch_first=True)
 
-    def forward(self, x, kv, self_attn=False):
+    def forward(self, x, kv=None, self_attn=False):
         orig_shape = x.shape
         x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)  # Bx4xHxW -> Bx(HxW)x4
-        if self_attn:
+        if self_attn and kv is not None:
             kv = torch.cat([x, kv], dim=1)
+        elif kv is None:
+            kv = x
         x = self.attn(x, kv, kv, need_weights=False)[0]
         x = x.permute(0, 2, 1).view(*orig_shape)
         return x
@@ -103,8 +105,9 @@ class AttnBlock(nn.Module):
         self.attention = Attention2D(c, nhead, dropout)
         self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
-    def forward(self, x, kv):
-        kv = self.kv_mapper(kv)
+    def forward(self, x, kv=None):
+        if kv is not None:
+            kv = self.kv_mapper(kv)
         x = x + self.attention(self.norm(x), kv, self_attn=self.self_attn)
         return x
 
@@ -114,6 +117,7 @@ class EfficientNetEncoder(ModelMixin, ConfigMixin):
     def __init__(self, c_latent=16, effnet="efficientnet_v2_s"):
         super().__init__()
         from torchvision.models import efficientnet_v2_l, efficientnet_v2_s  # can't use `torchvision`
+
         if effnet == "efficientnet_v2_s":
             self.backbone = efficientnet_v2_s(weights="DEFAULT").features.eval()
         else:
@@ -262,7 +266,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
         clip = self.seq_norm(clip)
         return clip
 
-    def _down_encode(self, x, r_embed, effnet, clip):
+    def _down_encode(self, x, r_embed, effnet, clip=None):
         level_outputs = []
         for i, down_block in enumerate(self.down_blocks):
             effnet_c = None
@@ -286,7 +290,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             level_outputs.insert(0, x)
         return level_outputs
 
-    def _up_decode(self, level_outputs, r_embed, effnet, clip):
+    def _up_decode(self, level_outputs, r_embed, effnet, clip=None):
         x = level_outputs[0]
         for i, up_block in enumerate(self.up_blocks):
             effnet_c = None
@@ -314,12 +318,13 @@ class DiffNeXt(ModelMixin, ConfigMixin):
                     x = block(x)
         return x
 
-    def forward(self, x, r, effnet, clip, x_cat=None, eps=1e-3, return_noise=True):
+    def forward(self, x, r, effnet, clip=None, x_cat=None, eps=1e-3, return_noise=True):
         if x_cat is not None:
             x = torch.cat([x, x_cat], dim=1)
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
-        clip = self.gen_c_embeddings(clip)
+        if clip is not None:
+            clip = self.gen_c_embeddings(clip)
 
         # Model Blocks
         x_in = x
