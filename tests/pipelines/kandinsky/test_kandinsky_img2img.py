@@ -22,7 +22,14 @@ import torch
 from PIL import Image
 from transformers import XLMRobertaTokenizerFast
 
-from diffusers import DDIMScheduler, DDPMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    KandinskyImg2ImgPipeline,
+    KandinskyPriorPipeline,
+    UNet2DConditionModel,
+    VQModel,
+)
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
@@ -379,4 +386,3 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (768, 768, 3)
 
         assert_mean_pixel_difference(image, expected_image)
-

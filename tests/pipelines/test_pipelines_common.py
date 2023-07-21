@@ -771,7 +771,7 @@ class PipelineTesterMixin:
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
-    
+
     def test_cfg(self):
         sig = inspect.signature(self.pipeline_class.__call__)
 
@@ -784,14 +784,15 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        
-        inputs["guidance_scale"] =1.0
+
+        inputs["guidance_scale"] = 1.0
         out_no_cfg = pipe(**inputs)[0]
-        
-        inputs["guidance_scale"] =7.5
+
+        inputs["guidance_scale"] = 7.5
         out_cfg = pipe(**inputs)[0]
 
-        assert out_cfg.shape == out_no_cfg.shape        
+        assert out_cfg.shape == out_no_cfg.shape
+
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
 # This helper function is used to check that the image doesn't deviate on average more than 10 pixels from a
