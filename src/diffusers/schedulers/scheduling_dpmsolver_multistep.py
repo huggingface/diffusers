@@ -15,6 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 import math
+from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -274,11 +275,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.from_numpy(sigmas)
 
-        # when num_inference_steps == num_train_timesteps, we can end up with
-        # duplicates in timesteps.
-        _, unique_indices = np.unique(timesteps, return_index=True)
-        timesteps = timesteps[np.sort(unique_indices)]
-
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
         self.num_inference_steps = len(timesteps)
@@ -287,6 +283,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             None,
         ] * self.config.solver_order
         self.lower_order_nums = 0
+
+        # add an index counter for schedulers that allow duplicated timesteps
+        self._index_counter = defaultdict(int)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -660,11 +659,25 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero()
-        if len(step_index) == 0:
+        indices = (self.timesteps == timestep).nonzero()
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+
+        if len(indices) == 0:
             step_index = len(self.timesteps) - 1
         else:
-            step_index = step_index.item()
+            # The sigma index that is taken for the **very** first `step`
+            # is always the second index (or the last index if there is only 1)
+            # This way we can ensure we don't accidentally skip a sigma in
+            # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+            if len(self._index_counter) == 0:
+                pos = 1 if len(indices) > 1 else 0
+            else:
+                pos = self._index_counter[timestep_int]
+            step_index = indices[pos].item()
+
+        # advance index counter by 1
+        self._index_counter[timestep_int] += 1
+
         prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
         lower_order_final = (
             (step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
