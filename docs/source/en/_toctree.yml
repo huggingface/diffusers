@@ -117,8 +117,6 @@
     title: Habana Gaudi
   - local: optimization/tome
     title: Token Merging
-  - local: optimization/bentoml
-    title: BentoML Integration
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -166,6 +164,8 @@
       title: VQModel
     - local: api/models/autoencoderkl
       title: AutoencoderKL
+    - local: api/models/asymmetricautoencoderkl
+      title: AsymmetricAutoencoderKL
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
@@ -181,7 +181,7 @@
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/attend_and_excite
-      title: Attend and Excite
+      title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
     - local: api/pipelines/audioldm
@@ -211,7 +211,7 @@
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
-      title: MultiDiffusion Panorama
+      title: MultiDiffusion
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
@@ -236,15 +236,15 @@
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
       - local: api/pipelines/stable_diffusion/text2img
-        title: Text-to-Image
+        title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
-        title: Image-to-Image
+        title: Image-to-image
       - local: api/pipelines/stable_diffusion/inpaint
-        title: Inpaint
+        title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
-        title: Depth-to-Image
+        title: Depth-to-image
       - local: api/pipelines/stable_diffusion/image_variation
-        title: Image-Variation
+        title: Image variation
       - local: api/pipelines/stable_diffusion/stable_diffusion_safe
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
@@ -252,9 +252,9 @@
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler
+        title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
-        title: Super-Resolution
+        title: Super-resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
@@ -265,11 +265,11 @@
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
     - local: api/pipelines/model_editing
-      title: Text-to-Image Model Editing
+      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
-      title: Text-to-Video
+      title: Text-to-video
     - local: api/pipelines/text_to_video_zero
-      title: Text-to-Video Zero
+      title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond

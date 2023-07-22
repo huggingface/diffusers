@@ -14,15 +14,19 @@
 import os
 import warnings
 from collections import defaultdict
+from contextlib import nullcontext
+from io import BytesIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import requests
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .models.attention_processor import (
+    LORA_ATTENTION_PROCESSORS,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     AttnProcessor,
@@ -42,10 +46,13 @@ from .utils import (
     HF_HUB_OFFLINE,
     _get_model_file,
     deprecate,
+    is_accelerate_available,
+    is_omegaconf_available,
     is_safetensors_available,
     is_transformers_available,
     logging,
 )
+from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_safetensors_available():
@@ -54,6 +61,9 @@ if is_safetensors_available():
 if is_transformers_available():
     from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
 
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
 
@@ -806,7 +816,8 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
@@ -821,8 +832,7 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-
-            kwargs:
+            kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -1161,10 +1171,10 @@ class LoraLoaderMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes 🤗 Transformers.
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1284,22 +1294,21 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        is_unet_lora = all(
-            isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor, LoRAAttnAddedKVProcessor))
-            for _, processor in self.unet.attn_processors.items()
-        )
-        # Handle attention processors that are a mix of regular attention and AddedKV
-        # attention.
-        if is_unet_lora:
-            is_attn_procs_mixed = all(
-                isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor))
-                for _, processor in self.unet.attn_processors.items()
-            )
-            if not is_attn_procs_mixed:
-                unet_attn_proc_cls = AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                self.unet.set_attn_processor(unet_attn_proc_cls())
-            else:
+        unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
+
+        if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
+            # Handle attention processors that are a mix of regular attention and AddedKV
+            # attention.
+            if len(unet_attention_classes) > 1 or LoRAAttnAddedKVProcessor in unet_attention_classes:
                 self.unet.set_default_attn_processor()
+            else:
+                regular_attention_classes = {
+                    LoRAAttnProcessor: AttnProcessor,
+                    LoRAAttnProcessor2_0: AttnProcessor2_0,
+                    LoRAXFormersAttnProcessor: XFormersAttnProcessor,
+                }
+                [attention_proc_class] = unet_attention_classes
+                self.unet.set_attn_processor(regular_attention_classes[attention_proc_class]())
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -1319,8 +1328,8 @@ class FromSingleFileMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
-        is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
+        format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1344,7 +1353,7 @@ class FromSingleFileMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
@@ -1358,7 +1367,7 @@ class FromSingleFileMixin:
                 weights. If set to `False`, safetensors weights are not loaded.
             extract_ema (`bool`, *optional*, defaults to `False`):
                 Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better to continue finetuning.
+                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
             image_size (`int`, *optional*, defaults to 512):
@@ -1368,23 +1377,19 @@ class FromSingleFileMixin:
                 The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
                 the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
             num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it will be automatically inferred.
+                The number of input channels. If `None`, it is automatically inferred.
             scheduler_type (`str`, *optional*, defaults to `"pndm"`):
                 Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use, specifically the
+                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
+                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
+                of `CLIPTokenizer` by itself if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1430,6 +1435,7 @@ class FromSingleFileMixin:
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
         text_encoder = kwargs.pop("text_encoder", None)
+        controlnet = kwargs.pop("controlnet", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -1446,11 +1452,18 @@ class FromSingleFileMixin:
         # TODO: For now we only support stable diffusion
         stable_unclip = None
         model_type = None
-        controlnet = False
 
-        if pipeline_name == "StableDiffusionControlNetPipeline":
+        if pipeline_name in [
+            "StableDiffusionControlNetPipeline",
+            "StableDiffusionControlNetImg2ImgPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
+        ]:
+            from .models.controlnet import ControlNetModel
+            from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
+
             # Model type will be inferred from the checkpoint.
-            controlnet = True
+            if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
+                raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
             pass
@@ -1519,3 +1532,339 @@ class FromSingleFileMixin:
             pipe.to(torch_dtype=torch_dtype)
 
         return pipe
+
+
+class FromOriginalVAEMixin:
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        r"""
+        Instantiate a [`AutoencoderKL`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is format. The pipeline is set in evaluation mode (`model.eval()`) by
+        default.
+
+        Parameters:
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
+                dtype is automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won't be downloaded from the Hub.
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            upcast_attention (`bool`, *optional*, defaults to `None`):
+                Whether the attention computation should always be upcasted.
+            scaling_factor (`float`, *optional*, defaults to 0.18215):
+                The component-wise standard deviation of the trained latent space computed using the first batch of the
+                training set. This is used to scale the latent space to have unit variance when training the diffusion
+                model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+                diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
+                = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
+                Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (for example the pipeline components of the
+                specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
+                method. See example below for more information.
+
+        <Tip warning={true}>
+
+            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you want to load
+            a VAE that does accompany a stable diffusion model of v2 or higher or SDXL.
+
+        </Tip>
+
+        Examples:
+
+        ```py
+        from diffusers import AutoencoderKL
+
+        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"  # can also be local file
+        model = AutoencoderKL.from_single_file(url)
+        ```
+        """
+        if not is_omegaconf_available():
+            raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
+
+        from omegaconf import OmegaConf
+
+        from .models import AutoencoderKL
+
+        # import here to avoid circular dependency
+        from .pipelines.stable_diffusion.convert_from_ckpt import (
+            convert_ldm_vae_checkpoint,
+            create_vae_diffusers_config,
+        )
+
+        config_file = kwargs.pop("config_file", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        image_size = kwargs.pop("image_size", None)
+        scaling_factor = kwargs.pop("scaling_factor", None)
+        kwargs.pop("upcast_attention", None)
+
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+
+        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
+        from_safetensors = file_extension == "safetensors"
+
+        if from_safetensors and use_safetensors is False:
+            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+        # remove huggingface url
+        for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
+            if pretrained_model_link_or_path.startswith(prefix):
+                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+
+        # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
+        ckpt_path = Path(pretrained_model_link_or_path)
+        if not ckpt_path.is_file():
+            # get repo_id and (potentially nested) file path of ckpt in repo
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
+
+            if file_path.startswith("blob/"):
+                file_path = file_path[len("blob/") :]
+
+            if file_path.startswith("main/"):
+                file_path = file_path[len("main/") :]
+
+            pretrained_model_link_or_path = hf_hub_download(
+                repo_id,
+                filename=file_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                force_download=force_download,
+            )
+
+        if from_safetensors:
+            from safetensors import safe_open
+
+            checkpoint = {}
+            with safe_open(pretrained_model_link_or_path, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    checkpoint[key] = f.get_tensor(key)
+        else:
+            checkpoint = torch.load(pretrained_model_link_or_path, map_location="cpu")
+
+        if "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
+        if config_file is None:
+            config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+            config_file = BytesIO(requests.get(config_url).content)
+
+        original_config = OmegaConf.load(config_file)
+
+        # default to sd-v1-5
+        image_size = image_size or 512
+
+        vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+        converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
+
+        if scaling_factor is None:
+            if (
+                "model" in original_config
+                and "params" in original_config.model
+                and "scale_factor" in original_config.model.params
+            ):
+                vae_scaling_factor = original_config.model.params.scale_factor
+            else:
+                vae_scaling_factor = 0.18215  # default SD scaling factor
+
+        vae_config["scaling_factor"] = vae_scaling_factor
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            vae = AutoencoderKL(**vae_config)
+
+        if is_accelerate_available():
+            for param_name, param in converted_vae_checkpoint.items():
+                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        else:
+            vae.load_state_dict(converted_vae_checkpoint)
+
+        if torch_dtype is not None:
+            vae.to(torch_dtype=torch_dtype)
+
+        return vae
+
+
+class FromOriginalControlnetMixin:
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        r"""
+        Instantiate a [`ControlNetModel`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+        Parameters:
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
+                dtype is automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won't be downloaded from the Hub.
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
+            upcast_attention (`bool`, *optional*, defaults to `None`):
+                Whether the attention computation should always be upcasted.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (for example the pipeline components of the
+                specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
+                method. See example below for more information.
+
+        Examples:
+
+        ```py
+        from diffusers import StableDiffusionControlnetPipeline, ControlNetModel
+
+        url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
+        model = ControlNetModel.from_single_file(url)
+
+        url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
+        pipe = StableDiffusionControlnetPipeline.from_single_file(url, controlnet=controlnet)
+        ```
+        """
+        # import here to avoid circular dependency
+        from .pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
+
+        config_file = kwargs.pop("config_file", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        num_in_channels = kwargs.pop("num_in_channels", None)
+        use_linear_projection = kwargs.pop("use_linear_projection", None)
+        revision = kwargs.pop("revision", None)
+        extract_ema = kwargs.pop("extract_ema", False)
+        image_size = kwargs.pop("image_size", None)
+        upcast_attention = kwargs.pop("upcast_attention", None)
+
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+
+        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
+        from_safetensors = file_extension == "safetensors"
+
+        if from_safetensors and use_safetensors is False:
+            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+        # remove huggingface url
+        for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
+            if pretrained_model_link_or_path.startswith(prefix):
+                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+
+        # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
+        ckpt_path = Path(pretrained_model_link_or_path)
+        if not ckpt_path.is_file():
+            # get repo_id and (potentially nested) file path of ckpt in repo
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
+
+            if file_path.startswith("blob/"):
+                file_path = file_path[len("blob/") :]
+
+            if file_path.startswith("main/"):
+                file_path = file_path[len("main/") :]
+
+            pretrained_model_link_or_path = hf_hub_download(
+                repo_id,
+                filename=file_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                force_download=force_download,
+            )
+
+        if config_file is None:
+            config_url = "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml"
+            config_file = BytesIO(requests.get(config_url).content)
+
+        image_size = image_size or 512
+
+        controlnet = download_controlnet_from_original_ckpt(
+            pretrained_model_link_or_path,
+            original_config_file=config_file,
+            image_size=image_size,
+            extract_ema=extract_ema,
+            num_in_channels=num_in_channels,
+            upcast_attention=upcast_attention,
+            from_safetensors=from_safetensors,
+            use_linear_projection=use_linear_projection,
+        )
+
+        if torch_dtype is not None:
+            controlnet.to(torch_dtype=torch_dtype)
+
+        return controlnet

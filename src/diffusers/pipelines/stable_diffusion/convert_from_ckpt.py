@@ -621,8 +621,8 @@ def convert_ldm_unet_checkpoint(
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
-    vae_key = "first_stage_model."
     keys = list(checkpoint.keys())
+    vae_key = "first_stage_model." if any(k.startswith("first_stage_model.") for k in keys) else ""
     for key in keys:
         if key.startswith(vae_key):
             vae_state_dict[key.replace(vae_key, "")] = checkpoint.get(key)
@@ -931,7 +931,7 @@ def convert_open_clip_checkpoint(
             continue
         if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
-                value = checkpoint[key].T
+                value = checkpoint[key].T.contiguous()
             else:
                 value = checkpoint[key]
 
@@ -1064,7 +1064,7 @@ def convert_controlnet_checkpoint(
     if cross_attention_dim is not None:
         ctrlnet_config["cross_attention_dim"] = cross_attention_dim
 
-    controlnet_model = ControlNetModel(**ctrlnet_config)
+    controlnet = ControlNetModel(**ctrlnet_config)
 
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
@@ -1082,9 +1082,9 @@ def convert_controlnet_checkpoint(
         skip_extract_state_dict=skip_extract_state_dict,
     )
 
-    controlnet_model.load_state_dict(converted_ctrl_checkpoint)
+    controlnet.load_state_dict(converted_ctrl_checkpoint)
 
-    return controlnet_model
+    return controlnet
 
 
 def download_from_original_stable_diffusion_ckpt(
@@ -1176,13 +1176,12 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionXLImg2ImgPipeline,
-        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
 
     if pipeline_class is None:
-        pipeline_class = StableDiffusionPipeline
+        pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
 
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
@@ -1286,11 +1285,8 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 512
 
-    if controlnet is None:
-        controlnet = "control_stage_config" in original_config.model.params
-
-    if controlnet:
-        controlnet_model = convert_controlnet_checkpoint(
+    if controlnet is None and "control_stage_config" in original_config.model.params:
+        controlnet = convert_controlnet_checkpoint(
             checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
         )
 
@@ -1401,13 +1397,13 @@ def download_from_original_stable_diffusion_ckpt(
 
         if stable_unclip is None:
             if controlnet:
-                pipe = StableDiffusionControlNetPipeline(
+                pipe = pipeline_class(
                     vae=vae,
                     text_encoder=text_model,
                     tokenizer=tokenizer,
                     unet=unet,
                     scheduler=scheduler,
-                    controlnet=controlnet_model,
+                    controlnet=controlnet,
                     safety_checker=None,
                     feature_extractor=None,
                     requires_safety_checker=False,
@@ -1504,12 +1500,12 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor = None
 
         if controlnet:
-            pipe = StableDiffusionControlNetPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_model,
                 tokenizer=tokenizer,
                 unet=unet,
-                controlnet=controlnet_model,
+                controlnet=controlnet,
                 scheduler=scheduler,
                 safety_checker=safety_checker,
                 feature_extractor=feature_extractor,
@@ -1536,7 +1532,7 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
             )
 
-            pipe = StableDiffusionXLPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_encoder,
                 tokenizer=tokenizer,
@@ -1624,7 +1620,7 @@ def download_controlnet_from_original_ckpt(
     if "control_stage_config" not in original_config.model.params:
         raise ValueError("`control_stage_config` not present in original config")
 
-    controlnet_model = convert_controlnet_checkpoint(
+    controlnet = convert_controlnet_checkpoint(
         checkpoint,
         original_config,
         checkpoint_path,
@@ -1635,4 +1631,4 @@ def download_controlnet_from_original_ckpt(
         cross_attention_dim=cross_attention_dim,
     )
 
-    return controlnet_model
+    return controlnet

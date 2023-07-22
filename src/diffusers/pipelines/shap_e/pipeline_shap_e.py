@@ -68,11 +68,11 @@ EXAMPLE_DOC_STRING = """
 @dataclass
 class ShapEPipelineOutput(BaseOutput):
     """
-    Output class for ShapEPipeline.
+    Output class for [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`].
 
     Args:
         images (`torch.FloatTensor`)
-            a list of images for 3D rendering
+            A list of images for 3D rendering.
     """
 
     images: Union[List[List[PIL.Image.Image]], List[List[np.ndarray]]]
@@ -80,10 +80,10 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E
+    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         prior ([`PriorTransformer`]):
@@ -91,13 +91,12 @@ class ShapEPipeline(DiffusionPipeline):
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
         tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+             A [`~transformers.CLIPTokenizer`] to tokenize text.
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        renderer ([`ShapERenderer`]):
+        shap_e_renderer ([`ShapERenderer`]):
             Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
-            with the NeRF rendering method
+            with the NeRF rendering method.
     """
 
     def __init__(
@@ -106,7 +105,7 @@ class ShapEPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         scheduler: HeunDiscreteScheduler,
-        renderer: ShapERenderer,
+        shap_e_renderer: ShapERenderer,
     ):
         super().__init__()
 
@@ -115,7 +114,7 @@ class ShapEPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=scheduler,
-            renderer=renderer,
+            shap_e_renderer=shap_e_renderer,
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -132,10 +131,10 @@ class ShapEPipeline(DiffusionPipeline):
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
+        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
+        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
+        iterative execution of the `unet`.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
@@ -149,7 +148,7 @@ class ShapEPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.prior, self.renderer]:
+        for cpu_offloaded_model in [self.text_encoder, self.prior, self.shap_e_renderer]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -218,11 +217,11 @@ class ShapEPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent
+        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`):
@@ -233,30 +232,31 @@ class ShapEPipeline(DiffusionPipeline):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
                 usually at the expense of lower image quality.
             frame_size (`int`, *optional*, default to 64):
-                the width and height of each image frame of the generated 3d output
+                The width and height of each image frame of the generated 3D output.
             output_type (`str`, *optional*, defaults to `"pt"`):
-                The output format of the generate image. Choose between: `"np"` (`np.array`) or `"pt"`
-                (`torch.Tensor`).
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] instead of a plain
+                tuple.
 
         Examples:
 
         Returns:
-            [`ShapEPipelineOutput`] or `tuple`
+            [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images.
         """
 
         if isinstance(prompt, str):
@@ -319,30 +319,39 @@ class ShapEPipeline(DiffusionPipeline):
                 sample=latents,
             ).prev_sample
 
+        if output_type not in ["np", "pil", "latent", "mesh"]:
+            raise ValueError(
+                f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
+            )
+
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
         images = []
-        for i, latent in enumerate(latents):
-            image = self.renderer.decode(
-                latent[None, :],
-                device,
-                size=frame_size,
-                ray_batch_size=4096,
-                n_coarse_samples=64,
-                n_fine_samples=128,
-            )
-            images.append(image)
+        if output_type == "mesh":
+            for i, latent in enumerate(latents):
+                mesh = self.shap_e_renderer.decode_to_mesh(
+                    latent[None, :],
+                    device,
+                )
+                images.append(mesh)
 
-        images = torch.stack(images)
+        else:
+            # np, pil
+            for i, latent in enumerate(latents):
+                image = self.shap_e_renderer.decode_to_image(
+                    latent[None, :],
+                    device,
+                    size=frame_size,
+                )
+                images.append(image)
 
-        if output_type not in ["np", "pil"]:
-            raise ValueError(f"Only the output types `pil` and `np` are supported not output_type={output_type}")
+            images = torch.stack(images)
 
-        images = images.cpu().numpy()
+            images = images.cpu().numpy()
 
-        if output_type == "pil":
-            images = [self.numpy_to_pil(image) for image in images]
+            if output_type == "pil":
+                images = [self.numpy_to_pil(image) for image in images]
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
