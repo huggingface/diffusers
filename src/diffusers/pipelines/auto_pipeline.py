@@ -65,8 +65,8 @@ AUTO_INPAINTING_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionInpaintPipeline),
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
-        ("kandinsky", KandinskyInpaintPipeline),
-        ("kdnsinskyv22", KandinskyV22InpaintPipeline),
+        ("kandinsky-inpaint", KandinskyInpaintPipeline),
+        ("kdnsinskyv22-inpaint", KandinskyV22InpaintPipeline),
         ("controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )
@@ -91,9 +91,7 @@ def _get_task_class(mapping, pipeline_class_name):
         task_class = mapping.get(model_name, None)
         if task_class is not None:
             return task_class
-    raise ValueError(
-        f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name} in {mapping}"
-    )
+    raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
 
 
 def _get_signature_keys(obj):
