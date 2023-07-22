@@ -165,7 +165,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         # forward with prompt embeds
         inputs = self.get_dummy_inputs(torch_device)
-        prompt = 3 * [inputs.pop("prompt")]
+        prompt = 2 * [inputs.pop("prompt")]
 
         (
             prompt_embeds,
