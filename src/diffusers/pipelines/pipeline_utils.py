@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
+from huggingface_hub import ModelCard
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
@@ -78,6 +79,7 @@ INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
+CONNECTED_PIPES_KEYS = ["prior"]
 
 
 logger = logging.get_logger(__name__)
@@ -877,6 +879,7 @@ class DiffusionPipeline(ConfigMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        load_connected_pipes = kwargs.pop("load_connected_pipes", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -895,6 +898,7 @@ class DiffusionPipeline(ConfigMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
+                load_connected_pipes=load_connected_pipes,
                 **kwargs,
             )
         else:
@@ -1233,6 +1237,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        load_connected_pipes = kwargs.pop("load_connected_pipes", False)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1387,6 +1392,9 @@ class DiffusionPipeline(ConfigMixin):
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
+
+        if load_connected_pipes:
+            allow_patterns.append(["README.md"])
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(
