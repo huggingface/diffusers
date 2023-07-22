@@ -149,6 +149,7 @@ else:
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
+        KandinskyV22CombinedPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
