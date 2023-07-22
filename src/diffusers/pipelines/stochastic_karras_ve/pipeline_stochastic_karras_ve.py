@@ -24,17 +24,13 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 class KarrasVePipeline(DiffusionPipeline):
     r"""
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
-    the VE column of Table 1 from [1] for reference.
-
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
-    differential equations." https://arxiv.org/abs/2011.13456
+    Pipeline for unconditional image generation.
 
     Parameters:
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image.
         scheduler ([`KarrasVeScheduler`]):
-            Scheduler for the diffusion process to be used in combination with `unet` to denoise the encoded image.
+            A scheduler to be used in combination with `unet` to denoise the encoded image.
     """
 
     # add type hints for linting
@@ -56,24 +52,28 @@ class KarrasVePipeline(DiffusionPipeline):
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
             generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
+
+        Example:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
 
         img_size = self.unet.config.sample_size
