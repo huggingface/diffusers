@@ -154,13 +154,24 @@ class AutoPipelineForText2Image(ConfigMixin):
             if k in optional_kwargs and k not in passed_pipe_kwargs
         }
 
-        unused_original_config = {
-            k: original_config[k]
-            for k, v in original_config.items()
-            if k not in optional_kwargs and k not in passed_pipe_kwargs
-        }
+        # config that were not expected by original pipeline is stored as private attribute
+        # we will pass them as optional arguments if they can be accepted by the pipeline
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
 
         text_2_image_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        # store unused config as private attribute
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": original_config[k]
+            for k, v in original_config.items()
+            if k not in text_2_image_kwargs
+        }
 
         missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(text_2_image_kwargs.keys())
 
@@ -226,7 +237,24 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if k in optional_kwargs and k not in passed_pipe_kwargs
         }
 
+        # config attribute that were not expected by original pipeline is stored as its private attribute
+        # we will pass them as optional arguments if they can be accepted by the pipeline
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
+
         image_2_image_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        # store unused config as private attribute
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": original_config[k]
+            for k, v in original_config.items()
+            if k not in image_2_image_kwargs
+        }
 
         missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(image_2_image_kwargs.keys())
 
@@ -237,6 +265,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         model = image_2_image_cls(**image_2_image_kwargs)
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(**unused_original_config)
 
         return model
 
@@ -291,7 +320,24 @@ class AutoPipelineForInpainting(ConfigMixin):
             if k in optional_kwargs and k not in passed_pipe_kwargs
         }
 
+        # config that were not expected by original pipeline is stored as private attribute
+        # we will pass them as optional arguments if they can be accepted by the pipeline
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
+
         inpainting_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        # store unused config as private attribute
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": original_config[k]
+            for k, v in original_config.items()
+            if k not in inpainting_kwargs
+        }
 
         missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(inpainting_kwargs.keys())
 
@@ -302,5 +348,6 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         model = inpainting_cls(**inpainting_kwargs)
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(**unused_original_config)
 
         return model
