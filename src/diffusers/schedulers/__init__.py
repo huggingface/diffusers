@@ -53,6 +53,7 @@ else:
     from .scheduling_unipc_multistep import UniPCMultistepScheduler
     from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
+    from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
 
 try:
     if not is_flax_available():

@@ -80,8 +80,7 @@ class Diffuzz():
 
     def sample(self, model, model_inputs, shape, mask=None, t_start=1.0, t_end=0.0, timesteps=20, x_init=None, cfg=3.0,
                unconditional_inputs=None, sampler='ddpm', half=False):
-        r_range = torch.linspace(t_start, t_end, timesteps + 1)[:, None].expand(-1, shape[
-            0] if x_init is None else x_init.size(0)).to(self.device)
+        r_range = torch.linspace(t_start, t_end, timesteps + 1)[:, None].expand(-1, shape[0] if x_init is None else x_init.size(0)).to(self.device)
         if isinstance(sampler, str):
             if sampler in sampler_dict:
                 sampler = sampler_dict[sampler](self)

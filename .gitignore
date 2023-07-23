@@ -174,3 +174,6 @@ tags
 .ruff_cache
 
 wandb
+scripts/models/
+scripts/warp-diffusion/
+scripts/samples/

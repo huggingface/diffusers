@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...schedulers import DDPMScheduler
+from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .prior import Prior
@@ -90,7 +90,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
         prior: Prior,
-        scheduler: DDPMScheduler,
+        scheduler: DDPMWuerstchenScheduler,
     ) -> None:
         super().__init__()
         self.multiple = 128
@@ -111,7 +111,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
-        latents = latents * scheduler.init_noise_sigma
         return latents
 
     def _encode_prompt(
@@ -243,9 +242,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: Optional[int] = None,  # TODO(Kashif) - this should not stay None as a default & it should replace inference_steps
         inference_steps: dict = None,
-        guidance_scale: float = 3.0,
+        guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -282,25 +280,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt, num_channels, latent_height, latent_width)
 
-        if num_inference_steps is None:
-            num_inference_steps = sum(inference_steps.values())
-
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-
-        # def seed_everything(seed: int):
-        #     import random, os
-        #     import numpy as np
-        #     import torch
-
-        #     random.seed(seed)
-        #     os.environ["PYTHONHASHSEED"] = str(seed)
-        #     np.random.seed(seed)
-        #     torch.manual_seed(seed)
-        #     torch.cuda.manual_seed(seed)
-        #     torch.backends.cudnn.deterministic = True
-        #     torch.backends.cudnn.benchmark = True
-
-        # seed_everything(42)
+        self.scheduler.set_timesteps(inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         latents = self.prepare_latents(
             effnet_features_shape,
@@ -311,16 +292,14 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-        #  latents = torch.randn(effnet_features_shape, device=device)
-        # print(latents[0, 0, :4, :4])
-        # latents = latents.to(dtype=dtype)
-
-        # for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-        for t in self.progress_bar(self.scheduler.timesteps):
-            ratio = (t / self.scheduler.config.num_train_timesteps).to(dtype)  # between 0 and 1
+        for t in self.progress_bar(timesteps[:-1]):
+            ratio = t.expand(latents.size(0)).to(dtype)
+            # print(torch.cat([latents] * 2).shape, latents.dtype)
+            # print(ratio, ratio.shape, ratio.dtype)
+            # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-                r=ratio.expand(latents.size(0) * 2) if do_classifier_free_guidance else ratio,
+                r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
                 c=text_encoder_hidden_states,
             )
 
@@ -331,11 +310,11 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 )
 
             latents = self.scheduler.step(
-                predicted_image_embedding,
-                timestep=t,
+                model_output=predicted_image_embedding,
+                timestep=ratio,
                 sample=latents,
                 generator=generator,
-            ).prev_sample
+            ).prediction
 
         # t_start = 1.0
         # for t_end, steps in inference_steps.items():

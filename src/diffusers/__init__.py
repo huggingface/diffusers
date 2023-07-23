@@ -83,6 +83,7 @@ else:
         DDIMParallelScheduler,
         DDIMScheduler,
         DDPMParallelScheduler,
+        DDPMWuerstchenScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,

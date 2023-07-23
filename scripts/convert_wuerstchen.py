@@ -5,7 +5,7 @@ from transformers import AutoTokenizer, CLIPTextModel
 from vqgan import VQModel
 
 from diffusers import (
-    DDPMScheduler,
+    DDPMWuerstchenScheduler,
     VQModelPaella,
     WuerstchenPriorPipeline,
     WuerstchenGeneratorPipeline,
@@ -51,10 +51,7 @@ prior_model.load_state_dict(state_dict["ema_state_dict"])
 trained_betas = []
 
 # scheduler
-scheduler = DDPMScheduler(
-    beta_schedule="squaredcos_cap_v2",
-    clip_sample=False,
-)
+scheduler = DDPMWuerstchenScheduler()
 
 # Prior pipeline
 prior_pipeline = WuerstchenPriorPipeline(
