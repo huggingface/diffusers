@@ -1,12 +1,4 @@
 """
-python train_vae.py --mixed_precision="no" \
-    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1" \
-    --dataset_name="Fazzie/Teyvat" \
-    --train_batch_size=1 \
-    --gradient_accumulation_steps=4 \
-    --gradient_checkpointing
-    --report_to="wandb"
-
 TODO: fix training mixed precision -- issue with AdamW optimizer
 """
 
@@ -44,6 +36,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+import lpips
 
 if is_wandb_available():
     import wandb
@@ -59,17 +52,22 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     for _, batch in enumerate(test_dataloader):
         noise = batch["pixel_values"].to(weight_dtype)
         recon_imgs = vae_model(noise).sample
-        images.append(torch.cat([batch["pixel_values"].cpu(), recon_imgs.cpu()], axis=0))
+        images.append(
+            torch.cat([batch["pixel_values"].cpu(), recon_imgs.cpu()], axis=0)
+        )
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch)
+            tracker.writer.add_images(
+                "Original (left) / Reconstruction (right)", np_images, epoch
+            )
         elif tracker.name == "wandb":
             tracker.log(
                 {
                     "Original (left) / Reconstruction (right)": [
-                        wandb.Image(torchvision.utils.make_grid(image)) for _, image in enumerate(images)
+                        wandb.Image(torchvision.utils.make_grid(image))
+                        for _, image in enumerate(images)
                     ]
                 }
             )
@@ -271,6 +269,12 @@ def parse_args():
         default=0,
         help="Scaling factor for the Kullback-Leibler divergence penalty term.",
     )
+    parser.add_argument(
+        "--lpips_scale",
+        type=int,
+        default=0,
+        help="Scaling factor for the LPIPS metric",
+    )
 
     args = parser.parse_args()
 
@@ -413,7 +417,13 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    vae, optimizer, train_dataloader, test_dataloader, lr_scheduler = accelerator.prepare(
+    (
+        vae,
+        optimizer,
+        train_dataloader,
+        test_dataloader,
+        lr_scheduler,
+    ) = accelerator.prepare(
         vae, optimizer, train_dataloader, test_dataloader, lr_scheduler
     )
 
@@ -461,16 +471,31 @@ def main():
     )
     progress_bar.set_description("Steps")
 
+    lpips_loss_fn = lpips.LPIPS(net="alex").to(accelerator.device)
+
     for epoch in range(first_epoch, args.num_train_epochs):
         vae.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
                 target = batch["pixel_values"].to(weight_dtype)
-                pred = vae(target).sample.to(weight_dtype)
 
-                kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
-                loss = F.mse_loss(pred, target, reduction="mean") + args.kl_scale * kl_loss(pred, target)
+                # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoder_kl.py
+                posterior = vae.encode(target).latent_dist
+                z = posterior.mode()
+                pred = vae.decode(z).sample
+
+                kl_loss = posterior.kl().mean()
+                mse_loss = F.mse_loss(pred, target, reduction="mean")
+                lpips_loss = lpips_loss_fn(pred, target).mean()
+
+                logger.info(
+                    f"mse:{mse_loss.item()}, lpips:{lpips_loss.item()}, kl:{kl_loss.item()}"
+                )
+
+                loss = (
+                    mse_loss + args.lpips_scale * lpips_loss + args.kl_scale * kl_loss
+                )
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
