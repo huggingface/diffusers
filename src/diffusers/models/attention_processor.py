@@ -680,8 +680,12 @@ class CustomDiffusionAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype)).to(attn.to_q.weight.dtype)
-            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype)).to(attn.to_q.weight.dtype)
+            key = self.to_k_custom_diffusion(
+                    encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype)
+                    ).to(attn.to_q.weight.dtype)
+            value = self.to_v_custom_diffusion(
+                    encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype)
+                    ).to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -1405,8 +1409,12 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype)).to(attn.to_q.weight.dtype)
-            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype)).to(attn.to_q.weight.dtype)
+            key = self.to_k_custom_diffusion(
+                    encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype)
+                    ).to(attn.to_q.weight.dtype)
+            value = self.to_v_custom_diffusion(
+                    encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype)
+                    ).to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
