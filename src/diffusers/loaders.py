@@ -1011,7 +1011,7 @@ class LoraLoaderMixin:
         elif not all(
             key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
         ):
-            unet.load_attn_procs(state_dict)
+            unet.load_attn_procs(state_dict, network_alpha=network_alpha)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
