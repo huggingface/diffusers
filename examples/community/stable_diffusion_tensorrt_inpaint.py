@@ -829,7 +829,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps[t_start*self.scheduler.order:].to(self.torch_device)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :].to(self.torch_device)
         return timesteps, num_inference_steps - t_start
 
     def __preprocess_images(self, batch_size, images=()):
@@ -1043,29 +1043,29 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
             latent_height = self.image_height // 8
             latent_width = self.image_width // 8
 
-
-
             # Pre-process input images
-            mask, masked_image, init_image = self.__preprocess_images(batch_size,
-                                                          prepare_mask_and_masked_image(image,
-                                                                                        mask_image,
-                                                                                        self.image_height,
-                                                                                        self.image_width,
-                                                                                        return_image=True,
-                                                                                       )
-                                                         )
+            mask, masked_image, init_image = self.__preprocess_images(
+                batch_size,
+                prepare_mask_and_masked_image(
+                    image,
+                    mask_image,
+                    self.image_height,
+                    self.image_width,
+                    return_image=True,
+                ),
+            )
             # print(mask)
             mask = torch.nn.functional.interpolate(mask, size=(latent_height, latent_width))
             mask = torch.cat([mask] * 2)
 
             # Initialize timesteps
             timesteps, t_start = self.__initialize_timesteps(self.denoising_steps, strength)
-            
+
             # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
             latent_timestep = timesteps[:1].repeat(batch_size)
             # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
             is_strength_max = strength == 1.0
-            
+
             # Pre-initialize latents
             num_channels_latents = self.vae.config.latent_channels
             latents_outputs = self.prepare_latents(
@@ -1080,9 +1080,9 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
                 timestep=latent_timestep,
                 is_strength_max=is_strength_max,
             )
-            
+
             latents = latents_outputs[0]
-            
+
             # VAE encode masked image
             masked_latents = self.__encode_image(masked_image)
             masked_latents = torch.cat([masked_latents] * 2)
