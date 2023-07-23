@@ -85,7 +85,7 @@ class Attention(nn.Module):
         self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
-        self.scale = dim_head ** -0.5 if self.scale_qk else 1.0
+        self.scale = dim_head**-0.5 if self.scale_qk else 1.0
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
