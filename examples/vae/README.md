@@ -1,8 +1,8 @@
-## Training a VAE
+# Training a VAE
 
 Creating a training image set is [described in a different document](https://huggingface.co/docs/datasets/image_process#image-datasets).
 
-### Installing the dependencies
+## Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
 
@@ -20,7 +20,7 @@ Then cd in the example folder  and run
 pip install -r requirements.txt
 ```
 
-### Training
+## Training
 
 The command to train a VAE model on a custom dataset (`DATASET_NAME`):
 
@@ -33,3 +33,8 @@ python train_vae.py --mixed_precision="no" \
     --gradient_checkpointing
     --report_to="wandb"
 ```
+
+
+## Using the VAE
+
+

@@ -49,11 +49,11 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
 
     vae_model = accelerator.unwrap_model(vae)
     images = []
-    for _, batch in enumerate(test_dataloader):
-        noise = batch["pixel_values"].to(weight_dtype)
+    for _, sample in enumerate(test_dataloader):
+        noise = sample["pixel_values"].to(weight_dtype)
         recon_imgs = vae_model(noise).sample
         images.append(
-            torch.cat([batch["pixel_values"].cpu(), recon_imgs.cpu()], axis=0)
+            torch.cat([sample["pixel_values"].cpu(), recon_imgs.cpu()], axis=0)
         )
 
     for tracker in accelerator.trackers:
@@ -73,6 +73,9 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
             )
         else:
             logger.warn(f"image logging not implemented for {tracker.gen_images}")
+
+    del vae_model
+    torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -489,10 +492,6 @@ def main():
                 mse_loss = F.mse_loss(pred, target, reduction="mean")
                 lpips_loss = lpips_loss_fn(pred, target).mean()
 
-                logger.info(
-                    f"mse:{mse_loss.item()}, lpips:{lpips_loss.item()}, kl:{kl_loss.item()}"
-                )
-
                 loss = (
                     mse_loss + args.lpips_scale * lpips_loss + args.kl_scale * kl_loss
                 )
@@ -524,6 +523,9 @@ def main():
             logs = {
                 "step_loss": loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0],
+                "mse": mse_loss.detach().item(),
+                "lpips": lpips_loss.detach().item(),
+                "kl": kl_loss.detach().item(),
             }
             progress_bar.set_postfix(**logs)
 
