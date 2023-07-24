@@ -599,7 +599,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             denoising_end (`float`, *optional*):
-                As a float: When specified, determines the fraction (between 0.0 and 1.0) of the total denoising
+                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising
                 process to be completed before it is intentionally prematurely terminated. As a result, the returned
                 sample will still retain a substantial amount of noise as determined by the discrete timesteps selected
                 by the scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a
