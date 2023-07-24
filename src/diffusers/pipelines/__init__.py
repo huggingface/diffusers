@@ -124,6 +124,7 @@ else:
     from .stable_diffusion_xl import (
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
 
