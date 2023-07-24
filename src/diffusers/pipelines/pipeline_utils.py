@@ -1404,7 +1404,7 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
             # This can happen in two cases:
             # 1. If the user passed `local_files_only=True`                    => we raise the error directly
