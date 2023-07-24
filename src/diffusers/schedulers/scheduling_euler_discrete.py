@@ -243,9 +243,13 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        print(f" -sigmas: {sigmas[0]}, {sigmas[-1]}")
         log_sigmas = np.log(sigmas)
 
         if self.config.interpolation_type == "linear":
+            print(f" - timesteps: {len(timesteps)}")
+            print(timesteps)
+            print(f" - sigmas: {len(sigmas)}")
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         elif self.config.interpolation_type == "log_linear":
             sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
@@ -256,8 +260,12 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.use_karras_sigmas:
+            print(" use k_sigmas")
+            print(f" -sigmas: {sigmas[0]}, {sigmas[-1]}")
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            print(f" -sigmas: {sigmas}")
+            print(f" -timesteps: {timesteps}")
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)

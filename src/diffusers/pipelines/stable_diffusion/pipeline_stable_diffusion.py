@@ -515,7 +515,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
+        print(f" inside prepare_latents:")
+        print(f" - latents: {latents.shape},{latents[0,0,:3,:3]}")
         latents = latents * self.scheduler.init_noise_sigma
+        print(f" - latents * init_noise_sigma: {latents.shape},{latents[0,0,:3,:3]}")
         return latents
 
     @torch.no_grad()
@@ -679,7 +682,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                print(f" - latent_model_input: {latent_model_input.shape},{latent_model_input[0,0,:3,:3]}")
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                print(f" - latent_model_input(scaled): {latent_model_input.shape},{latent_model_input[0,0,:3,:3]}")
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -689,12 +694,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
-
+                print(f" - noise_pred: {noise_pred.shape},{noise_pred[0,0,:3,:3]}")
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
+                print(f" - noise_pred (cfg): {noise_pred.shape},{noise_pred[0,0,:3,:3]}")
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)

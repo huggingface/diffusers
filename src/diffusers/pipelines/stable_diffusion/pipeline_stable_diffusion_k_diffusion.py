@@ -18,7 +18,8 @@ import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
-from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
+from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser, DiscreteSchedule
+from k_diffusion import utils
 from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
 
 from ...image_processor import VaeImageProcessor
@@ -31,6 +32,97 @@ from . import StableDiffusionPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
+# yiyi testing
+from tqdm.auto import trange
+@torch.no_grad()
+def sample_dpmpp_2m(model, x, sigmas, extra_args=None, callback=None, disable=None):
+    """DPM-Solver++(2M)."""
+    extra_args = {} if extra_args is None else extra_args
+    s_in = x.new_ones([x.shape[0]])
+    sigma_fn = lambda t: t.neg().exp()
+    t_fn = lambda sigma: sigma.log().neg()
+    old_denoised = None
+
+    for i in trange(len(sigmas) - 1, disable=disable):
+        print(f" - i :{i}, sigma: {sigmas[i]}")
+        denoised = model(x, sigmas[i] * s_in, **extra_args)
+        print(f" - denoised: {denoised.shape}, {denoised[0,0,:3,:3]}")
+        if callback is not None:
+            callback({'x': x, 'i': i, 'sigma': sigmas[i], 'sigma_hat': sigmas[i], 'denoised': denoised})
+        t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+        print(f" - sigma_t: {sigmas[i+1]}, sigma_s: {sigmas[i]}")
+        print(f" - t, t_next: {t},{t_next}")
+        h = t_next - t
+        print(f" - h: {h}")
+        if old_denoised is None or sigmas[i + 1] == 0:
+            print(f" first order")
+            print(f" - x/sample/latents: {x.shape},{x[0,0,:3,:3]}")
+            print(f" - sigma_fns(t_next): {sigma_fn(t_next)}, sigma_fn(t): {sigma_fn(t)}")
+            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised
+            print(f" -> x: {x[0,0,:3,:3]}")
+        else:
+            print(" second order")
+            print(f" yiyi testing")
+            print(f" - sigmas: {sigmas[i]}, {sigmas[i+1]}")
+            print(f" - sigma_fns: {sigma_fn(t)}, {sigma_fn(t_next)}")
+            h_last = t - t_fn(sigmas[i - 1])
+            r = h_last / h
+            denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
+            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised_d
+            print(f" -> x: {x[0,0,:3,:3]}")
+        old_denoised = denoised
+    return x
+
+
+class DiscreteEpsDDPMDenoiser(DiscreteSchedule):
+    """A wrapper for discrete schedule DDPM models that output eps (the predicted
+    noise)."""
+
+    def __init__(self, model, alphas_cumprod, quantize):
+        super().__init__(((1 - alphas_cumprod) / alphas_cumprod) ** 0.5, quantize)
+        self.inner_model = model
+        self.sigma_data = 1.
+
+    def get_scalings(self, sigma):
+        c_out = -sigma
+        c_in = 1 / (sigma ** 2 + self.sigma_data ** 2) ** 0.5
+        return c_out, c_in
+
+    def get_eps(self, *args, **kwargs):
+        return self.inner_model(*args, **kwargs)
+
+    def loss(self, input, noise, sigma, **kwargs):
+        c_out, c_in = [utils.append_dims(x, input.ndim) for x in self.get_scalings(sigma)]
+        noised_input = input + noise * utils.append_dims(sigma, input.ndim)
+        eps = self.get_eps(noised_input * c_in, self.sigma_to_t(sigma), **kwargs)
+        return (eps - noise).pow(2).flatten(1).mean(1)
+
+    def forward(self, input, sigma, **kwargs):
+        c_out, c_in = [utils.append_dims(x, input.ndim) for x in self.get_scalings(sigma)]
+        print(f" arriving CompVisDenoiser.foward")
+        print(f" - input: {input.shape}, {input[0,0,:3,:3]}")
+        print(f" - c_in: {c_in.shape}, {c_in}")
+        print(f" - c_out:{c_out.shape}, {c_out}")
+        print(f" - sigma: {sigma}")
+        print(f" - t: {self.sigma_to_t(sigma)}")
+        print(f" - input * c_in : {(input * c_in).shape}, {(input * c_in)[0,0,:3,:3]}")
+        eps = self.get_eps(input * c_in, self.sigma_to_t(sigma), **kwargs)
+        print(f" - eps: {eps.shape}, {eps[0,0,:3,:3]}")
+        print(f" - eps * c_out : {(eps * c_out).shape}, {(eps * c_out)[0,0,:3,:3]}")
+        print(f" - input + eps * c_out: {(input + eps * c_out).shape}, {(input + eps * c_out)[0,0,:3,:3]}")
+        print(f" leaving CompVisDenoiser.foward")
+        return input + eps * c_out
+
+
+class CompVisDenoiser(DiscreteEpsDDPMDenoiser):
+    """A wrapper for CompVis diffusion models."""
+
+    def __init__(self, model, quantize=False, device='cpu'):
+        super().__init__(model, model.alphas_cumprod, quantize=quantize)
+
+    def get_eps(self, *args, **kwargs):
+        return self.inner_model.apply_model(*args, **kwargs)
 
 class ModelWrapper:
     def __init__(self, model, alphas_cumprod):
@@ -123,9 +215,12 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             self.k_diffusion_model = CompVisDenoiser(model)
 
     def set_scheduler(self, scheduler_type: str):
-        library = importlib.import_module("k_diffusion")
-        sampling = getattr(library, "sampling")
-        self.sampler = getattr(sampling, scheduler_type)
+        #library = importlib.import_module("k_diffusion")
+        #sampling = getattr(library, "sampling")
+        #self.sampler = getattr(sampling, scheduler_type)
+        if scheduler_type == "sample_dpmpp_2m":
+            self.sampler = sample_dpmpp_2m
+        
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -530,9 +625,12 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device)
 
         # 5. Prepare sigmas
+
         if use_karras_sigmas:
+            print(f" - k_diffusion_model.sigmas :{self.k_diffusion_model.sigmas}")
             sigma_min: float = self.k_diffusion_model.sigmas[0].item()
             sigma_max: float = self.k_diffusion_model.sigmas[-1].item()
+            print(f" -sigma_max: {sigma_max}, sigma_min: {sigma_min}")
             sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigma_min, sigma_max=sigma_max)
             sigmas = sigmas.to(device)
         else:
@@ -551,19 +649,28 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             generator,
             latents,
         )
+        print(f" - prepare_latents -> {latents.shape},{latents[0,0,:3,:3]}")
         latents = latents * sigmas[0]
+        print(f" - latents * initial noise sigma: {latents.shape},{latents[0,0,:3,:3]}")
         self.k_diffusion_model.sigmas = self.k_diffusion_model.sigmas.to(latents.device)
         self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(latents.device)
 
         # 7. Define model function
         def model_fn(x, t):
+            print(" ")
+            print(f" arriving model_fn")
             latent_model_input = torch.cat([x] * 2)
+            print(f" - latent_model_input: {latent_model_input.shape}, {latent_model_input[0,0,:3,:3]}")
             t = torch.cat([t] * 2)
 
             noise_pred = self.k_diffusion_model(latent_model_input, t, cond=prompt_embeds)
+            print(f" - noise_pred: {noise_pred.shape}, {noise_pred[0,0,:3,:3]}")
 
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            print(f" -> cfg -> {noise_pred.shape},{noise_pred[0,0,:3,:3]}")
+            print(" leaving model_fn")
+            print(" ")
             return noise_pred
 
         # 8. Run k-diffusion solver
@@ -573,7 +680,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             min_sigma, max_sigma = sigmas[sigmas > 0].min(), sigmas.max()
             noise_sampler = BrownianTreeNoiseSampler(latents, min_sigma, max_sigma, noise_sampler_seed)
             sampler_kwargs["noise_sampler"] = noise_sampler
-
+        
+        print(f" sigmas: {sigmas}")
         latents = self.sampler(model_fn, latents, sigmas, **sampler_kwargs)
 
         if not output_type == "latent":
