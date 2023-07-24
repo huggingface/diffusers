@@ -1313,7 +1313,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.bin")))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
