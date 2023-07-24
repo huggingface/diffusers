@@ -20,6 +20,7 @@ from torch import nn
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
