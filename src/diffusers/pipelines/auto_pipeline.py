@@ -142,7 +142,7 @@ class AutoPipelineForText2Image(ConfigMixin):
             2. Find the text-to-image pipeline linked to the pipeline class using pattern matching on pipeline class
                name.
 
-        If a `controlnet` argument is passed, it will instantiate a StableDiffusionControlNetPipeline object.
+        If a `controlnet` argument is passed, it will instantiate a [`StableDiffusionControlNetPipeline`] object.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
@@ -287,7 +287,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         r"""
         Instantiates a text-to-image Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
 
-        The from_pipe() method takes care of returning the correct pipeline class instance by find the text-to-image
+        The from_pipe() method takes care of returning the correct pipeline class instance by finding the text-to-image
         pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline contains will be used to initialize the new pipeline without reallocating
@@ -376,11 +376,11 @@ class AutoPipelineForImage2Image(ConfigMixin):
     AutoPipeline for image-to-image generation.
 
     [`AutoPipelineForImage2Image`] is a generic pipeline class that will be instantiated as one of the image-to-image
-    pipeline class in diffusers.
+    pipeline classes in diffusers.
 
     The pipeline type (for example [`StableDiffusionImg2ImgPipeline`]) is automatically selected when created with the
-    AutoPipelineForImage2Image.from_pretrained(pretrained_model_name_or_path) or
-    AutoPipelineForImage2Image.from_pipe(pipeline) class methods .
+    `AutoPipelineForImage2Image.from_pretrained(pretrained_model_name_or_path)` or
+    `AutoPipelineForImage2Image.from_pipe(pipeline)` class methods.
 
     This class cannot be instantiated using __init__() (throws an error).
 
@@ -555,7 +555,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         r"""
         Instantiates a image-to-image Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
 
-        The from_pipe() method takes care of returning the correct pipeline class instance by find the image-to-image
+       The from_pipe() method takes care of returning the correct pipeline class instance by finding the image-to-image
         pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline contains will be used to initialize the new pipeline without reallocating
@@ -824,7 +824,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         r"""
         Instantiates a inpainting Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
 
-        The from_pipe() method takes care of returning the correct pipeline class instance by find the inpainting
+        The from_pipe() method takes care of returning the correct pipeline class instance by finding the inpainting
         pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline class contain will be used to initialize the new pipeline without reallocating
