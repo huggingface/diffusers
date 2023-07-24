@@ -35,7 +35,7 @@ transforms = torchvision.transforms.Compose([
 ])
 device = "cuda"
 dtype = torch.float16
-batch_size = 2
+batch_size = 4
 
 # generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenGeneratorPipeline", torch_dtype=dtype)
 # generator_pipeline = generator_pipeline.to("cuda")
@@ -66,10 +66,12 @@ prior_pipeline = WuerstchenPriorPipeline.from_pretrained("C:\\Users\\d6582\\Docu
 generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenGeneratorPipeline", torch_dtype=dtype)
 prior_pipeline = prior_pipeline.to("cuda")
 generator_pipeline = generator_pipeline.to("cuda")
+# generator_pipeline.vqgan.to(torch.float16)
 text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
 tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
-negative_prompt = "low resolution, low detail, bad quality, blurry"
+# negative_prompt = "low resolution, low detail, bad quality, blurry"
+negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated, drawing, helmet"
 # negative_prompt = ""
 # caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
 # caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
