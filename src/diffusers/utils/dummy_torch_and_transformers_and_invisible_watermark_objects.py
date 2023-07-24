@@ -47,6 +47,21 @@ class StableDiffusionXLInpaintPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers", "invisible_watermark"])
 
 
+class StableDiffusionXLInstructPix2PixPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers", "invisible_watermark"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers", "invisible_watermark"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers", "invisible_watermark"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers", "invisible_watermark"])
+
+
 class StableDiffusionXLPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers", "invisible_watermark"]
 
