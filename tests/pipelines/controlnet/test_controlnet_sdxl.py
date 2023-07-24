@@ -125,11 +125,11 @@ class ControlNetPipelineSDXLFastTests(
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        # tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        # tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+
         components = {
             "unet": unet,
             "controlnet": controlnet,
