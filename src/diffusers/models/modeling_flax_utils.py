@@ -78,7 +78,7 @@ class FlaxModelMixin:
             return jax.tree_map(conditional_cast, params)
 
         flat_params = flatten_dict(params)
-        flat_mask, _ = jax.tree_flatten(mask)
+        flat_mask, _ = jax.tree_util.tree_flatten(mask)
 
         for masked, key in zip(flat_mask, flat_params.keys()):
             if masked:
@@ -437,6 +437,7 @@ class FlaxModelMixin:
             # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
             # https://github.com/google/flax/issues/1261
         state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), state)
+        # cast params to specified dtype
         state = cls._cast_floating_to(state, dtype)
 
         # flatten dicts

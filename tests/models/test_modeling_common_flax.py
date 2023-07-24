@@ -1,5 +1,4 @@
 import inspect
-import random
 
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
@@ -8,7 +7,7 @@ from diffusers.utils.testing_utils import require_flax
 if is_flax_available():
     import jax
     import jax.numpy as jnp
-    from flax.traverse_util import flatten_dict, unflatten_dict
+    from flax.traverse_util import flatten_dict
 
 
 @require_flax
@@ -83,88 +82,32 @@ class FlaxModelTesterMixin:
     def test_to_bf16(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict, dtype=jnp.bfloat16)
         params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
+        types = jax.tree_util.tree_map(lambda x: x.dtype, params)
+        types = flatten_dict(types)
 
-        # cast all params to bf16
-        params = model.to_bf16(params)
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
-        # test if all params are in bf16
         for name, type_ in types.items():
-            self.assertEqual(type_, jnp.bfloat16, msg=f"param {name} is not in bf16.")
-
-        # test masking
-        flat_params = flatten_dict(params)
-        key = random.choice(list(flat_params.keys()))  # choose a random param
-        mask = {path: path != key for path in flat_params}  # don't cast the key
-        mask = unflatten_dict(mask)
-
-        params = model.to_bf16(params, mask)
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
-        # test if all params are in bf16 except key
-        for name, type_ in types.items():
-            if name == key:
-                self.assertEqual(type_, jnp.float32, msg=f"param {name} should be in fp32.")
-            else:
-                self.assertEqual(type_, jnp.bfloat16, msg=f"param {name} is not in bf16.")
+            self.assertEqual(type_, jnp.bfloat16, msg=f"param {name} is not initialized in fp32.")
 
     def test_to_fp16(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict, dtype=jnp.float16)
         params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
+        types = jax.tree_util.tree_map(lambda x: x.dtype, params)
+        types = flatten_dict(types)
 
-        # cast all params to fp16
-        params = model.to_fp16(params)
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
-        # test if all params are in fp16
         for name, type_ in types.items():
-            self.assertEqual(type_, jnp.float16, msg=f"param {name} is not in fp16.")
-
-        # test masking
-        flat_params = flatten_dict(params)
-        key = random.choice(list(flat_params.keys()))  # choose a random param
-        mask = {path: path != key for path in flat_params}  # don't cast the key
-        mask = unflatten_dict(mask)
-
-        params = model.to_fp16(params, mask)
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
-        # test if all params are in fp16 except key
-        for name, type_ in types.items():
-            if name == key:
-                self.assertEqual(type_, jnp.float32, msg=f"param {name} should be in fp32.")
-            else:
-                self.assertEqual(type_, jnp.float16, msg=f"param {name} is not in fp16.")
+            self.assertEqual(type_, jnp.float16, msg=f"param {name} is not initialized in fp32.")
 
     def test_to_fp32(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict, dtype=jnp.float32)
         params = model.init(inputs_dict["prng_key"], inputs_dict["sample"])
+        types = jax.tree_util.tree_map(lambda x: x.dtype, params)
+        types = flatten_dict(types)
 
-        # cast all params to fp16 and back to fp32
-        params = model.to_fp16(params)
-        params = model.to_fp32(params)
-
-        # test if all params are in fp32
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
         for name, type_ in types.items():
-            self.assertEqual(type_, jnp.float32, msg=f"param {name} is not in fp32.")
-
-        # test masking
-        flat_params = flatten_dict(params)
-        key = random.choice(list(flat_params.keys()))  # choose a random param
-        mask = {path: path != key for path in flat_params}  # don't cast the key
-        mask = unflatten_dict(mask)
-
-        # cast to fp16 and back to fp32 with mask
-        params = model.to_fp16(params)
-        params = model.to_fp32(params, mask)
-
-        # test if all params are in fp32 except key
-        types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
-        for name, type_ in types.items():
-            if name == key:
-                self.assertEqual(type_, jnp.float16, msg=f"param {name} should be in fp16.")
-            else:
-                self.assertEqual(type_, jnp.float32, msg=f"param {name} is not in fp32.")
+            self.assertEqual(type_, jnp.float32, msg=f"param {name} is not initialized in fp32.")
