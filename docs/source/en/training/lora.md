@@ -98,7 +98,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 ```
 
@@ -137,7 +137,7 @@ lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 ...
 ```
 
@@ -211,7 +211,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 ```
 
 Load the LoRA weights from your finetuned DreamBooth model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -251,7 +251,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -307,7 +307,7 @@ import torch
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
+    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None, use_safetensors=True
 ).to("cuda")
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
     pipeline.scheduler.config, use_karras_sigmas=True
