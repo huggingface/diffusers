@@ -731,9 +731,21 @@ class StableDiffusionXLInpaintPipeline(
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
             t_start = max(num_inference_steps - init_timestep, 0)
         else:
-            t_start = int(round(denoising_start * num_inference_steps))
+            t_start = 0
 
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+        # Strength is irrelevant if we directly request a timestep to start at;
+        # that is, strength is determined by the denoising_start instead.
+        if denoising_start is not None:
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_start * self.scheduler.config.num_train_timesteps)
+                )
+            )
+            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
+            return torch.tensor(timesteps), len(timesteps)
 
         return timesteps, num_inference_steps - t_start
 
@@ -861,26 +873,24 @@ class StableDiffusionXLInpaintPipeline(
                 `strength`. The number of denoising steps depends on the amount of noise initially added. When
                 `strength` is 1, added noise will be maximum and the denoising process will run for the full number of
                 iterations specified in `num_inference_steps`. A value of 1, therefore, essentially ignores the masked
-                portion of the reference `image`.
+                portion of the reference `image`. Note that in the case of `denoising_start` being declared as an
+                integer, the value of `strength` will be ignored.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             denoising_start (`float`, *optional*):
                 When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be
-                bypassed before it is initiated. For example, if `denoising_start` is set to 0.7 and
-                num_inference_steps is fixed at 50, the process will begin only from the 35th (i.e., 0.7 * 50)
-                denoising step. Consequently, the initial part of the denoising process is skipped and it is assumed
-                that the passed `image` is a partly denoised image. The `denoising_start` parameter is particularly
-                beneficial when this pipeline is integrated into a "Mixture of Denoisers" multi-pipeline setup, as
-                detailed in [**Refining the Image
+                bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
+                it is assumed that the passed `image` is a partly denoised image. Note that when this is specified,
+                strength will be ignored. The `denoising_start` parameter is particularly beneficial when this pipeline
+                is integrated into a "Mixture of Denoisers" multi-pipeline setup, as detailed in [**Refining the Image
                 Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
             denoising_end (`float`, *optional*):
                 When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
-                completed before it is intentionally prematurely terminated. For instance, if denoising_end is set to
-                0.7 and `num_inference_steps` is fixed at 50, the process will execute only 35 (i.e., 0.7 * 50)
-                denoising steps. As a result, the returned sample will still retain a substantial amount of noise (ca.
-                30%) and should be denoised by a successor pipeline that has `denoising_start` set to 0.7 so that it
-                only denoised the final 30%. The denoising_end parameter should ideally be utilized when this pipeline
+                completed before it is intentionally prematurely terminated. As a result, the returned sample will
+                still retain a substantial amount of noise (ca. final 20% of timesteps still needed) and should be
+                denoised by a successor pipeline that has `denoising_start` set to 0.8 so that it only denoises the
+                final 20% of the scheduler. The denoising_end parameter should ideally be utilized when this pipeline
                 forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
                 Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
             guidance_scale (`float`, *optional*, defaults to 7.5):
@@ -1034,10 +1044,12 @@ class StableDiffusionXLInpaintPipeline(
         )
 
         # 4. set timesteps
-        original_num_steps = num_inference_steps  # save for denoising_start/end later
+        def denoising_value_valid(dnv):
+            return type(denoising_end) == float and 0 < dnv < 1
+
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, device, denoising_start=denoising_start
+            num_inference_steps, strength, device, denoising_start=denoising_start if denoising_value_valid else None
         )
         # check that number of inference steps is not < 1 - as this doesn't make sense
         if num_inference_steps < 1:
@@ -1147,18 +1159,26 @@ class StableDiffusionXLInpaintPipeline(
         # 11. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        if denoising_end is not None and denoising_start is not None:
-            if denoising_start >= denoising_end:
-                raise ValueError(
-                    f"`denoising_end`: {denoising_end} cannot be larger than `denoising_start`: {denoising_start}."
+        if (
+            denoising_end is not None
+            and denoising_start is not None
+            and denoising_value_valid(denoising_end)
+            and denoising_value_valid(denoising_start)
+            and denoising_start >= denoising_end
+        ):
+            raise ValueError(
+                f"`denoising_start`: {denoising_start} cannot be larger than or equal to `denoising_end`: "
+                + f" {denoising_end} when using type float."
+            )
+        elif denoising_end is not None and denoising_value_valid(denoising_end):
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_end * self.scheduler.config.num_train_timesteps)
                 )
-
-            skipped_final_steps = int(round((1 - denoising_end) * original_num_steps))
-            num_inference_steps = num_inference_steps - skipped_final_steps
-            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
-        elif denoising_end is not None:
-            num_inference_steps = int(round(denoising_end * num_inference_steps))
-            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):

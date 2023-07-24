@@ -264,7 +264,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         pipe_2 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps, split, scheduler_cls_orig, num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -278,9 +280,12 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id = int(round(split * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id]
-            expected_steps_2 = expected_steps[split_id:]
+            split_ts = num_train_timesteps - int(round(num_train_timesteps * split))
+            expected_steps_1 = expected_steps[:split_ts]
+            expected_steps_2 = expected_steps[split_ts:]
+
+            expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+            expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -304,7 +309,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             assert expected_steps_2 == done_steps[len(expected_steps_1) :]
             assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
 
-        for steps in [5, 8]:
+        for steps in [5, 8, 20]:
             for split in [0.33, 0.49, 0.71]:
                 for scheduler_cls in [
                     DDIMScheduler,
@@ -324,7 +329,13 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         pipe_3 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_3.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps,
+            split_1,
+            split_2,
+            scheduler_cls_orig,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -339,11 +350,15 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id_1 = int(round(split_1 * num_steps)) * pipe_1.scheduler.order
-            split_id_2 = int(round(split_2 * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id_1]
-            expected_steps_2 = expected_steps[split_id_1:split_id_2]
-            expected_steps_3 = expected_steps[split_id_2:]
+            split_1_ts = num_train_timesteps - int(round(num_train_timesteps * split_1))
+            split_2_ts = num_train_timesteps - int(round(num_train_timesteps * split_2))
+            expected_steps_1 = expected_steps[:split_1_ts]
+            expected_steps_2 = expected_steps[split_1_ts:split_2_ts]
+            expected_steps_3 = expected_steps[split_2_ts:]
+
+            expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+            expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
+            expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -379,7 +394,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                 expected_steps == done_steps
             ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
 
-        for steps in [7, 11]:
+        for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):
                 for scheduler_cls in [
                     DDIMScheduler,
