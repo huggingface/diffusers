@@ -2,7 +2,7 @@
 
 ***This is based on the original InstructPix2Pix training example.***
 
-[Stable Diffusion XL](https://github.com/Stability-AI/generative-models/blob/main/assets/sdxl_report.pdf) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder. 
+[Stable Diffusion XL](https://huggingface.co/papers/2307.01952) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder. 
 
 The `train_instruct_pix2pix_xl.py` script shows how to implement the training procedure and adapt it for Stable Diffusion XL.
 
@@ -104,7 +104,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
 import PIL
 import requests
 import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline
+from diffusers import StableDiffusionXLInstructPix2PixPipeline
 
 model_id = "your_model_id" # <- replace this 
 pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
