@@ -169,5 +169,5 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
 
-    def test_cfg(self): 
-        pass 
+    def test_cfg(self):
+        pass
