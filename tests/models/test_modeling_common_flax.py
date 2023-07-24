@@ -78,7 +78,7 @@ class FlaxModelTesterMixin:
         types = flatten_dict(types)
 
         for name, type_ in types.items():
-            self.assertEquals(type_, jnp.float32, msg=f"param {name} is not initialized in fp32.")
+            self.assertEqual(type_, jnp.float32, msg=f"param {name} is not initialized in fp32.")
 
     def test_to_bf16(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -99,7 +99,7 @@ class FlaxModelTesterMixin:
         mask = {path: path != key for path in flat_params}  # don't cast the key
         mask = unflatten_dict(mask)
 
-        params = model.to_bf16(model.params, mask)
+        params = model.to_bf16(params, mask)
         types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
         # test if all params are in bf16 except key
         for name, type_ in types.items():
@@ -127,7 +127,7 @@ class FlaxModelTesterMixin:
         mask = {path: path != key for path in flat_params}  # don't cast the key
         mask = unflatten_dict(mask)
 
-        params = model.to_fp16(model.params, mask)
+        params = model.to_fp16(params, mask)
         types = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype, params))
         # test if all params are in fp16 except key
         for name, type_ in types.items():
@@ -158,7 +158,7 @@ class FlaxModelTesterMixin:
         mask = unflatten_dict(mask)
 
         # cast to fp16 and back to fp32 with mask
-        params = model.to_fp16(model.params)
+        params = model.to_fp16(params)
         params = model.to_fp32(params, mask)
 
         # test if all params are in fp32 except key
