@@ -22,7 +22,14 @@ import torch
 from PIL import Image
 from transformers import XLMRobertaTokenizerFast
 
-from diffusers import DDIMScheduler, KandinskyImg2ImgPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    KandinskyImg2ImgPipeline,
+    KandinskyPriorPipeline,
+    UNet2DConditionModel,
+    VQModel,
+)
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
@@ -297,6 +304,57 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         pipeline = KandinskyImg2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+        )
+        pipeline = pipeline.to(torch_device)
+
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_emb, zero_image_emb = pipe_prior(
+            prompt,
+            generator=generator,
+            num_inference_steps=5,
+            negative_prompt="",
+        ).to_tuple()
+
+        output = pipeline(
+            prompt,
+            image=init_image,
+            image_embeds=image_emb,
+            negative_image_embeds=zero_image_emb,
+            generator=generator,
+            num_inference_steps=100,
+            height=768,
+            width=768,
+            strength=0.2,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (768, 768, 3)
+
+        assert_mean_pixel_difference(image, expected_image)
+
+    def test_kandinsky_img2img_ddpm(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/kandinsky/kandinsky_img2img_ddpm_frog.npy"
+        )
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/frog.png"
+        )
+        prompt = "A red cartoon frog, 4k"
+
+        pipe_prior = KandinskyPriorPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        )
+        pipe_prior.to(torch_device)
+
+        scheduler = DDPMScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="ddpm_scheduler")
+        pipeline = KandinskyImg2ImgPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1", scheduler=scheduler, torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
 

@@ -518,9 +518,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=prompt_embeds.dtype, device=device
-        )
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=prompt_embeds.dtype, device=device
+            )
 
         # preprocess image and mask
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
