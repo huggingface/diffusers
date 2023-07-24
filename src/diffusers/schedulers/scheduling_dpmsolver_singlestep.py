@@ -282,7 +282,15 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.from_numpy(sigmas)
 
+        # when num_inference_steps == num_train_timesteps, we can end up with
+        # duplicates in timesteps.
+        _, unique_indices = np.unique(timesteps, return_index=True)
+        timesteps = timesteps[np.sort(unique_indices)]
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
+
+        self.num_inference_steps = len(timesteps)
+
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
 
