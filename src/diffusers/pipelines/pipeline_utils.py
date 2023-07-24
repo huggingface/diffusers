@@ -477,6 +477,7 @@ class DiffusionPipeline(ConfigMixin):
     config_name = "model_index.json"
     _optional_components = []
     _exclude_from_cpu_offload = []
+    _load_connected_pipes = False
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -879,7 +880,6 @@ class DiffusionPipeline(ConfigMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
-        load_connected_pipes = kwargs.pop("load_connected_pipes", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -898,7 +898,6 @@ class DiffusionPipeline(ConfigMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
-                load_connected_pipes=load_connected_pipes,
                 **kwargs,
             )
         else:
@@ -1237,7 +1236,6 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        load_connected_pipes = kwargs.pop("load_connected_pipes", False)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1372,6 +1370,10 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
+
+            if cls._load_connected_pipes:
+                allow_patterns.append("README.md")
+
             # Don't download index files of forbidden patterns either
             ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
 
@@ -1384,17 +1386,14 @@ class DiffusionPipeline(ConfigMixin):
             snapshot_folder = Path(config_file).parent
             pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-            if pipeline_is_cached and not force_download:
+            # if pipeline_is_cached and not force_download:
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
-                return snapshot_folder
+                # return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
-
-        if load_connected_pipes:
-            allow_patterns.append(["README.md"])
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(
@@ -1409,6 +1408,12 @@ class DiffusionPipeline(ConfigMixin):
             ignore_patterns=ignore_patterns,
             user_agent=user_agent,
         )
+
+        if cls._load_connected_pipes:
+            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+            connected_pipes = sum([getattr(modelcard, k, []) for k in CONNECTED_PIPES_KEYS], [])
+            for connected_pipe_repo_id in connected_pipes:
+                DiffusionPipeline.download(connected_pipe_repo_id)
 
         return cached_folder
 

@@ -75,6 +75,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
+    _load_connected_pipes = True
 
     def __init__(
         self,
