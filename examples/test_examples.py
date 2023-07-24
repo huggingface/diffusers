@@ -1296,6 +1296,24 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
             )
 
+    def test_controlnet_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+            examples/controlnet/train_controlnet_sdxl.py
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
+            --dataset_name=hf-internal-testing/fill10
+            --output_dir={tmpdir}
+            --resolution=64
+            --train_batch_size=1
+            --gradient_accumulation_steps=1
+            --max_train_steps=9
+            --checkpointing_steps=2
+            """.split()
+
+            run_command(self._launch_args + test_args)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
