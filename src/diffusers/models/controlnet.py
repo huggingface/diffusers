@@ -751,7 +751,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         sample = self.conv_in(sample)
 
         controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
-
+        print(f"sample: {sample.shape} controlnet_cond: {controlnet_cond.shape}")
         sample = sample + controlnet_cond
 
         # 3. down
