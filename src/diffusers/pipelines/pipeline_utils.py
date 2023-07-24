@@ -760,11 +760,9 @@ class DiffusionPipeline(ConfigMixin):
                     - A path to a directory (`./my_pipeline_directory/`) containing a custom pipeline. The directory
                       must contain a file called `pipeline.py` that defines the custom pipeline.
 
-
                 For more information on how to load and create custom pipelines, please have a look at [Loading and
                 Adding Custom
                 Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
