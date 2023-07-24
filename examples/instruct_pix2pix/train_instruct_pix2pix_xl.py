@@ -20,7 +20,6 @@ import math
 import os
 import shutil
 import warnings
-from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -28,7 +27,6 @@ import accelerate
 import datasets
 import numpy as np
 import PIL
-import requests
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,7 +50,7 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instru
     StableDiffusionXLInstructPix2PixPipeline,
 )
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available
+from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -95,6 +93,12 @@ def parse_args():
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_vae_model_name_or_path",
+        type=str,
+        default=None,
+        help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
     )
     parser.add_argument(
         "--revision",
@@ -402,13 +406,6 @@ def convert_to_np(image, resolution):
     return np.array(image).transpose(2, 0, 1)
 
 
-def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
-    image = PIL.ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
-    return image
-
-
 def main():
     args = parse_args()
 
@@ -467,7 +464,16 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae_path = (
+        args.pretrained_model_name_or_path
+        if args.pretrained_vae_model_name_or_path is None
+        else args.pretrained_vae_model_name_or_path
+    )
+    vae = AutoencoderKL.from_pretrained(
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+    )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
@@ -489,9 +495,6 @@ def main():
         new_conv_in.weight.zero_()
         new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
         unet.conv_in = new_conv_in
-
-    # Freeze vae and text_encoder
-    vae.requires_grad_(False)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -706,6 +709,8 @@ def main():
     tokenizers = [tokenizer_1, tokenizer_2]
     text_encoders = [text_encoder_1, text_encoder_2]
 
+    # Freeze vae and text_encoders
+    vae.requires_grad_(False)
     text_encoder_1.requires_grad_(False)
     text_encoder_2.requires_grad_(False)
 
@@ -868,8 +873,12 @@ def main():
     if args.use_ema:
         ema_unet.to(accelerator.device)
 
-    # Move vae to gpu and cast to weight_dtype
-    vae.to(accelerator.device, dtype=weight_dtype)
+    # Move vae, unet and text_encoder to device and cast to weight_dtype
+    # The VAE is in float32 to avoid NaN losses.
+    if args.pretrained_vae_model_name_or_path is not None:
+        vae.to(accelerator.device, dtype=weight_dtype)
+    else:
+        vae.to(accelerator.device, dtype=torch.float32)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -939,9 +948,14 @@ def main():
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
-                latents = vae.encode(batch["edited_pixel_values"]).latent_dist.sample()
+                if args.pretrained_vae_model_name_or_path is not None:
+                    edited_pixel_values = batch["edited_pixel_values"].to(dtype=weight_dtype)
+                else:
+                    edited_pixel_values = batch["edited_pixel_values"]
+                latents = vae.encode(edited_pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
-                latents = latents.to(weight_dtype)
+                if args.pretrained_vae_model_name_or_path is None:
+                    latents = latents.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -960,8 +974,13 @@ def main():
 
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
-                original_image_embeds = vae.encode(batch["original_pixel_values"]).latent_dist.mode()
-                original_image_embeds = original_image_embeds.to(weight_dtype)
+                if args.pretrained_vae_model_name_or_path is not None:
+                    original_pixel_values = batch["original_pixel_values"].to(dtype=weight_dtype)
+                else:
+                    original_pixel_values = batch["original_pixel_values"]
+                original_image_embeds = vae.encode(original_pixel_values).latent_dist.sample()
+                if args.pretrained_vae_model_name_or_path is None:
+                    original_image_embeds = original_image_embeds.to(weight_dtype)
 
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
                 # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
@@ -1088,9 +1107,7 @@ def main():
                         os.makedirs(val_save_dir)
 
                     original_image = (
-                        lambda image_url_or_path: Image.open(BytesIO(requests.get(image_url_or_path).content)).convert(
-                            "RGB"
-                        )
+                        lambda image_url_or_path: load_image(image_url_or_path)
                         if urlparse(image_url_or_path).scheme
                         else Image.open(image_url_or_path).convert("RGB")
                     )(args.val_image_url_or_path)
