@@ -1142,6 +1142,7 @@ def main(args):
 
                 # ControlNet conditioning.
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                print(f"noisy_latents: {noisy_latents.shape} encoder_hidden_states: {batch['prompt_ids'].shape} controlnet_image: {controlnet_image.shape}")
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
