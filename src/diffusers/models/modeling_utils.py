@@ -273,7 +273,7 @@ class ModelMixin(torch.nn.Module):
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
     ):
         """
@@ -291,7 +291,7 @@ class ModelMixin(torch.nn.Module):
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
