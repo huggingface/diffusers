@@ -12,87 +12,26 @@ specific language governing permissions and limitations under the License.
 
 # Audio Diffusion
 
-## Overview
+[Audio Diffusion](https://github.com/teticio/audio-diffusion) is by Robert Dargavel Smith, and it leverages the recent advances in image generation from diffusion models by converting audio samples to and from Mel spectrogram images.
 
-[Audio Diffusion](https://github.com/teticio/audio-diffusion) by Robert Dargavel Smith.
+The original codebase, training scripts and example notebooks can be found at [teticio/audio-diffusion](https://github.com/teticio/audio-diffusion).
 
-Audio Diffusion leverages the recent advances in image generation using diffusion models by converting audio samples to
-and from mel spectrogram images.
+<Tip>
 
-The original codebase of this implementation can be found [here](https://github.com/teticio/audio-diffusion), including
-training scripts and example notebooks.
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
-## Available Pipelines:
-
-| Pipeline | Tasks | Colab
-|---|---|:---:|
-| [pipeline_audio_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/audio_diffusion/pipeline_audio_diffusion.py) | *Unconditional Audio Generation* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/teticio/audio-diffusion/blob/master/notebooks/audio_diffusion_pipeline.ipynb) |
-
-
-## Examples:
-
-### Audio Diffusion
-
-```python
-import torch
-from IPython.display import Audio
-from diffusers import DiffusionPipeline
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-256").to(device)
-
-output = pipe()
-display(output.images[0])
-display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
-```
-
-### Latent Audio Diffusion
-
-```python
-import torch
-from IPython.display import Audio
-from diffusers import DiffusionPipeline
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-pipe = DiffusionPipeline.from_pretrained("teticio/latent-audio-diffusion-256").to(device)
-
-output = pipe()
-display(output.images[0])
-display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
-```
-
-### Audio Diffusion with DDIM (faster)
-
-```python
-import torch
-from IPython.display import Audio
-from diffusers import DiffusionPipeline
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-ddim-256").to(device)
-
-output = pipe()
-display(output.images[0])
-display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
-```
-
-### Variations, in-painting, out-painting etc.
-
-```python
-output = pipe(
-    raw_audio=output.audios[0, 0],
-    start_step=int(pipe.get_default_steps() / 2),
-    mask_start_secs=1,
-    mask_end_secs=1,
-)
-display(output.images[0])
-display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
-```
+</Tip>
 
 ## AudioDiffusionPipeline
 [[autodoc]] AudioDiffusionPipeline
 	- all
 	- __call__
+
+## AudioPipelineOutput
+[[autodoc]] pipelines.AudioPipelineOutput
+
+## ImagePipelineOutput
+[[autodoc]] pipelines.ImagePipelineOutput
 
 ## Mel
 [[autodoc]] Mel

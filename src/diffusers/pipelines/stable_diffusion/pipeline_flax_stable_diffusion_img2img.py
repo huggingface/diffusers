@@ -104,31 +104,30 @@ EXAMPLE_DOC_STRING = """
 
 class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
-    Pipeline for image-to-image generation using Stable Diffusion.
+    Flax-based pipeline for text-guided image-to-image generation using Stable Diffusion.
 
-    This model inherits from [`FlaxDiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`FlaxDiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         vae ([`FlaxAutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`FlaxCLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.FlaxCLIPTextModel),
-            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`FlaxUNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        text_encoder ([`~transformers.FlaxCLIPTextModel`]):
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        unet ([`FlaxUNet2DConditionModel`]):
+            A `FlaxUNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
             [`FlaxDPMSolverMultistepScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPImageProcessor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
     def __init__(
@@ -353,52 +352,58 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         jit: bool = False,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt_ids (`jnp.array`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide image generation.
             image (`jnp.array`):
-                Array representing an image batch, that will be used as the starting point for the process.
-            params (`Dict` or `FrozenDict`): Dictionary containing the model parameters/weights
-            prng_seed (`jax.random.KeyArray` or `jax.Array`): Array containing random number generator key
+                Array representing an image batch to be used as the starting point.
+            params (`Dict` or `FrozenDict`):
+                Dictionary containing the model parameters/weights.
+            prng_seed (`jax.random.KeyArray` or `jax.Array`):
+                Array containing random number generator key.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
-                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
-                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
-                be maximum and the denoising process will run for the full number of iterations specified in
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
+                essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                expense of slower inference. This parameter is modulated by `strength`.
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             guidance_scale (`float`, *optional*, defaults to 7.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             noise (`jnp.array`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. tensor will ge generated
-                by sampling using the supplied random `generator`.
+                Pre-generated noisy latents sampled from a Gaussian distribution to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. The array is generated by
+                sampling using the supplied random `generator`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
             jit (`bool`, defaults to `False`):
-                Whether to run `pmap` versions of the generation and safety scoring functions. NOTE: This argument
-                exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a future release.
+                Whether to run `pmap` versions of the generation and safety scoring functions.
+
+                    <Tip warning={true}>
+
+                    This argument exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a
+                    future release.
+
+                    </Tip>
 
         Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
-            element is a list of `bool`s denoting whether the corresponding generated image likely represents
-            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated images
+                and the second element is a list of `bool`s indicating whether the corresponding generated image
+                contains "not-safe-for-work" (nsfw) content.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

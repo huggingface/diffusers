@@ -77,6 +77,19 @@ def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
 
 
 class RePaintPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for image inpainting using RePaint.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    Parameters:
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image latents.
+        scheduler ([`RePaintScheduler`]):
+            A `RePaintScheduler` to be used in combination with `unet` to denoise the encoded image.
+    """
+
     unet: UNet2DModel
     scheduler: RePaintScheduler
 
@@ -98,35 +111,77 @@ class RePaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
             image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                The mask_image where 0.0 values define which part of the original image to inpaint (change).
+                The mask_image where 0.0 define which part of the original image to inpaint.
             num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             eta (`float`):
-                The weight of noise for added noise in a diffusion step. Its value is between 0.0 and 1.0 - 0.0 is DDIM
-                and 1.0 is DDPM scheduler respectively.
+                The weight of the added noise in a diffusion step. Its value is between 0.0 and 1.0; 0.0 corresponds to
+                DDIM and 1.0 is the DDPM scheduler.
             jump_length (`int`, *optional*, defaults to 10):
                 The number of steps taken forward in time before going backward in time for a single jump ("j" in
-                RePaint paper). Take a look at Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
+                RePaint paper). Take a look at Figure 9 and 10 in the [paper](https://arxiv.org/pdf/2201.09865.pdf).
             jump_n_sample (`int`, *optional*, defaults to 10):
-                The number of times we will make forward time jump for a given chosen time sample. Take a look at
-                Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
+                The number of times to make a forward time jump for a given chosen time sample. Take a look at Figure 9
+                and 10 in the [paper](https://arxiv.org/pdf/2201.09865.pdf).
             generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            output_type (`str`, `optional`, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
+
+        Example:
+
+        ```py
+        >>> from io import BytesIO
+        >>> import torch
+        >>> import PIL
+        >>> import requests
+        >>> from diffusers import RePaintPipeline, RePaintScheduler
+
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+
+        >>> img_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/celeba_hq_256.png"
+        >>> mask_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/mask_256.png"
+
+        >>> # Load the original image and the mask as PIL images
+        >>> original_image = download_image(img_url).resize((256, 256))
+        >>> mask_image = download_image(mask_url).resize((256, 256))
+
+        >>> # Load the RePaint scheduler and pipeline based on a pretrained DDPM model
+        >>> scheduler = RePaintScheduler.from_pretrained("google/ddpm-ema-celebahq-256")
+        >>> pipe = RePaintPipeline.from_pretrained("google/ddpm-ema-celebahq-256", scheduler=scheduler)
+        >>> pipe = pipe.to("cuda")
+
+        >>> generator = torch.Generator(device="cuda").manual_seed(0)
+        >>> output = pipe(
+        ...     image=original_image,
+        ...     mask_image=mask_image,
+        ...     num_inference_steps=250,
+        ...     eta=0.0,
+        ...     jump_length=10,
+        ...     jump_n_sample=10,
+        ...     generator=generator,
+        ... )
+        >>> inpainted_image = output.images[0]
+        ```
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
 
         original_image = image
