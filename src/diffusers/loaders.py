@@ -1388,8 +1388,8 @@ class FromSingleFileMixin:
                 [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
                 parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
             vae (`AutoencoderKL`, *optional*, defaults to `None`):
-                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-                If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+                this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
             tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
                 An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
                 of `CLIPTokenizer` by itself if needed.

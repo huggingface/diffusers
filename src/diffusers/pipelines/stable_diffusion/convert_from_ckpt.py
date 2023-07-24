@@ -1158,8 +1158,8 @@ def download_from_original_stable_diffusion_ckpt(
         local_files_only (`bool`, *optional*, defaults to `False`):
             Whether or not to only look at local files (i.e., do not try to download the model).
         vae (`AutoencoderKL`, *optional*, defaults to `None`):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-            If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+            this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
         text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
             An instance of [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)
             to use, specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
