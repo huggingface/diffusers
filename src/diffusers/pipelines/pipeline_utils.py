@@ -764,7 +764,6 @@ class DiffusionPipeline(ConfigMixin):
                 For more information on how to load and create custom pipelines, please have a look at [Loading and
                 Adding Custom
                 Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
