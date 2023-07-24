@@ -29,14 +29,21 @@ from .mel import Mel
 
 class AudioDiffusionPipeline(DiffusionPipeline):
     """
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    Pipeline for audio diffusion.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Parameters:
-        vqae ([`AutoencoderKL`]): Variational AutoEncoder for Latent Audio Diffusion or None
-        unet ([`UNet2DConditionModel`]): UNET model
-        mel ([`Mel`]): transform audio <-> spectrogram
-        scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
+        vqae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        unet ([`UNet2DConditionModel`]):
+            A `UNet2DConditionModel` to denoise the encoded image latents.
+        mel ([`Mel`]):
+            Transform audio into a spectrogram.
+        scheduler ([`DDIMScheduler`] or [`DDPMScheduler`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`] or [`DDPMScheduler`].
     """
 
     _optional_components = ["vqvae"]
@@ -52,10 +59,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
 
     def get_default_steps(self) -> int:
-        """Returns default number of steps recommended for inference
+        """Returns default number of steps recommended for inference.
 
         Returns:
-            `int`: number of steps
+            `int`:
+                The number of steps.
         """
         return 50 if isinstance(self.scheduler, DDIMScheduler) else 1000
 
@@ -80,26 +88,90 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         Union[AudioPipelineOutput, ImagePipelineOutput],
         Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]],
     ]:
-        """Generate random mel spectrogram from audio input and convert to audio.
+        """
+        The call function to the pipeline for generation.
 
         Args:
-            batch_size (`int`): number of samples to generate
-            audio_file (`str`): must be a file on disk due to Librosa limitation or
-            raw_audio (`np.ndarray`): audio as numpy array
-            slice (`int`): slice number of audio to convert
-            start_step (int): step to start from
-            steps (`int`): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
-            generator (`torch.Generator`): random number generator or None
-            mask_start_secs (`float`): number of seconds of audio to mask (not generate) at start
-            mask_end_secs (`float`): number of seconds of audio to mask (not generate) at end
-            step_generator (`torch.Generator`): random number generator used to de-noise or None
-            eta (`float`): parameter between 0 and 1 used with DDIM scheduler
-            noise (`torch.Tensor`): noise tensor of shape (batch_size, 1, height, width) or None
-            encoding (`torch.Tensor`): for UNet2DConditionModel shape (batch_size, seq_length, cross_attention_dim)
-            return_dict (`bool`): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
+            batch_size (`int`):
+                Number of samples to generate.
+            audio_file (`str`):
+                An audio file that must be on disk due to [Librosa](https://librosa.org/) limitation.
+            raw_audio (`np.ndarray`):
+                The raw audio file as a NumPy array.
+            slice (`int`):
+                Slice number of audio to convert.
+            start_step (int):
+                Step to start diffusion from.
+            steps (`int`):
+                Number of denoising steps (defaults to `50` for DDIM and `1000` for DDPM).
+            generator (`torch.Generator`):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            mask_start_secs (`float`):
+                Number of seconds of audio to mask (not generate) at start.
+            mask_end_secs (`float`):
+                Number of seconds of audio to mask (not generate) at end.
+            step_generator (`torch.Generator`):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) used to denoise.
+                None
+            eta (`float`):
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+            noise (`torch.Tensor`):
+                A noise tensor of shape `(batch_size, 1, height, width)` or `None`.
+            encoding (`torch.Tensor`):
+                A tensor for [`UNet2DConditionModel`] of shape `(batch_size, seq_length, cross_attention_dim)`.
+            return_dict (`bool`):
+                Whether or not to return a [`AudioPipelineOutput`], [`ImagePipelineOutput`] or a plain tuple.
+
+        Examples:
+
+        For audio diffusion:
+
+        ```py
+        import torch
+        from IPython.display import Audio
+        from diffusers import DiffusionPipeline
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-256").to(device)
+
+        output = pipe()
+        display(output.images[0])
+        display(Audio(output.audios[0], rate=mel.get_sample_rate()))
+        ```
+
+        For latent audio diffusion:
+
+        ```py
+        import torch
+        from IPython.display import Audio
+        from diffusers import DiffusionPipeline
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        pipe = DiffusionPipeline.from_pretrained("teticio/latent-audio-diffusion-256").to(device)
+
+        output = pipe()
+        display(output.images[0])
+        display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
+        ```
+
+        For other tasks like variation, inpainting, outpainting, etc:
+
+        ```py
+        output = pipe(
+            raw_audio=output.audios[0, 0],
+            start_step=int(pipe.get_default_steps() / 2),
+            mask_start_secs=1,
+            mask_end_secs=1,
+        )
+        display(output.images[0])
+        display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
+        ```
 
         Returns:
-            `List[PIL Image]`: mel spectrograms (`float`, `List[np.ndarray]`): sample rate and raw audios
+            `List[PIL Image]`:
+                A list of Mel spectrograms (`float`, `List[np.ndarray]`) with the sample rate and raw audio.
         """
 
         steps = steps or self.get_default_steps()
@@ -197,14 +269,18 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def encode(self, images: List[Image.Image], steps: int = 50) -> np.ndarray:
-        """Reverse step process: recover noisy image from generated image.
+        """
+        Reverse the denoising step process to recover a noisy image from the generated image.
 
         Args:
-            images (`List[PIL Image]`): list of images to encode
-            steps (`int`): number of encoding steps to perform (defaults to 50)
+            images (`List[PIL Image]`):
+                List of images to encode.
+            steps (`int`):
+                Number of encoding steps to perform (defaults to `50`).
 
         Returns:
-            `np.ndarray`: noise tensor of shape (batch_size, 1, height, width)
+            `np.ndarray`:
+                A noise tensor of shape `(batch_size, 1, height, width)`.
         """
 
         # Only works with DDIM as this method is deterministic
@@ -234,15 +310,19 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
     @staticmethod
     def slerp(x0: torch.Tensor, x1: torch.Tensor, alpha: float) -> torch.Tensor:
-        """Spherical Linear intERPolation
+        """Spherical Linear intERPolation.
 
         Args:
-            x0 (`torch.Tensor`): first tensor to interpolate between
-            x1 (`torch.Tensor`): seconds tensor to interpolate between
-            alpha (`float`): interpolation between 0 and 1
+            x0 (`torch.Tensor`):
+                The first tensor to interpolate between.
+            x1 (`torch.Tensor`):
+                Second tensor to interpolate between.
+            alpha (`float`):
+                Interpolation between 0 and 1
 
         Returns:
-            `torch.Tensor`: interpolated tensor
+            `torch.Tensor`:
+                The interpolated tensor.
         """
 
         theta = acos(torch.dot(torch.flatten(x0), torch.flatten(x1)) / torch.norm(x0) / torch.norm(x1))

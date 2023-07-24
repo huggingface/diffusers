@@ -10,72 +10,171 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Stable diffusion pipelines
+# Stable Diffusion pipelines
 
-Stable Diffusion is a text-to-image _latent diffusion_ model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) dataset. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and can run on consumer GPUs.
+Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). Latent diffusion applies the diffusion process over a lower dimensional latent space to reduce memory and compute complexity. This specific type of diffusion model was proposed in [High-Resolution Image Synthesis with Latent Diffusion Models](https://huggingface.co/papers/2112.10752) by Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, Björn Ommer.
 
-Latent diffusion is the research on top of which Stable Diffusion was built. It was proposed in [High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) by Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, Björn Ommer. You can learn more details about it in the [specific pipeline for latent diffusion](pipelines/latent_diffusion) that is part of 🤗 Diffusers.
+Stable Diffusion is trained on 512x512 images from a subset of the LAION-5B dataset. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and can run on consumer GPUs.
 
-For more details about how Stable Diffusion works and how it differs from the base latent diffusion model, please refer to the official [launch announcement post](https://stability.ai/blog/stable-diffusion-announcement) and [this section of our own blog post](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work).
+For more details about how Stable Diffusion works and how it differs from the base latent diffusion model, take a look at the Stability AI [announcement](https://stability.ai/blog/stable-diffusion-announcement) and our own [blog post](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) for more technical details.
 
-*Tips*:
-- To tweak your prompts on a specific result you liked, you can generate your own latents, as demonstrated in the following notebook: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb)
+You can find the original codebase for Stable Diffusion v1.0 at [CompVis/stable-diffusion](https://github.com/CompVis/stable-diffusion) and Stable Diffusion v2.0 at [Stability-AI/stablediffusion](https://github.com/Stability-AI/stablediffusion) as well as their original scripts for various tasks. Additional official checkpoints for the different Stable Diffusion versions and tasks can be found on the [CompVis](https://huggingface.co/CompVis), [Runway](https://huggingface.co/runwayml), and [Stability AI](https://huggingface.co/stabilityai) Hub organizations. Explore these organizations to find the best checkpoint for your use-case!
 
-*Overview*:
+The table below summarizes the available Stable Diffusion pipelines, their supported tasks, and an interactive demo:
 
-| Pipeline | Tasks | Colab | Demo
-|---|---|:---:|:---:|
-| [StableDiffusionPipeline](./text2img) | *Text-to-Image Generation* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb) | [🤗 Stable Diffusion](https://huggingface.co/spaces/stabilityai/stable-diffusion)
-| [StableDiffusionPipelineSafe](./stable_diffusion_safe) | *Text-to-Image Generation* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ml-research/safe-latent-diffusion/blob/main/examples/Safe%20Latent%20Diffusion.ipynb) | [![Huggingface Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/AIML-TUDA/unsafe-vs-safe-stable-diffusion)
-| [StableDiffusionImg2ImgPipeline](./img2img) | *Image-to-Image Text-Guided Generation* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb) | [🤗 Diffuse the Rest](https://huggingface.co/spaces/huggingface/diffuse-the-rest)
-| [StableDiffusionInpaintPipeline](./inpaint) | **Experimental** – *Text-Guided Image Inpainting* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/in_painting_with_stable_diffusion_using_diffusers.ipynb) | 
-| [StableDiffusionDepth2ImgPipeline](./depth2img) | **Experimental** – *Depth-to-Image Text-Guided Generation* | |
-| [StableDiffusionImageVariationPipeline](./image_variation) | **Experimental** – *Image Variation Generation* | | [🤗 Stable Diffusion Image Variations](https://huggingface.co/spaces/lambdalabs/stable-diffusion-image-variations)
-| [StableDiffusionUpscalePipeline](./upscale) | **Experimental** – *Text-Guided Image Super-Resolution* | |
-| [StableDiffusionLatentUpscalePipeline](./latent_upscale) | **Experimental** – *Text-Guided Image Super-Resolution* | |
-| [Stable Diffusion 2](./stable_diffusion_2)  | *Text-Guided Image Inpainting* | 
-| [Stable Diffusion 2](./stable_diffusion_2)  |  *Depth-to-Image Text-Guided Generation* |
-| [Stable Diffusion 2](./stable_diffusion_2)  | *Text-Guided Super Resolution Image-to-Image* |
-| [StableDiffusionLDM3DPipeline](./ldm3d)  | *Text-to-(RGB, Depth)* |
+<div class="flex justify-center">
+    <div class="rounded-xl border border-gray-200">
+    <table class="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
+        <thead>
+        <tr>
+            <th class="px-4 py-2 font-medium text-gray-900 text-left">
+            Pipeline
+            </th>
+            <th class="px-4 py-2 font-medium text-gray-900 text-left">
+            Supported tasks
+            </th>
+            <th class="px-4 py-2 font-medium text-gray-900 text-left">
+            Space
+            </th>
+
+        </tr>
+        </thead>
+
+        <tbody class="divide-y divide-gray-200">
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./text2img">StableDiffusion</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">text-to-image</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/stabilityai/stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./img2img">StableDiffusionImg2Img</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">image-to-image</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/huggingface/diffuse-the-rest"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./inpaint">StableDiffusionInpaint</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">inpainting</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/runwayml/stable-diffusion-inpainting"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./depth2img">StableDiffusionDepth2Img</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">depth-to-image</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/radames/stable-diffusion-depth2img"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./image_variation">StableDiffusionImageVariation</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">image variation</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/lambdalabs/stable-diffusion-image-variations"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./stable_diffusion_safe">StableDiffusionPipelineSafe</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">filtered text-to-image</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/AIML-TUDA/unsafe-vs-safe-stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./stable_diffusion_2">StableDiffusion2</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">text-to-image, inpainting, depth-to-image, super-resolution</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/stabilityai/stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./stable_diffusion_xl">StableDiffusionXL</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">text-to-image, image-to-image</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/RamAnanth1/stable-diffusion-xl"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./latent_upscale">StableDiffusionLatentUpscale</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">super-resolution</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/huggingface-projects/stable-diffusion-latent-upscaler"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./upscale">StableDiffusionUpscale</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">super-resolution</td>
+        </tr>
+
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./ldm3d_diffusion">StableDiffusionLDM3D</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">text-to-rgb, text-to-depth</td>
+            <td class="px-4 py-2"><a href="https://huggingface.co/spaces/r23/ldm3d-space"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+    </div>
+</div>
 
 ## Tips
 
-### How to load and use different schedulers.
+To help you get the most out of the Stable Diffusion pipelines, here are a few tips for improving performance and usability. These tips are applicable to all Stable Diffusion pipelines.
 
-The stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
-To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+### Explore tradeoff between speed and quality
 
-```python
->>> from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
+[`StableDiffusionPipeline`] uses the [`PNDMScheduler`] by default, but 🤗 Diffusers provides many other schedulers (some of which are faster or output better quality) that are compatible. For example, if you want to use the [`EulerDiscreteScheduler`] instead of the default:
 
->>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
->>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+```py
+from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
 
->>> # or
->>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
->>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
+pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+
+# or
+euler_scheduler = EulerDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
 ```
 
+### Reuse pipeline components to save memory
 
-### How to convert all use cases with multiple or single pipeline
+To save memory and use the same components across multiple pipelines, use the `.components` method to avoid loading weights into RAM more than once.
 
-If you want to use all possible use cases in a single `DiffusionPipeline` you can either:
-- Make use of the [Stable Diffusion Mega Pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#stable-diffusion-mega) or 
-- Make use of the `components` functionality to instantiate all components in the most memory-efficient way:
+```py
+from diffusers import (
+    StableDiffusionPipeline,
+    StableDiffusionImg2ImgPipeline,
+    StableDiffusionInpaintPipeline,
+)
 
-```python
->>> from diffusers import (
-...     StableDiffusionPipeline,
-...     StableDiffusionImg2ImgPipeline,
-...     StableDiffusionInpaintPipeline,
-... )
+text2img = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
->>> text2img = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
->>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
->>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
-
->>> # now you can use text2img(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
+# now you can use text2img(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
 ```
-
-## StableDiffusionPipelineOutput
-[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput

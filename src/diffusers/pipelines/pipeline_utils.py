@@ -463,13 +463,13 @@ class DiffusionPipeline(ConfigMixin):
     provides methods for loading, downloading and saving models. It also includes methods to:
 
         - move all PyTorch modules to the device of your choice
-        - enabling/disabling the progress bar for the denoising iteration
+        - enable/disable the progress bar for the denoising iteration
 
     Class attributes:
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (List[`str`]) -- List of all optional components that don't have to be passed to the
+        - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
@@ -1127,7 +1127,9 @@ class DiffusionPipeline(ConfigMixin):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            device_mod = getattr(torch, self.device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
@@ -1473,10 +1475,9 @@ class DiffusionPipeline(ConfigMixin):
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
-        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up during
-        inference. Speed up during training is not guaranteed.
+        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/). When this
+        option is enabled, you should observe lower GPU memory usage and a potential speed up during inference. Speed
+        up during training is not guaranteed.
 
         <Tip warning={true}>
 
@@ -1535,10 +1536,9 @@ class DiffusionPipeline(ConfigMixin):
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
-        several steps. This is useful to save some memory in exchange for a small speed decrease.
+        Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
+        in slices to compute attention in several steps. This is useful to save some memory in exchange for a small
+        speed decrease.
 
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):

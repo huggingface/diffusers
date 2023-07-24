@@ -205,7 +205,9 @@ class KandinskyV22Pipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=self.unet.dtype, device=device
+            )
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps

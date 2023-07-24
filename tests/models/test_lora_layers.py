@@ -464,6 +464,14 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 if isinstance(module, Attention):
                     self.assertIsInstance(module.processor, LoRAXFormersAttnProcessor)
 
+            # unload lora weights
+            sd_pipe.unload_lora_weights()
+
+            # check if attention processors are reverted back to xFormers
+            for _, module in sd_pipe.unet.named_modules():
+                if isinstance(module, Attention):
+                    self.assertIsInstance(module.processor, XFormersAttnProcessor)
+
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_lora_save_load_with_xformers(self):
         pipeline_components, lora_components = self.get_dummy_components()

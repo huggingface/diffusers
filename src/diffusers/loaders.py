@@ -26,6 +26,7 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .models.attention_processor import (
+    LORA_ATTENTION_PROCESSORS,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     AttnProcessor,
@@ -815,7 +816,8 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
@@ -830,8 +832,7 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-
-            kwargs:
+            kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -1010,7 +1011,7 @@ class LoraLoaderMixin:
         elif not all(
             key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
         ):
-            unet.load_attn_procs(state_dict)
+            unet.load_attn_procs(state_dict, network_alpha=network_alpha)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
@@ -1170,10 +1171,10 @@ class LoraLoaderMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes 🤗 Transformers.
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1293,22 +1294,21 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        is_unet_lora = all(
-            isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor, LoRAAttnAddedKVProcessor))
-            for _, processor in self.unet.attn_processors.items()
-        )
-        # Handle attention processors that are a mix of regular attention and AddedKV
-        # attention.
-        if is_unet_lora:
-            is_attn_procs_mixed = all(
-                isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor))
-                for _, processor in self.unet.attn_processors.items()
-            )
-            if not is_attn_procs_mixed:
-                unet_attn_proc_cls = AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                self.unet.set_attn_processor(unet_attn_proc_cls())
-            else:
+        unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
+
+        if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
+            # Handle attention processors that are a mix of regular attention and AddedKV
+            # attention.
+            if len(unet_attention_classes) > 1 or LoRAAttnAddedKVProcessor in unet_attention_classes:
                 self.unet.set_default_attn_processor()
+            else:
+                regular_attention_classes = {
+                    LoRAAttnProcessor: AttnProcessor,
+                    LoRAAttnProcessor2_0: AttnProcessor2_0,
+                    LoRAXFormersAttnProcessor: XFormersAttnProcessor,
+                }
+                [attention_proc_class] = unet_attention_classes
+                self.unet.set_attn_processor(regular_attention_classes[attention_proc_class]())
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -1353,7 +1353,7 @@ class FromSingleFileMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
@@ -1367,7 +1367,7 @@ class FromSingleFileMixin:
                 weights. If set to `False`, safetensors weights are not loaded.
             extract_ema (`bool`, *optional*, defaults to `False`):
                 Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better to continue finetuning.
+                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
             image_size (`int`, *optional*, defaults to 512):
@@ -1377,23 +1377,19 @@ class FromSingleFileMixin:
                 The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
                 the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
             num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it will be automatically inferred.
+                The number of input channels. If `None`, it is automatically inferred.
             scheduler_type (`str`, *optional*, defaults to `"pndm"`):
                 Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use, specifically the
+                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
+                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
+                of `CLIPTokenizer` by itself if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
