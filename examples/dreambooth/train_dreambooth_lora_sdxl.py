@@ -1063,7 +1063,6 @@ def main(args):
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
                 # Convert images to latent space
-                print(f"pixel_values: {pixel_values.shape}.")
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
@@ -1082,17 +1081,16 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
+                # Calculate the elements to repeat depending on the use of prior-preservation.
+                elems_to_repeat = bsz // 2 if args.with_prior_preservation else bsz
+
                 # Predict the noise residual
                 if not args.train_text_encoder:
                     unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(bsz, 1),
-                        "text_embeds": unet_add_text_embeds.repeat(bsz, 1),
+                        "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
+                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    print("From trainer: ")
-                    print(f"noisy_model_input: {noisy_model_input.shape}, timesteps: {timesteps.shape}")
-                    for k in unet_added_conditions:
-                        print(k, unet_added_conditions[k].shape) 
-                    prompt_embeds = prompt_embeds.repeat(bsz, 1, 1)
+                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
@@ -1100,15 +1098,15 @@ def main(args):
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(bsz, 1)}
+                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
                         prompt=None,
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
-                    unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(bsz, 1)})
-                    prompt_embeds = prompt_embeds.repeat(bsz, 1, 1)
+                    unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat, 1)})
+                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
                         noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                     ).sample
