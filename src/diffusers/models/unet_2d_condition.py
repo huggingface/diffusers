@@ -836,6 +836,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
             aug_emb = self.add_embedding(text_embs, image_embs)
         elif self.config.addition_embed_type == "text_time":
+            # SDXL - style
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
@@ -871,6 +872,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             aug_emb, hint = self.add_embedding(image_embs, hint)
             sample = torch.cat([sample, hint], dim=1)
 
+        print(f"From UNet: emb: {emb.shape}, aug_emb: {aug_emb.shape}")
         emb = emb + aug_emb if aug_emb is not None else emb
 
         if self.time_embed_act is not None:

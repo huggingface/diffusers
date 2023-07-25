@@ -1087,6 +1087,10 @@ def main(args):
                         "time_ids": add_time_ids.repeat(bsz, 1),
                         "text_embeds": unet_add_text_embeds.repeat(bsz, 1),
                     }
+                    print("From trainer: ")
+                    print(f"noisy_model_input: {noisy_model_input.shape}, timesteps: {timesteps.shape}")
+                    for k in unet_added_conditions:
+                        print(k, unet_added_conditions[k].shape) 
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
