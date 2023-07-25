@@ -74,6 +74,7 @@ else:
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
+        KandinskyV22TextToImagePipeline,
     )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline

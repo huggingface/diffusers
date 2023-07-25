@@ -5,3 +5,4 @@ from .pipeline_kandinsky2_2_img2img import KandinskyV22Img2ImgPipeline
 from .pipeline_kandinsky2_2_inpainting import KandinskyV22InpaintPipeline
 from .pipeline_kandinsky2_2_prior import KandinskyV22PriorPipeline
 from .pipeline_kandinsky2_2_prior_emb2emb import KandinskyV22PriorEmb2EmbPipeline
+from .pipeline_kandinsky2_2_combined import KandinskyV22TextToImagePipeline

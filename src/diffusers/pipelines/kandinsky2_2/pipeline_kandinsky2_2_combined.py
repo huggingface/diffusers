@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class KandinskyV22CombinedPipeline(DiffusionPipeline):
+class KandinskyV22TextToImagePipeline(DiffusionPipeline):
     """
     Pipeline for text-to-image generation using Kandinsky
 
@@ -75,6 +75,8 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
+
+    _load_connected_pipes = True
 
     def __init__(
         self,
@@ -203,7 +205,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             latents=latents,
             guidance_scale=prior_guidance_scale,
             output_type="pt",
-            return_dict=False
+            return_dict=False,
         )
         # TODO offload prior pipeline completetly if necessary
         outputs = self.decoder_pipe(
