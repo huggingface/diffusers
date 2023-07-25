@@ -89,7 +89,7 @@ _deps = [
     "huggingface-hub>=0.13.2",
     "requests-mock==1.10.0",
     "importlib_metadata",
-    "invisible-watermark",
+    "invisible-watermark>=0.2.0",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
@@ -106,7 +106,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "ruff>=0.0.241",
-    "safetensors",
+    "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "onnx",
@@ -227,12 +227,13 @@ install_requires = [
     deps["numpy"],
     deps["regex"],
     deps["requests"],
+    deps["safetensors"],
     deps["Pillow"],
 ]
 
 setup(
     name="diffusers",
-    version="0.18.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.19.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -245,7 +246,7 @@ setup(
     packages=find_packages("src"),
     include_package_data=True,
     python_requires=">=3.7.0",
-    install_requires=install_requires,
+    install_requires=list(install_requires),
     extras_require=extras,
     entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
     classifiers=[
