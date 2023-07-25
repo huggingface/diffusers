@@ -102,13 +102,10 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        if isinstance(guidance_scale, float):
-            # Convert to a tensor so each device gets a copy. Follow the prompt_ids for
-            # shape information, as they may be sharded (when `jit` is `True`), or not.
+        if isinstance(guidance_scale, float) and jit:
+            # Convert to a tensor so each device gets a copy.
             guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
-            if len(prompt_ids.shape) > 2:
-                # Assume sharded
-                guidance_scale = guidance_scale[:, None]
+            guidance_scale = guidance_scale[:, None]
 
         if jit:
             images = _p_generate(
@@ -194,10 +191,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
         add_text_embeds = jnp.concatenate([negative_pooled_embeds, pooled_embeds], axis=0)
         add_time_ids = jnp.concatenate([add_time_ids, add_time_ids], axis=0)
-
-        print(f"prompt_embeds: {prompt_embeds.shape} (2, 77, 2048)")
-        print(f"add_text_embeds: {add_text_embeds.shape} (2, 1280)")
-        print(f"add_time_ids: {add_time_ids.shape} (2, 6)")
 
         # Ensure model output will be `float32` before going into the scheduler
         guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
