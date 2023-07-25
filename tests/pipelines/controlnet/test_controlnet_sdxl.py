@@ -28,9 +28,7 @@ from diffusers import (
 )
 from diffusers.utils import randn_tensor, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -125,10 +123,10 @@ class ControlNetPipelineSDXLFastTests(
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         components = {
             "unet": unet,
@@ -178,6 +176,35 @@ class ControlNetPipelineSDXLFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    @require_torch_gpu
+    def test_stable_diffusion_xl_offloads(self):
+        pipes = []
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(torch_device)
+        pipes.append(sd_pipe)
+
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe.enable_model_cpu_offload()
+        pipes.append(sd_pipe)
+
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe.enable_sequential_cpu_offload()
+        pipes.append(sd_pipe)
+
+        image_slices = []
+        for pipe in pipes:
+            pipe.unet.set_default_attn_processor()
+
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs).images
+
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
     def test_stable_diffusion_xl_multi_prompts(self):
         components = self.get_dummy_components()

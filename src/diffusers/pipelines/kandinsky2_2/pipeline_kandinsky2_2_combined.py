@@ -15,21 +15,17 @@
 from typing import List, Optional, Union
 
 import torch
+from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from .pipeline_kandinsky2_2 import KandinskyV22Pipeline
-from .pipeline_kandinsky2_2_prior import KandinskyV22PriorPipeline
-
-from ...models import UNet2DConditionModel, VQModel, PriorTransformer
-from ...pipelines import DiffusionPipeline
-from ...schedulers import UnCLIPScheduler
-from transformers import CLIPVisionModelWithProjection, CLIPTextModelWithProjection, CLIPImageProcessor, CLIPTokenizer
-from ...pipelines.pipeline_utils import ImagePipelineOutput
-from ...schedulers import DDPMScheduler
+from ...models import PriorTransformer, UNet2DConditionModel, VQModel
+from ...schedulers import DDPMScheduler, UnCLIPScheduler
 from ...utils import (
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline
+from .pipeline_kandinsky2_2 import KandinskyV22Pipeline
+from .pipeline_kandinsky2_2_prior import KandinskyV22PriorPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -75,6 +71,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
+
     _load_connected_pipes = True
 
     def __init__(
@@ -204,7 +201,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             latents=latents,
             guidance_scale=prior_guidance_scale,
             output_type="pt",
-            return_dict=False
+            return_dict=False,
         )
         # TODO offload prior pipeline completetly if necessary
         outputs = self.decoder_pipe(
@@ -221,3 +218,11 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         )
 
         return outputs
+
+
+class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
+    pass
+
+
+class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
+    pass

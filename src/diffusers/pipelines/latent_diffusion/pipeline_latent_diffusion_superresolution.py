@@ -31,15 +31,16 @@ def preprocess(image):
 
 class LDMSuperResolutionPipeline(DiffusionPipeline):
     r"""
-    A pipeline for image super-resolution using Latent
+    A pipeline for image super-resolution using latent diffusion.
 
-    This class inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Parameters:
         vqvae ([`VQModel`]):
-            Vector-quantized (VQ) VAE Model to encode and decode images to and from latent representations.
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
+            Vector-quantized (VQ) model to encode and decode images to and from latent representations.
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
@@ -74,30 +75,58 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
             image (`torch.Tensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process.
+                `Image` or tensor representing an image batch to be used as the starting point for the process.
             batch_size (`int`, *optional*, defaults to 1):
                 Number of images to generate.
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
+
+        Example:
+
+        ```py
+        >>> import requests
+        >>> from PIL import Image
+        >>> from io import BytesIO
+        >>> from diffusers import LDMSuperResolutionPipeline
+        >>> import torch
+
+        >>> # load model and scheduler
+        >>> pipeline = LDMSuperResolutionPipeline.from_pretrained("CompVis/ldm-super-resolution-4x-openimages")
+        >>> pipeline = pipeline.to("cuda")
+
+        >>> # let's download an  image
+        >>> url = (
+        ...     "https://user-images.githubusercontent.com/38061659/199705896-b48e17b8-b231-47cd-a270-4ffa5a93fa3e.png"
+        ... )
+        >>> response = requests.get(url)
+        >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> low_res_img = low_res_img.resize((128, 128))
+
+        >>> # run pipeline in inference (sample random noise and denoise)
+        >>> upscaled_image = pipeline(low_res_img, num_inference_steps=100, eta=1).images[0]
+        >>> # save image
+        >>> upscaled_image.save("ldm_generated_image.png")
+        ```
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images
         """
         if isinstance(image, PIL.Image.Image):
             batch_size = 1

@@ -10,46 +10,30 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# VersatileDiffusion
+# Versatile Diffusion
 
-VersatileDiffusion was proposed in [Versatile Diffusion: Text, Images and Variations All in One Diffusion Model](https://arxiv.org/abs/2211.08332) by Xingqian Xu, Zhangyang Wang, Eric Zhang, Kai Wang, Humphrey Shi .
+Versatile Diffusion was proposed in [Versatile Diffusion: Text, Images and Variations All in One Diffusion Model](https://huggingface.co/papers/2211.08332) by Xingqian Xu, Zhangyang Wang, Eric Zhang, Kai Wang, Humphrey Shi .
 
-The abstract of the paper is the following:
+The abstract from the paper is:
 
 *The recent advances in diffusion models have set an impressive milestone in many generation tasks. Trending works such as DALL-E2, Imagen, and Stable Diffusion have attracted great interest in academia and industry. Despite the rapid landscape changes, recent new approaches focus on extensions and performance rather than capacity, thus requiring separate models for separate tasks. In this work, we expand the existing single-flow diffusion pipeline into a multi-flow network, dubbed Versatile Diffusion (VD), that handles text-to-image, image-to-text, image-variation, and text-variation in one unified model. Moreover, we generalize VD to a unified multi-flow multimodal diffusion framework with grouped layers, swappable streams, and other propositions that can process modalities beyond images and text. Through our experiments, we demonstrate that VD and its underlying framework have the following merits: a) VD handles all subtasks with competitive quality; b) VD initiates novel extensions and applications such as disentanglement of style and semantic, image-text dual-guided generation, etc.; c) Through these experiments and applications, VD provides more semantic insights of the generated outputs.*
 
 ## Tips
 
-- VersatileDiffusion is conceptually very similar as [Stable Diffusion](./stable_diffusion/overview),  but instead of providing just a image data stream conditioned on text, VersatileDiffusion provides both a image and text data stream and can be conditioned on both text and image.
+You can load the more memory intensive "all-in-one" [`VersatileDiffusionPipeline`] that supports all the tasks or use the individual pipelines which are more memory efficient.
 
-### *Run VersatileDiffusion*
+| **Pipeline**                                         | **Supported tasks**               |
+|------------------------------------------------------|-----------------------------------|
+| [`VersatileDiffusionPipeline`]                       | all of the below                  |
+| [`VersatileDiffusionTextToImagePipeline`]            | text-to-image                     |
+| [`VersatileDiffusionImageVariationPipeline`]         | image variation                   |
+| [`VersatileDiffusionDualGuidedPipeline`]             | image-text dual guided generation |
 
-You can both load the memory intensive "all-in-one" [`VersatileDiffusionPipeline`] that can run all tasks 
-with the same class as shown in [`VersatileDiffusionPipeline.text_to_image`], [`VersatileDiffusionPipeline.image_variation`], and [`VersatileDiffusionPipeline.dual_guided`]
+<Tip>
 
-**or**
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
-You can run the individual pipelines which are much more memory efficient:
-
-- *Text-to-Image*: [`VersatileDiffusionTextToImagePipeline.__call__`]
-- *Image Variation*: [`VersatileDiffusionImageVariationPipeline.__call__`]
-- *Dual Text and Image Guided Generation*: [`VersatileDiffusionDualGuidedPipeline.__call__`]
-
-### *How to load and use different schedulers.*
-
-The versatile diffusion pipelines uses [`DDIMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the alt diffusion pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
-To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
-
-```python
->>> from diffusers import VersatileDiffusionPipeline, EulerDiscreteScheduler
-
->>> pipeline = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion")
->>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-
->>> # or
->>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("shi-labs/versatile-diffusion", subfolder="scheduler")
->>> pipeline = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", scheduler=euler_scheduler)
-```
+</Tip>
 
 ## VersatileDiffusionPipeline
 [[autodoc]] VersatileDiffusionPipeline

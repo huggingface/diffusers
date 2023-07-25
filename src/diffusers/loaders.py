@@ -25,22 +25,6 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
-from .models.attention_processor import (
-    LORA_ATTENTION_PROCESSORS,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    AttnProcessor,
-    AttnProcessor2_0,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRALinearLayer,
-    LoRAXFormersAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-)
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -59,7 +43,7 @@ if is_safetensors_available():
     import safetensors
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -83,6 +67,8 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
+        from .models.attention_processor import LoRALinearLayer
+
         self.regular_linear_layer = regular_linear_layer
 
         device = self.regular_linear_layer.weight.device
@@ -108,7 +94,7 @@ class PatchedLoraProjection(nn.Module):
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
 
-    if isinstance(text_encoder, CLIPTextModel):
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
             name = f"text_model.encoder.layers.{i}.self_attn"
             mod = layer.self_attn
@@ -231,6 +217,17 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
+        from .models.attention_processor import (
+            AttnAddedKVProcessor,
+            AttnAddedKVProcessor2_0,
+            CustomDiffusionAttnProcessor,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            SlicedAttnAddedKVProcessor,
+            XFormersAttnProcessor,
+        )
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -423,6 +420,11 @@ class UNet2DConditionLoadersMixin:
                 `DIFFUSERS_SAVE_MODE`.
 
         """
+        from .models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionXFormersAttnProcessor,
+        )
+
         weight_name = weight_name or deprecate(
             "weights_name",
             "0.20.0",
@@ -816,7 +818,8 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
@@ -831,8 +834,7 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-
-            kwargs:
+            kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -1011,23 +1013,25 @@ class LoraLoaderMixin:
         elif not all(
             key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
         ):
-            unet.load_attn_procs(state_dict)
+            unet.load_attn_procs(state_dict, network_alpha=network_alpha)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, lora_scale=1.0):
+    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, prefix=None, lora_scale=1.0):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key shoult be prefixed with an
+                A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alpha (`float`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
+            prefix (`str`):
+                Expected prefix of the `text_encoder` in the `state_dict`.
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
@@ -1037,14 +1041,16 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
+        prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(cls.text_encoder_name)]
+            text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
-                k.replace(f"{cls.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+                k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                logger.info(f"Loading {cls.text_encoder_name}.")
+                logger.info(f"Loading {prefix}.")
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
@@ -1171,10 +1177,10 @@ class LoraLoaderMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes 🤗 Transformers.
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1184,23 +1190,10 @@ class LoraLoaderMixin:
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
-        if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
-            return
-
-        if save_function is None:
-            if safe_serialization:
-
-                def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
-
-            else:
-                save_function = torch.save
-
-        os.makedirs(save_directory, exist_ok=True)
-
         # Create a flat dictionary.
         state_dict = {}
+
+        # Populate the dictionary.
         if unet_lora_layers is not None:
             weights = (
                 unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
@@ -1222,6 +1215,38 @@ class LoraLoaderMixin:
             state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def write_lora_layers(
+        state_dict: Dict[str, torch.Tensor],
+        save_directory: str,
+        is_main_process: bool,
+        weight_name: str,
+        save_function: Callable,
+        safe_serialization: bool,
+    ):
+        if os.path.isfile(save_directory):
+            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
+            return
+
+        if save_function is None:
+            if safe_serialization:
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+            else:
+                save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
         if weight_name is None:
             if safe_serialization:
                 weight_name = LORA_WEIGHT_NAME_SAFE
@@ -1294,6 +1319,17 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
+        from .models.attention_processor import (
+            LORA_ATTENTION_PROCESSORS,
+            AttnProcessor,
+            AttnProcessor2_0,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            XFormersAttnProcessor,
+        )
+
         unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
 
         if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
@@ -1353,7 +1389,7 @@ class FromSingleFileMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
@@ -1367,7 +1403,7 @@ class FromSingleFileMixin:
                 weights. If set to `False`, safetensors weights are not loaded.
             extract_ema (`bool`, *optional*, defaults to `False`):
                 Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better to continue finetuning.
+                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
             image_size (`int`, *optional*, defaults to 512):
@@ -1377,23 +1413,22 @@ class FromSingleFileMixin:
                 The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
                 the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
             num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it will be automatically inferred.
+                The number of input channels. If `None`, it is automatically inferred.
             scheduler_type (`str`, *optional*, defaults to `"pndm"`):
                 Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use, specifically the
+                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
+                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            vae (`AutoencoderKL`, *optional*, defaults to `None`):
+                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+                this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
+                of `CLIPTokenizer` by itself if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1439,6 +1474,7 @@ class FromSingleFileMixin:
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
         text_encoder = kwargs.pop("text_encoder", None)
+        vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
@@ -1529,6 +1565,7 @@ class FromSingleFileMixin:
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
             text_encoder=text_encoder,
+            vae=vae,
             tokenizer=tokenizer,
         )
 

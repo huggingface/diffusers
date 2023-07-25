@@ -25,8 +25,6 @@ from transformers import (
 )
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -35,6 +33,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
@@ -518,9 +517,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=prompt_embeds.dtype, device=device
-        )
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=prompt_embeds.dtype, device=device
+            )
 
         # preprocess image and mask
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)

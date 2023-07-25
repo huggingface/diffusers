@@ -12,42 +12,26 @@ specific language governing permissions and limitations under the License.
 
 # Safe Stable Diffusion
 
-Safe Stable Diffusion was proposed in [Safe Latent Diffusion: Mitigating Inappropriate Degeneration in Diffusion Models](https://arxiv.org/abs/2211.05105) and mitigates the well known issue that models like Stable Diffusion that are trained on unfiltered, web-crawled datasets tend to suffer from inappropriate degeneration. For instance Stable Diffusion may unexpectedly generate nudity, violence, images depicting self-harm, or otherwise offensive content.
-Safe Stable Diffusion is an extension to the Stable Diffusion that drastically reduces content like this.
+Safe Stable Diffusion was proposed in [Safe Latent Diffusion: Mitigating Inappropriate Degeneration in Diffusion Models](https://huggingface.co/papers/2211.05105) and mitigates inappropriate degeneration from Stable Diffusion models because they're trained on unfiltered web-crawled datasets. For instance Stable Diffusion may unexpectedly generate nudity, violence, images depicting self-harm, and otherwise offensive content. Safe Stable Diffusion is an extension of Stable Diffusion that drastically reduces this type of content.
 
-The abstract of the paper is the following:
+The abstract from the paper is:
 
 *Text-conditioned image generation models have recently achieved astonishing results in image quality and text alignment and are consequently employed in a fast-growing number of applications. Since they are highly data-driven, relying on billion-sized datasets randomly scraped from the internet, they also suffer, as we demonstrate, from degenerated and biased human behavior. In turn, they may even reinforce such biases. To help combat these undesired side effects, we present safe latent diffusion (SLD). Specifically, to measure the inappropriate degeneration due to unfiltered and imbalanced training sets, we establish a novel image generation test bed-inappropriate image prompts (I2P)-containing dedicated, real-world image-to-text prompts covering concepts such as nudity and violence. As our exhaustive empirical evaluation demonstrates, the introduced SLD removes and suppresses inappropriate image parts during the diffusion process, with no additional training required and no adverse effect on overall image quality or text alignment.*
 
-
-*Overview*:
-
-| Pipeline | Tasks | Colab | Demo
-|---|---|:---:|:---:|
-| [pipeline_stable_diffusion_safe.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion_safe/pipeline_stable_diffusion_safe.py) | *Text-to-Image Generation* |  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ml-research/safe-latent-diffusion/blob/main/examples/Safe%20Latent%20Diffusion.ipynb) | [![Huggingface Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/AIML-TUDA/unsafe-vs-safe-stable-diffusion)
-
 ## Tips
 
-- Safe Stable Diffusion may also be used with weights of [Stable Diffusion](./stable_diffusion/text2img).
+Use the `safety_concept` property of [`StableDiffusionPipelineSafe`] to check and edit the current safety concept:
 
-### Run Safe Stable Diffusion
-
-Safe Stable Diffusion can be tested very easily with the [`StableDiffusionPipelineSafe`], and the `"AIML-TUDA/stable-diffusion-safe"` checkpoint exactly in the same way it is shown in the [Conditional Image Generation Guide](../../using-diffusers/conditional_image_generation).
-
-### Interacting with the Safety Concept
-
-To check and edit the currently used safety concept, use the `safety_concept` property of [`StableDiffusionPipelineSafe`]:
 ```python
 >>> from diffusers import StableDiffusionPipelineSafe
 
 >>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe")
 >>> pipeline.safety_concept
+'an image showing hate, harassment, violence, suffering, humiliation, harm, suicide, sexual, nudity, bodily fluids, blood, obscene gestures, illegal activity, drug use, theft, vandalism, weapons, child abuse, brutality, cruelty'
 ```
 For each image generation the active concept is also contained in [`StableDiffusionSafePipelineOutput`].
 
-### Using pre-defined safety configurations
-
-You may use the 4 configurations defined in the [Safe Latent Diffusion paper](https://arxiv.org/abs/2211.05105) as follows:
+There are 4 configurations (`SafetyConfig.WEAK`, `SafetyConfig.MEDIUM`, `SafetyConfig.STRONG`, and `SafetyConfig.MAX`) that can be applied:
 
 ```python
 >>> from diffusers import StableDiffusionPipelineSafe
@@ -58,33 +42,20 @@ You may use the 4 configurations defined in the [Safe Latent Diffusion paper](ht
 >>> out = pipeline(prompt=prompt, **SafetyConfig.MAX)
 ```
 
-The following configurations are available: `SafetyConfig.WEAK`, `SafetyConfig.MEDIUM`, `SafetyConfig.STRONG`, and `SafetyConfig.MAX`.
+<Tip>
 
-### How to load and use different schedulers
+Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently!
 
-The safe stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
-To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+</Tip>
 
-```python
->>> from diffusers import StableDiffusionPipelineSafe, EulerDiscreteScheduler
+## StableDiffusionPipelineSafe
 
->>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe")
->>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-
->>> # or
->>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("AIML-TUDA/stable-diffusion-safe", subfolder="scheduler")
->>> pipeline = StableDiffusionPipelineSafe.from_pretrained(
-...     "AIML-TUDA/stable-diffusion-safe", scheduler=euler_scheduler
-... )
-```
-
-
-## StableDiffusionSafePipelineOutput
-[[autodoc]] pipelines.stable_diffusion_safe.StableDiffusionSafePipelineOutput
+[[autodoc]] StableDiffusionPipelineSafe
 	- all
 	- __call__
 
-## StableDiffusionPipelineSafe
-[[autodoc]] StableDiffusionPipelineSafe
+## StableDiffusionSafePipelineOutput
+
+[[autodoc]] pipelines.stable_diffusion_safe.StableDiffusionSafePipelineOutput
 	- all
 	- __call__

@@ -799,6 +799,9 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
         for param_name, param in text_model_dict.items():
             set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
     else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
         text_model.load_state_dict(text_model_dict)
 
     return text_model
@@ -960,6 +963,9 @@ def convert_open_clip_checkpoint(
         for param_name, param in text_model_dict.items():
             set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
     else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
         text_model.load_state_dict(text_model_dict)
 
     return text_model
@@ -1107,6 +1113,7 @@ def download_from_original_stable_diffusion_ckpt(
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
     vae_path=None,
+    vae=None,
     text_encoder=None,
     tokenizer=None,
 ) -> DiffusionPipeline:
@@ -1156,6 +1163,9 @@ def download_from_original_stable_diffusion_ckpt(
             The pipeline class to use. Pass `None` to determine automatically.
         local_files_only (`bool`, *optional*, defaults to `False`):
             Whether or not to only look at local files (i.e., do not try to download the model).
+        vae (`AutoencoderKL`, *optional*, defaults to `None`):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+            this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
         text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
             An instance of [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)
             to use, specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
@@ -1361,7 +1371,7 @@ def download_from_original_stable_diffusion_ckpt(
         unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model.
-    if vae_path is None:
+    if vae_path is None and vae is None:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
@@ -1385,7 +1395,7 @@ def download_from_original_stable_diffusion_ckpt(
                 set_module_tensor_to_device(vae, param_name, "cpu", value=param)
         else:
             vae.load_state_dict(converted_vae_checkpoint)
-    else:
+    elif vae is None:
         vae = AutoencoderKL.from_pretrained(vae_path)
 
     if model_type == "FrozenOpenCLIPEmbedder":

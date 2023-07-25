@@ -20,8 +20,6 @@ import torch
 from PIL import Image
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDPMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -30,6 +28,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -316,8 +315,10 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             hint = hint.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
-        hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=self.unet.dtype, device=device
+            )
+            hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
 
         if not isinstance(image, list):
             image = [image]

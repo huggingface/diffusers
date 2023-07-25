@@ -28,8 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import ModelCard
-from huggingface_hub import hf_hub_download, model_info, snapshot_download
+from huggingface_hub import ModelCard, hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
@@ -465,13 +464,13 @@ class DiffusionPipeline(ConfigMixin):
     provides methods for loading, downloading and saving models. It also includes methods to:
 
         - move all PyTorch modules to the device of your choice
-        - enabling/disabling the progress bar for the denoising iteration
+        - enable/disable the progress bar for the denoising iteration
 
     Class attributes:
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (List[`str`]) -- List of all optional components that don't have to be passed to the
+        - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
@@ -763,11 +762,9 @@ class DiffusionPipeline(ConfigMixin):
                     - A path to a directory (`./my_pipeline_directory/`) containing a custom pipeline. The directory
                       must contain a file called `pipeline.py` that defines the custom pipeline.
 
-
                 For more information on how to load and create custom pipelines, please have a look at [Loading and
                 Adding Custom
                 Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -1069,11 +1066,38 @@ class DiffusionPipeline(ConfigMixin):
         if pipeline_class._load_connected_pipes:
             modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
             connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
-            connected_pipes = {prefix: DiffusionPipeline.from_pretrained(repo_id) for prefix, repo_id in connected_pipes.items() if repo_id is not None}
+            load_kwargs = {
+                "cache_dir": cache_dir,
+                "resume_download": resume_download,
+                "force_download": force_download,
+                "proxies": proxies,
+                "local_files_only": local_files_only,
+                "use_auth_token": use_auth_token,
+                "revision": revision,
+                "torch_dtype": torch_dtype,
+                "custom_pipeline": custom_pipeline,
+                "custom_revision": custom_revision,
+                "provider": provider,
+                "sess_options": sess_options,
+                "device_map": device_map,
+                "max_memory": max_memory,
+                "offload_folder": offload_folder,
+                "offload_state_dict": offload_state_dict,
+                "low_cpu_mem_usage": low_cpu_mem_usage,
+                "variant": variant,
+                "use_safetensors": use_safetensors,
+            }
+            connected_pipes = {
+                prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy())
+                for prefix, repo_id in connected_pipes.items()
+                if repo_id is not None
+            }
 
             for prefix, connected_pipe in connected_pipes.items():
-                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_"
-                init_kwargs.update({"_".join([prefix, name]): component for name, component in connected_pipe.components.items()})
+                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
+                init_kwargs.update(
+                    {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+                )
 
         # 7. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
@@ -1256,10 +1280,10 @@ class DiffusionPipeline(ConfigMixin):
             use_safetensors = is_safetensors_available()
             allow_pickle = True
 
-        pipeline_is_cached = False
         allow_patterns = None
         ignore_patterns = None
 
+        model_info_call_error: Optional[Exception] = None
         if not local_files_only:
             try:
                 info = model_info(
@@ -1270,6 +1294,7 @@ class DiffusionPipeline(ConfigMixin):
             except HTTPError as e:
                 logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
                 local_files_only = True
+                model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
             config_file = hf_hub_download(
@@ -1393,38 +1418,55 @@ class DiffusionPipeline(ConfigMixin):
             expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
             snapshot_folder = Path(config_file).parent
-            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
+            all((snapshot_folder / f).is_file() for f in expected_files)
 
             # if pipeline_is_cached and not force_download:
-                # if the pipeline is cached, we can directly return it
-                # else call snapshot_download
-                # return snapshot_folder
+            # if the pipeline is cached, we can directly return it
+            # else call snapshot_download
+            # return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
 
         # download all allow_patterns - ignore_patterns
-        cached_folder = snapshot_download(
-            pretrained_model_name,
-            cache_dir=cache_dir,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            allow_patterns=allow_patterns,
-            ignore_patterns=ignore_patterns,
-            user_agent=user_agent,
-        )
+        try:
+            cached_folder = snapshot_download(
+                pretrained_model_name,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
+            )
 
-        if pipeline_class._load_connected_pipes:
-            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-            connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
-            for connected_pipe_repo_id in connected_pipes:
-                DiffusionPipeline.download(connected_pipe_repo_id)
+            if pipeline_class._load_connected_pipes:
+                modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+                connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
+                for connected_pipe_repo_id in connected_pipes:
+                    DiffusionPipeline.download(connected_pipe_repo_id)
 
-        return cached_folder
+            return cached_folder
+
+        except FileNotFoundError:
+            # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
+            # This can happen in two cases:
+            # 1. If the user passed `local_files_only=True`                    => we raise the error directly
+            # 2. If we forced `local_files_only=True` when `model_info` failed => we raise the initial error
+            if model_info_call_error is None:
+                # 1. user passed `local_files_only=True`
+                raise
+            else:
+                # 2. we forced `local_files_only=True` when `model_info` failed
+                raise EnvironmentError(
+                    f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occured"
+                    " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
+                    " above."
+                ) from model_info_call_error
 
     @staticmethod
     def _get_signature_keys(obj):
@@ -1497,10 +1539,9 @@ class DiffusionPipeline(ConfigMixin):
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
-        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up during
-        inference. Speed up during training is not guaranteed.
+        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/). When this
+        option is enabled, you should observe lower GPU memory usage and a potential speed up during inference. Speed
+        up during training is not guaranteed.
 
         <Tip warning={true}>
 
@@ -1559,10 +1600,9 @@ class DiffusionPipeline(ConfigMixin):
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
-        several steps. This is useful to save some memory in exchange for a small speed decrease.
+        Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
+        in slices to compute attention in several steps. This is useful to save some memory in exchange for a small
+        speed decrease.
 
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
