@@ -24,8 +24,12 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
-from .kandinsky2_2 import KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22Pipeline
+from .kandinsky import KandinskyCombinedPipeline, KandinskyImg2ImgCombinedPipeline, KandinskyInpaintCombinedPipeline
+from .kandinsky22 import (
+    KandinskyV22CombinedPipeline,
+    KandinskyV22Img2ImgCombinedPipeline,
+    KandinskyV22InpaintCombinedPipeline,
+)
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -43,8 +47,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionPipeline),
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
         ("if", IFPipeline),
-        ("kandinsky", KandinskyPipeline),
-        ("kandinsky22", KandinskyV22Pipeline),
+        ("kandinsky", KandinskyCombinedPipeline),
+        ("kandinsky22", KandinskyV22CombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
     ]
@@ -55,8 +59,8 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionImg2ImgPipeline),
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
         ("if", IFImg2ImgPipeline),
-        ("kandinsky", KandinskyImg2ImgPipeline),
-        ("kandinsky22", KandinskyV22Img2ImgPipeline),
+        ("kandinsky", KandinskyImg2ImgCombinedPipeline),
+        ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
@@ -66,8 +70,8 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionInpaintPipeline),
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
-        ("kandinsky", KandinskyInpaintPipeline),
-        ("kandinsky22", KandinskyV22InpaintPipeline),
+        ("kandinsky", KandinskyInpaintCombinedPipeline),
+        ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )

@@ -28,8 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import ModelCard
-from huggingface_hub import hf_hub_download, model_info, snapshot_download
+from huggingface_hub import ModelCard, hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
@@ -1245,7 +1244,6 @@ class DiffusionPipeline(ConfigMixin):
             use_safetensors = is_safetensors_available()
             allow_pickle = True
 
-        pipeline_is_cached = False
         allow_patterns = None
         ignore_patterns = None
 
@@ -1384,12 +1382,12 @@ class DiffusionPipeline(ConfigMixin):
             expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
             snapshot_folder = Path(config_file).parent
-            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
+            all((snapshot_folder / f).is_file() for f in expected_files)
 
             # if pipeline_is_cached and not force_download:
-                # if the pipeline is cached, we can directly return it
-                # else call snapshot_download
-                # return snapshot_folder
+            # if the pipeline is cached, we can directly return it
+            # else call snapshot_download
+            # return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
@@ -1398,16 +1396,16 @@ class DiffusionPipeline(ConfigMixin):
         # download all allow_patterns - ignore_patterns
         try:
             cached_folder = snapshot_download(
-               pretrained_model_name,
-               cache_dir=cache_dir,
-               resume_download=resume_download,
-               proxies=proxies,
-               local_files_only=local_files_only,
-               use_auth_token=use_auth_token,
-               revision=revision,
-               allow_patterns=allow_patterns,
-               ignore_patterns=ignore_patterns,
-               user_agent=user_agent,
+                pretrained_model_name,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
             )
 
             if cls._load_connected_pipes:
