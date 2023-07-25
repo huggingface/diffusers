@@ -25,22 +25,6 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
-from .models.attention_processor import (
-    LORA_ATTENTION_PROCESSORS,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    AttnProcessor,
-    AttnProcessor2_0,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRALinearLayer,
-    LoRAXFormersAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-)
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -83,6 +67,8 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
+        from .models.attention_processor import LoRALinearLayer
+
         self.regular_linear_layer = regular_linear_layer
 
         device = self.regular_linear_layer.weight.device
@@ -231,6 +217,17 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
+        from .models.attention_processor import (
+            AttnAddedKVProcessor,
+            AttnAddedKVProcessor2_0,
+            CustomDiffusionAttnProcessor,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            SlicedAttnAddedKVProcessor,
+            XFormersAttnProcessor,
+        )
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -423,6 +420,11 @@ class UNet2DConditionLoadersMixin:
                 `DIFFUSERS_SAVE_MODE`.
 
         """
+        from .models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionXFormersAttnProcessor,
+        )
+
         weight_name = weight_name or deprecate(
             "weights_name",
             "0.20.0",
@@ -1317,6 +1319,17 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
+        from .models.attention_processor import (
+            LORA_ATTENTION_PROCESSORS,
+            AttnProcessor,
+            AttnProcessor2_0,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            XFormersAttnProcessor,
+        )
+
         unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
 
         if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
