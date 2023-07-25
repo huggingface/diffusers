@@ -110,13 +110,11 @@ def text_encoder_attn_modules(text_encoder):
 def text_encoder_mlp_modules(text_encoder):
     mlp_modules = []
 
-    if isinstance(text_encoder, CLIPTextModel):
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
             mlp_mod = layer.mlp
             name = f"text_model.encoder.layers.{i}.mlp"
             mlp_modules.append((name, mlp_mod))
-    elif isinstance(text_encoder, CLIPTextModelWithProjection):
-        pass  # SDXL is not supported yet.
     else:
         raise ValueError(f"do not know how to get mlp modules for: {text_encoder.__class__.__name__}")
 
