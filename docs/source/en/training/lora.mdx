@@ -14,8 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`]. We also 
-support fine-tuning the text encoder for DreamBooth with LoRA in a limited capacity. Fine-tuning the text encoder for DreamBooth generally yields better results, but it can increase compute usage.
+This is an experimental feature. Its APIs can change in future.
 
 </Tip>
 
@@ -285,6 +284,8 @@ refer to the respective docstrings.
 You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pipeline to unload the LoRA parameters.
 
 ## Supporting A1111 themed LoRA checkpoints from Diffusers
+
+This support was made possible because of our amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
 
 To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted
 LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] in a limited capacity.
