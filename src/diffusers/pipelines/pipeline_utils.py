@@ -1418,12 +1418,12 @@ class DiffusionPipeline(ConfigMixin):
             expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
             snapshot_folder = Path(config_file).parent
-            all((snapshot_folder / f).is_file() for f in expected_files)
+            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-            # if pipeline_is_cached and not force_download:
-            # if the pipeline is cached, we can directly return it
-            # else call snapshot_download
-            # return snapshot_folder
+            if pipeline_is_cached and not force_download:
+                # if the pipeline is cached, we can directly return it
+                # else call snapshot_download
+                return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
