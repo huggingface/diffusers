@@ -76,7 +76,7 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="diffusers/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-0.9"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="lora-trained-xl"
 
