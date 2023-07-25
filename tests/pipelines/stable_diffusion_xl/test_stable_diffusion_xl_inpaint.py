@@ -50,7 +50,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
     # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, skip_first_text_encoder=False):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -67,7 +67,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+            cross_attention_dim=64 if not skip_first_text_encoder else 32,
         )
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -111,8 +111,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "text_encoder": text_encoder if not skip_first_text_encoder else None,
+            "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
         }
@@ -123,7 +123,10 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+        # create mask
+        image[8:, 8:, :] = 255
+        mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -152,7 +155,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4924, 0.4966, 0.4100, 0.5233, 0.5322, 0.4532, 0.5804, 0.5876, 0.4150])
+        expected_slice = np.array([0.6965, 0.5584, 0.5693, 0.5739, 0.6092, 0.6620, 0.5902, 0.5612, 0.5319])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -235,6 +238,25 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
+    def test_stable_diffusion_xl_refiner(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(skip_first_text_encoder=True)
+
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        print(torch.from_numpy(image_slice).flatten())
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.9106, 0.6563, 0.6766, 0.6537, 0.6709, 0.7367, 0.6537, 0.5937, 0.5418])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
         pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
@@ -242,7 +264,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         pipe_2 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps, split, scheduler_cls_orig, num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -256,9 +280,12 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id = int(round(split * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id]
-            expected_steps_2 = expected_steps[split_id:]
+            split_ts = num_train_timesteps - int(round(num_train_timesteps * split))
+            expected_steps_1 = expected_steps[:split_ts]
+            expected_steps_2 = expected_steps[split_ts:]
+
+            expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+            expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -282,7 +309,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             assert expected_steps_2 == done_steps[len(expected_steps_1) :]
             assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
 
-        for steps in [5, 8]:
+        for steps in [5, 8, 20]:
             for split in [0.33, 0.49, 0.71]:
                 for scheduler_cls in [
                     DDIMScheduler,
@@ -302,7 +329,13 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         pipe_3 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
         pipe_3.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps,
+            split_1,
+            split_2,
+            scheduler_cls_orig,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -317,11 +350,15 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id_1 = int(round(split_1 * num_steps)) * pipe_1.scheduler.order
-            split_id_2 = int(round(split_2 * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id_1]
-            expected_steps_2 = expected_steps[split_id_1:split_id_2]
-            expected_steps_3 = expected_steps[split_id_2:]
+            split_1_ts = num_train_timesteps - int(round(num_train_timesteps * split_1))
+            split_2_ts = num_train_timesteps - int(round(num_train_timesteps * split_2))
+            expected_steps_1 = expected_steps[:split_1_ts]
+            expected_steps_2 = expected_steps[split_1_ts:split_2_ts]
+            expected_steps_3 = expected_steps[split_2_ts:]
+
+            expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+            expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
+            expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -357,7 +394,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                 expected_steps == done_steps
             ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
 
-        for steps in [7, 11]:
+        for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):
                 for scheduler_cls in [
                     DDIMScheduler,
@@ -367,3 +404,62 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                     HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split_1, split_2, scheduler_cls)
+
+    def test_stable_diffusion_xl_multi_prompts(self):
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(torch_device)
+
+        # forward with single prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["prompt_2"] = inputs["prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["prompt_2"] = "different prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+        # manually set a negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same negative_prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = inputs["negative_prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = "different negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4

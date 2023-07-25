@@ -167,7 +167,7 @@ class Attention(nn.Module):
     ):
         is_lora = hasattr(self, "processor") and isinstance(
             self.processor,
-            (LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor),
+            LORA_ATTENTION_PROCESSORS,
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)
@@ -667,9 +667,9 @@ class CustomDiffusionAttnProcessor(nn.Module):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         if self.train_q_out:
-            query = self.to_q_custom_diffusion(hidden_states)
+            query = self.to_q_custom_diffusion(hidden_states).to(attn.to_q.weight.dtype)
         else:
-            query = attn.to_q(hidden_states)
+            query = attn.to_q(hidden_states.to(attn.to_q.weight.dtype))
 
         if encoder_hidden_states is None:
             crossattn = False
@@ -680,8 +680,10 @@ class CustomDiffusionAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states)
-            value = self.to_v_custom_diffusion(encoder_hidden_states)
+            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
+            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
+            key = key.to(attn.to_q.weight.dtype)
+            value = value.to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -1096,7 +1098,6 @@ class AttnProcessor2_0:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-        inner_dim = hidden_states.shape[-1]
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -1117,6 +1118,7 @@ class AttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
@@ -1392,9 +1394,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if self.train_q_out:
-            query = self.to_q_custom_diffusion(hidden_states)
+            query = self.to_q_custom_diffusion(hidden_states).to(attn.to_q.weight.dtype)
         else:
-            query = attn.to_q(hidden_states)
+            query = attn.to_q(hidden_states.to(attn.to_q.weight.dtype))
 
         if encoder_hidden_states is None:
             crossattn = False
@@ -1405,8 +1407,10 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states)
-            value = self.to_v_custom_diffusion(encoder_hidden_states)
+            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
+            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
+            key = key.to(attn.to_q.weight.dtype)
+            value = value.to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -1622,6 +1626,13 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
 ]
+
+LORA_ATTENTION_PROCESSORS = (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+)
 
 
 class SpatialNorm(nn.Module):

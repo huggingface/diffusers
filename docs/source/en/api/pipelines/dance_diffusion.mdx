@@ -12,23 +12,22 @@ specific language governing permissions and limitations under the License.
 
 # Dance Diffusion
 
-## Overview
+[Dance Diffusion](https://github.com/Harmonai-org/sample-generator) is by Zach Evans.
 
-[Dance Diffusion](https://github.com/Harmonai-org/sample-generator) by Zach Evans.
+Dance Diffusion is the first in a suite of generative audio tools for producers and musicians released by [Harmonai](https://github.com/Harmonai-org).
 
-Dance Diffusion is the first in a suite of generative audio tools for producers and musicians to be released by Harmonai.
-For more info or to get involved in the development of these tools, please visit https://harmonai.org and fill out the form on the front page.
+The original codebase of this implementation can be found at [Harmonai-org](https://github.com/Harmonai-org/sample-generator).
 
-The original codebase of this implementation can be found [here](https://github.com/Harmonai-org/sample-generator).
+<Tip>
 
-## Available Pipelines:
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
-| Pipeline | Tasks | Colab
-|---|---|:---:|
-| [pipeline_dance_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/dance_diffusion/pipeline_dance_diffusion.py) | *Unconditional Audio Generation* | - |
-
+</Tip>
 
 ## DanceDiffusionPipeline
 [[autodoc]] DanceDiffusionPipeline
 	- all
 	- __call__
+
+## AudioPipelineOutput
+[[autodoc]] pipelines.AudioPipelineOutput

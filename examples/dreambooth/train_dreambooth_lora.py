@@ -872,7 +872,9 @@ def main(args):
                 LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
             )
 
-        module = lora_attn_processor_class(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        module = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank
+        )
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
 
@@ -882,7 +884,7 @@ def main(args):
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-        text_lora_parameters = LoraLoaderMixin._modify_text_encoder(text_encoder, dtype=torch.float32)
+        text_lora_parameters = LoraLoaderMixin._modify_text_encoder(text_encoder, dtype=torch.float32, rank=args.rank)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -1065,7 +1067,9 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora", config=vars(args))
+        tracker_config = vars(args)
+        tracker_config.pop("validation_images")
+        accelerator.init_trackers("dreambooth-lora", config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1364,7 +1368,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_lora_weights(args.output_dir)
+        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.bin")
 
         # run inference
         images = []

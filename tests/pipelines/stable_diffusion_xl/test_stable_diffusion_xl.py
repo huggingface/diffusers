@@ -148,6 +148,44 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_xl_prompt_embeds(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward without prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt"] = 2 * [inputs["prompt"]]
+        inputs["num_images_per_prompt"] = 2
+
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = 2 * [inputs.pop("prompt")]
+
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = sd_pipe.encode_prompt(prompt)
+
+        output = sd_pipe(
+            **inputs,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+        )
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # make sure that it's equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
     def test_stable_diffusion_xl_negative_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
@@ -230,7 +268,13 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         pipe_2 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
         pipe_2.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps,
+            split,
+            scheduler_cls_orig,
+            expected_tss,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -244,9 +288,8 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id = int(round(split * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id]
-            expected_steps_2 = expected_steps[split_id:]
+            expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+            expected_steps_2 = list(filter(lambda ts: ts < split, expected_tss))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -259,27 +302,242 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
             scheduler_cls.step = new_step
 
-            inputs_1 = {**inputs, **{"denoising_end": split, "output_type": "latent"}}
+            inputs_1 = {
+                **inputs,
+                **{
+                    "denoising_end": 1.0 - (split / num_train_timesteps),
+                    "output_type": "latent",
+                },
+            }
             latents = pipe_1(**inputs_1).images[0]
 
             assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
 
-            inputs_2 = {**inputs, **{"denoising_start": split, "image": latents}}
+            inputs_2 = {
+                **inputs,
+                **{
+                    "denoising_start": 1.0 - (split / num_train_timesteps),
+                    "image": latents,
+                },
+            }
             pipe_2(**inputs_2).images[0]
 
             assert expected_steps_2 == done_steps[len(expected_steps_1) :]
             assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
 
-        for steps in [5, 8]:
-            for split in [0.33, 0.49, 0.71]:
-                for scheduler_cls in [
-                    DDIMScheduler,
-                    EulerDiscreteScheduler,
-                    DPMSolverMultistepScheduler,
-                    UniPCMultistepScheduler,
+        steps = 10
+        for split in [300, 500, 700]:
+            for scheduler_cls_timesteps in [
+                (DDIMScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (DPMSolverMultistepScheduler, [901, 811, 721, 631, 541, 451, 361, 271, 181, 91]),
+                (UniPCMultistepScheduler, [901, 811, 721, 631, 541, 451, 361, 271, 181, 91]),
+                (
                     HeunDiscreteScheduler,
-                ]:
-                    assert_run_mixture(steps, split, scheduler_cls)
+                    [
+                        901.0,
+                        801.0,
+                        801.0,
+                        701.0,
+                        701.0,
+                        601.0,
+                        601.0,
+                        501.0,
+                        501.0,
+                        401.0,
+                        401.0,
+                        301.0,
+                        301.0,
+                        201.0,
+                        201.0,
+                        101.0,
+                        101.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
+                assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
+
+        steps = 25
+        for split in [300, 500, 700]:
+            for scheduler_cls_timesteps in [
+                (
+                    DDIMScheduler,
+                    [
+                        961,
+                        921,
+                        881,
+                        841,
+                        801,
+                        761,
+                        721,
+                        681,
+                        641,
+                        601,
+                        561,
+                        521,
+                        481,
+                        441,
+                        401,
+                        361,
+                        321,
+                        281,
+                        241,
+                        201,
+                        161,
+                        121,
+                        81,
+                        41,
+                        1,
+                    ],
+                ),
+                (
+                    EulerDiscreteScheduler,
+                    [
+                        961.0,
+                        921.0,
+                        881.0,
+                        841.0,
+                        801.0,
+                        761.0,
+                        721.0,
+                        681.0,
+                        641.0,
+                        601.0,
+                        561.0,
+                        521.0,
+                        481.0,
+                        441.0,
+                        401.0,
+                        361.0,
+                        321.0,
+                        281.0,
+                        241.0,
+                        201.0,
+                        161.0,
+                        121.0,
+                        81.0,
+                        41.0,
+                        1.0,
+                    ],
+                ),
+                (
+                    DPMSolverMultistepScheduler,
+                    [
+                        951,
+                        913,
+                        875,
+                        837,
+                        799,
+                        761,
+                        723,
+                        685,
+                        647,
+                        609,
+                        571,
+                        533,
+                        495,
+                        457,
+                        419,
+                        381,
+                        343,
+                        305,
+                        267,
+                        229,
+                        191,
+                        153,
+                        115,
+                        77,
+                        39,
+                    ],
+                ),
+                (
+                    UniPCMultistepScheduler,
+                    [
+                        951,
+                        913,
+                        875,
+                        837,
+                        799,
+                        761,
+                        723,
+                        685,
+                        647,
+                        609,
+                        571,
+                        533,
+                        495,
+                        457,
+                        419,
+                        381,
+                        343,
+                        305,
+                        267,
+                        229,
+                        191,
+                        153,
+                        115,
+                        77,
+                        39,
+                    ],
+                ),
+                (
+                    HeunDiscreteScheduler,
+                    [
+                        961.0,
+                        921.0,
+                        921.0,
+                        881.0,
+                        881.0,
+                        841.0,
+                        841.0,
+                        801.0,
+                        801.0,
+                        761.0,
+                        761.0,
+                        721.0,
+                        721.0,
+                        681.0,
+                        681.0,
+                        641.0,
+                        641.0,
+                        601.0,
+                        601.0,
+                        561.0,
+                        561.0,
+                        521.0,
+                        521.0,
+                        481.0,
+                        481.0,
+                        441.0,
+                        441.0,
+                        401.0,
+                        401.0,
+                        361.0,
+                        361.0,
+                        321.0,
+                        321.0,
+                        281.0,
+                        281.0,
+                        241.0,
+                        241.0,
+                        201.0,
+                        201.0,
+                        161.0,
+                        161.0,
+                        121.0,
+                        121.0,
+                        81.0,
+                        81.0,
+                        41.0,
+                        41.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
+                assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
 
     def test_stable_diffusion_three_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
@@ -290,7 +548,13 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         pipe_3 = StableDiffusionXLImg2ImgPipeline(**components).to(torch_device)
         pipe_3.unet.set_default_attn_processor()
 
-        def assert_run_mixture(num_steps, split_1, split_2, scheduler_cls_orig):
+        def assert_run_mixture(
+            num_steps,
+            split_1,
+            split_2,
+            scheduler_cls_orig,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -305,11 +569,15 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             pipe_1.scheduler.set_timesteps(num_steps)
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
-            split_id_1 = int(round(split_1 * num_steps)) * pipe_1.scheduler.order
-            split_id_2 = int(round(split_2 * num_steps)) * pipe_1.scheduler.order
-            expected_steps_1 = expected_steps[:split_id_1]
-            expected_steps_2 = expected_steps[split_id_1:split_id_2]
-            expected_steps_3 = expected_steps[split_id_2:]
+            split_1_ts = num_train_timesteps - int(round(num_train_timesteps * split_1))
+            split_2_ts = num_train_timesteps - int(round(num_train_timesteps * split_2))
+            expected_steps_1 = expected_steps[:split_1_ts]
+            expected_steps_2 = expected_steps[split_1_ts:split_2_ts]
+            expected_steps_3 = expected_steps[split_2_ts:]
+
+            expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+            expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
+            expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -329,6 +597,19 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
                 expected_steps_1 == done_steps
             ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
 
+            with self.assertRaises(ValueError) as cm:
+                inputs_2 = {
+                    **inputs,
+                    **{
+                        "denoising_start": split_2,
+                        "denoising_end": split_1,
+                        "image": latents,
+                        "output_type": "latent",
+                    },
+                }
+                pipe_2(**inputs_2).images[0]
+            assert "cannot be larger than or equal to `denoising_end`" in str(cm.exception)
+
             inputs_2 = {
                 **inputs,
                 **{"denoising_start": split_1, "denoising_end": split_2, "image": latents, "output_type": "latent"},
@@ -345,7 +626,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
                 expected_steps == done_steps
             ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
 
-        for steps in [7, 11]:
+        for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):
                 for scheduler_cls in [
                     DDIMScheduler,
@@ -355,3 +636,56 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
                     HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split_1, split_2, scheduler_cls)
+
+    def test_stable_diffusion_xl_multi_prompts(self):
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(torch_device)
+
+        # forward with single prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt_2"] = inputs["prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt_2"] = "different prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+        # manually set a negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same negative_prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = inputs["negative_prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = "different negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
