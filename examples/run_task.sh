@@ -72,6 +72,13 @@ execute_deleting_env() {
             conda env remove -n ${task}
 }
 
+# Start mlflow server
+if [[ -x $(command -v mlflow) ]] && [[ -z $(pgrep mlflow) ]]; then
+    mlflow server &
+    sleep 5
+fi
+
+
 # Check condition to run all tasks, all models in task, or specific model in task
 # ==================================
 if [[ "$run_all_tasks" == "True" ]]; then # Task is not provided, run all tasks

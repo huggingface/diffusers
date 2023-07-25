@@ -728,7 +728,7 @@ def main(args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -1122,10 +1122,10 @@ def main(args):
     output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
     output_list.append(output_dict)
     
-    import json
-    with open(args.log_dir, "w") as f:
-        json.dump(output_list, f, indent=4)
-    logger.info(f"Output logs saved in {args.log_dir}")
+    # import json
+    # with open(args.log_dir, "w") as f:
+    #     json.dump(output_list, f, indent=4)
+    # logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 

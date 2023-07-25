@@ -556,6 +556,12 @@ def parse_args(input_args=None):
         default=10,
         help="Log every X updates steps. Default to 10.",
     )
+    parser.add_argument(
+        "--mlflow_uri",
+        type=str,
+        default='http://127.0.0.1:5001',
+        help="URI to log mlflow.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -736,7 +742,7 @@ def main(args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -1009,11 +1015,17 @@ def main(args):
     output_list = []
     image_logs = None
     #Initialize mlflow
-    # mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    # if not os.environ.get("MLFLOW_TRACKING_URI", None):
+    #     mlflow.set_tracking_uri(args.mlflow_uri)
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    experiment_id = mlflow.create_experiment('{}_{}'.format(args.controlnet_model_name_or_path, current_datetime))
-    experiment = mlflow.get_experiment(experiment_id)
-    mlflow_runner = mlflow.start_run(run_name=args.controlnet_model_name_or_path, experiment_id=experiment.experiment_id)
+    experiment_name = args.controlnet_model_name_or_path
+
+    if not mlflow.get_experiment_by_name(experiment_name):        
+        experiment_id = mlflow.create_experiment(experiment_name)
+
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
+
     with mlflow_runner:
         start_time = time.time()
         for epoch in range(first_epoch, args.num_train_epochs):
@@ -1116,6 +1128,7 @@ def main(args):
             output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
             output_list.append(output_dict)
             mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
+            mlflow.log_metric('epoch_elapsed_time', elapsed_time, step=epoch+1)
             
         
         elapsed_time = time.time() - start_time
@@ -1144,10 +1157,10 @@ def main(args):
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-    import json
-    with open(args.log_dir, "w") as f:
-        json.dump(output_list, f, indent=4)
-    logger.info(f"Output logs saved in {args.log_dir}")
+    # import json
+    # with open(args.log_dir, "w") as f:
+    #     json.dump(output_list, f, indent=4)
+    # logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 
