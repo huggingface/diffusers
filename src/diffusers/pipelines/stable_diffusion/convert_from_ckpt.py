@@ -1055,6 +1055,13 @@ def convert_controlnet_checkpoint(
     if cross_attention_dim is not None:
         ctrlnet_config["cross_attention_dim"] = cross_attention_dim
 
+    ctrlnet_config_unet = dict(ctrlnet_config)
+
+    # remove the fields that aren't in ControlNetModel's constructor
+    for key in ("addition_embed_type", "addition_time_embed_dim", "transformer_layers_per_block"):
+        if key in ctrlnet_config:
+            del ctrlnet_config[key]
+
     controlnet_model = ControlNetModel(**ctrlnet_config)
 
     # Some controlnet ckpt files are distributed independently from the rest of the
@@ -1066,7 +1073,7 @@ def convert_controlnet_checkpoint(
 
     converted_ctrl_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint,
-        ctrlnet_config,
+        ctrlnet_config_unet,
         path=checkpoint_path,
         extract_ema=extract_ema,
         controlnet=True,
