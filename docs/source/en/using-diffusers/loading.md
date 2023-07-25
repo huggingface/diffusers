@@ -309,7 +309,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 
 ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
 ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler", use_safetensors=True)
+pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
 lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")

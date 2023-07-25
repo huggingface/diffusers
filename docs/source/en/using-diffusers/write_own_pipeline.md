@@ -125,9 +125,7 @@ Now that you know what you need for the Stable Diffusion pipeline, load all thes
 >>> from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler
 
 >>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae", use_safetensors=True)
->>> tokenizer = CLIPTokenizer.from_pretrained(
-...     "CompVis/stable-diffusion-v1-4", subfolder="tokenizer", use_safetensors=True
-... )
+>>> tokenizer = CLIPTokenizer.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="tokenizer")
 >>> text_encoder = CLIPTextModel.from_pretrained(
 ...     "CompVis/stable-diffusion-v1-4", subfolder="text_encoder", use_safetensors=True
 ... )
