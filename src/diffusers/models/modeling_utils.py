@@ -151,22 +151,6 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     return error_msgs
 
 
-# Taken from
-# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/modeling_utils.py#L3939C1-L3950C21
-def unwrap_model(model: nn.Module) -> nn.Module:
-    """
-    Recursively unwraps a model from potential containers (as used in distributed training).
-
-    Args:
-        model (`torch.nn.Module`): The model to unwrap.
-    """
-    # since there could be multiple levels of wrapping, unwrap recursively
-    if hasattr(model, "module"):
-        return unwrap_model(model.module)
-    else:
-        return model
-
-
 class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.
@@ -337,7 +321,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             files_timestamps = self._get_files_timestamps(save_directory)
 
         # Only save the model itself if we are using distributed training
-        model_to_save = unwrap_model(self)
+        model_to_save = self
 
         # Attach architecture to the config
         # Save the config

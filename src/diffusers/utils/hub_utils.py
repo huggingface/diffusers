@@ -20,7 +20,6 @@ import sys
 import tempfile
 import traceback
 import warnings
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
@@ -373,17 +372,6 @@ def _get_model_file(
 
 
 # Taken from
-# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/generic.py#L453
-@contextmanager
-def working_or_temp_dir(working_dir, use_temp_dir: bool = False):
-    if use_temp_dir:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            yield tmp_dir
-    else:
-        yield working_dir
-
-
-# Taken from
 # https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/hub.py#L628
 class PushToHubMixin:
     """
@@ -403,10 +391,6 @@ class PushToHubMixin:
         the token.
         """
         if repo_url is not None:
-            warnings.warn(
-                "The `repo_url` argument is deprecated and will be removed in v5 of Transformers. Use `repo_id` "
-                "instead."
-            )
             repo_id = repo_url.replace(f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/", "")
         if organization is not None:
             warnings.warn(
@@ -496,7 +480,6 @@ class PushToHubMixin:
         max_shard_size: Optional[Union[int, str]] = "10GB",
         create_pr: bool = False,
         safe_serialization: bool = False,
-        **deprecated_kwargs,
     ) -> str:
         """
         Upload the {object_files} to the 🤗 Model Hub while synchronizing a local clone of the repo in
@@ -540,40 +523,31 @@ class PushToHubMixin:
         unet.push_to_hub("your-org/my-finetuned-unet")
         ```
         """
-        if "repo_path_or_name" in deprecated_kwargs:
-            warnings.warn(
-                "The `repo_path_or_name` argument is deprecated and will be removed in v5 of Transformers. Use "
-                "`repo_id` instead."
-            )
-            repo_id = deprecated_kwargs.pop("repo_path_or_name")
-        # Deprecation warning will be sent after for repo_url and organization
-        repo_url = deprecated_kwargs.pop("repo_url", None)
-        organization = deprecated_kwargs.pop("organization", None)
-
         if os.path.isdir(repo_id):
             working_dir = repo_id
             repo_id = repo_id.split(os.path.sep)[-1]
         else:
             working_dir = repo_id.split("/")[-1]
 
-        repo_id = self._create_repo(
-            repo_id, private=private, use_auth_token=use_auth_token, repo_url=repo_url, organization=organization
-        )
+        repo_id = self._create_repo(repo_id, private=private, use_auth_token=use_auth_token)
 
         if use_temp_dir is None:
             use_temp_dir = not os.path.isdir(working_dir)
 
-        with working_or_temp_dir(working_dir=working_dir, use_temp_dir=use_temp_dir) as work_dir:
-            files_timestamps = self._get_files_timestamps(work_dir)
+        if use_temp_dir:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                working_dir = tmp_dir
 
-            # Save all files.
-            self.save_pretrained(work_dir, max_shard_size=max_shard_size, safe_serialization=safe_serialization)
+        files_timestamps = self._get_files_timestamps(working_dir)
 
-            return self._upload_modified_files(
-                work_dir,
-                repo_id,
-                files_timestamps,
-                commit_message=commit_message,
-                token=use_auth_token,
-                create_pr=create_pr,
-            )
+        # Save all files.
+        self.save_pretrained(working_dir, max_shard_size=max_shard_size, safe_serialization=safe_serialization)
+
+        return self._upload_modified_files(
+            working_dir,
+            repo_id,
+            files_timestamps,
+            commit_message=commit_message,
+            token=use_auth_token,
+            create_pr=create_pr,
+        )
