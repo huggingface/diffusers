@@ -1210,6 +1210,7 @@ def main(args):
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     tokenizer=tokenizer,
                     revision=args.revision,
+                    torch_dtype=weight_dtype,
                 )
                 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)

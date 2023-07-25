@@ -164,6 +164,17 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sks_dog.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_sks_dog.png) |
 
+### Training with text encoder(s)
+
+Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
+
+* SDXL has two text encoders. So, we fine-tune both using LoRA.
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
+
+### Specifying a better VAE
+
+SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
 ## Notes
 
 In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
