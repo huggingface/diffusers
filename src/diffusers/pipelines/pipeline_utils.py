@@ -1066,6 +1066,15 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
+        if pipeline_class._load_connected_pipes:
+            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+            connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
+            connected_pipes = {prefix: DiffusionPipeline.from_pretrained(repo_id) for prefix, repo_id in connected_pipes.items() if repo_id is not None}
+
+            for prefix, connected_pipe in connected_pipes.items():
+                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_"
+                init_kwargs.update({"_".join([prefix, name]): component for name, component in connected_pipe.components.items()})
+
         # 7. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
         passed_modules = list(passed_class_obj.keys())
@@ -1371,7 +1380,7 @@ class DiffusionPipeline(ConfigMixin):
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
 
-            if cls._load_connected_pipes:
+            if pipeline_class._load_connected_pipes:
                 allow_patterns.append("README.md")
 
             # Don't download index files of forbidden patterns either
@@ -1409,9 +1418,9 @@ class DiffusionPipeline(ConfigMixin):
             user_agent=user_agent,
         )
 
-        if cls._load_connected_pipes:
+        if pipeline_class._load_connected_pipes:
             modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-            connected_pipes = sum([getattr(modelcard, k, []) for k in CONNECTED_PIPES_KEYS], [])
+            connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
             for connected_pipe_repo_id in connected_pipes:
                 DiffusionPipeline.download(connected_pipe_repo_id)
 
