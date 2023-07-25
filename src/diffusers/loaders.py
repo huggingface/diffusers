@@ -59,7 +59,7 @@ if is_safetensors_available():
     import safetensors
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -108,7 +108,7 @@ class PatchedLoraProjection(nn.Module):
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
 
-    if isinstance(text_encoder, CLIPTextModel):
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
             name = f"text_model.encoder.layers.{i}.self_attn"
             mod = layer.self_attn
@@ -1016,18 +1016,20 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, lora_scale=1.0):
+    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, prefix=None, lora_scale=1.0):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key shoult be prefixed with an
+                A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alpha (`float`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
+            prefix (`str`):
+                Expected prefix of the `text_encoder` in the `state_dict`.
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
@@ -1037,14 +1039,16 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
+        prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(cls.text_encoder_name)]
+            text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
-                k.replace(f"{cls.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+                k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                logger.info(f"Loading {cls.text_encoder_name}.")
+                logger.info(f"Loading {prefix}.")
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
@@ -1184,23 +1188,10 @@ class LoraLoaderMixin:
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
-        if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
-            return
-
-        if save_function is None:
-            if safe_serialization:
-
-                def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
-
-            else:
-                save_function = torch.save
-
-        os.makedirs(save_directory, exist_ok=True)
-
         # Create a flat dictionary.
         state_dict = {}
+
+        # Populate the dictionary.
         if unet_lora_layers is not None:
             weights = (
                 unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
@@ -1222,6 +1213,38 @@ class LoraLoaderMixin:
             state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def write_lora_layers(
+        state_dict: Dict[str, torch.Tensor],
+        save_directory: str,
+        is_main_process: bool,
+        weight_name: str,
+        save_function: Callable,
+        safe_serialization: bool,
+    ):
+        if os.path.isfile(save_directory):
+            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
+            return
+
+        if save_function is None:
+            if safe_serialization:
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+            else:
+                save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
         if weight_name is None:
             if safe_serialization:
                 weight_name = LORA_WEIGHT_NAME_SAFE
