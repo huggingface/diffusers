@@ -30,28 +30,9 @@ from .pipeline_kandinsky2_2_prior import KandinskyV22PriorPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-EXAMPLE_DOC_STRING = """
+TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import KandinskyV22Pipeline, KandinskyV22PriorPipeline
-        >>> import torch
-
-        >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior")
-        >>> pipe_prior.to("cuda")
-        >>> prompt = "red cat, 4k photo"
-        >>> out = pipe_prior(prompt)
-        >>> image_emb = out.image_embeds
-        >>> zero_image_emb = out.negative_image_embeds
-        >>> pipe = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder")
-        >>> pipe.to("cuda")
-        >>> image = pipe(
-        ...     image_embeds=image_emb,
-        ...     negative_image_embeds=zero_image_emb,
-        ...     height=768,
-        ...     width=768,
-        ...     num_inference_steps=50,
-        ... ).images
-        >>> image[0].save("cat.png")
         ```
 """
 
@@ -124,7 +105,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         self.decoder_pipe.enable_model_cpu_offload()
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING )
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -203,7 +184,6 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             output_type="pt",
             return_dict=False,
         )
-        # TODO offload prior pipeline completetly if necessary
         outputs = self.decoder_pipe(
             image_embeds=prior_outputs[0],
             negative_image_embeds=prior_outputs[1],
@@ -216,7 +196,6 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             output_type=output_type,
             return_dict=return_dict,
         )
-
         return outputs
 
 
