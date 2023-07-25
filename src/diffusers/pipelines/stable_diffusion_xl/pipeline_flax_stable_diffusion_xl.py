@@ -222,9 +222,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
         )
 
-        # 5. Prepare added embeddings
-        add_text_embeds = prompt_embeds
-
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
         # 6. Denoising loop
