@@ -1,6 +1,5 @@
 # coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team.
-# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,8 +43,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
         ("if", IFPipeline),
         ("kandinsky", KandinskyPipeline),
-        ("kdnsinskyv22", KandinskyV22Pipeline),
-        ("controlnet", StableDiffusionControlNetPipeline),
+        ("kandinsky22", KandinskyV22Pipeline),
+        ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
     ]
 )
 
@@ -55,17 +54,17 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgPipeline),
-        ("kdnsinskyv22", KandinskyV22Img2ImgPipeline),
+        ("kandinsky22", KandinskyV22Img2ImgPipeline),
         ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
 
-AUTO_INPAINTING_PIPELINES_MAPPING = OrderedDict(
+AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionInpaintPipeline),
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
-        ("kandinsky-inpaint", KandinskyInpaintPipeline),
+        ("kandinsky", KandinskyInpaintPipeline),
         ("kdnsinskyv22-inpaint", KandinskyV22InpaintPipeline),
         ("controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
@@ -541,12 +540,14 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> print(pipeline.__class__)
         ```
         """
+        orig_class_name = config["_class_name"]
+        
         if "controlnet" in kwargs:
-            image_2_image_cls = AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["controlnet"]
-
-        else:
-            config = cls.load_config(pretrained_model_or_path)
-            image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
+            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+        
+        
+        config = cls.load_config(pretrained_model_or_path)
+        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
 
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
