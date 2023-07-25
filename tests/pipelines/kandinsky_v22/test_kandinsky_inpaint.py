@@ -165,8 +165,8 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
         # create mask
-        mask = np.ones((64, 64), dtype=np.float32)
-        mask[:32, :32] = 0
+        mask = np.zeros((64, 64), dtype=np.float32)
+        mask[:32, :32] = 1
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -244,8 +244,8 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
         )
-        mask = np.ones((768, 768), dtype=np.float32)
-        mask[:250, 250:-250] = 0
+        mask = np.zeros((768, 768), dtype=np.float32)
+        mask[:250, 250:-250] = 1
 
         prompt = "a hat"
 
