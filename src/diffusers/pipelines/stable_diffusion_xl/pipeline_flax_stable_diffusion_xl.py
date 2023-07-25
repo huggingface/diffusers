@@ -254,8 +254,12 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # 7. Decode latents
-        # TODO
-        return latents
+        # scale and decode the image latents with vae
+        latents = 1 / self.vae.config.scaling_factor * latents
+        image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
+
+        image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
+        return image
 
 # Static argnums are pipe, num_inference_steps, height, width. A change would trigger recompilation.
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
