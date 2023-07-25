@@ -1,0 +1,101 @@
+# AutoPipeline
+
+🤗 Diffusers is able to complete many different tasks, and you can often reuse the same checkpoint for text-to-image, image-to-image, and inpainting. If you're new to the library and diffusion models though, it may be difficult to know which pipeline to load a specific checkpoint into for a task. For example, if you're using the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint for text-to-image, did you know that you could also use it for image-to-image and inpainting? This would require knowing you could also load this checkpoint with the [`StableDiffusionImg2ImgPipeline`] and [`StableDiffusionInpaintPipeline`] classes respectively.
+
+The `AutoPipeline` class is designed to simplify the variety of pipelines in 🤗 Diffusers. It is a generic, *task-first* pipeline that lets you to focus on the task, and allow the `AutoPipeline` to detect the correct pipeline class to use.
+
+<Tip>
+
+Take a look at the [AutoPipeline](./pipelines/auto_pipeline) reference to see which tasks are supported. Currently, it supports text-to-image, image-to-image, and inpainting.
+
+</Tip>
+
+This tutorial will show you how to use an `AutoPipeline` to automatically infer the pipeline class to load for a specific task, given the pretrained weights.
+
+## Text-to-image
+
+Start by picking a checkpoint. For example, if you're interested in text-to-image with the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint, then:
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+
+pipe = AutoPipelineForText2Image.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
+prompt = "peasant and dragon combat, wood cutting style, viking era, bevel with rune"
+
+image = pipe(prompt, num_inference_steps=25).images[0]
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/autopipeline-text2img.png" alt="generated image of peasant fighting dragon in wood cutting style"/>
+</div>
+
+Under the hood, [`AutoPipelineForText2Image`]:
+
+1. automatically detects a `"stable-diffusion"` class from the [`model_index.json`](https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/model_index.json) file
+2. loads the corresponding text-to-image [`StableDiffusionPipline`] based on the `"stable-diffusion"` class name
+
+## Image-to-image
+
+Likewise, for image-to-image, [`AutoPipelineForImage2Image`] detects a `"stable-diffusion"` checkpoint from the `model_index.json` file and it'll load the corresponding [`StableDiffusionImg2ImgPipeline`] behind the scenes:
+
+```py
+from diffusers import AutoPipelineForImage2Image
+
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
+```
+
+## Inpainting
+
+And if you want to do inpainting, then [`AutoPipelineForInpainting`] loads the underlying [`StableDiffusionInpaintPipeline`] class in the same way:
+
+```py
+from diffusers import AutoPipelineForInpainting
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
+```
+
+This makes it easier to load a checkpoint for a task without knowing the specific pipeline class name. 
+
+If you try to load an unsupported checkpoint, it'll throw an error:
+
+```py
+from diffusers import AutoPipelineForImage2Image
+import torch
+
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "openai/shap-e-img2img", torch_dtype=torch.float16, use_safetensors=True
+)
+"ValueError: AutoPipeline can't find a pipeline linked to ShapEImg2ImgPipeline for None"
+```
+
+## Using multiple pipelines
+
+For some workflows or if you're loading many pipelines, it is more memory-efficient to reuse the same components from a checkpoint instead of loading everything again which can consume additional memory. For example, if you're using a checkpoint for text-to-image and you want to use it again for image-to-image, use the [`~AutoPipelineForImage2Image.from_pipe`] method. This method creates a new pipeline from the components of a previously loaded pipeline.
+
+The [`~AutoPipelineForImage2Image.from_pipe`] method detects the original pipeline class and maps it to the new pipeline class corresponding to the task you want to do. For example, if you load a `"stable-diffusion"` class pipeline for text-to-image:
+
+```py
+from diffusers import AutoPipelineForTextToImage, AutoPipelineForImageToImage
+
+pipeline_text2img = AutoPipelineForTextToImage.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
+print(type(pipeline_text2img))
+"<class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'>"
+```
+
+Then [`AutoPipelineForImage2Image.from_pipe`] maps the original `"stable-diffusion"` pipeline class to [`StableDiffusionImg2ImgPipeline`]:
+
+```py
+pipeline_img2img = AutoPipelineForImageToImage.from_pipe(pipeline_text2img)
+print(type(pipeline_img2img))
+"<class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline'>"
+```
+
