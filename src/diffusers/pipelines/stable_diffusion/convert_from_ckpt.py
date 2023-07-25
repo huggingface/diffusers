@@ -799,6 +799,9 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
         for param_name, param in text_model_dict.items():
             set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
     else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
         text_model.load_state_dict(text_model_dict)
 
     return text_model
@@ -960,6 +963,9 @@ def convert_open_clip_checkpoint(
         for param_name, param in text_model_dict.items():
             set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
     else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
         text_model.load_state_dict(text_model_dict)
 
     return text_model
