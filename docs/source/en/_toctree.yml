@@ -182,6 +182,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet

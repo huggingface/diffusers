@@ -1,60 +1,21 @@
-# InstructPix2Pix training example
+# InstructPix2Pix SDXL training example
 
-[InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
+***This is based on the original InstructPix2Pix training example.***
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png" alt="instructpix2pix-inputs" width=600/>
-</p>
+[Stable Diffusion XL](https://huggingface.co/papers/2307.01952) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder. 
 
-The output is an "edited" image that reflects the edit instruction applied on the input image:
+The `train_instruct_pix2pix_xl.py` script shows how to implement the training procedure and adapt it for Stable Diffusion XL.
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
-</p>
-
-The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
-
-***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
+***Disclaimer: Even though `train_instruct_pix2pix_xl.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
 
 ## Running locally with PyTorch
 
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Refer to the original InstructPix2Pix training example for installing the dependencies.
 
-**Important**
-
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
-```bash
-git clone https://github.com/huggingface/diffusers
-cd diffusers
-pip install -e .
-```
-
-Then cd in the example folder and run
-```bash
-pip install -r requirements.txt
-```
-
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
-
-```bash
-accelerate config
-```
-
-Or for a default accelerate configuration without answering questions about your environment
-
-```bash
-accelerate config default
-```
-
-Or if your environment doesn't support an interactive shell e.g. a notebook
-
-```python
-from accelerate.utils import write_basic_config
-write_basic_config()
-```
+You will also need to get access of SDXL by filling the [form](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9). 
 
 ### Toy example
 
@@ -65,14 +26,14 @@ Configure environment variables such as the dataset identifier and the Stable Di
 checkpoint:
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-0.9"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 ```
 
 Now, we can launch training:
 
 ```bash
-accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
+python train_instruct_pix2pix_xl.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --enable_xformers_memory_efficient_attention \
@@ -82,7 +43,6 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
     --seed=42 
 ```
 
@@ -90,21 +50,21 @@ Additionally, we support performing validation inference to monitor training pro
 with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 
 ```bash
-accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
-    --pretrained_model_name_or_path=$MODEL_NAME \
+python train_instruct_pix2pix_xl.py \
+    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
     --dataset_name=$DATASET_ID \
+    --use_ema \
     --enable_xformers_memory_efficient_attention \
-    --resolution=256 --random_flip \
+    --resolution=512 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
-    --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
+    --learning_rate=5e-05 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
-    --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
-    --validation_prompt="make the mountains snowy" \
     --seed=42 \
-    --report_to=wandb 
+    --val_image_url_or_path="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" \
+    --validation_prompt="make it in japan" \
+    --report_to=wandb
  ```
 
  We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
@@ -120,18 +80,20 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash 
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
- --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
- --dataset_name=sayakpaul/instructpix2pix-1000-samples \
- --use_ema \
- --enable_xformers_memory_efficient_attention \
- --resolution=512 --random_flip \
- --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
- --max_train_steps=15000 \
- --checkpointing_steps=5000 --checkpoints_total_limit=1 \
- --learning_rate=5e-05 --lr_warmup_steps=0 \
- --conditioning_dropout_prob=0.05 \
- --mixed_precision=fp16 \
- --seed=42 
+    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
+    --dataset_name=$DATASET_ID \
+    --use_ema \
+    --enable_xformers_memory_efficient_attention \
+    --resolution=512 --random_flip \
+    --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
+    --max_train_steps=15000 \
+    --checkpointing_steps=5000 --checkpoints_total_limit=1 \
+    --learning_rate=5e-05 --lr_warmup_steps=0 \
+    --conditioning_dropout_prob=0.05 \
+    --seed=42 \
+    --val_image_url_or_path="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" \
+    --validation_prompt="make it in japan" \
+    --report_to=wandb
 ```
 
  ## Inference
@@ -142,13 +104,13 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
 import PIL
 import requests
 import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline
+from diffusers import StableDiffusionXLInstructPix2PixPipeline
 
 model_id = "your_model_id" # <- replace this 
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
-url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"
+url = "https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg"
 
 
 def download_image(url):
@@ -158,7 +120,7 @@ def download_image(url):
     return image
 
 image = download_image(url)
-prompt = "wipe out the lake"
+prompt = "make it Japan"
 num_inference_steps = 20
 image_guidance_scale = 1.5
 guidance_scale = 10
@@ -173,9 +135,6 @@ edited_image = pipe(prompt,
 edited_image.save("edited_image.png")
 ```
 
-An example model repo obtained using this training script can be found
-here - [sayakpaul/instruct-pix2pix](https://huggingface.co/sayakpaul/instruct-pix2pix).
-
 We encourage you to play with the following three parameters to control
 speed and quality during performance:
 
@@ -187,7 +146,3 @@ Particularly, `image_guidance_scale` and `guidance_scale` can have a profound im
 on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
 
 If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
-
-## Stable Diffusion XL
-
-We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).

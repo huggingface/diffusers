@@ -25,22 +25,6 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
-from .models.attention_processor import (
-    LORA_ATTENTION_PROCESSORS,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    AttnProcessor,
-    AttnProcessor2_0,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRALinearLayer,
-    LoRAXFormersAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-)
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -83,6 +67,8 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
+        from .models.attention_processor import LoRALinearLayer
+
         self.regular_linear_layer = regular_linear_layer
 
         device = self.regular_linear_layer.weight.device
@@ -231,6 +217,17 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
+        from .models.attention_processor import (
+            AttnAddedKVProcessor,
+            AttnAddedKVProcessor2_0,
+            CustomDiffusionAttnProcessor,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            SlicedAttnAddedKVProcessor,
+            XFormersAttnProcessor,
+        )
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -423,6 +420,11 @@ class UNet2DConditionLoadersMixin:
                 `DIFFUSERS_SAVE_MODE`.
 
         """
+        from .models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionXFormersAttnProcessor,
+        )
+
         weight_name = weight_name or deprecate(
             "weights_name",
             "0.20.0",
@@ -1317,6 +1319,17 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
+        from .models.attention_processor import (
+            LORA_ATTENTION_PROCESSORS,
+            AttnProcessor,
+            AttnProcessor2_0,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            XFormersAttnProcessor,
+        )
+
         unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
 
         if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
@@ -1410,6 +1423,9 @@ class FromSingleFileMixin:
                 An instance of `CLIPTextModel` to use, specifically the
                 [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
                 parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            vae (`AutoencoderKL`, *optional*, defaults to `None`):
+                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+                this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
             tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
                 An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
                 of `CLIPTokenizer` by itself if needed.
@@ -1458,6 +1474,7 @@ class FromSingleFileMixin:
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
         text_encoder = kwargs.pop("text_encoder", None)
+        vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
@@ -1548,6 +1565,7 @@ class FromSingleFileMixin:
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
             text_encoder=text_encoder,
+            vae=vae,
             tokenizer=tokenizer,
         )
 
