@@ -7,7 +7,12 @@ from ...utils import (
 )
 
 
-if is_transformers_available() and is_torch_available() and is_invisible_watermark_available():
+try:
+    if not (is_transformers_available() and is_torch_available() and is_invisible_watermark_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
+else:
     from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
 
 
