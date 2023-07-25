@@ -21,7 +21,6 @@ import torch
 from transformers import CLIPImageProcessor, CLIPVisionModel
 
 from ...models import PriorTransformer
-from ...pipelines import DiffusionPipeline
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
@@ -29,6 +28,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline
 from .renderer import ShapERenderer
 
 

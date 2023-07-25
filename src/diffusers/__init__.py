@@ -62,6 +62,9 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        AutoPipelineForImage2Image,
+        AutoPipelineForInpainting,
+        AutoPipelineForText2Image,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
