@@ -25,7 +25,6 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
-from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -69,7 +68,7 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
-        from .models.attention_processor import LoRALinearLayer
+        from .models.lora import LoRALinearLayer
 
         self.regular_linear_layer = regular_linear_layer
 
@@ -244,6 +243,7 @@ class UNet2DConditionLoadersMixin:
             SlicedAttnAddedKVProcessor,
             XFormersAttnProcessor,
         )
+        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
