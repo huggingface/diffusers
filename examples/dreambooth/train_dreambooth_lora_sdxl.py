@@ -1063,6 +1063,7 @@ def main(args):
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
                 # Convert images to latent space
+                print(f"pixel_values: {pixel_values.shape}.")
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
@@ -1091,10 +1092,11 @@ def main(args):
                     print(f"noisy_model_input: {noisy_model_input.shape}, timesteps: {timesteps.shape}")
                     for k in unet_added_conditions:
                         print(k, unet_added_conditions[k].shape) 
+                    prompt_embeds = prompt_embeds.repeat(bsz, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
-                        prompt_embeds.repeat(bsz, 1, 1),
+                        prompt_embeds,
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
