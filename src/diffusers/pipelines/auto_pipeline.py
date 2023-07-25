@@ -67,7 +67,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
         ("kandinsky", KandinskyInpaintPipeline),
-        ("kdnsinsky22", KandinskyV22InpaintPipeline),
+        ("kandinsky22", KandinskyV22InpaintPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )
