@@ -27,8 +27,8 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | DPM++ 2M Karras     | [`DPMSolverMultistepScheduler`]     | init with `use_karras_sigmas=True`                                                                            |
 | DPM++ 2M SDE        | [`DPMSolverMultistepScheduler`]     | init with `algorithm_type="sde-dpmsolver++"`                                                                  |
 | DPM++ 2M SDE Karras | [`DPMSolverMultistepScheduler`]     | init with `use_karras_sigmas=True` and `algorithm_type="sde-dpmsolver++"`                                     |
-| DPM++ 2S a          | N/A                                 | very similar to  `DPMSolverMultistepScheduler(algorithm_type="sde-dpmsolver++", ...)`                         |
-| DPM++ 2S a Karras   | N/A                                 | very similar to  `DPMSolverMultistepScheduler(use_karras_sigmas=True, algorithm_type="sde-dpmsolver++", ...)` |
+| DPM++ 2S a          | N/A                                 | very similar to  `DPMSolverSinglestepScheduler`                         |
+| DPM++ 2S a Karras   | N/A                                 | very similar to  `DPMSolverSinglestepScheduler(use_karras_sigmas=True, ...)` |
 | DPM++ SDE           | [`DPMSolverSinglestepScheduler`]    |                                                                                                               |
 | DPM++ SDE Karras    | [`DPMSolverSinglestepScheduler`]    | init with `use_karras_sigmas=True`                                                                            |
 | DPM2                | [`KDPM2DiscreteScheduler`]          |                                                                                                               |
