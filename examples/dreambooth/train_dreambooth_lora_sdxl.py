@@ -94,6 +94,10 @@ These are LoRA adaption weights for {base_model}. The weights were trained on {p
 LoRA for the text encoder was enabled: {train_text_encoder}.
 
 Special VAE used for training: {vae_path}.
+
+## License
+
+[SDXL 0.9 Research License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9/blob/main/LICENSE.md)
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
@@ -1194,12 +1198,8 @@ def main(args):
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one)
-                    if args.train_text_encoder
-                    else text_encoder_one,
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two)
-                    if args.train_text_encoder
-                    else text_encoder_two,
+                    text_encoder=accelerator.unwrap_model(text_encoder_one),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
