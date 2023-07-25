@@ -61,8 +61,8 @@ EXAMPLE_DOC_STRING = """
         ...     "/kandinsky/cat.png"
         ... )
 
-        >>> mask = np.ones((768, 768), dtype=np.float32)
-        >>> mask[:250, 250:-250] = 0
+        >>> mask = np.zeros((768, 768), dtype=np.float32)
+        >>> mask[:250, 250:-250] = 1
 
         >>> out = pipe(
         ...     image=init_image,
@@ -230,6 +230,8 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
+    mask = 1 - mask
+
     return mask, image
 
 
@@ -329,8 +331,8 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
             mask_image (`np.array`):
-                Tensor representing an image batch, to mask `image`. Black pixels in the mask will be repainted, while
-                white pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
+                Tensor representing an image batch, to mask `image`. White pixels in the mask will be repainted, while
+                black pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
                 channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3,
                 so the expected shape would be `(B, H, W, 1)`.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):

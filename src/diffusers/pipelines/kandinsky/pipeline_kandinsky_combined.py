@@ -512,8 +512,8 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
                 process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             mask_image (`np.array`):
-                Tensor representing an image batch, to mask `image`. Black pixels in the mask will be repainted, while
-                white pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
+                Tensor representing an image batch, to mask `image`. White pixels in the mask will be repainted, while
+                black pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
                 channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3,
                 so the expected shape would be `(B, H, W, 1)`.
             negative_prompt (`str` or `List[str]`, *optional*):

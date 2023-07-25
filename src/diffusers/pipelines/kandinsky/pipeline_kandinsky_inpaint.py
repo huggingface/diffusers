@@ -65,8 +65,8 @@ EXAMPLE_DOC_STRING = """
         ...     "/kandinsky/cat.png"
         ... )
 
-        >>> mask = np.ones((768, 768), dtype=np.float32)
-        >>> mask[:250, 250:-250] = 0
+        >>> mask = np.zeros((768, 768), dtype=np.float32)
+        >>> mask[:250, 250:-250] = 1
 
         >>> out = pipe(
         ...     prompt,
@@ -231,6 +231,8 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
+
+    mask = 1 - mask
 
     return mask, image
 

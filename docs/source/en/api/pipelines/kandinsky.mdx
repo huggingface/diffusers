@@ -212,9 +212,9 @@ init_image = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
 )
 
-mask = np.ones((768, 768), dtype=np.float32)
+mask = np.zeros((768, 768), dtype=np.float32)
 # Let's mask out an area above the cat's head
-mask[:250, 250:-250] = 0
+mask[:250, 250:-250] = 1
 
 out = pipe(
     prompt,
