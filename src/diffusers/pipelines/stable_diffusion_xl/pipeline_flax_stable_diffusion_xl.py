@@ -185,9 +185,19 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         if neg_prompt_ids is None:
             neg_prompt_ids = self.prepare_inputs([""] * batch_size)
 
-        # TODO: properly support without classifier guidance here (or drop support entirely)
-        neg_prompt_embeds, pooled_neg_embeds = self.get_embeddings(neg_prompt_ids, params)
-        context = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
+        neg_prompt_embeds, negative_pooled_embeds = self.get_embeddings(neg_prompt_ids, params)
+
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
+
+        prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
+        add_text_embeds = jnp.concatenate([negative_pooled_embeds, pooled_embeds], axis=0)
+        add_time_ids = jnp.concatenate([add_time_ids, add_time_ids], axis=0)
+
+        print(f"prompt_embeds: {prompt_embeds.shape} (2, 77, 2048)")
+        print(f"add_text_embeds: {add_text_embeds.shape} (2, 1280)")
+        print(f"add_time_ids: {add_time_ids.shape} (2, 6)")
 
         # Ensure model output will be `float32` before going into the scheduler
         guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
@@ -214,9 +224,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 
         # 5. Prepare added embeddings
         add_text_embeds = prompt_embeds
-        add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
-        )
 
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
@@ -238,7 +245,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 {"params": params["unet"]},
                 jnp.array(latents_input),
                 jnp.array(timestep, dtype=jnp.int32),
-                encoder_hidden_states=context,
+                encoder_hidden_states=prompt_embeds,
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
             # perform guidance
