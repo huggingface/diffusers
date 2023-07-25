@@ -21,6 +21,7 @@ from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
+    StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
@@ -45,6 +46,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
+        ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
     ]
 )
 
@@ -55,7 +57,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgPipeline),
         ("kandinsky22", KandinskyV22Img2ImgPipeline),
-        ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
 
@@ -65,15 +67,15 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
         ("kandinsky", KandinskyInpaintPipeline),
-        ("kdnsinskyv22-inpaint", KandinskyV22InpaintPipeline),
-        ("controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("kdnsinsky22", KandinskyV22InpaintPipeline),
+        ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )
 
 SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
-    AUTO_INPAINTING_PIPELINES_MAPPING,
+    AUTO_INPAINT_PIPELINES_MAPPING,
 ]
 
 
@@ -165,32 +167,6 @@ class AutoPipelineForText2Image(ConfigMixin):
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
-            custom_pipeline (`str`, *optional*):
-
-                <Tip warning={true}>
-
-                🧪 This is an experimental feature and may change in the future.
-
-                </Tip>
-
-                Can be either:
-
-                    - A string, the *repo id* (for example `hf-internal-testing/diffusers-dummy-pipeline`) of a custom
-                      pipeline hosted on the Hub. The repository must contain a file called pipeline.py that defines
-                      the custom pipeline.
-                    - A string, the *file name* of a community pipeline hosted on GitHub under
-                      [Community](https://github.com/huggingface/diffusers/tree/main/examples/community). Valid file
-                      names must match the file name and not the pipeline script (`clip_guided_stable_diffusion`
-                      instead of `clip_guided_stable_diffusion.py`). Community pipelines are always loaded from the
-                      current main branch of GitHub.
-                    - A path to a directory (`./my_pipeline_directory/`) containing a custom pipeline. The directory
-                      must contain a file called `pipeline.py` that defines the custom pipeline.
-
-
-                For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Adding Custom
-                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -272,12 +248,13 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> print(pipeline.__class__)
         ```
         """
-        if "controlnet" in kwargs:
-            text_2_image_cls = AUTO_TEXT2IMAGE_PIPELINES_MAPPING["controlnet"]
+        config = cls.load_config(pretrained_model_or_path)
+        orig_class_name = config["_class_name"]
 
-        else:
-            config = cls.load_config(pretrained_model_or_path)
-            text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, config["_class_name"])
+        if "controlnet" in kwargs:
+            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+
+        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
@@ -433,32 +410,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
-            custom_pipeline (`str`, *optional*):
-
-                <Tip warning={true}>
-
-                🧪 This is an experimental feature and may change in the future.
-
-                </Tip>
-
-                Can be either:
-
-                    - A string, the *repo id* (for example `hf-internal-testing/diffusers-dummy-pipeline`) of a custom
-                      pipeline hosted on the Hub. The repository must contain a file called pipeline.py that defines
-                      the custom pipeline.
-                    - A string, the *file name* of a community pipeline hosted on GitHub under
-                      [Community](https://github.com/huggingface/diffusers/tree/main/examples/community). Valid file
-                      names must match the file name and not the pipeline script (`clip_guided_stable_diffusion`
-                      instead of `clip_guided_stable_diffusion.py`). Community pipelines are always loaded from the
-                      current main branch of GitHub.
-                    - A path to a directory (`./my_pipeline_directory/`) containing a custom pipeline. The directory
-                      must contain a file called `pipeline.py` that defines the custom pipeline.
-
-
-                For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Adding Custom
-                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -540,14 +491,13 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> print(pipeline.__class__)
         ```
         """
+        config = cls.load_config(pretrained_model_or_path)
         orig_class_name = config["_class_name"]
-        
+
         if "controlnet" in kwargs:
             orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
-        
-        
-        config = cls.load_config(pretrained_model_or_path)
-        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, config["_class_name"])
+
+        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
@@ -704,32 +654,6 @@ class AutoPipelineForInpainting(ConfigMixin):
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
-            custom_pipeline (`str`, *optional*):
-
-                <Tip warning={true}>
-
-                🧪 This is an experimental feature and may change in the future.
-
-                </Tip>
-
-                Can be either:
-
-                    - A string, the *repo id* (for example `hf-internal-testing/diffusers-dummy-pipeline`) of a custom
-                      pipeline hosted on the Hub. The repository must contain a file called pipeline.py that defines
-                      the custom pipeline.
-                    - A string, the *file name* of a community pipeline hosted on GitHub under
-                      [Community](https://github.com/huggingface/diffusers/tree/main/examples/community). Valid file
-                      names must match the file name and not the pipeline script (`clip_guided_stable_diffusion`
-                      instead of `clip_guided_stable_diffusion.py`). Community pipelines are always loaded from the
-                      current main branch of GitHub.
-                    - A path to a directory (`./my_pipeline_directory/`) containing a custom pipeline. The directory
-                      must contain a file called `pipeline.py` that defines the custom pipeline.
-
-
-                For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Adding Custom
-                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
-
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -811,12 +735,13 @@ class AutoPipelineForInpainting(ConfigMixin):
         >>> print(pipeline.__class__)
         ```
         """
-        if "controlnet" in kwargs:
-            inpainting_cls = AUTO_INPAINTING_PIPELINES_MAPPING["controlnet"]
+        config = cls.load_config(pretrained_model_or_path)
+        orig_class_name = config["_class_name"]
 
-        else:
-            config = cls.load_config(pretrained_model_or_path)
-            inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, config["_class_name"])
+        if "controlnet" in kwargs:
+            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+
+        inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
@@ -853,7 +778,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         original_cls_name = pipeline.__class__.__name__
 
         # derive the pipeline class to instantiate
-        inpainting_cls = _get_task_class(AUTO_INPAINTING_PIPELINES_MAPPING, original_cls_name)
+        inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, original_cls_name)
 
         # define expected module and optional kwargs given the pipeline signature
         expected_modules, optional_kwargs = _get_signature_keys(inpainting_cls)
