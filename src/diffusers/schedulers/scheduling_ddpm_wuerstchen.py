@@ -118,8 +118,10 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         if self.scaler > 1:
             t = 1 - (1 - t) ** self.scaler
         elif self.scaler < 1:
-            t = t ** self.scaler
-        alpha_cumprod = torch.cos((t + self.s.to(device)) / (1 + self.s.to(device)) * torch.pi * 0.5) ** 2 / self._init_alpha_cumprod.to(device)
+            t = t**self.scaler
+        alpha_cumprod = torch.cos(
+            (t + self.s.to(device)) / (1 + self.s.to(device)) * torch.pi * 0.5
+        ) ** 2 / self._init_alpha_cumprod.to(device)
         return alpha_cumprod.clamp(0.0001, 0.9999)
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
@@ -198,12 +200,12 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
         alpha_cumprod = self._alpha_cumprod(t, device).view(t.size(0), *[1 for _ in sample.shape[1:]])
         alpha_cumprod_prev = self._alpha_cumprod(prev_t, device).view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
-        alpha = (alpha_cumprod / alpha_cumprod_prev)
+        alpha = alpha_cumprod / alpha_cumprod_prev
 
         mu = (1.0 / alpha).sqrt() * (sample - (1 - alpha) * model_output / (1 - alpha_cumprod).sqrt())
         std_noise = randn_tensor(mu.shape, generator=generator, device=model_output.device, dtype=model_output.dtype)
         # std_noise = torch.randn_like(mu)
-        std = ((1 - alpha) * (1. - alpha_cumprod_prev) / (1. - alpha_cumprod)).sqrt() * std_noise
+        std = ((1 - alpha) * (1.0 - alpha_cumprod_prev) / (1.0 - alpha_cumprod)).sqrt() * std_noise
         pred = mu + std * (prev_t != 0).float().view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
 
         if not return_dict:
