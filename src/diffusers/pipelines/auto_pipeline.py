@@ -116,6 +116,7 @@ SUPPORTED_TASKS_MAPPINGS = [
 
 
 def _get_connected_pipeline(pipeline_cls):
+    # for now connected pipelines can only be loaded from decoder pipelines, such as kandinsky-community/kandinsky-2-2-decoder
     if pipeline_cls in AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING.values():
         return _get_task_class(
             AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
@@ -124,7 +125,7 @@ def _get_connected_pipeline(pipeline_cls):
         return _get_task_class(
             AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
         )
-    if pipeline_cls in AUTO_INPAINT_PIPELINES_MAPPING.values():
+    if pipeline_cls in AUTO_INPAINT_DECODER_PIPELINES_MAPPING.values():
         return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
 
 
@@ -387,7 +388,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {text_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {text_2_image_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = text_2_image_cls(**text_2_image_kwargs)
@@ -632,7 +633,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {image_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {image_2_image_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = image_2_image_cls(**image_2_image_kwargs)
@@ -875,7 +876,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {inpainting_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {inpainting_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = inpainting_cls(**inpainting_kwargs)
