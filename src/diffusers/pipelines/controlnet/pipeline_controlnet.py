@@ -554,6 +554,12 @@ class StableDiffusionControlNetPipeline(
         else:
             assert False
 
+        if isinstance(control_guidance_start, float):
+            control_guidance_start = [control_guidance_start]
+            
+        if isinstance(control_guidance_end, float):
+            control_guidance_end = [control_guidance_start]
+            
         if len(control_guidance_start) != len(control_guidance_end):
             raise ValueError(
                 f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
