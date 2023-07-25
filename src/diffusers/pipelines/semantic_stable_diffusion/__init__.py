@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_torch_available, is_transformers_available
+from ...utils import BaseOutput, OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
 
 
 @dataclass
@@ -27,5 +27,10 @@ class SemanticStableDiffusionPipelineOutput(BaseOutput):
     nsfw_content_detected: Optional[List[bool]]
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .pipeline_semantic_stable_diffusion import SemanticStableDiffusionPipeline
