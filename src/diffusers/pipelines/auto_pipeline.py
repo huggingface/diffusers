@@ -115,7 +115,20 @@ SUPPORTED_TASKS_MAPPINGS = [
 ]
 
 
-def _get_task_class(mapping, pipeline_class_name):
+def _get_connected_pipeline(pipeline_cls):
+    if pipeline_cls in AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING.values():
+        return _get_task_class(
+            AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
+        )
+    if pipeline_cls in AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING.values():
+        return _get_task_class(
+            AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
+        )
+    if pipeline_cls in AUTO_INPAINT_PIPELINES_MAPPING.values():
+        return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
+
+
+def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
     def get_model(pipeline_class_name):
         for task_mapping in SUPPORTED_TASKS_MAPPINGS:
             for model_name, pipeline in task_mapping.items():
@@ -128,7 +141,9 @@ def _get_task_class(mapping, pipeline_class_name):
         task_class = mapping.get(model_name, None)
         if task_class is not None:
             return task_class
-    raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
+
+    if throw_error_if_not_exist:
+        raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
 
 
 def _get_signature_keys(obj):

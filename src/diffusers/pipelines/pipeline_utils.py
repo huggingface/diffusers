@@ -323,7 +323,9 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
     return class_obj, class_candidates
 
 
-def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None, revision=None):
+def _get_pipeline_class(
+    class_obj, config, load_connected_pipeline=False, custom_pipeline=None, cache_dir=None, revision=None
+):
     if custom_pipeline is not None:
         if custom_pipeline.endswith(".py"):
             path = Path(custom_pipeline)
@@ -341,7 +343,22 @@ def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None,
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    return getattr(diffusers_module, config["_class_name"])
+    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+
+    if load_connected_pipeline:
+        from .auto_pipeline import _get_connected_pipeline
+
+        connected_pipeline_cls = _get_connected_pipeline(pipeline_cls)
+        if connected_pipeline_cls is not None:
+            logger.info(
+                f"Loading connected pipeline {connected_pipeline_cls.__name__} instead of {pipeline_cls.__name__} as specified via `load_connected_pipeline=True`"
+            )
+        else:
+            logger.info(f"{pipeline_cls.__name__} has no connected pipeline class. Loading {pipeline_cls.__name__}.")
+
+        pipeline_cls = connected_pipeline_cls or pipeline_cls
+
+    return pipeline_cls
 
 
 def load_sub_model(
@@ -877,6 +894,7 @@ class DiffusionPipeline(ConfigMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -895,6 +913,7 @@ class DiffusionPipeline(ConfigMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
+                load_connected_pipeline=load_connected_pipeline,
                 **kwargs,
             )
         else:
@@ -922,7 +941,12 @@ class DiffusionPipeline(ConfigMixin):
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         pipeline_class = _get_pipeline_class(
-            cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+            cls,
+            config_dict,
+            load_connected_pipeline=load_connected_pipeline,
+            custom_pipeline=custom_pipeline,
+            cache_dir=cache_dir,
+            revision=custom_revision,
         )
 
         # DEPRECATED: To be removed in 1.0.0
@@ -1269,6 +1293,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1359,7 +1384,12 @@ class DiffusionPipeline(ConfigMixin):
 
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
-                cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+                cls,
+                config_dict,
+                load_connected_pipeline=load_connected_pipeline,
+                custom_pipeline=custom_pipeline,
+                cache_dir=cache_dir,
+                revision=custom_revision,
             )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
