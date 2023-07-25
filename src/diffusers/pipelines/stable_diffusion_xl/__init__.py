@@ -32,6 +32,19 @@ if is_transformers_available() and is_torch_available() and is_invisible_waterma
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
 
 
-if is_flax_available():
-    from .pipeline_flax_stable_diffusion_xl import FlaxStableDiffusionXLPipeline
+if is_transformers_available() and is_flax_available():
+    import flax
 
+    @flax.struct.dataclass
+    class FlaxStableDiffusionXLPipelineOutput(BaseOutput):
+        """
+        Output class for Flax Stable Diffusion XL pipelines.
+
+        Args:
+            images (`np.ndarray`)
+                Array of shape `(batch_size, height, width, num_channels)` with images from the diffusion pipeline.
+        """
+        images: np.ndarray
+
+    from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
+    from .pipeline_flax_stable_diffusion_xl import FlaxStableDiffusionXLPipeline
