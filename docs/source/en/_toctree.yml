@@ -206,6 +206,8 @@
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
       title: Kandinsky
+    - local: api/pipelines/kandinsky_v22
+      title: Kandinsky 2.2
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
