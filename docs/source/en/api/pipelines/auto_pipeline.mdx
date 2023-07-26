@@ -16,31 +16,31 @@ In many cases, one checkpoint can be used for multiple tasks. For example, you m
 
 AutoPipeline is designed to make it easy for you to use multiple pipelines in your workflow. We currently provide 3 AutoPipeline classes to perform three different tasks, i.e. [`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`], and [`AutoPipelineForInpainting`]. You'll need to choose the AutoPipeline class based on the task you want to perform and use it to automatically retrieve the relevant pipeline given the name/path to the pre-trained weights. 
 
-For example, to perform Image-to-Image with the SD1.5 checkpoint, you can do
+For example, to perform Image-to-Image with the SD1.5 checkpoint, you can do:
 
 ```python
-from diffusers import PipelineForImageToImage
+from diffusers import AutoPipelineForImageToImage
 
-pipe_i2i = PipelineForImageoImage.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe_i2i = AutoPipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
 It will also help you switch between tasks seamlessly using the same checkpoint without reallocating additional memory. For example, to re-use the Image-to-Image pipeline we just created for inpainting, you can do 
 
 ```python
-from diffusers import PipelineForInpainting
+from diffusers import AutoPipelineForInpainting
 
 pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_i2i)
 ```
+
 All the components will be transferred to the inpainting pipeline with zero cost.
 
-
-Currently AutoPipeline support the Text-to-Image, Image-to-Image, and Inpainting tasks for below diffusion models:
+Currently AutoPipeline supports the Text-to-Image, Image-to-Image, and Inpainting tasks for the following diffusion models:
 - [stable Diffusion](./stable_diffusion)
 - [Stable Diffusion Controlnet](./api/pipelines/controlnet)
 - [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl)
 - [IF](./if) 
-- [Kandinsky](./kandinsky)(./kandinsky)(./kandinsky)(./kandinsky)(./kandinsky)
-- [Kandinsky 2.2]()(./kandinsky)
+- [Kandinsky](./kandinsky)
+- [Kandinsky 2.2](./kandinsky)
 
 
 ## AutoPipelineForText2Image
