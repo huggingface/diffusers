@@ -30,13 +30,42 @@ from ...models.attention_processor import (
     XFormersAttnProcessor,
 )
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import StableDiffusionXLInpaintPipeline
+        >>> from diffusers.utils import load_image
+
+        >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-0.9",
+        ...     torch_dtype=torch.float16,
+        ...     variant="fp16",
+        ...     use_safetensors=True,
+        ... )
+        >>> pipe.to("cuda")
+
+        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+        >>> init_image = load_image(img_url).convert("RGB")
+        >>> mask_image = load_image(mask_url).convert("RGB")
+
+        >>> prompt = "A majestic tiger sitting on a bench"
+        >>> image = pipe(
+        ...     prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80
+        ... ).images[0]
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
@@ -810,6 +839,7 @@ class StableDiffusionXLInpaintPipeline(
             self.vae.decoder.mid_block.to(dtype)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -948,43 +978,35 @@ class StableDiffusionXLInpaintPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
+                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
+                explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
+                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
+                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                For most cases, `target_size` should be set to the desired height and width of the generated image. If
+                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
+                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            aesthetic_score (`float`, *optional*, defaults to 6.0):
+                Used to simulate an aesthetic score of the generated image by influencing the positive text condition.
+                Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            negative_aesthetic_score (`float`, *optional*, defaults to 2.5):
+                Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). Can be used to
+                simulate an aesthetic score of the generated image by influencing the negative text condition.
+
         Examples:
 
-        ```py
-        >>> import PIL
-        >>> import requests
-        >>> import torch
-        >>> from io import BytesIO
-
-        >>> from diffusers import StableDiffusionInpaintPipeline
-
-
-        >>> def download_image(url):
-        ...     response = requests.get(url)
-        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
-
-        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-
-        >>> init_image = download_image(img_url).resize((512, 512))
-        >>> mask_image = download_image(mask_url).resize((512, 512))
-
-        >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-
-        >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-        >>> image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
-        ```
-
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple. `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

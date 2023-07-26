@@ -25,8 +25,6 @@ from transformers import (
 )
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -35,6 +33,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 

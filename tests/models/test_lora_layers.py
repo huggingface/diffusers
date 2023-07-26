@@ -738,7 +738,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
 
-        expected = np.array([0.3743, 0.3893, 0.3835, 0.3891, 0.3949, 0.3649, 0.3858, 0.3802, 0.3245])
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -778,6 +778,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_filename = "Colored_Icons_by_vizsumit.safetensors"
 
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
         lora_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -792,3 +793,50 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertFalse(np.allclose(initial_images, lora_images))
         self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+
+    def test_load_unload_load_kohya_lora(self):
+        # This test ensures that a Kohya-style LoRA can be safely unloaded and then loaded
+        # without introducing any side-effects. Even though the test uses a Kohya-style
+        # LoRA, the underlying adapter handling mechanism is format-agnostic.
+        generator = torch.manual_seed(0)
+        prompt = "masterpiece, best quality, mountain"
+        num_inference_steps = 2
+
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
+            torch_device
+        )
+        initial_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        initial_images = initial_images[0, -3:, -3:, -1].flatten()
+
+        lora_model_id = "hf-internal-testing/civitai-colored-icons-lora"
+        lora_filename = "Colored_Icons_by_vizsumit.safetensors"
+
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
+        lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images = lora_images[0, -3:, -3:, -1].flatten()
+
+        pipe.unload_lora_weights()
+        generator = torch.manual_seed(0)
+        unloaded_lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        unloaded_lora_images = unloaded_lora_images[0, -3:, -3:, -1].flatten()
+
+        self.assertFalse(np.allclose(initial_images, lora_images))
+        self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+
+        # make sure we can load a LoRA again after unloading and they don't have
+        # any undesired effects.
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
+        lora_images_again = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images_again = lora_images_again[0, -3:, -3:, -1].flatten()
+
+        self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))

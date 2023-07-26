@@ -5,7 +5,6 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
-from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     logging,
@@ -13,6 +12,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..kandinsky import KandinskyPriorPipelineOutput
+from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

@@ -23,9 +23,9 @@ from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
-from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
 from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
