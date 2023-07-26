@@ -1423,9 +1423,10 @@ class LoraLoaderMixin:
         for k in network_alphas:
             value = network_alphas[k]
 
-            diffusers_name = k.replace("lora_unet_", "").replace("_", ".")
-            diffusers_name = diffusers_name.replace("lora_te_", "").replace("_", ".")
-            diffusers_name = diffusers_name.replace("text.model", "text_model")
+            diffusers_name = k.replace("lora_unet_", "unet.")
+            diffusers_name = diffusers_name.replace("lora_te_", "textencoder.")
+            diffusers_name = diffusers_name.replace("_", ".")
+            diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
             diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
             diffusers_name = diffusers_name.replace("mid.block", "mid_block")
