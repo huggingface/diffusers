@@ -1185,8 +1185,8 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionControlNetPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
-        StableDiffusionXLPipeline,
         StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
