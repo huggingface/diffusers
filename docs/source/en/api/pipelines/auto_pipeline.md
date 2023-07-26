@@ -39,8 +39,8 @@ Currently AutoPipeline support the Text-to-Image, Image-to-Image, and Inpainting
 - [Stable Diffusion Controlnet](./api/pipelines/controlnet)
 - [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl)
 - [IF](./if) 
-- [Kandinsky](./kandinsky)(./kandinsky)(./kandinsky)(./kandinsky)(./kandinsky)
-- [Kandinsky 2.2]()(./kandinsky)
+- [Kandinsky](./kandinsky)
+- [Kandinsky 2.2](./kandinsky)
 
 
 ## AutoPipelineForText2Image
