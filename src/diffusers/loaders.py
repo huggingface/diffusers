@@ -321,8 +321,14 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {}
         non_attn_lora_layers = []
 
-        is_lora = all("lora" in k for k in state_dict.keys())
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
+
+        for k in state_dict:
+            new_k = k.replace("lora_unet_", "")
+            new_k = new_k.replace("lora_te_", "")
+            if "lora" not in new_k:
+                print(new_k)
 
         if is_lora:
             is_new_lora_format = all(
@@ -352,7 +358,10 @@ class UNet2DConditionLoadersMixin:
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
                 for sub_key in key.split("."):
-                    attn_processor = getattr(attn_processor, sub_key)
+                    try:
+                        attn_processor = getattr(attn_processor, sub_key)
+                    except:
+                        print(key)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
