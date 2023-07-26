@@ -42,6 +42,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
         pipe = AutoPipelineForText2Image.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
+        pipe.enable_model_cpu_offload()
 
         prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 
