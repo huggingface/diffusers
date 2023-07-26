@@ -73,8 +73,7 @@ You can find more examples in [optimum documentation](https://huggingface.co/doc
 
 ### Export
 
-If you want to export the pipeline in the ONNX format offline and later use it for inference,
-you can use the [`optimum-cli export`]
+To export the model to ONNX, you can use the Optimum CLI as follows :
 
 ```bash
 optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-0.9 --task stable-diffusion-xl sd_xl_onnx/
