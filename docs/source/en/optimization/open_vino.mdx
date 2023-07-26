@@ -88,14 +88,14 @@ You can find more examples in the optimum [documentation](https://huggingface.co
 ```python
 from optimum.intel import OVStableDiffusionXLPipeline
 
-model_id = "stabilityai/stable-diffusion-xl-base-0.9"
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
 pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id, export=True)
 prompt = "sailing ship in storm by Rembrandt"
 image = pipeline(prompt).images[0]
 ```
 
 To further speed up inference, the model can be statically reshaped as showed above.
-You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
+You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl).
 
 ### Supported tasks
 
