@@ -558,7 +558,7 @@ class StableDiffusionControlNetPipeline(
             control_guidance_start = [control_guidance_start]
             
         if isinstance(control_guidance_end, float):
-            control_guidance_end = [control_guidance_start]
+            control_guidance_end = [control_guidance_end]
             
         if len(control_guidance_start) != len(control_guidance_end):
             raise ValueError(
