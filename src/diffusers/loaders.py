@@ -1429,8 +1429,8 @@ class LoraLoaderMixin:
                 f"There are some keys (such as: {example_unloaded_keys}) in the checkpoints we don't provide support for."
             )
 
-        unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
-        te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
+        unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
+        te_state_dict = {f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
         network_alphas_renamed = {}
