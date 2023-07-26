@@ -870,7 +870,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         if len(text_encoder_2_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_2_state_dict,
-                network_alpha=network_alphas,
+                network_alphas=network_alphas,
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
