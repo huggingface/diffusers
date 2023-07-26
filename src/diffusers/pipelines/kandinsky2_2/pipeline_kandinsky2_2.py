@@ -153,8 +153,9 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Args:
         Function invoked when calling the pipeline for generation.
+
+        Args:
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
