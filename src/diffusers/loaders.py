@@ -320,6 +320,10 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         attn_processors = {}
         non_attn_lora_layers = []
+
+        for k in state_dict:
+            print(k)
+
         is_lora = all("lora" in k for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
