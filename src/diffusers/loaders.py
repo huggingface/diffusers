@@ -1355,9 +1355,9 @@ class LoraLoaderMixin:
         unloaded_keys = []
 
         for key, value in state_dict.items():
-            if "hada" in key or "skip" in key or "input" in key:
+            if "hada" in key or "skip" in key:
                 unloaded_keys.append(key)
-            elif "lora_down" in key:
+            elif "lora_down" in key or "input_blocks" in key:
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
                 lora_name_alpha = lora_name + ".alpha"
@@ -1368,8 +1368,11 @@ class LoraLoaderMixin:
                 if lora_name.startswith("lora_unet_"):
                     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
                     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+                    diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
                     diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+                    diffusers_name = diffusers_name.replace("middle.block", "mid_block")
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+                    diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
                     diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                     diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
