@@ -276,6 +276,7 @@ class UNet2DConditionLoadersMixin:
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             # Let's first try to load .safetensors weights
+            print(f"Weight name: {weight_name}")
             if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
