@@ -276,12 +276,10 @@ class UNet2DConditionLoadersMixin:
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             # Let's first try to load .safetensors weights
-            print(f"Weight name: {weight_name}")
             if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
                 try:
-                    print(f"Using safetensors: {weight_name}")
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -322,10 +320,7 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         attn_processors = {}
         non_attn_lora_layers = []
-        print(f"Weight_name: {weight_name}")
-        print(f"Model file: {model_file}")
         is_lora = all("lora" in k for k in state_dict.keys())
-        print(f"Is lora: {is_lora}")
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
