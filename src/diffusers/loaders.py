@@ -321,7 +321,9 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {}
         non_attn_lora_layers = []
 
+        print(f"Model file: {model_file}")
         is_lora = all("lora" in k for k in state_dict.keys())
+        print(f"Is lora: {is_lora}")
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
