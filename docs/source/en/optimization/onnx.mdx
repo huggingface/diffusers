@@ -67,13 +67,13 @@ You can find more examples in [optimum documentation](https://huggingface.co/doc
 |--------------------------------------|--------------------------------------|
 | `text-to-image`                      | `ORTStableDiffusionPipeline`         |
 | `image-to-image`                     | `ORTStableDiffusionImg2ImgPipeline`  |
-| `inpaint`                            | `ORTStableDiffusionPipeline`         |
+| `inpaint`                            | `ORTStableDiffusionInpaintPipeline`  |
 
 ## Stable Diffusion XL
 
 ### Export
 
-To export the model to ONNX, you can use the Optimum CLI as follows :
+To export your model to ONNX, you can use the [Optimum CLI](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) as follows :
 
 ```bash
 optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-0.9 --task stable-diffusion-xl sd_xl_onnx/
@@ -87,7 +87,7 @@ To load an ONNX model and run inference with ONNX Runtime, you need to replace `
 from optimum.onnxruntime import ORTStableDiffusionXLPipeline
 
 pipeline = ORTStableDiffusionXLPipeline.from_pretrained("sd_xl_onnx")
-prompt = "sailing ship in storm by Leonardo da Vinci"
+prompt = "a photo of an astronaut riding a horse on mars"
 image = pipeline(prompt).images[0]
 ```
 

@@ -51,11 +51,16 @@ To further speed up inference, the model can be statically reshaped :
 batch_size, num_images, height, width = 1, 1, 512, 512
 
 # Statically reshape the model
-pipeline.reshape(batch_size=batch_size, height=height, width=width, num_images_per_prompt=num_images)
+pipeline.reshape(batch_size, height, width, num_images)
 # Compile the model before inference
 pipeline.compile()
 
-images = pipeline(prompt, height=height, width=width, num_images_per_prompt=num_images).images
+images = pipeline(
+    prompt,
+    height=height,
+    width=width,
+    num_images_per_prompt=num_images,
+).images
 ```
 
 ### Supported tasks
@@ -64,9 +69,9 @@ images = pipeline(prompt, height=height, width=width, num_images_per_prompt=num_
 |--------------------------------------|--------------------------------------|
 | `text-to-image`                      | `OVStableDiffusionPipeline`          |
 | `image-to-image`                     | `OVStableDiffusionImg2ImgPipeline`   |
-| `inpaint`                            | `OVStableDiffusionPipeline`          |
+| `inpaint`                            | `OVStableDiffusionInpaintPipeline`   |
 
-You can find more examples in [optimum documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
+You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
 
 
 ## Stable Diffusion XL
@@ -83,6 +88,7 @@ images = pipeline(prompt).images[0]
 ```
 
 To further speed up inference, the model can be statically reshaped as showed above.
+You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
 
 ### Supported tasks
 
