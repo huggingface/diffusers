@@ -37,22 +37,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyV22PriorPipeline
-    params = ["prompt"]
-    batch_params = ["prompt", "negative_prompt"]
-    required_optional_params = [
-        "num_images_per_prompt",
-        "generator",
-        "num_inference_steps",
-        "latents",
-        "negative_prompt",
-        "guidance_scale",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -182,6 +167,31 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "output_type": "np",
         }
         return inputs
+
+
+class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyV22PriorPipeline
+    params = ["prompt"]
+    batch_params = ["prompt", "negative_prompt"]
+    required_optional_params = [
+        "num_images_per_prompt",
+        "generator",
+        "num_inference_steps",
+        "latents",
+        "negative_prompt",
+        "guidance_scale",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
 
     def test_kandinsky_prior(self):
         device = "cpu"

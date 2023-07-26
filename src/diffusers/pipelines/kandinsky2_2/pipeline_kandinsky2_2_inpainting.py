@@ -13,14 +13,16 @@
 # limitations under the License.
 
 from copy import deepcopy
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
 import torch.nn.functional as F
+from packaging import version
 from PIL import Image
 
+from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -61,8 +63,8 @@ EXAMPLE_DOC_STRING = """
         ...     "/kandinsky/cat.png"
         ... )
 
-        >>> mask = np.ones((768, 768), dtype=np.float32)
-        >>> mask[:250, 250:-250] = 0
+        >>> mask = np.zeros((768, 768), dtype=np.float32)
+        >>> mask[:250, 250:-250] = 1
 
         >>> out = pipe(
         ...     image=init_image,
@@ -230,6 +232,8 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
+    mask = 1 - mask
+
     return mask, image
 
 
@@ -263,6 +267,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             movq=movq,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
+        self._warn_has_been_called = False
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -318,19 +323,22 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
-        Args:
         Function invoked when calling the pipeline for generation.
+
+        Args:
             image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
             mask_image (`np.array`):
-                Tensor representing an image batch, to mask `image`. Black pixels in the mask will be repainted, while
-                white pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
+                Tensor representing an image batch, to mask `image`. White pixels in the mask will be repainted, while
+                black pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
                 channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3,
                 so the expected shape would be `(B, H, W, 1)`.
             negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
@@ -360,6 +368,12 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -368,6 +382,19 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
+        if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
+            "0.22.0.dev0"
+        ):
+            logger.warn(
+                "Please note that the expected format of `mask_image` has recently been changed. "
+                "Before diffusers == 0.19.0, Kandinsky Inpainting pipelines repainted black pixels and preserved black pixels. "
+                "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
+                "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
+                "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
+                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.22.0"
+            )
+            self._warn_has_been_called = True
+
         device = self._execution_device
 
         do_classifier_free_guidance = guidance_scale > 1.0
@@ -470,9 +497,17 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 )
 
             latents = init_mask * init_latents_proper + (1 - init_mask) * latents
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
+
         # post-processing
         latents = mask_image[:1] * image[:1] + (1 - mask_image[:1]) * latents
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
+
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
