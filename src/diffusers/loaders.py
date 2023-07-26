@@ -466,6 +466,7 @@ class UNet2DConditionLoadersMixin:
             CustomDiffusionAttnProcessor,
             CustomDiffusionXFormersAttnProcessor,
         )
+
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
