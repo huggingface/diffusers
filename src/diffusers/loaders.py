@@ -1430,7 +1430,9 @@ class LoraLoaderMixin:
             )
 
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
-        te_state_dict = {f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()}
+        te_state_dict = {
+            f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
+        }
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
         network_alphas_renamed = {}
