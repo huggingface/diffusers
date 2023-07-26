@@ -1371,12 +1371,20 @@ class LoraLoaderMixin:
 
                 if lora_name.startswith("lora_unet_"):
                     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
-                    diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-                    diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
-                    diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-                    diffusers_name = diffusers_name.replace("middle.block", "mid_block")
-                    diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-                    diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+                    if "input.blocks" in diffusers_name:
+                        diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
+                    else:
+                        diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+                    
+                    if "middle.block" in diffusers_name:
+                        diffusers_name = diffusers_name.replace("middle.block", "mid_block")
+                    else:
+                        diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+                    if "output.blocks" in diffusers_name:
+                        diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+                    else:
+                        diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+                    
                     diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                     diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
