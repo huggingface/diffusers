@@ -19,7 +19,7 @@ import numpy as np
 
 from diffusers import KandinskyCombinedPipeline, KandinskyImg2ImgCombinedPipeline, KandinskyInpaintCombinedPipeline
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, print_tensor_test, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
@@ -92,7 +92,6 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -193,7 +192,6 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -294,7 +292,6 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 

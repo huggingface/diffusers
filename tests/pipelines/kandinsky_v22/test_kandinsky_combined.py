@@ -23,7 +23,7 @@ from diffusers import (
     KandinskyV22InpaintCombinedPipeline,
 )
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, print_tensor_test, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
@@ -96,7 +96,6 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -197,7 +196,6 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -298,7 +296,6 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 

@@ -19,11 +19,13 @@ import numpy as np
 import PIL
 import torch
 import torch.nn.functional as F
+from packaging import version
 from PIL import Image
 from transformers import (
     XLMRobertaTokenizer,
 )
 
+from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler
 from ...utils import (
@@ -275,6 +277,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
+        self._warn_has_been_called = False
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -500,6 +503,18 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
+        if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
+            "0.22.0.dev0"
+        ):
+            logger.warn(
+                "Please note that the expected format of `mask_image` has recently been changed. "
+                "Before diffusers == 0.19.0, Kandinsky Inpainting pipelines repainted black pixels and preserved black pixels. "
+                "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
+                "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
+                "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
+                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.22.0"
+            )
+            self._warn_has_been_called = True
 
         # Define call parameters
         if isinstance(prompt, str):
