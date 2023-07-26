@@ -428,7 +428,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `"np"` to return a NumPy `np.ndarray` or
                 `"pt"` to return a PyTorch `torch.Tensor` object.

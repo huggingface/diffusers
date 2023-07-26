@@ -977,7 +977,7 @@ class StableDiffusionXLInpaintPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
                 `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
