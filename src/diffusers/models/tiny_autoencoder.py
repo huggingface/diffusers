@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Tuple, Union, Callable
 
 import torch
 import torch.nn as nn
@@ -45,10 +45,8 @@ class Clamp(nn.Module):
 
 
 class TinyAutoencoderBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, act_fn: str = "relu"):
+    def __init__(self, in_channels: int, out_channels: int, act_fn: Callable):
         super().__init__()
-        act_fn = get_activation(act_fn)
-
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             act_fn,
@@ -74,7 +72,7 @@ class TinyEncoder(nn.Module):
         out_channels: int,
         num_blocks: int,
         block_out_channels: int,
-        act_fn: str,
+        act_fn: Callable,
     ):
         super().__init__()
 
@@ -83,15 +81,14 @@ class TinyEncoder(nn.Module):
             num_channels = block_out_channels[i]
 
             if i == 0:
-                layers.append(layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1)))
+                layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
             else:
                 layers.append(
-                    layers.append(
-                        nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False)
-                    )
+                    nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False)
                 )
 
-            layers.append([TinyAutoencoderBlock(num_channels, num_channels, act_fn)] for _ in range(num_block))
+            for _ in range(num_block):
+                layers.append(TinyAutoencoderBlock(num_channels, num_channels, act_fn))
 
         layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
 
@@ -125,23 +122,24 @@ class TinyDecoder(nn.Module):
         num_blocks: int,
         block_out_channels: int,
         upsampling_scaling_factor: int,
-        act_fn: str,
+        act_fn: Callable,
     ):
         super().__init__()
 
         layers = [Clamp(), nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1), act_fn]
 
         for i, num_block in enumerate(num_blocks):
-            is_final_block = i == len(num_blocks)
+            is_final_block = i == (len(num_blocks) - 1)
             num_channels = block_out_channels[i]
 
-            layers.append([TinyAutoencoderBlock(num_channels, num_channels, act_fn) for _ in range(num_block)])
+            for _ in range(num_block):
+                layers.append(TinyAutoencoderBlock(num_channels, num_channels, act_fn))
 
             if not is_final_block:
                 layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
-            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=False))
+            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
 
         self.layers = nn.Sequential(*layers)
 
@@ -179,7 +177,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-
+        TODO(sayakpaul): Fill rest of the docstrings.
     """
     _supports_gradient_checkpointing = True
 
@@ -205,6 +203,8 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         if len(decoder_block_out_channels) != len(num_decoder_blocks):
             raise ValueError("`decoder_block_out_channels` should have the same length as `num_decoder_blocks`.")
 
+        act_fn = get_activation(act_fn)
+        
         self.encoder = TinyEncoder(
             in_channels,
             out_channels,
@@ -219,7 +219,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
             num_blocks=num_decoder_blocks,
             block_out_channels=decoder_block_out_channels,
             upsampling_scaling_factor=upsampling_scaling_factor,
-            act_fn=get_activation(act_fn),
+            act_fn=act_fn,
         )
 
         self.latent_magnitude = latent_magnitude
