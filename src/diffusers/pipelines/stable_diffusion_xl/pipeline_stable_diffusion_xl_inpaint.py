@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-0.9",
+        ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     torch_dtype=torch.float16,
         ...     variant="fp16",
         ...     use_safetensors=True,
