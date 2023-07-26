@@ -24,8 +24,22 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .kandinsky import KandinskyImg2ImgPipeline, KandinskyInpaintPipeline, KandinskyPipeline
-from .kandinsky2_2 import KandinskyV22Img2ImgPipeline, KandinskyV22InpaintPipeline, KandinskyV22Pipeline
+from .kandinsky import (
+    KandinskyCombinedPipeline,
+    KandinskyImg2ImgCombinedPipeline,
+    KandinskyImg2ImgPipeline,
+    KandinskyInpaintCombinedPipeline,
+    KandinskyInpaintPipeline,
+    KandinskyPipeline,
+)
+from .kandinsky2_2 import (
+    KandinskyV22CombinedPipeline,
+    KandinskyV22Img2ImgCombinedPipeline,
+    KandinskyV22Img2ImgPipeline,
+    KandinskyV22InpaintCombinedPipeline,
+    KandinskyV22InpaintPipeline,
+    KandinskyV22Pipeline,
+)
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -43,8 +57,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionPipeline),
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
         ("if", IFPipeline),
-        ("kandinsky", KandinskyPipeline),
-        ("kandinsky22", KandinskyV22Pipeline),
+        ("kandinsky", KandinskyCombinedPipeline),
+        ("kandinsky22", KandinskyV22CombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
     ]
@@ -55,8 +69,8 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionImg2ImgPipeline),
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
         ("if", IFImg2ImgPipeline),
-        ("kandinsky", KandinskyImg2ImgPipeline),
-        ("kandinsky22", KandinskyV22Img2ImgPipeline),
+        ("kandinsky", KandinskyImg2ImgCombinedPipeline),
+        ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
     ]
 )
@@ -66,9 +80,28 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionInpaintPipeline),
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
         ("if", IFInpaintingPipeline),
+        ("kandinsky", KandinskyInpaintCombinedPipeline),
+        ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
+        ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+    ]
+)
+
+_AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("kandinsky", KandinskyPipeline),
+        ("kandinsky22", KandinskyV22Pipeline),
+    ]
+)
+_AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("kandinsky", KandinskyImg2ImgPipeline),
+        ("kandinsky22", KandinskyV22Img2ImgPipeline),
+    ]
+)
+_AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
+    [
         ("kandinsky", KandinskyInpaintPipeline),
         ("kandinsky22", KandinskyV22InpaintPipeline),
-        ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
     ]
 )
 
@@ -76,10 +109,27 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
+    _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING,
+    _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING,
+    _AUTO_INPAINT_DECODER_PIPELINES_MAPPING,
 ]
 
 
-def _get_task_class(mapping, pipeline_class_name):
+def _get_connected_pipeline(pipeline_cls):
+    # for now connected pipelines can only be loaded from decoder pipelines, such as kandinsky-community/kandinsky-2-2-decoder
+    if pipeline_cls in _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING.values():
+        return _get_task_class(
+            AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
+        )
+    if pipeline_cls in _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING.values():
+        return _get_task_class(
+            AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
+        )
+    if pipeline_cls in _AUTO_INPAINT_DECODER_PIPELINES_MAPPING.values():
+        return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
+
+
+def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
     def get_model(pipeline_class_name):
         for task_mapping in SUPPORTED_TASKS_MAPPINGS:
             for model_name, pipeline in task_mapping.items():
@@ -92,7 +142,9 @@ def _get_task_class(mapping, pipeline_class_name):
         task_class = mapping.get(model_name, None)
         if task_class is not None:
             return task_class
-    raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
+
+    if throw_error_if_not_exist:
+        raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
 
 
 def _get_signature_keys(obj):
@@ -336,7 +388,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {text_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {text_2_image_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = text_2_image_cls(**text_2_image_kwargs)
@@ -581,7 +633,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {image_2_image_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {image_2_image_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = image_2_image_cls(**image_2_image_kwargs)
@@ -824,7 +876,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         if len(missing_modules) > 0:
             raise ValueError(
-                f"Pipeline {inpainting_cls} expected {expected_modules}, but only {set(passed_class_obj.keys()) + set(original_class_obj.keys())} were passed"
+                f"Pipeline {inpainting_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
             )
 
         model = inpainting_cls(**inpainting_kwargs)
