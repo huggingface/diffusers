@@ -86,19 +86,19 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
     ]
 )
 
-AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
+_AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
     [
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
     ]
 )
-AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
+_AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
     [
         ("kandinsky", KandinskyImg2ImgPipeline),
         ("kandinsky22", KandinskyV22Img2ImgPipeline),
     ]
 )
-AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
+_AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
     [
         ("kandinsky", KandinskyInpaintPipeline),
         ("kandinsky22", KandinskyV22InpaintPipeline),
@@ -109,23 +109,23 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
-    AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING,
-    AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING,
-    AUTO_INPAINT_DECODER_PIPELINES_MAPPING,
+    _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING,
+    _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING,
+    _AUTO_INPAINT_DECODER_PIPELINES_MAPPING,
 ]
 
 
 def _get_connected_pipeline(pipeline_cls):
     # for now connected pipelines can only be loaded from decoder pipelines, such as kandinsky-community/kandinsky-2-2-decoder
-    if pipeline_cls in AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING.values():
+    if pipeline_cls in _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING.values():
         return _get_task_class(
             AUTO_TEXT2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
         )
-    if pipeline_cls in AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING.values():
+    if pipeline_cls in _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING.values():
         return _get_task_class(
             AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False
         )
-    if pipeline_cls in AUTO_INPAINT_DECODER_PIPELINES_MAPPING.values():
+    if pipeline_cls in _AUTO_INPAINT_DECODER_PIPELINES_MAPPING.values():
         return _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, pipeline_cls.__name__, throw_error_if_not_exist=False)
 
 
