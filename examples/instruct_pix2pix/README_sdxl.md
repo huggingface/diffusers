@@ -15,7 +15,7 @@ training procedure while being faithful to the [original implementation](https:/
 
 Refer to the original InstructPix2Pix training example for installing the dependencies.
 
-You will also need to get access of SDXL by filling the [form](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9). 
+You will also need to get access of SDXL by filling the [form](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0). 
 
 ### Toy example
 
@@ -26,7 +26,7 @@ Configure environment variables such as the dataset identifier and the Stable Di
 checkpoint:
 
 ```bash
-export MODEL_NAME="stabilityai/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 ```
 
@@ -51,7 +51,7 @@ with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 
 ```bash
 python train_instruct_pix2pix_xl.py \
-    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
+    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
     --enable_xformers_memory_efficient_attention \
@@ -80,7 +80,7 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash 
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
-    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-0.9 \
+    --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
     --enable_xformers_memory_efficient_attention \
