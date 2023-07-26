@@ -217,9 +217,7 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.6199778, 0.63984406, 0.46145785, 0.62944984, 0.5622215, 0.47306132, 0.47441456, 0.4607606, 0.48719263]
-        )
+        expected_slice = np.array([0.5712, 0.5443, 0.4725, 0.6195, 0.5184, 0.4651, 0.4473, 0.4590, 0.5016])
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"

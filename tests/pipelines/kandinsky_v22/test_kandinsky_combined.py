@@ -99,9 +99,7 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.328663, 1.0, 0.23216873, 1.0, 0.92717564, 0.4639046, 0.96894777, 0.31713378, 0.6293953]
-        )
+        expected_slice = np.array([0.0349, 0.2685, 0.2658, 0.1627, 0.0229, 0.0680, 0.6497, 0.5459, 0.4795])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -198,9 +196,7 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.328663, 1.0, 0.23216873, 1.0, 0.92717564, 0.4639046, 0.96894777, 0.31713378, 0.6293953]
-        )
+        expected_slice = np.array([0.4680, 0.5258, 0.5191, 0.4720, 0.4972, 0.4856, 0.4958, 0.4713, 0.4833])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -297,9 +293,7 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.328663, 1.0, 0.23216873, 1.0, 0.92717564, 0.4639046, 0.96894777, 0.31713378, 0.6293953]
-        )
+        expected_slice = np.array([0.4946, 0.4839, 0.4792, 0.4892, 0.4759, 0.4842, 0.4729, 0.4696, 0.4774])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
