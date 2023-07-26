@@ -750,7 +750,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
                 every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             max_iter_to_alter (`int`, *optional*, defaults to `25`):
                 Number of denoising steps to apply attend-and-excite. The `max_iter_to_alter` denoising steps are when
                 attend-and-excite is applied. For example, if `max_iter_to_alter` is `25` and there are a total of `30`
