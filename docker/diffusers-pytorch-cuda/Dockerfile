@@ -12,6 +12,7 @@ RUN apt update && \
                    curl \
                    ca-certificates \
                    libsndfile1-dev \
+                   libgl1 \
                    python3.8 \
                    python3-pip \
                    python3.8-venv && \
@@ -26,7 +27,8 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
         torch \
         torchvision \
-        torchaudio && \
+        torchaudio \
+        invisible_watermark && \
     python3 -m pip install --no-cache-dir \
         accelerate \
         datasets \

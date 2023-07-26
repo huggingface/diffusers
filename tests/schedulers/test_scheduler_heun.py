@@ -30,11 +30,15 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
 
     def test_schedules(self):
-        for schedule in ["linear", "scaled_linear"]:
+        for schedule in ["linear", "scaled_linear", "exp"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_clip_sample(self):
+        for clip_sample_range in [1.0, 2.0, 3.0]:
+            self.check_over_configs(clip_sample_range=clip_sample_range, clip_sample=True)
+
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "v_prediction"]:
+        for prediction_type in ["epsilon", "v_prediction", "sample"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_full_loop_no_noise(self):

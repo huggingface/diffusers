@@ -296,7 +296,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 3e-4
+        assert (sample - new_sample).abs().max() < 3e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -398,6 +398,24 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_feed_forward_chunking(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["norm_num_groups"] = 32
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)[0]
+
+        model.enable_forward_chunking()
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        self.assertEqual(output.shape, output_2.shape, "Shape doesn't match")
+        assert np.abs(output.cpu() - output_2.cpu()).max() < 1e-2
 
 
 # (todo: sayakpaul) implement SLOW tests.

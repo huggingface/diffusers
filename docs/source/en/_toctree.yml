@@ -88,10 +88,6 @@
       title: Custom Diffusion
     title: Training
   - sections:
-    - local: using-diffusers/rl
-      title: Reinforcement Learning
-    - local: using-diffusers/audio
-      title: Audio
     - local: using-diffusers/other-modalities
       title: Other Modalities
     title: Taking Diffusers Beyond Images
@@ -132,8 +128,6 @@
   title: Conceptual Guides
 - sections:
   - sections:
-    - local: api/models
-      title: Models
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/diffusion_pipeline
@@ -152,16 +146,46 @@
       title: VAE Image Processor
     title: Main Classes
   - sections:
+    - local: api/models/overview
+      title: Overview
+    - local: api/models/unet
+      title: UNet1DModel
+    - local: api/models/unet2d
+      title: UNet2DModel
+    - local: api/models/unet2d-cond
+      title: UNet2DConditionModel
+    - local: api/models/unet3d-cond
+      title: UNet3DConditionModel
+    - local: api/models/vq
+      title: VQModel
+    - local: api/models/autoencoderkl
+      title: AutoencoderKL
+    - local: api/models/asymmetricautoencoderkl
+      title: AsymmetricAutoencoderKL
+    - local: api/models/transformer2d
+      title: Transformer2D
+    - local: api/models/transformer_temporal
+      title: Transformer Temporal
+    - local: api/models/prior_transformer
+      title: Prior Transformer
+    - local: api/models/controlnet
+      title: ControlNet
+    title: Models
+  - sections:
     - local: api/pipelines/overview
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/attend_and_excite
-      title: Attend and Excite
+      title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
+    - local: api/pipelines/consistency_models
+      title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
     - local: api/pipelines/cycle_diffusion
@@ -172,12 +196,12 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/deepfloyd_if
+      title: DeepFloyd IF
     - local: api/pipelines/diffedit
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
-    - local: api/pipelines/if
-      title: IF
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -185,7 +209,7 @@
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
-      title: MultiDiffusion Panorama
+      title: MultiDiffusion
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
@@ -202,48 +226,56 @@
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/shap_e
+      title: Shap-E
     - local: api/pipelines/spectrogram_diffusion
       title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
       - local: api/pipelines/stable_diffusion/text2img
-        title: Text-to-Image
+        title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
-        title: Image-to-Image
+        title: Image-to-image
       - local: api/pipelines/stable_diffusion/inpaint
-        title: Inpaint
+        title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
-        title: Depth-to-Image
+        title: Depth-to-image
       - local: api/pipelines/stable_diffusion/image_variation
-        title: Image-Variation
+        title: Image variation
       - local: api/pipelines/stable_diffusion/stable_diffusion_safe
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
         title: Stable Diffusion 2
+      - local: api/pipelines/stable_diffusion/stable_diffusion_xl
+        title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler
+        title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
-        title: Super-Resolution
+        title: Super-resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
+      - local: api/pipelines/stable_diffusion/adapter
+        title: Stable Diffusion T2I-adapter
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
     - local: api/pipelines/model_editing
-      title: Text-to-Image Model Editing
+      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
-      title: Text-to-Video
+      title: Text-to-video
     - local: api/pipelines/text_to_video_zero
-      title: Text-to-Video Zero
+      title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
       title: UniDiffuser
+    - local: api/pipelines/value_guided_sampling
+      title: Value-guided sampling
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
@@ -252,6 +284,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/cm_stochastic_iterative
+      title: Consistency Model Multistep Scheduler
     - local: api/schedulers/ddim
       title: DDIM
     - local: api/schedulers/ddim_inverse
@@ -297,8 +331,4 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
-  - sections:
-    - local: api/experimental/rl
-      title: RL Planning
-    title: Experimental Features
   title: API

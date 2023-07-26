@@ -12,68 +12,24 @@ specific language governing permissions and limitations under the License.
 
 # Semantic Guidance
 
-Semantic Guidance for Diffusion Models was proposed in [SEGA: Instructing Diffusion using Semantic Dimensions](https://arxiv.org/abs/2301.12247) and provides strong semantic control over the image generation.
-Small changes to the text prompt usually result in entirely different output images. However, with SEGA a variety of changes to the image are enabled that can be controlled easily and intuitively, and stay true to the original image composition.
+Semantic Guidance for Diffusion Models was proposed in [SEGA: Instructing Diffusion using Semantic Dimensions](https://huggingface.co/papers/2301.12247) and provides strong semantic control over image generation.
+Small changes to the text prompt usually result in entirely different output images. However, with SEGA a variety of changes to the image are enabled that can be controlled easily and intuitively, while staying true to the original image composition.
 
-The abstract of the paper is the following:
+The abstract from the paper is:
 
 *Text-to-image diffusion models have recently received a lot of interest for their astonishing ability to produce high-fidelity images from text only. However, achieving one-shot generation that aligns with the user's intent is nearly impossible, yet small changes to the input prompt often result in very different images. This leaves the user with little semantic control. To put the user in control, we show how to interact with the diffusion process to flexibly steer it along semantic directions. This semantic guidance (SEGA) allows for subtle and extensive edits, changes in composition and style, as well as optimizing the overall artistic conception. We demonstrate SEGA's effectiveness on a variety of tasks and provide evidence for its versatility and flexibility.*
 
+<Tip>
 
-*Overview*:
+Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
-| Pipeline | Tasks | Colab | Demo
-|---|---|:---:|:---:|
-| [pipeline_semantic_stable_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/semantic_stable_diffusion/pipeline_semantic_stable_diffusion.py) | *Text-to-Image Generation* |  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ml-research/semantic-image-editing/blob/main/examples/SemanticGuidance.ipynb) | [Coming Soon](https://huggingface.co/AIML-TUDA)
-
-## Tips
-
-- The Semantic Guidance pipeline can be used with any [Stable Diffusion](./stable_diffusion/text2img) checkpoint.
-
-### Run Semantic Guidance
-
-The interface of [`SemanticStableDiffusionPipeline`] provides several additional parameters to influence the image generation.
-Exemplary usage may look like this:
-
-```python
-import torch
-from diffusers import SemanticStableDiffusionPipeline
-
-pipe = SemanticStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipe = pipe.to("cuda")
-
-out = pipe(
-    prompt="a photo of the face of a woman",
-    num_images_per_prompt=1,
-    guidance_scale=7,
-    editing_prompt=[
-        "smiling, smile",  # Concepts to apply
-        "glasses, wearing glasses",
-        "curls, wavy hair, curly hair",
-        "beard, full beard, mustache",
-    ],
-    reverse_editing_direction=[False, False, False, False],  # Direction of guidance i.e. increase all concepts
-    edit_warmup_steps=[10, 10, 10, 10],  # Warmup period for each concept
-    edit_guidance_scale=[4, 5, 5, 5.4],  # Guidance scale for each concept
-    edit_threshold=[
-        0.99,
-        0.975,
-        0.925,
-        0.96,
-    ],  # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
-    edit_momentum_scale=0.3,  # Momentum scale that will be added to the latent guidance
-    edit_mom_beta=0.6,  # Momentum beta
-    edit_weights=[1, 1, 1, 1, 1],  # Weights of the individual concepts against each other
-)
-```
-
-For more examples check the Colab notebook.
-
-## StableDiffusionSafePipelineOutput
-[[autodoc]] pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput
-	- all
+</Tip>
 
 ## SemanticStableDiffusionPipeline
 [[autodoc]] SemanticStableDiffusionPipeline
 	- all
 	- __call__
+
+## StableDiffusionSafePipelineOutput
+[[autodoc]] pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput
+	- all
