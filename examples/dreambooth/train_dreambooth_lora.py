@@ -1067,7 +1067,9 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora", config=vars(args))
+        tracker_config = vars(args)
+        tracker_config.pop("validation_images")
+        accelerator.init_trackers("dreambooth-lora", config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps

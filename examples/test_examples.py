@@ -385,6 +385,42 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_unet)
 
+    def test_dreambooth_lora_sdxl_with_text_encoder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --train_text_encoder
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
+            keys = lora_state_dict.keys()
+            starts_with_unet = all(
+                k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
+            )
+            self.assertTrue(starts_with_unet)
+
     def test_custom_diffusion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -1295,6 +1331,25 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
                 {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
             )
+
+    def test_controlnet_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+            examples/controlnet/train_controlnet_sdxl.py
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
+            --dataset_name=hf-internal-testing/fill10
+            --output_dir={tmpdir}
+            --resolution=64
+            --train_batch_size=1
+            --gradient_accumulation_steps=1
+            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet-sdxl
+            --max_train_steps=9
+            --checkpointing_steps=2
+            """.split()
+
+            run_command(self._launch_args + test_args)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.bin")))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:

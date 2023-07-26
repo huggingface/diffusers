@@ -17,6 +17,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .auto_pipeline import AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image
     from .consistency_models import ConsistencyModelPipeline
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
@@ -60,15 +61,21 @@ else:
         IFSuperResolutionPipeline,
     )
     from .kandinsky import (
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
         KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
     )
     from .kandinsky2_2 import (
+        KandinskyV22CombinedPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
         KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
         KandinskyV22InpaintPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
@@ -124,6 +131,7 @@ else:
     from .stable_diffusion_xl import (
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
 

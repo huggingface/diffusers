@@ -36,6 +36,7 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
     from .models import (
+        AsymmetricAutoencoderKL,
         AutoencoderKL,
         ControlNetModel,
         ModelMixin,
@@ -61,6 +62,9 @@ else:
     )
     from .pipelines import (
         AudioPipelineOutput,
+        AutoPipelineForImage2Image,
+        AutoPipelineForInpainting,
+        AutoPipelineForText2Image,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
@@ -137,13 +141,19 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
         ImageTextPipelineOutput,
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
         KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
+        KandinskyV22CombinedPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
         KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
         KandinskyV22InpaintPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
@@ -202,6 +212,7 @@ else:
         StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
 
