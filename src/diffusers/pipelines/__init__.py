@@ -61,15 +61,21 @@ else:
         IFSuperResolutionPipeline,
     )
     from .kandinsky import (
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
         KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
     )
     from .kandinsky2_2 import (
+        KandinskyV22CombinedPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
         KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
         KandinskyV22InpaintPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
