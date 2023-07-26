@@ -1087,7 +1087,7 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        if pipeline_class._load_connected_pipes:
+        if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
             modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
             connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
             load_kwargs = {

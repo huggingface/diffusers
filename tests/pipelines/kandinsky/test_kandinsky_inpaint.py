@@ -33,33 +33,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyInpaintPipeline
-    params = ["prompt", "image_embeds", "negative_image_embeds", "image", "mask_image"]
-    batch_params = [
-        "prompt",
-        "negative_prompt",
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-        "mask_image",
-    ]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "latents",
-        "guidance_scale",
-        "negative_prompt",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -78,7 +52,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_tokenizer(self):
@@ -210,6 +184,42 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "np",
         }
         return inputs
+
+
+class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyInpaintPipeline
+    params = ["prompt", "image_embeds", "negative_image_embeds", "image", "mask_image"]
+    batch_params = [
+        "prompt",
+        "negative_prompt",
+        "image_embeds",
+        "negative_image_embeds",
+        "image",
+        "mask_image",
+    ]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "latents",
+        "guidance_scale",
+        "negative_prompt",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
 
     def test_kandinsky_inpaint(self):
         device = "cpu"

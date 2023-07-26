@@ -108,6 +108,15 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
 
+    def progress_bar(self, iterable=None, total=None):
+        self.prior_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.enable_model_cpu_offload()
+
+    def set_progress_bar_config(self, **kwargs):
+        self.prior_pipe.set_progress_bar_config(**kwargs)
+        self.decoder_pipe.set_progress_bar_config(**kwargs)
+
     @torch.no_grad()
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
@@ -196,13 +205,20 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             output_type="pt",
             return_dict=False,
         )
+        image_embeds = prior_outputs[0]
+        negative_image_embeds = prior_outputs[1]
+
+        prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
+
+        if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:
+            prompt = (image_embeds.shape[0] // len(prompt)) * prompt
+
         outputs = self.decoder_pipe(
-            image_embeds=prior_outputs[0],
-            negative_image_embeds=prior_outputs[1],
+            image_embeds=image_embeds,
+            negative_image_embeds=negative_image_embeds,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
-            num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             guidance_scale=guidance_scale,
             output_type=output_type,
@@ -279,6 +295,15 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
+
+    def progress_bar(self, iterable=None, total=None):
+        self.prior_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.enable_model_cpu_offload()
+
+    def set_progress_bar_config(self, **kwargs):
+        self.prior_pipe.set_progress_bar_config(**kwargs)
+        self.decoder_pipe.set_progress_bar_config(**kwargs)
 
     @torch.no_grad()
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
@@ -380,15 +405,30 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
             output_type="pt",
             return_dict=False,
         )
+        image_embeds = prior_outputs[0]
+        negative_image_embeds = prior_outputs[1]
+
+        prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
+        image = [image] if isinstance(prompt, PIL.Image.Image) else image
+
+        if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:
+            prompt = (image_embeds.shape[0] // len(prompt)) * prompt
+
+        if (
+            isinstance(image, (list, tuple))
+            and len(image) < image_embeds.shape[0]
+            and image_embeds.shape[0] % len(image) == 0
+        ):
+            image = (image_embeds.shape[0] // len(image)) * image
+
         outputs = self.decoder_pipe(
             image=image,
-            image_embeds=prior_outputs[0],
-            negative_image_embeds=prior_outputs[1],
+            image_embeds=image_embeds,
+            negative_image_embeds=negative_image_embeds,
             width=width,
             height=height,
             strength=strength,
             num_inference_steps=num_inference_steps,
-            num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             guidance_scale=guidance_scale,
             output_type=output_type,
@@ -465,6 +505,15 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
+
+    def progress_bar(self, iterable=None, total=None):
+        self.prior_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.progress_bar(iterable=iterable, total=total)
+        self.decoder_pipe.enable_model_cpu_offload()
+
+    def set_progress_bar_config(self, **kwargs):
+        self.prior_pipe.set_progress_bar_config(**kwargs)
+        self.decoder_pipe.set_progress_bar_config(**kwargs)
 
     @torch.no_grad()
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
@@ -565,15 +614,38 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             output_type="pt",
             return_dict=False,
         )
+        image_embeds = prior_outputs[0]
+        negative_image_embeds = prior_outputs[1]
+
+        prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
+        image = [image] if isinstance(prompt, PIL.Image.Image) else image
+        mask_image = [mask_image] if isinstance(mask_image, PIL.Image.Image) else mask_image
+
+        if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:
+            prompt = (image_embeds.shape[0] // len(prompt)) * prompt
+
+        if (
+            isinstance(image, (list, tuple))
+            and len(image) < image_embeds.shape[0]
+            and image_embeds.shape[0] % len(image) == 0
+        ):
+            image = (image_embeds.shape[0] // len(image)) * image
+
+        if (
+            isinstance(mask_image, (list, tuple))
+            and len(mask_image) < image_embeds.shape[0]
+            and image_embeds.shape[0] % len(mask_image) == 0
+        ):
+            mask_image = (image_embeds.shape[0] // len(mask_image)) * mask_image
+
         outputs = self.decoder_pipe(
             image=image,
             mask_image=mask_image,
-            image_embeds=prior_outputs[0],
-            negative_image_embeds=prior_outputs[1],
+            image_embeds=image_embeds,
+            negative_image_embeds=negative_image_embeds,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
-            num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             guidance_scale=guidance_scale,
             output_type=output_type,
