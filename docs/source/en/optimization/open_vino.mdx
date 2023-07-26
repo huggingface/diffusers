@@ -52,7 +52,7 @@ batch_size, num_images, height, width = 1, 1, 512, 512
 
 # Statically reshape the model
 pipeline.reshape(batch_size=batch_size, height=height, width=width, num_images_per_prompt=num_images)
-# Compile the model before the first inference
+# Compile the model before inference
 pipeline.compile()
 
 images = pipeline(prompt, height=height, width=width, num_images_per_prompt=num_images).images
@@ -60,7 +60,7 @@ images = pipeline(prompt, height=height, width=width, num_images_per_prompt=num_
 
 ### Supported tasks
 
-| Task                                 | Auto Class                           |
+| Task                                 | Loading Class                        |
 |--------------------------------------|--------------------------------------|
 | `text-to-image`                      | `OVStableDiffusionPipeline`          |
 | `image-to-image`                     | `OVStableDiffusionImg2ImgPipeline`   |
@@ -77,16 +77,16 @@ You can find more examples in [optimum documentation](https://huggingface.co/doc
 from optimum.intel import OVStableDiffusionXLPipeline
 
 model_id = "stabilityai/stable-diffusion-xl-base-0.9"
-pipe = OVStableDiffusionXLPipeline.from_pretrained(model_id, export=True)
+pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id, export=True)
 prompt = "a photo of an astronaut riding a horse on mars"
-images = pipe(prompt).images[0]
+images = pipeline(prompt).images[0]
 ```
 
 To further speed up inference, the model can be statically reshaped as showed above.
 
 ### Supported tasks
 
-| Task                                 | Auto Class                           |
+| Task                                 | Loading Class                        |
 |--------------------------------------|--------------------------------------|
 | `text-to-image`                      | `OVStableDiffusionXLPipeline`        |
 | `image-to-image`                     | `OVStableDiffusionXLImg2ImgPipeline` |
