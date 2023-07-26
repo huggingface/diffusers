@@ -280,6 +280,7 @@ class UNet2DConditionLoadersMixin:
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
                 try:
+                    print(f"Using safetensors: {weight_name}")
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
