@@ -978,8 +978,6 @@ class LoraLoaderMixin:
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
-        unet_config = kwargs.pop("unet_config", None)
-        unet_state_keys = kwargs.pop("unet_state_keys", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         if use_safetensors and not is_safetensors_available():
@@ -1041,41 +1039,13 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        if unet_config is not None:
-            # use unet config to remap block numbers
-            state_dict = cls._remap_block_structure(state_dict, unet_config, unet_state_keys)
-
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alphas = None
         if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
+        import ipdb; ipdb.set_trace()
 
         return state_dict, network_alphas
-
-    @classmethod
-    def _remap_block_structure(cls, state_dict, unet_config, unet_state_keys):
-        inner_block_map = ["resnets", "attentions"]
-
-        # Retrieves the keys for the input blocks only
-        num_input_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "input_blocks" in layer})
-        input_blocks = {
-            layer_id: [key for key in state_dict if f"input_blocks_{layer_id}" in key]
-            for layer_id in range(num_input_blocks)
-        }
-        num_middle_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "middle_block" in layer})
-        middle_blocks = {
-            layer_id: [key for key in state_dict if f"middle_block_{layer_id}" in key]
-            for layer_id in range(num_middle_blocks)
-        }
-        num_output_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "output_blocks" in layer})
-        output_blocks = {
-            layer_id: [key for key in state_dict if f"output_blocks_{layer_id}" in key]
-            for layer_id in range(num_output_blocks)
-        }
-        for i in range(1, num_input_blocks):
-            block_id = (i - 1) // (unet_config.layers_per_block + 1)
-            layer_in_block_id = (i - 1) % (unet_config.layers_per_block + 1)
-            import ipdb; ipdb.set_trace()
 
     @classmethod
     def load_lora_into_unet(cls, state_dict, network_alphas, unet):
