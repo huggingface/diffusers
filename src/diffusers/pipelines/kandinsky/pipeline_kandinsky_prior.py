@@ -181,7 +181,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         negative_prior_prompt: Optional[str] = None,
-        negative_prompt: Union[str] = "",
+        negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
     ):

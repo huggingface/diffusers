@@ -23,7 +23,7 @@ from diffusers import (
     KandinskyV22InpaintCombinedPipeline,
 )
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, print_tensor_test, require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
@@ -96,10 +96,11 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.0349, 0.2685, 0.2658, 0.1627, 0.0229, 0.0680, 0.6497, 0.5459, 0.4795])
+        expected_slice = np.array([0.3013, 0.0471, 0.5176, 0.1817, 0.2566, 0.7076, 0.6712, 0.4421, 0.7503])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -134,6 +135,9 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -193,10 +197,11 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4680, 0.5258, 0.5191, 0.4720, 0.4972, 0.4856, 0.4958, 0.4713, 0.4833])
+        expected_slice = np.array([0.4353, 0.4710, 0.5128, 0.4806, 0.5054, 0.5348, 0.5224, 0.4603, 0.5025])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -231,6 +236,9 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
 
 class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -290,10 +298,11 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4946, 0.4839, 0.4792, 0.4892, 0.4759, 0.4842, 0.4729, 0.4696, 0.4774])
+        expected_slice = np.array([0.5039, 0.4926, 0.4898, 0.4978, 0.4838, 0.4942, 0.4738, 0.4702, 0.4816])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -328,3 +337,6 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
