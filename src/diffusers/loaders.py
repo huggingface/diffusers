@@ -979,7 +979,6 @@ class LoraLoaderMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
-        unet_state_keys = kwargs.pop("unet_state_keys", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         if use_safetensors and not is_safetensors_available():
@@ -1041,41 +1040,82 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        if unet_config is not None:
+        # TODO(SAYAK) - the following mapping is needed whenever LoRAs are published
+        # in original SGM format (this was also meant here: https://github.com/huggingface/diffusers/pull/4287#discussion_r1275044911)
+        if unet_config is not None:  # need better chec
             # use unet config to remap block numbers
-            state_dict = cls._remap_block_structure(state_dict, unet_config, unet_state_keys)
+            state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
+
+        # Renaming should be correct now!
 
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alphas = None
         if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
+            # TODO(SAYAK) - here we're now missing a couple of keys notably:
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
     @classmethod
-    def _remap_block_structure(cls, state_dict, unet_config, unet_state_keys):
-        inner_block_map = ["resnets", "attentions"]
+    def _map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
+        new_state_dict = {}
+        inner_block_map = ["resnets", "attentions", "upsamplers"]
 
-        # Retrieves the keys for the input blocks only
-        num_input_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "input_blocks" in layer})
+        # Retrieves # of down, mid and up blocks
+        num_input_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "input_blocks" in layer})
         input_blocks = {
-            layer_id: [key for key in state_dict if f"input_blocks_{layer_id}" in key]
-            for layer_id in range(num_input_blocks)
+            layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
+            for layer_id in range(num_input_blocks + 1)
         }
-        num_middle_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "middle_block" in layer})
+        num_middle_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "middle_block" in layer})
         middle_blocks = {
-            layer_id: [key for key in state_dict if f"middle_block_{layer_id}" in key]
+            layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
             for layer_id in range(num_middle_blocks)
         }
-        num_output_blocks = len({"_".join(layer.split("_")[:5]) for layer in state_dict if "output_blocks" in layer})
+        num_output_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "output_blocks" in layer})
         output_blocks = {
-            layer_id: [key for key in state_dict if f"output_blocks_{layer_id}" in key]
+            layer_id: [key for key in state_dict if f"output_blocks{delimiter}{layer_id}" in key]
             for layer_id in range(num_output_blocks)
         }
-        for i in range(1, num_input_blocks):
+
+        # Rename keys accordingly
+        for i in range(1, num_input_blocks + 1):
             block_id = (i - 1) // (unet_config.layers_per_block + 1)
             layer_in_block_id = (i - 1) % (unet_config.layers_per_block + 1)
-            import ipdb; ipdb.set_trace()
+
+            for key in input_blocks[i]:
+                inner_block_id = int(key.split(delimiter)[block_slice_pos])
+                inner_block_key = inner_block_map[inner_block_id] if "op" not in key else "downsamplers"
+                inner_layers_in_block = str(layer_in_block_id) if "op" not in key else "0"
+                new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [str(block_id), inner_block_key, inner_layers_in_block] + key.split(delimiter)[block_slice_pos+1:])
+                new_state_dict[new_key] = state_dict.pop(key)
+
+        for key in middle_blocks[0]:
+            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[0], "0"] + key.split(delimiter)[block_slice_pos:])
+            new_state_dict[new_key] = state_dict.pop(key)
+        for key in middle_blocks[1]:
+            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[1], "0"] + key.split(delimiter)[block_slice_pos:])
+            new_state_dict[new_key] = state_dict.pop(key)
+        for key in middle_blocks[2]:
+            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[0], "1"] + key.split(delimiter)[block_slice_pos:])
+            new_state_dict[new_key] = state_dict.pop(key)
+
+        for i in range(num_output_blocks):
+            block_id = i // (unet_config.layers_per_block + 1)
+            layer_in_block_id = i % (unet_config.layers_per_block + 1)
+
+            for key in output_blocks[i]:
+                inner_block_id = int(key.split(delimiter)[block_slice_pos])
+                inner_block_key = inner_block_map[inner_block_id]
+                inner_layers_in_block = str(layer_in_block_id) if inner_block_id < 2 else "0"
+                new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [str(block_id), inner_block_key, inner_layers_in_block] + key.split(delimiter)[block_slice_pos+1:])
+                new_state_dict[new_key] = state_dict.pop(key)
+
+        if len(state_dict) > 0:
+            raise ValueError("At this point all state dict entries have to be converted.")
+
+        return new_state_dict
+
 
     @classmethod
     def load_lora_into_unet(cls, state_dict, network_alphas, unet):
@@ -1397,73 +1437,85 @@ class LoraLoaderMixin:
         network_alphas = {}
         unloaded_keys = []
 
-        for key, value in state_dict.items():
-            if "hada" in key or "skip" in key:
-                unloaded_keys.append(key)
-            elif "lora_down" in key or "input_blocks" in key:
-                lora_name = key.split(".")[0]
-                lora_name_up = lora_name + ".lora_up.weight"
-                lora_name_alpha = lora_name + ".alpha"
-                if lora_name_alpha in state_dict:
-                    alpha = state_dict[lora_name_alpha].item()
-                    network_alphas.update({lora_name_alpha: alpha})
+        # every down weight has a corresponding up weight and potentially an alpha weight
+        lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
+        for key in lora_keys:
+            lora_name = key.split(".")[0]
+            lora_name_up = lora_name + ".lora_up.weight"
+            lora_name_alpha = lora_name + ".alpha"
+            if lora_name_alpha in state_dict:
+                alpha = state_dict.pop(lora_name_alpha).item()
+                network_alphas.update({lora_name_alpha: alpha})
 
-                if lora_name.startswith("lora_unet_"):
-                    diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
-                    # (sayakpaul): `input_blocks`, `output_blocks`, and `middle_block` is a new
-                    # identifier exclusive to SDXL LoRAs. I am taking my best guess that they map to
-                    # `down_blocks`, `up_blocks`, and `mid_block` respectively.
-                    if "input.blocks" in diffusers_name:
-                        diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
-                    else:
-                        diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+            if lora_name.startswith("lora_unet_"):
+                diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
+                # (sayakpaul): `input_blocks`, `output_blocks`, and `middle_block` is a new
+                # identifier exclusive to SDXL LoRAs. I am taking my best guess that they map to
+                # `down_blocks`, `up_blocks`, and `mid_block` respectively.
+                # YES - correct renaming!
+                if "input.blocks" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
+                else:
+                    diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
 
-                    if "middle.block" in diffusers_name:
-                        diffusers_name = diffusers_name.replace("middle.block", "mid_block")
-                    else:
-                        diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-                    if "output.blocks" in diffusers_name:
-                        diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
-                    else:
-                        diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+                if "middle.block" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("middle.block", "mid_block")
+                else:
+                    diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+                if "output.blocks" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+                else:
+                    diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
 
-                    diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
-                    diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
-                    diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
-                    diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
-                    diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
-                    diffusers_name = diffusers_name.replace("proj.in", "proj_in")
-                    diffusers_name = diffusers_name.replace("proj.out", "proj_out")
-                    if "transformer_blocks" in diffusers_name:
-                        if "attn1" in diffusers_name or "attn2" in diffusers_name:
-                            diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
-                            diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-                            unet_state_dict[diffusers_name] = value
-                            unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-                        elif "ff" in diffusers_name:
-                            unet_state_dict[diffusers_name] = value
-                            unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-                    elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
-                        unet_state_dict[diffusers_name] = value
-                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
+                diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
+                diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
+                diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
+                diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+                diffusers_name = diffusers_name.replace("proj.in", "proj_in")
+                diffusers_name = diffusers_name.replace("proj.out", "proj_out")
+                if "transformer_blocks" in diffusers_name:
+                    if "attn1" in diffusers_name or "attn2" in diffusers_name:
+                        diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
+                        diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+                        unet_state_dict[diffusers_name] = state_dict.pop(key)
+                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                    elif "ff" in diffusers_name:
+                        unet_state_dict[diffusers_name] = state_dict.pop(key)
+                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
+                    unet_state_dict[diffusers_name] = state_dict.pop(key)
+                    unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-                elif lora_name.startswith("lora_te_"):
-                    diffusers_name = key.replace("lora_te_", "").replace("_", ".")
-                    diffusers_name = diffusers_name.replace("text.model", "text_model")
-                    diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-                    diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-                    diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-                    diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-                    diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-                    if "self_attn" in diffusers_name:
-                        te_state_dict[diffusers_name] = value
-                        te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-                    elif "mlp" in diffusers_name:
-                        # Be aware that this is the new diffusers convention and the rest of the code might
-                        # not utilize it yet.
-                        diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                        te_state_dict[diffusers_name] = value
-                        te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+            elif lora_name.startswith("lora_te_"):
+                diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+                diffusers_name = diffusers_name.replace("text.model", "text_model")
+                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+                if "self_attn" in diffusers_name:
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                elif "mlp" in diffusers_name:
+                    # Be aware that this is the new diffusers convention and the rest of the code might
+                    # not utilize it yet.
+                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+        # TODO(SAYAK) - For now let's raise an error if some keys are not used for testing purposes. Also more generally
+        # we should consider such a design
+        # HERE, we also see what is still missing in terms of LoRA support.
+        # FOR SDXL we're missing:
+        # - resnet emb_layers (linear time embedding layers of ResNets)
+        # - resnet conv in & out(conv layers)
+        # - downsamplers op (conv layers)
+        # - upsamplers conv (conv layers)
+        # - skip connection conv (conv layers)
+        if len(state_dict) > 0:
+            raise ValueError(f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}")
 
         logger.info("Kohya-style checkpoint detected.")
         if len(unloaded_keys) > 0:
