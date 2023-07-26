@@ -42,8 +42,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
+        >>> from diffusers import StableDiffusionLDM3DPipeline
 
         >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
         >>> pipe = pipe.to("cuda")
