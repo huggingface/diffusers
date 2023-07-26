@@ -322,7 +322,7 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         attn_processors = {}
         non_attn_lora_layers = []
-
+        print(f"Weight_name: {weight_name}")
         print(f"Model file: {model_file}")
         is_lora = all("lora" in k for k in state_dict.keys())
         print(f"Is lora: {is_lora}")
