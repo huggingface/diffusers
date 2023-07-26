@@ -321,10 +321,6 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {}
         non_attn_lora_layers = []
 
-        for k in state_dict:
-            if "lora" not in k:
-                print(k)
-
         is_lora = all("lora" in k for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
@@ -1371,11 +1367,14 @@ class LoraLoaderMixin:
 
                 if lora_name.startswith("lora_unet_"):
                     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
+                    # (sayakpaul): `input_blocks`, `output_blocks`, and `middle_block` is a new
+                    # identifier exclusive to SDXL LoRAs. I am taking my best guess that they map to
+                    # `down_blocks`, `up_blocks`, and `mid_block` respectively.
                     if "input.blocks" in diffusers_name:
                         diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
                     else:
                         diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-                    
+
                     if "middle.block" in diffusers_name:
                         diffusers_name = diffusers_name.replace("middle.block", "mid_block")
                     else:
@@ -1384,7 +1383,7 @@ class LoraLoaderMixin:
                         diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
                     else:
                         diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-                    
+
                     diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                     diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
