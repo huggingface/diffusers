@@ -225,7 +225,6 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         self.latent_magnitude = latent_magnitude
         self.latent_shift = latent_shift
 
-    # Copied from diffusers.models.autoencoder_kl.AutoencoderKL._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (TinyEncoder, TinyDecoder)):
             module.gradient_checkpointing = value
