@@ -37,8 +37,8 @@ from optimum.intel import OVStableDiffusionPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipeline = OVStableDiffusionPipeline.from_pretrained(model_id, export=True)
-prompt = "a photo of an astronaut riding a horse on mars"
-images = pipeline(prompt).images[0]
+prompt = "sailing ship in storm by Rembrandt"
+image = pipeline(prompt).images[0]
 
 # Don't forget to save the exported model
 pipeline.save_pretrained("openvino-sd-v1-5")
@@ -55,13 +55,20 @@ pipeline.reshape(batch_size, height, width, num_images)
 # Compile the model before inference
 pipeline.compile()
 
-images = pipeline(
+image = pipeline(
     prompt,
     height=height,
     width=width,
     num_images_per_prompt=num_images,
-).images
+).images[0]
 ```
+
+In case you want to change any parameters such as the outputs height or width, you’ll need to statically reshape your model once again.
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/intel/openvino/stable_diffusion_v1_5_sail_boat_rembrandt.png">
+</div>
+
 
 ### Supported tasks
 
@@ -83,8 +90,8 @@ from optimum.intel import OVStableDiffusionXLPipeline
 
 model_id = "stabilityai/stable-diffusion-xl-base-0.9"
 pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id, export=True)
-prompt = "a photo of an astronaut riding a horse on mars"
-images = pipeline(prompt).images[0]
+prompt = "sailing ship in storm by Rembrandt"
+image = pipeline(prompt).images[0]
 ```
 
 To further speed up inference, the model can be statically reshaped as showed above.

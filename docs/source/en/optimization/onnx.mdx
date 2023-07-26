@@ -33,10 +33,10 @@ To load an ONNX model and run inference with the ONNX Runtime, you need to repla
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
-pipe = ORTStableDiffusionPipeline.from_pretrained(model_id, export=True)
-prompt = "a photo of an astronaut riding a horse on mars"
-images = pipe(prompt).images[0]
-pipe.save_pretrained("./onnx-stable-diffusion-v1-5")
+pipeline = ORTStableDiffusionPipeline.from_pretrained(model_id, export=True)
+prompt = "sailing ship in storm by Leonardo da Vinci"
+image = pipeline(prompt).images[0]
+pipeline.save_pretrained("./onnx-stable-diffusion-v1-5")
 ```
 
 If you want to export the pipeline in the ONNX format offline and later use it for inference,
@@ -52,14 +52,19 @@ Then perform inference:
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
 model_id = "sd_v15_onnx"
-pipe = ORTStableDiffusionPipeline.from_pretrained(model_id)
-prompt = "a photo of an astronaut riding a horse on mars"
-images = pipe(prompt).images[0]
+pipeline = ORTStableDiffusionPipeline.from_pretrained(model_id)
+prompt = "sailing ship in storm by Leonardo da Vinci"
+image = pipeline(prompt).images[0]
 ```
 
 Notice that we didn't have to specify `export=True` above.
 
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/onnxruntime/stable_diffusion_v1_5_ort_sail_boat.png">
+</div>
+
 You can find more examples in [optimum documentation](https://huggingface.co/docs/optimum/).
+
 
 ### Supported tasks
 
@@ -87,7 +92,7 @@ To load an ONNX model and run inference with ONNX Runtime, you need to replace `
 from optimum.onnxruntime import ORTStableDiffusionXLPipeline
 
 pipeline = ORTStableDiffusionXLPipeline.from_pretrained("sd_xl_onnx")
-prompt = "a photo of an astronaut riding a horse on mars"
+prompt = "sailing ship in storm by Leonardo da Vinci"
 image = pipeline(prompt).images[0]
 ```
 
