@@ -111,7 +111,6 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
-        force_denormalize: bool = False,
     ):
         super().__init__()
 
@@ -189,7 +188,6 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.force_denormalize = force_denormalize
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
@@ -420,8 +418,10 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
     def decode_latents(self, latents):
         warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
+            (
+                "The decode_latents method is deprecated and will be removed in a future version. Please"
+                " use VaeImageProcessor instead"
+            ),
             FutureWarning,
         )
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -700,7 +700,7 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             image = latents
             has_nsfw_concept = None
 
-        if has_nsfw_concept is None or self.force_denormalize:
+        if has_nsfw_concept is None:
             do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
