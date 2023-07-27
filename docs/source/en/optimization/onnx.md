@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 
-# How to use the ONNX Runtime for inference
+# How to use ONNX Runtime for inference
 
 🤗 [Optimum](https://github.com/huggingface/optimum) provides a Stable Diffusion pipeline compatible with ONNX Runtime. 
 
@@ -27,7 +27,7 @@ pip install optimum["onnxruntime"]
 
 ### Inference
 
-To load an ONNX model and run inference with the ONNX Runtime, you need to replace [`StableDiffusionPipeline`] with `ORTStableDiffusionPipeline`. In case you want to load a PyTorch model and convert it to the ONNX format on-the-fly, you can set `export=True`.
+To load an ONNX model and run inference with ONNX Runtime, you need to replace [`StableDiffusionPipeline`] with `ORTStableDiffusionPipeline`. In case you want to load a PyTorch model and convert it to the ONNX format on-the-fly, you can set `export=True`.
 
 ```python
 from optimum.onnxruntime import ORTStableDiffusionPipeline
