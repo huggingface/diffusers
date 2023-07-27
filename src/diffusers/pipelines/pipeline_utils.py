@@ -1359,7 +1359,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.20.0"):
+            ) >= version.parse("0.22.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
@@ -1474,11 +1474,25 @@ class DiffusionPipeline(ConfigMixin):
                 user_agent=user_agent,
             )
 
-            if pipeline_class._load_connected_pipes:
+            # retrieve pipeline class from local file
+            cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+            pipeline_class = getattr(diffusers, cls_name, None)
+
+            if pipeline_class is not None and pipeline_class._load_connected_pipes:
                 modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
                 connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
                 for connected_pipe_repo_id in connected_pipes:
-                    DiffusionPipeline.download(connected_pipe_repo_id)
+                    download_kwargs = {
+                        "cache_dir": cache_dir,
+                        "resume_download": resume_download,
+                        "force_download": force_download,
+                        "proxies": proxies,
+                        "local_files_only": local_files_only,
+                        "use_auth_token": use_auth_token,
+                        "variant": variant,
+                        "use_safetensors": use_safetensors,
+                    }
+                    DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
 
             return cached_folder
 

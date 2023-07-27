@@ -189,7 +189,7 @@ class UNet2DConditionLoadersMixin:
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
-        [`cross_attention.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py)
+        [`attention_processor.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
         and be a `torch.nn.Module` class.
 
         Parameters:
@@ -444,7 +444,6 @@ class UNet2DConditionLoadersMixin:
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
-        **kwargs,
     ):
         r"""
         Save an attention processor to a directory so that it can be reloaded using the
@@ -468,12 +467,6 @@ class UNet2DConditionLoadersMixin:
             CustomDiffusionXFormersAttnProcessor,
         )
 
-        weight_name = weight_name or deprecate(
-            "weights_name",
-            "0.20.0",
-            "`weights_name` is deprecated, please use `weight_name` instead.",
-            take_from=kwargs,
-        )
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
