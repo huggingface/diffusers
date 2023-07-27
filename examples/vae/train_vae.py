@@ -268,13 +268,13 @@ def parse_args():
     )
     parser.add_argument(
         "--kl_scale",
-        type=int,
+        type=float,
         default=0,
         help="Scaling factor for the Kullback-Leibler divergence penalty term.",
     )
     parser.add_argument(
         "--lpips_scale",
-        type=int,
+        type=float,
         default=0,
         help="Scaling factor for the LPIPS metric",
     )
