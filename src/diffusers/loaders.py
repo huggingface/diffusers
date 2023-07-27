@@ -361,10 +361,12 @@ class UNet2DConditionLoadersMixin:
                 for sub_key in key.split("."):
                     try:
                         attn_processor = getattr(attn_processor, sub_key)
-                    except:
+                    except Exception:
                         print(attn_processor.__class__.__name__)
                         print(key)
-                        import ipdb; ipdb.set_trace()
+                        import ipdb
+
+                        ipdb.set_trace()
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
@@ -1062,17 +1064,35 @@ class LoraLoaderMixin:
         inner_block_map = ["resnets", "attentions", "upsamplers"]
 
         # Retrieves # of down, mid and up blocks
-        num_input_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "input_blocks" in layer})
+        num_input_blocks = len(
+            {
+                delimiter.join(layer.split(delimiter)[:block_slice_pos])
+                for layer in state_dict
+                if "input_blocks" in layer
+            }
+        )
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
             for layer_id in range(num_input_blocks + 1)
         }
-        num_middle_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "middle_block" in layer})
+        num_middle_blocks = len(
+            {
+                delimiter.join(layer.split(delimiter)[:block_slice_pos])
+                for layer in state_dict
+                if "middle_block" in layer
+            }
+        )
         middle_blocks = {
             layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
             for layer_id in range(num_middle_blocks)
         }
-        num_output_blocks = len({delimiter.join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "output_blocks" in layer})
+        num_output_blocks = len(
+            {
+                delimiter.join(layer.split(delimiter)[:block_slice_pos])
+                for layer in state_dict
+                if "output_blocks" in layer
+            }
+        )
         output_blocks = {
             layer_id: [key for key in state_dict if f"output_blocks{delimiter}{layer_id}" in key]
             for layer_id in range(num_output_blocks)
@@ -1087,17 +1107,33 @@ class LoraLoaderMixin:
                 inner_block_id = int(key.split(delimiter)[block_slice_pos])
                 inner_block_key = inner_block_map[inner_block_id] if "op" not in key else "downsamplers"
                 inner_layers_in_block = str(layer_in_block_id) if "op" not in key else "0"
-                new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [str(block_id), inner_block_key, inner_layers_in_block] + key.split(delimiter)[block_slice_pos+1:])
+                new_key = delimiter.join(
+                    key.split(delimiter)[: block_slice_pos - 1]
+                    + [str(block_id), inner_block_key, inner_layers_in_block]
+                    + key.split(delimiter)[block_slice_pos + 1 :]
+                )
                 new_state_dict[new_key] = state_dict.pop(key)
 
         for key in middle_blocks[0]:
-            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[0], "0"] + key.split(delimiter)[block_slice_pos:])
+            new_key = delimiter.join(
+                key.split(delimiter)[: block_slice_pos - 1]
+                + [inner_block_map[0], "0"]
+                + key.split(delimiter)[block_slice_pos:]
+            )
             new_state_dict[new_key] = state_dict.pop(key)
         for key in middle_blocks[1]:
-            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[1], "0"] + key.split(delimiter)[block_slice_pos:])
+            new_key = delimiter.join(
+                key.split(delimiter)[: block_slice_pos - 1]
+                + [inner_block_map[1], "0"]
+                + key.split(delimiter)[block_slice_pos:]
+            )
             new_state_dict[new_key] = state_dict.pop(key)
         for key in middle_blocks[2]:
-            new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [inner_block_map[0], "1"] + key.split(delimiter)[block_slice_pos:])
+            new_key = delimiter.join(
+                key.split(delimiter)[: block_slice_pos - 1]
+                + [inner_block_map[0], "1"]
+                + key.split(delimiter)[block_slice_pos:]
+            )
             new_state_dict[new_key] = state_dict.pop(key)
 
         for i in range(num_output_blocks):
@@ -1108,14 +1144,17 @@ class LoraLoaderMixin:
                 inner_block_id = int(key.split(delimiter)[block_slice_pos])
                 inner_block_key = inner_block_map[inner_block_id]
                 inner_layers_in_block = str(layer_in_block_id) if inner_block_id < 2 else "0"
-                new_key = delimiter.join(key.split(delimiter)[:block_slice_pos-1] + [str(block_id), inner_block_key, inner_layers_in_block] + key.split(delimiter)[block_slice_pos+1:])
+                new_key = delimiter.join(
+                    key.split(delimiter)[: block_slice_pos - 1]
+                    + [str(block_id), inner_block_key, inner_layers_in_block]
+                    + key.split(delimiter)[block_slice_pos + 1 :]
+                )
                 new_state_dict[new_key] = state_dict.pop(key)
 
         if len(state_dict) > 0:
             raise ValueError("At this point all state dict entries have to be converted.")
 
         return new_state_dict
-
 
     @classmethod
     def load_lora_into_unet(cls, state_dict, network_alphas, unet):
@@ -1515,7 +1554,9 @@ class LoraLoaderMixin:
         # - upsamplers conv (conv layers)
         # - skip connection conv (conv layers)
         if len(state_dict) > 0:
-            raise ValueError(f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}")
+            raise ValueError(
+                f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
+            )
 
         logger.info("Kohya-style checkpoint detected.")
         if len(unloaded_keys) > 0:
