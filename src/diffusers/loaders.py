@@ -1064,42 +1064,35 @@ class LoraLoaderMixin:
         inner_block_map = ["resnets", "attentions", "upsamplers"]
 
         # Retrieves # of down, mid and up blocks
-        num_input_blocks = len(
-            {
-                delimiter.join(layer.split(delimiter)[:block_slice_pos])
-                for layer in state_dict
-                if "input_blocks" in layer
-            }
-        )
+        input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
+        for layer in state_dict:
+            if "input_blocks" in layer:
+                target_set = input_block_ids
+            elif "middle_block" in layer:
+                target_set = middle_block_ids
+            elif "output_blocks" in layer:
+                target_set = output_block_ids
+            else:
+                continue
+
+            layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+            target_set.add(layer_id)
+
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
-            for layer_id in range(num_input_blocks + 1)
+            for layer_id in input_block_ids
         }
-        num_middle_blocks = len(
-            {
-                delimiter.join(layer.split(delimiter)[:block_slice_pos])
-                for layer in state_dict
-                if "middle_block" in layer
-            }
-        )
         middle_blocks = {
             layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
-            for layer_id in range(num_middle_blocks)
+            for layer_id in middle_block_ids
         }
-        num_output_blocks = len(
-            {
-                delimiter.join(layer.split(delimiter)[:block_slice_pos])
-                for layer in state_dict
-                if "output_blocks" in layer
-            }
-        )
         output_blocks = {
             layer_id: [key for key in state_dict if f"output_blocks{delimiter}{layer_id}" in key]
-            for layer_id in range(num_output_blocks)
+            for layer_id in output_block_ids
         }
 
         # Rename keys accordingly
-        for i in range(1, num_input_blocks + 1):
+        for i in input_block_ids:
             block_id = (i - 1) // (unet_config.layers_per_block + 1)
             layer_in_block_id = (i - 1) % (unet_config.layers_per_block + 1)
 
@@ -1114,29 +1107,26 @@ class LoraLoaderMixin:
                 )
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        for key in middle_blocks[0]:
-            new_key = delimiter.join(
-                key.split(delimiter)[: block_slice_pos - 1]
-                + [inner_block_map[0], "0"]
-                + key.split(delimiter)[block_slice_pos:]
-            )
-            new_state_dict[new_key] = state_dict.pop(key)
-        for key in middle_blocks[1]:
-            new_key = delimiter.join(
-                key.split(delimiter)[: block_slice_pos - 1]
-                + [inner_block_map[1], "0"]
-                + key.split(delimiter)[block_slice_pos:]
-            )
-            new_state_dict[new_key] = state_dict.pop(key)
-        for key in middle_blocks[2]:
-            new_key = delimiter.join(
-                key.split(delimiter)[: block_slice_pos - 1]
-                + [inner_block_map[0], "1"]
-                + key.split(delimiter)[block_slice_pos:]
-            )
-            new_state_dict[new_key] = state_dict.pop(key)
+        for i in middle_block_ids:
+            key_part = None
+            if i == 0:
+                key_part = [inner_block_map[0], "0"]
+            elif i == 1:
+                key_part = [inner_block_map[1], "0"]
+            elif i == 2:
+                key_part = [inner_block_map[0], "1"]
+            else:
+                raise ValueError(f"Invalid middle block id {i}.")
 
-        for i in range(num_output_blocks):
+            for key in middle_blocks[i]:
+                new_key = delimiter.join(
+                    key.split(delimiter)[: block_slice_pos - 1]
+                    + key_part
+                    + key.split(delimiter)[block_slice_pos:]
+                )
+                new_state_dict[new_key] = state_dict.pop(key)
+
+        for i in output_block_ids:
             block_id = i // (unet_config.layers_per_block + 1)
             layer_in_block_id = i % (unet_config.layers_per_block + 1)
 
