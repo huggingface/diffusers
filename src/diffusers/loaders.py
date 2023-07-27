@@ -1044,7 +1044,7 @@ class LoraLoaderMixin:
 
         # TODO(SAYAK) - the following mapping is needed whenever LoRAs are published
         # in original SGM format (this was also meant here: https://github.com/huggingface/diffusers/pull/4287#discussion_r1275044911)
-        if unet_config is not None:  # need better chec
+        if unet_config is not None and any("lora_unet_" in k for k in state_dict):  # need better chec
             # use unet config to remap block numbers
             state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
 

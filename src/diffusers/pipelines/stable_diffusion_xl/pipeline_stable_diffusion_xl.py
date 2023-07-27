@@ -856,7 +856,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         unet_state_keys = self.unet.state_dict().keys()
 
         state_dict, network_alphas = self.lora_state_dict(
-            pretrained_model_name_or_path_or_dict, unet_state_keys=unet_state_keys, **kwargs
+            pretrained_model_name_or_path_or_dict,
+            unet_config=self.unet.config,
+            unet_state_keys=unet_state_keys,
+            **kwargs,
         )
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
 
