@@ -33,7 +33,6 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -66,7 +65,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            projection_class_embeddings_input_dim=72,  # 5 * 8 + 32
             cross_attention_dim=64 if not skip_first_text_encoder else 32,
         )
         scheduler = EulerDiscreteScheduler(
@@ -115,6 +114,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "requires_aesthetics_score": True,
         }
         return components
 
@@ -141,6 +141,14 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "output_type": "numpy",
         }
         return inputs
+
+    def test_components_function(self):
+        init_components = self.get_dummy_components()
+        init_components.pop("requires_aesthetics_score")
+        pipe = self.pipeline_class(**init_components)
+
+        self.assertTrue(hasattr(pipe, "components"))
+        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     def test_stable_diffusion_xl_inpaint_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -253,7 +261,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         print(torch.from_numpy(image_slice).flatten())
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.9106, 0.6563, 0.6766, 0.6537, 0.6709, 0.7367, 0.6537, 0.5937, 0.5418])
+        expected_slice = np.array([0.7045, 0.4838, 0.5454, 0.6270, 0.6168, 0.6717, 0.6484, 0.5681, 0.4922])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
