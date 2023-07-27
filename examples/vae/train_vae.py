@@ -275,7 +275,7 @@ def parse_args():
     parser.add_argument(
         "--lpips_scale",
         type=float,
-        default=1e-3,
+        default=1e-1,
         help="Scaling factor for the LPIPS metric",
     )
 
