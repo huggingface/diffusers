@@ -402,9 +402,9 @@ class DownloadTests(unittest.TestCase):
 
         # first check that with local files only the pipeline can only be used if cached
         with self.assertRaises(FileNotFoundError):
-            with tempfile.TemporaryDirectory():
+            with tempfile.TemporaryDirectory() as tmpdirname:
                 orig_pipe = DiffusionPipeline.from_pretrained(
-                    "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True
+                    "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_folder=tmpdirname
                 )
 
         # now download
