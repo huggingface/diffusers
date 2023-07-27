@@ -2,14 +2,14 @@
 # by Xin Kong, https://github.com/kxhit/zero123-hf
 
 import inspect
-import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import kornia
+import numpy as np
+import PIL
 import torch
-import torch.nn.functional as F
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
-import einops
+from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 # from ...configuration_utils import FrozenDict
 # from ...models import AutoencoderKL, UNet2DConditionModel
@@ -25,8 +25,8 @@ import einops
 # from ..pipeline_utils import DiffusionPipeline
 # from . import StableDiffusionPipelineOutput
 # from .safety_checker import StableDiffusionSafetyChecker
-
-from diffusers import AutoencoderKL, UNet2DConditionModel, DiffusionPipeline
+from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel
+from diffusers.configuration_utils import FrozenDict
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
@@ -35,16 +35,11 @@ from diffusers.utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
-from diffusers.configuration_utils import FrozenDict
-import PIL
-import numpy as np
-import math
-import kornia
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -411,12 +406,14 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
         if isinstance(x, torch.Tensor):
             if x.min() < -1.0 or x.max() > 1.0:
                 raise ValueError("Expected input tensor to have values in the range [-1, 1]")
-        x = kornia.geometry.resize(x.to(torch.float32), (224, 224), interpolation='bicubic', align_corners=True,
-                                   antialias=False).to(dtype=dtype)
-        x = (x + 1.) / 2.
+        x = kornia.geometry.resize(
+            x.to(torch.float32), (224, 224), interpolation="bicubic", align_corners=True, antialias=False
+        ).to(dtype=dtype)
+        x = (x + 1.0) / 2.0
         # renormalize according to clip
-        x = kornia.enhance.normalize(x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]),
-                                     torch.Tensor([0.26862954, 0.26130258, 0.27577711]))
+        x = kornia.enhance.normalize(
+            x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]), torch.Tensor([0.26862954, 0.26130258, 0.27577711])
+        )
         return x
 
     # from image_variation
@@ -486,11 +483,12 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
                 pose = torch.Tensor(pose)
             else:
                 pose = torch.Tensor([pose])
-            x, y, z = pose[:,0].unsqueeze(1), pose[:,1].unsqueeze(1), pose[:,2].unsqueeze(1)
-            pose_embeddings = torch.cat([torch.deg2rad(x),
-                                         torch.sin(torch.deg2rad(y)),
-                                         torch.cos(torch.deg2rad(y)),
-                                         z], dim=-1).unsqueeze(1).to(device=device, dtype=dtype)  # B, 1, 4
+            x, y, z = pose[:, 0].unsqueeze(1), pose[:, 1].unsqueeze(1), pose[:, 2].unsqueeze(1)
+            pose_embeddings = (
+                torch.cat([torch.deg2rad(x), torch.sin(torch.deg2rad(y)), torch.cos(torch.deg2rad(y)), z], dim=-1)
+                .unsqueeze(1)
+                .to(device=device, dtype=dtype)
+            )  # B, 1, 4
         # duplicate pose embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = pose_embeddings.shape
         pose_embeddings = pose_embeddings.repeat(1, num_images_per_prompt, 1)
@@ -552,9 +550,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
 
     def check_inputs(self, image, height, width, callback_steps):
         if (
-                not isinstance(image, torch.Tensor)
-                and not isinstance(image, PIL.Image.Image)
-                and not isinstance(image, list)
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, list)
         ):
             raise ValueError(
                 "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
@@ -565,7 +563,7 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -648,8 +646,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
             init_latents = init_latents.view(bs_embed * num_images_per_prompt, emb_c, emb_h, emb_w)
 
         # init_latents = torch.cat([init_latents]*2) if do_classifier_free_guidance else init_latents   # follow zero123
-        init_latents = torch.cat([torch.zeros_like(init_latents), init_latents]) \
-            if do_classifier_free_guidance else init_latents
+        init_latents = (
+            torch.cat([torch.zeros_like(init_latents), init_latents]) if do_classifier_free_guidance else init_latents
+        )
 
         init_latents = init_latents.to(device=device, dtype=dtype)
         return init_latents
@@ -777,8 +776,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input image with pose as prompt
-        prompt_embeds = self._encode_image_with_pose(prompt_imgs, poses, device, num_images_per_prompt,
-                                                     do_classifier_free_guidance)
+        prompt_embeds = self._encode_image_with_pose(
+            prompt_imgs, poses, device, num_images_per_prompt, do_classifier_free_guidance
+        )
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -797,12 +797,14 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
         )
 
         # 6. Prepare image latents
-        img_latents = self.prepare_img_latents(input_imgs,
-                                               batch_size * num_images_per_prompt,
-                                               prompt_embeds.dtype,
-                                               device,
-                                               generator,
-                                               do_classifier_free_guidance)
+        img_latents = self.prepare_img_latents(
+            input_imgs,
+            batch_size * num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            do_classifier_free_guidance,
+        )
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -822,8 +824,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)).\
-                    prev_sample.to(prompt_embeds.dtype)
+                latents = self.scheduler.step(
+                    noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)
+                ).prev_sample.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
