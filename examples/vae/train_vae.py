@@ -50,10 +50,10 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     vae_model = accelerator.unwrap_model(vae)
     images = []
     for _, sample in enumerate(test_dataloader):
-        noise = sample["pixel_values"].to(weight_dtype)
-        recon_imgs = vae_model(noise).sample
+        images = sample["pixel_values"].to(weight_dtype)
+        reconstructions = vae_model(images).sample
         images.append(
-            torch.cat([sample["pixel_values"].cpu(), recon_imgs.cpu()], axis=0)
+            torch.cat([sample["pixel_values"].cpu(), reconstructions.cpu()], axis=0)
         )
 
     for tracker in accelerator.trackers:
