@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
+from .lora import LoRACompatibleConv, LoRACompatibleLinear
 
 
 class Upsample1D(nn.Module):
@@ -534,13 +535,13 @@ class ResnetBlock2D(nn.Module):
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = LoRACompatibleConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+                self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
+                self.time_emb_proj = LoRACompatibleLinear(temb_channels, 2 * out_channels)
             elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
                 self.time_emb_proj = None
             else:

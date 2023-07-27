@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import re
 import warnings
 from collections import defaultdict
 from contextlib import nullcontext
@@ -1042,9 +1043,9 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # Map SDXL blocks correctly. 
+        # Map SDXL blocks correctly.
         # Can probably be collated with the next conditional block.
-        if unet_config is not None and any("lora_unet_" in k for k in state_dict): 
+        if unet_config is not None and any("lora_unet_" in k for k in state_dict):
             # use unet config to remap block numbers
             state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
 
@@ -1460,7 +1461,6 @@ class LoraLoaderMixin:
         unet_state_dict = {}
         te_state_dict = {}
         network_alphas = {}
-        unloaded_keys = []
 
         # every down weight has a corresponding up weight and potentially an alpha weight
         lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
@@ -1474,10 +1474,7 @@ class LoraLoaderMixin:
 
             if lora_name.startswith("lora_unet_"):
                 diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
-                # (sayakpaul): `input_blocks`, `output_blocks`, and `middle_block` is a new
-                # identifier exclusive to SDXL LoRAs. I am taking my best guess that they map to
-                # `down_blocks`, `up_blocks`, and `mid_block` respectively.
-                # YES - correct renaming!
+
                 if "input.blocks" in diffusers_name:
                     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
                 else:
@@ -1499,6 +1496,21 @@ class LoraLoaderMixin:
                 diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
                 diffusers_name = diffusers_name.replace("proj.in", "proj_in")
                 diffusers_name = diffusers_name.replace("proj.out", "proj_out")
+                diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+
+                # SDXL specificity.
+                if "emb" in diffusers_name:
+                    pattern = r"\.\d+(?=\D*$)"
+                    diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
+                if ".in." in diffusers_name:
+                    diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
+                if ".out." in diffusers_name:
+                    diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
+                if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("op", "conv")
+                if "skip" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
                         diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
@@ -1509,6 +1521,9 @@ class LoraLoaderMixin:
                         unet_state_dict[diffusers_name] = state_dict.pop(key)
                         unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
+                    unet_state_dict[diffusers_name] = state_dict.pop(key)
+                    unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                else:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
@@ -1530,8 +1545,6 @@ class LoraLoaderMixin:
                     te_state_dict[diffusers_name] = state_dict.pop(key)
                     te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-        # TODO(SAYAK) - For now let's raise an error if some keys are not used for testing purposes. Also more generally
-        # we should consider such a design
         # HERE, we also see what is still missing in terms of LoRA support.
         # FOR SDXL we're missing:
         # - resnet emb_layers (linear time embedding layers of ResNets)
@@ -1545,12 +1558,6 @@ class LoraLoaderMixin:
             )
 
         logger.info("Kohya-style checkpoint detected.")
-        if len(unloaded_keys) > 0:
-            example_unloaded_keys = ", ".join(unloaded_keys)
-            logger.warning(
-                f"There are some keys (such as: {example_unloaded_keys}) in the checkpoints we don't provide support for."
-            )
-
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {
             f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
@@ -1578,6 +1585,14 @@ class LoraLoaderMixin:
             diffusers_name = diffusers_name.replace("proj.out", "proj_out")
             diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
             diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+            if "emb" in diffusers_name:
+                pattern = r"\.\d+(?=\D*$)"
+                diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
+            diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
+            diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
+            diffusers_name = diffusers_name.replace("op", "conv")
+            diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+
             network_alphas_renamed.update({diffusers_name: value})
 
         return new_state_dict, network_alphas_renamed
