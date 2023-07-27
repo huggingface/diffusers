@@ -404,7 +404,7 @@ class DownloadTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             with tempfile.TemporaryDirectory() as tmpdirname:
                 orig_pipe = DiffusionPipeline.from_pretrained(
-                    "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_folder=tmpdirname
+                    "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_dir=tmpdirname
                 )
 
         # now download

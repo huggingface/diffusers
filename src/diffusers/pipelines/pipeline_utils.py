@@ -1482,7 +1482,17 @@ class DiffusionPipeline(ConfigMixin):
                 modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
                 connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
                 for connected_pipe_repo_id in connected_pipes:
-                    DiffusionPipeline.download(connected_pipe_repo_id)
+                    download_kwargs = {
+                        "cache_dir": cache_dir,
+                        "resume_download": resume_download,
+                        "force_download": force_download,
+                        "proxies": proxies,
+                        "local_files_only": local_files_only,
+                        "use_auth_token": use_auth_token,
+                        "variant": variant,
+                        "use_safetensors": use_safetensors,
+                    }
+                    DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
 
             return cached_folder
 
