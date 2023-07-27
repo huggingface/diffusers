@@ -11,7 +11,22 @@ specific language governing permissions and limitations under the License.
 
 The Kandinsky 2.2 release includes robust new text-to-image models that support text-to-image generation, image-to-image generation, image interpolation, and text-guided image inpainting. The general workflow to perform these tasks using Kandinsky 2.2 is the same as in Kandinsky 2.1. First, you will need to use a prior pipeline to generate image embeddings based on your text prompt, and then use one of the image decoding pipelines to generate the output image. The only difference is that in Kandinsky 2.2, all of the decoding pipelines no longer accept the `prompt` input, and the image generation process is conditioned with only `image_embeds` and `negative_image_embeds`.
 
-Let's look at an example of how to perform text-to-image generation using Kandinsky 2.2.
+Same as with Kandinsky 2.1, the easiest way to perform text-to-image generation is to use the combined Kandinsky pipeline. This process is exactly the same as Kandinsky 2.1. All you need to do is to replace the Kandinsky 2.1 checkpoint with 2.2.
+
+```python
+from diffusers import AutoPipelineForText2Image
+import torch
+
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+negative_prompt = "low quality, bad quality"
+
+image = pipe(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale =1.0, height=768, width=768).images[0]
+```
+
+Now, let's look at an example where we take separate steps to run the prior pipeline and text-to-image pipeline. This way, we can understand what's happening under the hood and how Kandinsky 2.2 differs from Kandinsky 2.1.
 
 First, let's create the prior pipeline and text-to-image pipeline with Kandinsky 2.2 checkpoints.
 

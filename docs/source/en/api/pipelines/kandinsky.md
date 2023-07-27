@@ -105,6 +105,30 @@ One cheeseburger monster coming up! Enjoy!
 
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png)
 
+<Tip>
+
+We also provide an end-to-end Kandinsky pipeline [`KandinskyCombinedPipeline`], which combines both the prior pipeline and text-to-image pipeline, and lets you perform inference in a single step. You can create the combined pipeline with the [`~AutoPipelineForTextToImage.from_pretrained`] method
+
+```python
+from diffusers import AutoPipelineForTextToImage
+import torch
+
+pipe = AutoPipelineForTextToImage.from_pretrained(
+    "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+)
+pipe.enable_model_cpu_offload()
+```
+
+Under the hood, it will automatically load both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`]. To generate images, you no longer need to call both pipelines and pass the outputs from one to another. You only need to call the combined pipeline once. You can set different `guidance_scale` and `num_inference_steps` for the prior pipeline with the `prior_guidance_scale` and `prior_num_inference_steps` arguments.
+
+```python
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+negative_prompt = "low quality, bad quality"
+
+image = pipe(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale =1.0, guidance_scacle = 4.0, height=768, width=768).images[0]
+```
+</Tip>
+
 The Kandinsky model works extremely well with creative prompts. Here is some of the amazing art that can be created using the exact same process but with different prompts.
 
 ```python
@@ -187,6 +211,34 @@ out.images[0].save("fantasy_land.png")
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/img2img_fantasyland.png)
 
 
+<Tip>
+
+You can also use the [`KandinskyImg2ImgCombinedPipeline`] for end-to-end image-to-image generation with Kandinsky 2.1
+
+```python
+from diffusers import AutoPipelineForImage2Image
+import torch
+import requests
+from io import BytesIO
+from PIL import Image
+import os
+
+pipe = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+prompt = "A fantasy landscape, Cinematic lighting"
+negative_prompt = "low quality, bad quality"
+
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+ 
+response = requests.get(url)
+original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image.thumbnail((768, 768))
+
+image = pipe(prompt=prompt, image=original_image, strength=0.3).images[0]
+```
+</Tip>
+
 ### Text Guided Inpainting Generation
 
 You can use [`KandinskyInpaintPipeline`] to edit images. In this example, we will add a hat to the portrait of a cat.
@@ -230,6 +282,33 @@ image = out.images[0]
 image.save("cat_with_hat.png")
 ```
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/inpaint_cat_hat.png)
+
+<Tip>
+
+To use the [`KandinskyInpaintCombinedPipeline`] to perform end-to-end image inpainting generation, you can run below code instead
+
+```python
+from diffusers import AutoPipelineForInpainting
+
+pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+```
+</Tip>
+
+🚨🚨🚨 __Breaking change for Kandinsky Mask Inpainting__ 🚨🚨🚨
+
+We introduced a breaking change for Kandinsky inpainting pipeline in the following pull request: https://github.com/huggingface/diffusers/pull/4207. Previously we accepted a mask format where black pixels represent the masked-out area. This is inconsistent with all other pipelines in diffusers. We have changed the mask format in Knaindsky and now using white pixels instead.
+Please upgrade your inpainting code to follow the above. If you are using Kandinsky Inpaint in production. You now need to change the mask to:
+
+```python
+# For PIL input
+import PIL.ImageOps
+mask = PIL.ImageOps.invert(mask)
+
+# For PyTorch and Numpy input
+mask = 1 - mask
+```
 
 ### Interpolate 
 
