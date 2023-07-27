@@ -26,8 +26,6 @@ from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
-from transformers.utils import ContextManagers
 
 import diffusers
 from diffusers import AutoencoderKL
@@ -50,8 +48,8 @@ def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     vae_model = accelerator.unwrap_model(vae)
     images = []
     for _, sample in enumerate(test_dataloader):
-        images = sample["pixel_values"].to(weight_dtype)
-        reconstructions = vae_model(images).sample
+        x = sample["pixel_values"].to(weight_dtype)
+        reconstructions = vae_model(x).sample
         images.append(
             torch.cat([sample["pixel_values"].cpu(), reconstructions.cpu()], axis=0)
         )
