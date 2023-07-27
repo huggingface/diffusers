@@ -1120,9 +1120,7 @@ class LoraLoaderMixin:
 
             for key in middle_blocks[i]:
                 new_key = delimiter.join(
-                    key.split(delimiter)[: block_slice_pos - 1]
-                    + key_part
-                    + key.split(delimiter)[block_slice_pos:]
+                    key.split(delimiter)[: block_slice_pos - 1] + key_part + key.split(delimiter)[block_slice_pos:]
                 )
                 new_state_dict[new_key] = state_dict.pop(key)
 
