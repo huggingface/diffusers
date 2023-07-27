@@ -424,10 +424,13 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         # verify batch size of prompt and image are same if image is a list or tensor or numpy array
         if isinstance(image, list) or isinstance(image, torch.Tensor) or isinstance(image, np.ndarray):
-            if isinstance(prompt, str):
+            if prompt is not None and isinstance(prompt, str):
                 batch_size = 1
-            else:
+            elif prompt is not None and isinstance(prompt, list):
                 batch_size = len(prompt)
+            else:
+                batch_size = prompt_embeds.shape[0]
+
             if isinstance(image, list):
                 image_batch_size = len(image)
             else:
