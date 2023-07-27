@@ -105,10 +105,10 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         components = {
             "unet": unet,
