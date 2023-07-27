@@ -1042,13 +1042,11 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # TODO(SAYAK) - the following mapping is needed whenever LoRAs are published
-        # in original SGM format (this was also meant here: https://github.com/huggingface/diffusers/pull/4287#discussion_r1275044911)
-        if unet_config is not None and any("lora_unet_" in k for k in state_dict):  # need better chec
+        # Map SDXL blocks correctly. 
+        # Can probably be collated with the next conditional block.
+        if unet_config is not None and any("lora_unet_" in k for k in state_dict): 
             # use unet config to remap block numbers
             state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
-
-        # Renaming should be correct now!
 
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alphas = None
