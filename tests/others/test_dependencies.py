@@ -41,6 +41,7 @@ class DependencyTester(unittest.TestCase):
 
     def test_pipeline_imports(self):
         import diffusers
+        import diffusers.pipelines
 
         all_classes = inspect.getmembers(diffusers, inspect.isclass)
         for cls_name, cls_module in all_classes:
