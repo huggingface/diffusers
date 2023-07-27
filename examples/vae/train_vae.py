@@ -378,7 +378,6 @@ def main():
             transforms.Resize(
                 args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
             ),
-            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
