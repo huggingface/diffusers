@@ -73,7 +73,7 @@ def save_model_card(
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: openrail++
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
@@ -94,10 +94,6 @@ These are LoRA adaption weights for {base_model}. The weights were trained on {p
 LoRA for the text encoder was enabled: {train_text_encoder}.
 
 Special VAE used for training: {vae_path}.
-
-## License
-
-[SDXL 1.0 License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md)
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
