@@ -517,7 +517,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             circular_padding (`bool`, *optional*, defaults to `False`):
                 If set to `True`, circular padding is applied to ensure there are no stitching artifacts. Circular
                 padding allows the model to seamlessly generate a transition from the rightmost part of the image to
