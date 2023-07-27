@@ -269,13 +269,13 @@ def parse_args():
     parser.add_argument(
         "--kl_scale",
         type=float,
-        default=0,
+        default=1e-6,
         help="Scaling factor for the Kullback-Leibler divergence penalty term.",
     )
     parser.add_argument(
         "--lpips_scale",
         type=float,
-        default=0,
+        default=1e-3,
         help="Scaling factor for the LPIPS metric",
     )
 
@@ -528,6 +528,7 @@ def main():
                 "lpips": lpips_loss.detach().item(),
                 "kl": kl_loss.detach().item(),
             }
+            accelerator.log(logs)
             progress_bar.set_postfix(**logs)
 
         if accelerator.is_main_process:
