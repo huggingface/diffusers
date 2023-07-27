@@ -1,5 +1,5 @@
 # A diffuser version implementation of Zero1to3 (https://github.com/cvlab-columbia/zero123), ICCV 2023
-# by Xin Kong
+# by Xin Kong, https://github.com/kxhit/zero123-hf
 
 import inspect
 import sys
@@ -14,7 +14,6 @@ import einops
 # from ...configuration_utils import FrozenDict
 # from ...models import AutoencoderKL, UNet2DConditionModel
 # from ...schedulers import KarrasDiffusionSchedulers
-# from ...loaders import FromSingleFileMixin
 # from ...utils import (
 #     deprecate,
 #     is_accelerate_available,
@@ -27,7 +26,6 @@ import einops
 # from . import StableDiffusionPipelineOutput
 # from .safety_checker import StableDiffusionSafetyChecker
 
-from diffusers.loaders import FromSingleFileMixin
 from diffusers import AutoencoderKL, UNet2DConditionModel, DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -47,23 +45,8 @@ import kornia
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-# todo
-EXAMPLE_DOC_STRING = """
-    Examples:
-        ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
-
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        ```
-"""
-
-
-class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
+class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for single view conditioned novel view generation using Zero1to3.
 
@@ -77,9 +60,6 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
             Frozen CLIP image-encoder. Stable Diffusion Image Variation uses the vision portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
             specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
@@ -422,13 +402,17 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
         return prompt_embeds
 
     def CLIP_preprocess(self, x):
+        dtype = x.dtype
         # following openai's implementation
-        # TODO HF OpenAI CLIP preprocessing issue https://github.com/huggingface/transformers/issues/22505#issuecomment-1650170741
-        # follow openai preprocessing to keep exact same, input tensor [-1, 1], otherwise the preprocessing will be different, https://github.com/huggingface/transformers/pull/22608
+        # TODO HF OpenAI CLIP preprocessing issue
+        # https://github.com/huggingface/transformers/issues/22505#issuecomment-1650170741
+        # follow openai preprocessing to keep exact same, input tensor [-1, 1],
+        # otherwise the preprocessing will be different, https://github.com/huggingface/transformers/pull/22608
         if isinstance(x, torch.Tensor):
             if x.min() < -1.0 or x.max() > 1.0:
                 raise ValueError("Expected input tensor to have values in the range [-1, 1]")
-        x = kornia.geometry.resize(x, (224, 224), interpolation='bicubic', align_corners=True, antialias=False)
+        x = kornia.geometry.resize(x.to(torch.float32), (224, 224), interpolation='bicubic', align_corners=True,
+                                   antialias=False).to(dtype=dtype)
         x = (x + 1.) / 2.
         # renormalize according to clip
         x = kornia.enhance.normalize(x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]),
@@ -495,16 +479,18 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
 
     def _encode_pose(self, pose, device, num_images_per_prompt, do_classifier_free_guidance):
         dtype = next(self.cc_projection.parameters()).dtype
-        if isinstance(pose[0], list):
-            pose = torch.Tensor(pose)
+        if isinstance(pose, torch.Tensor):
+            pose_embeddings = pose.unsqueeze(1)
         else:
-            pose = torch.Tensor([pose])
-        assert pose.shape[1] == 3   # B,3
-        x, y, z = pose[:,0].unsqueeze(1), pose[:,1].unsqueeze(1), pose[:,2].unsqueeze(1)
-        pose_embeddings = torch.cat([torch.deg2rad(x),
-                                     torch.sin(torch.deg2rad(y)),
-                                     torch.cos(torch.deg2rad(y)),
-                                     z], dim=-1).unsqueeze(1).to(device=device, dtype=dtype)  # B, 1, 4
+            if isinstance(pose[0], list):
+                pose = torch.Tensor(pose)
+            else:
+                pose = torch.Tensor([pose])
+            x, y, z = pose[:,0].unsqueeze(1), pose[:,1].unsqueeze(1), pose[:,2].unsqueeze(1)
+            pose_embeddings = torch.cat([torch.deg2rad(x),
+                                         torch.sin(torch.deg2rad(y)),
+                                         torch.cos(torch.deg2rad(y)),
+                                         z], dim=-1).unsqueeze(1).to(device=device, dtype=dtype)  # B, 1, 4
         # duplicate pose embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = pose_embeddings.shape
         pose_embeddings = pose_embeddings.repeat(1, num_images_per_prompt, 1)
@@ -650,7 +636,8 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
         else:
             init_latents = self.vae.encode(image).latent_dist.sample(generator)
 
-        # init_latents = self.vae.config.scaling_factor * init_latents  # todo in original zero123's inference gradio_new.py, model.encode_first_stage() is not scaled by scaling_factor
+        # todo in original zero123's inference gradio_new.py, model.encode_first_stage() is not scaled by scaling_factor
+        # init_latents = self.vae.config.scaling_factor * init_latents
         if batch_size > init_latents.shape[0]:
             # init_latents = init_latents.repeat(batch_size // init_latents.shape[0], 1, 1, 1)
             num_images_per_prompt = batch_size // init_latents.shape[0]
@@ -661,7 +648,8 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
             init_latents = init_latents.view(bs_embed * num_images_per_prompt, emb_c, emb_h, emb_w)
 
         # init_latents = torch.cat([init_latents]*2) if do_classifier_free_guidance else init_latents   # follow zero123
-        init_latents = torch.cat([torch.zeros_like(init_latents), init_latents]) if do_classifier_free_guidance else init_latents
+        init_latents = torch.cat([torch.zeros_like(init_latents), init_latents]) \
+            if do_classifier_free_guidance else init_latents
 
         init_latents = init_latents.to(device=device, dtype=dtype)
         return init_latents
@@ -674,7 +662,6 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
             self.cc_projection.load_state_dict(pretrained_weights)
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         input_imgs: Union[torch.FloatTensor, PIL.Image.Image] = None,
@@ -774,7 +761,6 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        # input_image = hint_imgs
         self.check_inputs(input_imgs, height, width, callback_steps)
 
         # 2. Define call parameters
@@ -791,7 +777,8 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input image with pose as prompt
-        prompt_embeds = self._encode_image_with_pose(prompt_imgs, poses, device, num_images_per_prompt, do_classifier_free_guidance)
+        prompt_embeds = self._encode_image_with_pose(prompt_imgs, poses, device, num_images_per_prompt,
+                                                     do_classifier_free_guidance)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -835,7 +822,8 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)).prev_sample.to(prompt_embeds.dtype)
+                latents = self.scheduler.step(noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)).\
+                    prev_sample.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -864,114 +852,3 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, FromSingleFileMixin):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-
-
-# main
-if __name__ == '__main__':
-    import os
-    import torch
-    from pipeline_zero1to3 import Zero1to3StableDiffusionPipeline
-    from diffusers.utils import load_image
-    from diffusers import (
-        AutoencoderKL,
-        DDIMScheduler,
-        UNet2DConditionModel,
-    )
-    from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
-    import PIL
-
-    # download ckpt from "cvlab/zero123-weights/"
-    init_model_id = "lambdalabs/sd-image-variations-diffusers"
-    ckpt_dir = "../../../zero123-hf/ckpts"
-    model_id = "kxic/zero123-105000"  # zero123-105000, zero123-165000, zero123-xl
-    if 'xl' in model_id:
-        ckpt = "zero123-xl"
-    else:
-        ckpt = model_id.split('-')[-1]
-    ckpt_path = os.path.join(ckpt_dir, ckpt + ".ckpt")
-    assert model_id in ["kxic/zero123-105000", "kxic/zero123-165000", "kxic/zero123-xl"]
-    assert os.path.exists(ckpt_path)
-
-    image_encoder = CLIPVisionModelWithProjection.from_pretrained(init_model_id, subfolder="image_encoder",
-                                                                  revision="v2.0")
-    feature_extractor = CLIPImageProcessor.from_pretrained(init_model_id, subfolder="feature_extractor",
-                                                           revision="v2.0")
-    vae = AutoencoderKL.from_pretrained(init_model_id, subfolder="vae", revision="v2.0")
-    scheduler = DDIMScheduler.from_pretrained(init_model_id, subfolder="scheduler", revision="v2.0")
-    # load 0123 unet weights, conv_in = 8, during training first 4 is inited from image variants ckpt, last 4 is inited from zero_init
-    unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
-
-    pipe = Zero1to3StableDiffusionPipeline.from_pretrained(init_model_id, torch_dtype=torch.float32, vae=vae,
-                                                           image_encoder=image_encoder,
-                                                           feature_extractor=feature_extractor,
-                                                           text_encoder=None, unet=unet, scheduler=scheduler)
-
-    # load cc_projection layer 772 (768+4) -> 768 todo convert model/weights to diffusers?
-    ckpt = torch.load(ckpt_path, map_location="cpu")["state_dict"]
-    cc_projection_weights = {"weight": ckpt["cc_projection.weight"], "bias": ckpt["cc_projection.bias"]}
-    pipe.load_cc_projection(cc_projection_weights)
-
-    pipe.enable_xformers_memory_efficient_attention()
-    pipe.enable_vae_tiling()
-    pipe.enable_attention_slicing()
-    pipe = pipe.to("cuda")
-    # todo hacky manually handle new module
-    pipe.cc_projection = pipe.cc_projection.to(pipe.device)
-
-    # set to eval mode
-    pipe.unet.eval()
-    pipe.vae.eval()
-    pipe.image_encoder.eval()
-    pipe.cc_projection.eval()
-
-    # test inference pipeline
-    # x y z, Polar angle (vertical rotation in degrees) 	Azimuth angle (horizontal rotation in degrees) 	Zoom (relative distance from center)
-    query_pose1 = [-75.0, 100.0, 0.0]
-    query_pose2 = [-20.0, 125.0, 0.0]
-    query_pose3 = [-55.0, 90.0, 0.0]
-
-    # load image
-    # H, W = (256, 256) # H, W = (512, 512)   # zero123 training is 256,256
-
-    # for batch input
-    input_image1 = load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/4_blackarm.png")
-    input_image2 = load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/8_motor.png")
-    input_image3 = load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/7_london.png")
-    input_images = [input_image1, input_image2, input_image3]
-    query_poses = [query_pose1, query_pose2, query_pose3]
-
-    # # for single input
-    # input_images = input_image2
-    # query_poses = query_pose2
-
-    # better do preprocessing
-    from gradio_new import preprocess_image, create_carvekit_interface
-    import numpy as np
-    import PIL.Image as Image
-
-    pre_images = []
-    models = dict()
-    print('Instantiating Carvekit HiInterface...')
-    models['carvekit'] = create_carvekit_interface()
-    if not isinstance(input_images, list):
-        input_images = [input_images]
-    for raw_im in input_images:
-        input_im = preprocess_image(models, raw_im, True)
-        H, W = input_im.shape[:2]
-        pre_images.append(Image.fromarray((input_im * 255.0).astype(np.uint8)))
-    input_images = pre_images
-
-    # infer pipeline, in original zero123 num_inference_steps=76
-    num_images_per_prompt = 4
-    images = pipe(input_imgs=input_images, prompt_imgs=input_images, poses=query_poses, height=H, width=W,
-                  guidance_scale=3.0, num_images_per_prompt=num_images_per_prompt, num_inference_steps=50).images
-
-    # save imgs
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
-    bs = len(input_images)
-    i = 0
-    for obj in range(bs):
-        for idx in range(num_images_per_prompt):
-            images[i].save(os.path.join(log_dir, f"obj{obj}_{idx}.jpg"))
-            i += 1
