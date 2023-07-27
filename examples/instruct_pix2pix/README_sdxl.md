@@ -4,9 +4,9 @@
 
 [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder. 
 
-The `train_instruct_pix2pix_xl.py` script shows how to implement the training procedure and adapt it for Stable Diffusion XL.
+The `train_instruct_pix2pix_sdxl.py` script shows how to implement the training procedure and adapt it for Stable Diffusion XL.
 
-***Disclaimer: Even though `train_instruct_pix2pix_xl.py` implements the InstructPix2Pix
+***Disclaimer: Even though `train_instruct_pix2pix_sdxl.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
 
 ## Running locally with PyTorch
@@ -33,7 +33,7 @@ export DATASET_ID="fusing/instructpix2pix-1000-samples"
 Now, we can launch training:
 
 ```bash
-python train_instruct_pix2pix_xl.py \
+python train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --enable_xformers_memory_efficient_attention \
@@ -50,7 +50,7 @@ Additionally, we support performing validation inference to monitor training pro
 with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 
 ```bash
-python train_instruct_pix2pix_xl.py \
+python train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
