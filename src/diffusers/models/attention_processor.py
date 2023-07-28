@@ -521,17 +521,32 @@ class LoRAAttnProcessor(nn.Module):
             Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.rank = rank
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
         self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
     def __call__(
         self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
@@ -1144,7 +1159,13 @@ class LoRAXFormersAttnProcessor(nn.Module):
     """
 
     def __init__(
-        self, hidden_size, cross_attention_dim, rank=4, attention_op: Optional[Callable] = None, network_alpha=None
+        self,
+        hidden_size,
+        cross_attention_dim,
+        rank=4,
+        attention_op: Optional[Callable] = None,
+        network_alpha=None,
+        **kwargs,
     ):
         super().__init__()
 
@@ -1153,10 +1174,25 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.rank = rank
         self.attention_op = attention_op
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
         self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
     def __call__(
         self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
@@ -1231,7 +1267,7 @@ class LoRAAttnProcessor2_0(nn.Module):
             Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
         super().__init__()
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -1240,10 +1276,25 @@ class LoRAAttnProcessor2_0(nn.Module):
         self.cross_attention_dim = cross_attention_dim
         self.rank = rank
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
         self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
