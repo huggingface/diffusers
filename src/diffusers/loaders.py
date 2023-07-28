@@ -1524,6 +1524,7 @@ class LoraLoaderMixin:
     def _convert_kohya_lora_to_diffusers(cls, state_dict):
         unet_state_dict = {}
         te_state_dict = {}
+        te2_state_dict = {}
         network_alphas = {}
 
         # every down weight has a corresponding up weight and potentially an alpha weight
@@ -1591,10 +1592,9 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            elif lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
-                # diffusers_name = key.replace("lora_te_", "")
-                # diffusers_name = key.replace("lora_te1_", "")
-                # diffusers_name = key.replace("lora_te2_", "")
+            elif lora_name.startswith(("lora_te_", "lora_te1_")):
+                diffusers_name = key.replace("lora_te_", "")
+                diffusers_name = key.replace("lora_te1_", "")
                 diffusers_name = diffusers_name.replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
@@ -1612,6 +1612,25 @@ class LoraLoaderMixin:
                     te_state_dict[diffusers_name] = state_dict.pop(key)
                     te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
+            elif lora_name.startswith("lora_te2_"):
+                diffusers_name = key.replace("lora_te_", "")
+                diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
+                diffusers_name = diffusers_name.replace("text.model", "text_model")
+                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+                if "self_attn" in diffusers_name:
+                    te2_state_dict[diffusers_name] = state_dict.pop(key)
+                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                elif "mlp" in diffusers_name:
+                    # Be aware that this is the new diffusers convention and the rest of the code might
+                    # not utilize it yet.
+                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+                    te2_state_dict[diffusers_name] = state_dict.pop(key)
+                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
         if len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
@@ -1619,20 +1638,18 @@ class LoraLoaderMixin:
 
         logger.info("Kohya-style checkpoint detected.")
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
-        for k in te_state_dict:
-            if "lora_te" in k:
-                print(k)
         te_state_dict = {
-            f"{cls.text_encoder_name}.{module_name.replace('lora.te.', '').replace('lora.te1.', '')}": params
-            for module_name, params in te_state_dict.items()
-            if module_name.startswith(("lora.te.", "lora.te1."))
+            f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
         }
         print(f"Initial: {len(te_state_dict)}")
-        te2_state_dict = {
-            f"text_encoder_2.{module_name.replace('lora.te2.', '')}": params
-            for module_name, params in te_state_dict.items()
-            if module_name.startswith("lora.te2.")
-        }
+        te2_state_dict = (
+            {
+                f"text_encoder_2.{module_name.replace('lora.te2.', '')}": params
+                for module_name, params in te2_state_dict.items()
+            }
+            if len(te2_state_dict) > 0
+            else None
+        )
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
             print(f"After population: {len(te_state_dict)}")
