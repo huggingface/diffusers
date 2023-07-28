@@ -5,6 +5,7 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchaudio
 
 from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -598,15 +599,36 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
         num_layers: int,
         attention_head_dim: int = 1,
         relative_pos_embeddings: bool = False,
+        expand_prefixes: bool = False,
+        expand_prefixes_reduce_dim: int = 1,
         input_transform: Optional[str] = None,
         input_conv_kernel_size: int = 1,
         input_conv_stride: int = 1,
         input_conv_padding: int = 0,
         input_conv2_hidden_dim: Optional[int] = None,
+        input_convert_to_mel_spectrogram: bool = False,
+        input_spectrogram_sampling_rate: int = 22050,
         output_transform: Optional[str] = None,
         output_num_groups: int = 32,
+        output_type: Optional[str] = None,
     ):
         super().__init__()
+
+        if self.config.input_convert_to_mel_spectrogram:
+            # Hardcoded for now (except sample rate)
+            # TODO: make this configurable in __init__?
+            self.mel_stft = torchaudio.transforms.MelSpectrogram(
+                n_fft=1024,
+                hop_length=256,
+                win_length=1024,
+                power=2,
+                normalized=False,
+                sample_rate=input_spectrogram_sampling_rate,
+                f_min=0,
+                f_max=8000,
+                n_mels=80,
+                norm="slaney",
+            )
 
         if input_transform is None:
             self.input_transform = nn.Identity()
@@ -663,10 +685,50 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
                 f"`output_transform` {output_transform} is not currently supported."
             )
     
-    def forward(self, x, return_dict: bool = True):
-        x = self.input_transform(x)
-        x = self.attention(x)
-        x = self.output_transform(x)
+    def forward(self, x: torch.FloatTensor, return_dict: bool = True):
+        """
+        Converts either a waveform or MEL spectrogram a conditioning embedding.
+
+        Args:
+            x (`torch.FloatTensor`):
+                An input waveform tensor of shape `(batch_size, time)` if `self.convert_to_mel_spectrogram = True` or
+                an input MEL spectrogram of shape `(batch_size, n_mels, time)` otherwise.
+            return_dict: (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a `ConditioningEncoderOutput` instead of a plain tuple.
+        
+        Returns:
+            `ConditioningEncoderOutput` or `tuple`:
+            `ConditioningEncoderOutput` if `return_dict` is True, otherwise a `tuple`. When returning a tuple, the
+            first element is a `torch.FloatTensor` of shape TODO.
+        """
+        if self.config.input_convert_to_mel_spectrogram:
+            x = self.mel_stft(x)  # ()
+            # TODO: Original code uses dynamic range compression with mel norms, currently not implemented
+        
+        # x should have shape (batch_size, n_mels, time) ???
+        if self.config.expand_prefixes:
+            # Get the prefixes of each sample in x with respect to the mel channels and stack them together.
+            prefixes = []
+            for i in range(x.shape[1]):
+                prefix = x[:, i]
+                prefix = self.input_transform(prefix)
+                prefix = self.attention(prefix)
+                prefix = self.output_transform(prefix)
+                if self.config.output_type == "mean":
+                    prefix = prefix.mean(dim=2)
+                elif self.config.output_type == "first":
+                    prefix = prefix[:, :, 0]
+                prefixes.append(prefix)
+            prefixes = torch.stack(prefixes, dim=self.config.expand_prefixes_reduce_dim)
+            x = prefixes.mean(dim=self.config.expand_prefixes_reduce_dim)
+        else:
+            x = self.input_transform(x)
+            x = self.attention(x)
+            x = self.output_transform(x)
+            if self.config.output_type == "mean":
+                x = x.mean(dim=2)
+            elif self.config.output_type == "first":
+                x = x[:, :, 0]
 
         if not return_dict:
             return (x,)
@@ -680,6 +742,7 @@ class TortoiseTTSDenoisingModelOutput(BaseOutput):
     The output of [`TortoiseTTSDenoisingModel`].
 
     Args:
+        TODO: fix
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             The hidden states output from the last layer of the model.
     """
