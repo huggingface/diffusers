@@ -86,7 +86,7 @@ class PatchedLoraProjection(nn.Module):
             dtype=dtype,
             rank=rank,
         )
-        for k , item in self.lora_linear_layer.state_dict():
+        for k , item in self.lora_linear_layer.state_dict().items():
             print(k, item.shape)
 
         self.lora_scale = lora_scale
