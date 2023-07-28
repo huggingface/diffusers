@@ -1659,11 +1659,16 @@ class LoraLoaderMixin:
 
             # Rename the alphas so that they can be mapped appropriately.
             if lora_name_alpha in state_dict:
-                if "text" in lora_name_alpha:
-                    print(f"lora_name_alpha: {lora_name_alpha}")
-                    print(diffusers_name.split(".lora.")[0])
                 alpha = state_dict.pop(lora_name_alpha).item()
-                new_name = "unet." + diffusers_name.split(".lora.")[0] + ".alpha"
+                if lora_name_alpha.startswith("lora_unet_"):
+                    prefix = "unet."
+                elif lora_name_alpha.startswith(("lora_te_", "lora_te1_")):
+                    prefix = "text_encoder." 
+                else:
+                    prefix = "text_encoder_2."
+                new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
+                if "text" in new_name:
+                    print(new_name)
                 network_alphas.update({new_name: alpha})
 
         if len(state_dict) > 0:
