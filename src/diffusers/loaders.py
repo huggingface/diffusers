@@ -1384,6 +1384,7 @@ class LoraLoaderMixin:
             q_rank = kwargs.pop("q_rank", None) or rank
             v_rank = kwargs.pop("v_rank", None) or rank
             k_rank = kwargs.pop("k_rank", None) or rank
+            print(q_rank, rank, v_rank, k_rank)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=q_rank, dtype=dtype
