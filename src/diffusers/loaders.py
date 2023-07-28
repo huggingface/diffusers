@@ -392,7 +392,7 @@ class UNet2DConditionLoadersMixin:
                     lora.load_state_dict(value_dict)
                     non_attn_lora_layers.append((attn_processor, lora))
                     continue
-                
+
                 # To handle SDXL.
                 rank_mapping = {}
                 hidden_size_mapping = {}
@@ -402,6 +402,7 @@ class UNet2DConditionLoadersMixin:
                     rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
                     hidden_size_mapping.update({f"{projection_id}_lora.up.weight": rank})
 
+                print(f"rank_mapping: {rank_mapping}, hidden_size_mapping: {hidden_size_mapping}")
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
                 ):
