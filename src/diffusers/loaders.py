@@ -400,7 +400,7 @@ class UNet2DConditionLoadersMixin:
                     rank = value_dict[f"{projection_id}_lora.down.weight"].shape[0]
                     hidden_size = value_dict[f"{projection_id}_lora.up.weight"].shape[0]
                     rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
-                    hidden_size_mapping.update({f"{projection_id}_lora.up.weight": rank})
+                    hidden_size_mapping.update({f"{projection_id}_lora.up.weight": hidden_size})
 
                 print(f"rank_mapping: {rank_mapping}, hidden_size_mapping: {hidden_size_mapping}")
                 if isinstance(
