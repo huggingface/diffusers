@@ -86,8 +86,6 @@ class PatchedLoraProjection(nn.Module):
             dtype=dtype,
             rank=rank,
         )
-        for k , item in self.lora_linear_layer.state_dict().items():
-            print(k, item.shape)
 
         self.lora_scale = lora_scale
 
@@ -1377,6 +1375,7 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         rank_mapping = kwargs.pop("rank_mapping", None) or {}
+        print(f"From patched projection: {rank_mapping}")
 
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
@@ -1388,7 +1387,6 @@ class LoraLoaderMixin:
             k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
             v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
             out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
-            print(q_rank, k_rank, v_rank, out_rank)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=q_rank, dtype=dtype
