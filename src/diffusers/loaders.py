@@ -1264,7 +1264,6 @@ class LoraLoaderMixin:
                     # This is no actual module at that point, they were monkey patched on to the
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                    rank_mapping = {} if prefix is not None else None
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
@@ -1292,12 +1291,6 @@ class LoraLoaderMixin:
                             f"{name}.out_proj.lora_linear_layer.down.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
 
-                        if prefix is not None:
-                            for proj in ["k_proj", "v_proj", "q_proj", "out_proj"]:
-                                for direction in ["up", "down"]:
-                                    key_name = f"{name}.{proj}.lora_linear_layer.{direction}.weight"
-                                    rank_mapping.update({key_name: text_encoder_lora_state_dict[key_name].shape[1]})
-
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
@@ -1309,7 +1302,6 @@ class LoraLoaderMixin:
                     network_alphas,
                     rank=rank,
                     patch_mlp=patch_mlp,
-                    rank_mapping=rank_mapping,
                 )
 
                 # set correct dtype & device
@@ -1356,7 +1348,6 @@ class LoraLoaderMixin:
         rank=4,
         dtype=None,
         patch_mlp=False,
-        **kwargs,
     ):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
@@ -1367,7 +1358,6 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-        rank_mapping = kwargs.pop("rank_mapping", None) or {}
 
         text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
@@ -1375,11 +1365,6 @@ class LoraLoaderMixin:
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
-
-            # q_rank = rank_mapping.get(f"{name}.q_proj.lora_linear_layer.up.weight", None) or rank
-            # k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
-            # v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
-            # out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
