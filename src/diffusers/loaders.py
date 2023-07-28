@@ -1296,14 +1296,28 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
-                print(rank)
-                key = "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.down.weight"
-                print(text_encoder_lora_state_dict[key].shape[1])
-                # key = "text_model.encoder.layers.0.self_attn.k_proj.lora_linear_layer.down.weight"
-                # print(text_encoder_lora_state_dict[key].shape[1])
+                k_rank = text_encoder_lora_state_dict[
+                    "text_model.encoder.layers.0.self_attn.k_proj.lora_linear_layer.up.weight"
+                ].shape[1]
+                q_rank = text_encoder_lora_state_dict[
+                    "text_model.encoder.layers.0.self_attn.q_proj.lora_linear_layer.up.weight"
+                ].shape[1]
+                v_rank = text_encoder_lora_state_dict[
+                    "text_model.encoder.layers.0.self_attn.v_proj.lora_linear_layer.up.weight"
+                ].shape[1]
+
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
-                cls._modify_text_encoder(text_encoder, lora_scale, network_alphas, rank=rank, patch_mlp=patch_mlp)
+                cls._modify_text_encoder(
+                    text_encoder,
+                    lora_scale,
+                    network_alphas,
+                    rank=rank,
+                    k_rank=k_rank,
+                    q_rank=q_rank,
+                    v_rank=v_rank,
+                    patch_mlp=patch_mlp,
+                )
 
                 # set correct dtype & device
                 text_encoder_lora_state_dict = {
@@ -1349,6 +1363,7 @@ class LoraLoaderMixin:
         rank=4,
         dtype=None,
         patch_mlp=False,
+        **kwargs,
     ):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
@@ -1366,18 +1381,22 @@ class LoraLoaderMixin:
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
 
+            q_rank = kwargs.pop("q_rank", None) or rank
+            v_rank = kwargs.pop("v_rank", None) or rank
+            k_rank = kwargs.pop("k_rank", None) or rank
+
             attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
+                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=q_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
             attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=rank, dtype=dtype
+                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=k_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
             attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=rank, dtype=dtype
+                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=v_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
