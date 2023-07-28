@@ -1343,7 +1343,6 @@ class DiffusionPipeline(ConfigMixin):
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-            import ipdb; ipdb.set_trace()
 
             if len(variant_filenames) == 0 and variant is not None:
                 deprecation_message = (
@@ -1411,7 +1410,7 @@ class DiffusionPipeline(ConfigMixin):
             elif use_safetensors and is_safetensors_compatible(
                 model_filenames, variant=variant, passed_components=passed_components
             ):
-                ignore_patterns = ["*.bin", "*.msgpack", ".onnx"]
+                ignore_patterns = ["*.bin", "*.msgpack"]
 
                 if not use_onnx:
                     ignore_patterns += ["*.onnx"]
