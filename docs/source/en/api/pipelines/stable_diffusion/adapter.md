@@ -69,7 +69,7 @@ Next, create the adapter pipeline
 import torch
 from diffusers import StableDiffusionAdapterPipeline, T2IAdapter
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_color_sd14v1")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_color_sd14v1", torch_dtype=torch.float16)
 pipe = StableDiffusionAdapterPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     adapter=adapter,
