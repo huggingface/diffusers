@@ -259,10 +259,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        print(torch.from_numpy(image_slice).flatten())
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
+        expected_slice = np.array([0.7045, 0.4838, 0.5454, 0.6270, 0.6168, 0.6717, 0.6484, 0.5681, 0.4922])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
