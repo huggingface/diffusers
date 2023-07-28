@@ -365,18 +365,26 @@ class UNet2DConditionLoadersMixin:
                     except Exception:
                         print(attn_processor.__class__.__name__)
                         print(key)
-                        import ipdb
-
-                        ipdb.set_trace()
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 if "lora.down.weight" in value_dict:
                     rank = value_dict["lora.down.weight"].shape[0]
-                    hidden_size = value_dict["lora.up.weight"].shape[0]
 
                     if isinstance(attn_processor, LoRACompatibleConv):
-                        lora = LoRAConv2dLayer(hidden_size, hidden_size, rank, mapped_network_alphas.get(key))
+                        in_features = value_dict["lora.down.weight"].shape[1]
+                        out_features = value_dict["lora.up.weight"].shape[0]
+                        kernel_size = value_dict["lora.down.weight"].shape[-2:]
+
+                        lora = LoRAConv2dLayer(
+                            in_features=in_features,
+                            out_features=out_features,
+                            rank=rank,
+                            kernel_size=kernel_size,
+                            stride=attn_processor.stride,
+                            padding=attn_processor.padding,
+                            network_alpha=mapped_network_alphas.get(key),
+                        )
                     elif isinstance(attn_processor, LoRACompatibleLinear):
                         lora = LoRALinearLayer(
                             attn_processor.in_features,
@@ -416,6 +424,7 @@ class UNet2DConditionLoadersMixin:
                     network_alpha=mapped_network_alphas.get(key),
                 )
                 attn_processors[key].load_state_dict(value_dict)
+
         elif is_custom_diffusion:
             custom_diffusion_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
@@ -1158,28 +1167,32 @@ class LoraLoaderMixin:
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
         """
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
+
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
-            unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
             logger.info(f"Loading {cls.unet_name}.")
-            unet_lora_state_dict = {
+
+            unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
+            alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.unet_name)]
+
+            state_dict = {
                 k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
             }
-            unet.load_attn_procs(unet_lora_state_dict, network_alphas=network_alphas)
-
-        # Otherwise, we're dealing with the old format. This means the `state_dict` should only
-        # contain the module names of the `unet` as its keys WITHOUT any prefix.
-        elif not all(
-            key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
-        ):
-            unet.load_attn_procs(state_dict, network_alphas=network_alphas)
+            network_alphas = {
+                k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+            }
+        else:
+            # Otherwise, we're dealing with the old format. This means the `state_dict` should only
+            # contain the module names of the `unet` as its keys WITHOUT any prefix.
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
+
+        # load loras into unet
+        unet.load_attn_procs(state_dict, network_alphas=network_alphas)
 
     @classmethod
     def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0):
@@ -1552,6 +1565,7 @@ class LoraLoaderMixin:
         # - downsamplers op (conv layers)
         # - upsamplers conv (conv layers)
         # - skip connection conv (conv layers)
+        # DONE - great job Sayak!
         if len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
@@ -1574,8 +1588,11 @@ class LoraLoaderMixin:
             diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
             diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+            diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
             diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+            diffusers_name = diffusers_name.replace("middle.block", "mid_block")
             diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+            diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
             diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
             diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
             diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")

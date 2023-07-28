@@ -127,7 +127,7 @@ class Upsample2D(nn.Module):
         if use_conv_transpose:
             conv = nn.ConvTranspose2d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
+            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, padding=1)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -197,7 +197,7 @@ class Downsample2D(nn.Module):
         self.name = name
 
         if use_conv:
-            conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
@@ -558,7 +558,7 @@ class ResnetBlock2D(nn.Module):
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = torch.nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = LoRACompatibleConv(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -584,7 +584,7 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = torch.nn.Conv2d(
+            self.conv_shortcut = LoRACompatibleConv(
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
