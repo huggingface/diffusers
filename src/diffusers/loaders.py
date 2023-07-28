@@ -1179,12 +1179,14 @@ class LoraLoaderMixin:
             logger.info(f"Loading {cls.unet_name}.")
 
             unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
-            alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.unet_name)]
-
             state_dict = {k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
-            network_alphas = {
-                k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
-            }
+
+            if network_alphas is not None:
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.unet_name)]
+                network_alphas = {
+                    k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+                }
+
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
