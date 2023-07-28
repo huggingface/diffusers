@@ -33,7 +33,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, print_tensor_test
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -164,7 +164,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        print_tensor_test(image_slice)
         expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
