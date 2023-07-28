@@ -420,15 +420,15 @@ class UNet2DConditionLoadersMixin:
                 # Only for LoRAAttnProcessor2_0 at the moment.
                 attn_processors[key] = attn_processor_class(
                     rank=rank_mapping.get("to_k_lora.down.weight", None),
-                    hidden_size=rank_mapping.get("to_k_lora.up.weight", None),
+                    hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
                     cross_attention_dim=cross_attention_dim,
                     network_alpha=mapped_network_alphas.get(key),
                     q_rank=rank_mapping.get("to_q_lora.down.weight", None),
-                    q_hidden_size=rank_mapping.get("to_q_lora.up.weight", None),
+                    q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
                     v_rank=rank_mapping.get("to_v_lora.down.weight", None),
-                    v_hidden_size=rank_mapping.get("to_v_lora.up.weight", None),
+                    v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
                     out_rank=rank_mapping.get("to_out_lora.down.weight", None),
-                    out_hidden_size=rank_mapping.get("to_out_lora.up.weight", None),
+                    out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight", None),
                 )
                 attn_processors[key].load_state_dict(value_dict)
 
