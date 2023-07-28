@@ -77,6 +77,7 @@ class PatchedLoraProjection(nn.Module):
         if dtype is None:
             dtype = self.regular_linear_layer.weight.dtype
 
+        print("in: {self.regular_linear_layer.in_features}, out: {self.regular_linear_layer.out_features}")
         self.lora_linear_layer = LoRALinearLayer(
             self.regular_linear_layer.in_features,
             self.regular_linear_layer.out_features,
@@ -85,6 +86,8 @@ class PatchedLoraProjection(nn.Module):
             dtype=dtype,
             rank=rank,
         )
+        for k , item in self.lora_linear_layer.state_dict():
+            print(k, item.shape)
 
         self.lora_scale = lora_scale
 
