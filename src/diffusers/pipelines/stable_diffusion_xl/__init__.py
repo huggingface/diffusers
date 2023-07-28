@@ -6,10 +6,10 @@ import PIL
 
 from ...utils import (
     BaseOutput,
+    is_flax_available,
     is_invisible_watermark_available,
     is_torch_available,
     is_transformers_available,
-    is_flax_available,
 )
 
 
@@ -46,8 +46,8 @@ if is_transformers_available() and is_flax_available():
             images (`np.ndarray`)
                 Array of shape `(batch_size, height, width, num_channels)` with images from the diffusion pipeline.
         """
+
         images: np.ndarray
 
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
     from .pipeline_flax_stable_diffusion_xl import FlaxStableDiffusionXLPipeline
-

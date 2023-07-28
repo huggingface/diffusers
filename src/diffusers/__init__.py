@@ -283,7 +283,7 @@ else:
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
-        FlaxStableDiffusionXLPipeline
+        FlaxStableDiffusionXLPipeline,
     )
 
 try:

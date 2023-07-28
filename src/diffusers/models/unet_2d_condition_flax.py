@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union, Dict
+from typing import Dict, Optional, Tuple, Union
 
 import flax
 import flax.linen as nn
@@ -133,11 +133,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         rngs = {"params": params_rng, "dropout": dropout_rng}
 
         added_cond_kwargs = None
-        if self.addition_embed_type == 'text_time':
+        if self.addition_embed_type == "text_time":
             added_cond_kwargs = {
-                    'text_embeds': jnp.zeros((1, 1280), dtype=jnp.float32),   # TODO: This should be set based on config
-                    'time_ids': jnp.zeros((1, 6), dtype=jnp.float32)
-                    }
+                "text_embeds": jnp.zeros((1, 1280), dtype=jnp.float32),  # TODO: This should be set based on config
+                "time_ids": jnp.zeros((1, 6), dtype=jnp.float32),
+            }
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
     def setup(self):
@@ -187,9 +187,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         # addition embed types
         if self.addition_embed_type is None:
             self.add_embedding = None
-        elif self.addition_embed_type == 'text_time':
+        elif self.addition_embed_type == "text_time":
             if self.addition_time_embed_dim is None:
-                raise ValueError(f'addition_embed_type {self.addition_embed_type} requires `addition_time_embed_dim` to not be None')
+                raise ValueError(
+                    f"addition_embed_type {self.addition_embed_type} requires `addition_time_embed_dim` to not be None"
+                )
             self.add_time_proj = FlaxTimesteps(self.addition_time_embed_dim, self.flip_sin_to_cos, self.freq_shift)
             self.add_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
         else:
@@ -334,9 +336,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         # additional embeddings
         aug_emb = None
-        if self.addition_embed_type == 'text_time':
+        if self.addition_embed_type == "text_time":
             if added_cond_kwargs is None:
-                raise ValueError(f'Need to provide argument `added_cond_kwargs` for {self.__class__} when using `addition_embed_type={self.addition_embed_type}`')
+                raise ValueError(
+                    f"Need to provide argument `added_cond_kwargs` for {self.__class__} when using `addition_embed_type={self.addition_embed_type}`"
+                )
             text_embeds = added_cond_kwargs.get("text_embeds")
             if text_embeds is None:
                 raise ValueError(
@@ -348,7 +352,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             # compute time embeds
-            time_embeds = self.add_time_proj(jnp.ravel(time_ids))   # (1, 6) => (6,) => (6, 256)
+            time_embeds = self.add_time_proj(jnp.ravel(time_ids))  # (1, 6) => (6,) => (6, 256)
             time_embeds = jnp.reshape(time_embeds, (text_embeds.shape[0], -1))
             add_embeds = jnp.concatenate([text_embeds, time_embeds], axis=-1)
             aug_emb = self.add_embedding(add_embeds)

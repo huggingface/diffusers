@@ -205,7 +205,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
-        addition_embed_type_num_heads = 64,
+        addition_embed_type_num_heads=64,
     ):
         super().__init__()
 

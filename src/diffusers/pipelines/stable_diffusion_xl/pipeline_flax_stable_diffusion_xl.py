@@ -13,12 +13,14 @@
 # limitations under the License.
 
 from functools import partial
-from typing import List, Union, Dict, Optional
-from flax.core.frozen_dict import FrozenDict
-from transformers import CLIPTokenizer, FlaxCLIPTextModel
+from typing import Dict, List, Optional, Union
+
 import jax
 import jax.numpy as jnp
-import numpy as np
+from flax.core.frozen_dict import FrozenDict
+from transformers import CLIPTokenizer, FlaxCLIPTextModel
+
+from diffusers.utils import logging
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
@@ -30,7 +32,6 @@ from ...schedulers import (
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from . import FlaxStableDiffusionXLPipelineOutput
 
-from diffusers.utils import logging
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -40,17 +41,17 @@ DEBUG = False
 
 class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
     def __init__(
-            self,
-            text_encoder: FlaxCLIPTextModel,
-            text_encoder_2: FlaxCLIPTextModel,
-            vae: FlaxAutoencoderKL,
-            tokenizer: CLIPTokenizer,
-            tokenizer_2: CLIPTokenizer,
-            unet: FlaxUNet2DConditionModel,
-            scheduler: Union[
-                FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
-            ],
-            dtype: jnp.dtype = jnp.float32,
+        self,
+        text_encoder: FlaxCLIPTextModel,
+        text_encoder_2: FlaxCLIPTextModel,
+        vae: FlaxAutoencoderKL,
+        tokenizer: CLIPTokenizer,
+        tokenizer_2: CLIPTokenizer,
+        unet: FlaxUNet2DConditionModel,
+        scheduler: Union[
+            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
+        ],
+        dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
         self.dtype = dtype
@@ -62,7 +63,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             unet=unet,
-            scheduler=scheduler
+            scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
@@ -78,7 +79,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 padding="max_length",
                 max_length=self.tokenizer.model_max_length,
                 truncation=True,
-                return_tensors="np"
+                return_tensors="np",
             )
             inputs.append(text_inputs.input_ids)
         inputs = jnp.stack(inputs, axis=1)
@@ -98,7 +99,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         return_dict: bool = True,
         jit: bool = False,
     ):
-
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -145,18 +145,20 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         # bs, encoder_input, seq_length
         te_1_inputs = prompt_ids[:, 0, :]
         te_2_inputs = prompt_ids[:, 1, :]
-        
-        prompt_embeds = self.text_encoder(te_1_inputs, params=params['text_encoder'], output_hidden_states=True)
-        prompt_embeds = prompt_embeds['hidden_states'][-2]
-        prompt_embeds_2_out = self.text_encoder_2(te_2_inputs, params=params['text_encoder_2'], output_hidden_states=True)
-        prompt_embeds_2 = prompt_embeds_2_out['hidden_states'][-2]
-        pooled_embeds = prompt_embeds_2_out['pooler_output']
+
+        prompt_embeds = self.text_encoder(te_1_inputs, params=params["text_encoder"], output_hidden_states=True)
+        prompt_embeds = prompt_embeds["hidden_states"][-2]
+        prompt_embeds_2_out = self.text_encoder_2(
+            te_2_inputs, params=params["text_encoder_2"], output_hidden_states=True
+        )
+        prompt_embeds_2 = prompt_embeds_2_out["hidden_states"][-2]
+        pooled_embeds = prompt_embeds_2_out["pooler_output"]
         prompt_embeds = jnp.concatenate([prompt_embeds, prompt_embeds_2], axis=-1)
         return prompt_embeds, pooled_embeds
 
     def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, bs, dtype):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
-        add_time_ids = jnp.array([add_time_ids]*bs, dtype=dtype)
+        add_time_ids = jnp.array([add_time_ids] * bs, dtype=dtype)
         return add_time_ids
 
     def _generate(
@@ -261,6 +263,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
         return image
 
+
 # Static argnums are pipe, num_inference_steps, height, width. A change would trigger recompilation.
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
@@ -291,4 +294,3 @@ def _p_generate(
         latents,
         neg_prompt_ids,
     )
-
