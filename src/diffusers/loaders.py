@@ -340,9 +340,16 @@ class UNet2DConditionLoadersMixin:
 
             lora_grouped_dict = defaultdict(dict)
             mapped_network_alphas = {}
-            for key, value in state_dict.items():
+
+            print(f"Number state_dict of keys: {len(state_dict)}")
+            print(f"Number network alphas of keys: {len(network_alphas)}")
+
+            all_keys = list(state_dict.keys())
+            for key in all_keys:
+                value = state_dict.pop(key)
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
+
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
@@ -350,13 +357,21 @@ class UNet2DConditionLoadersMixin:
                         if k.replace(".alpha", "") in key:
                             mapped_network_alphas.update({attn_processor_key: network_alphas[k]})
 
+            if len(state_dict) > 0:
+                raise ValueError("Has to be empty")
+
+            print(f"Number groupd_dict of keys: {len(lora_grouped_dict)}")
+            print(f"Number network alphas of keys: {len(network_alphas)}")
+
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
                 for sub_key in key.split("."):
-                    try:
-                        attn_processor = getattr(attn_processor, sub_key)
-                    except Exception as e:
-                        logger.error(e)
+                    # Sayak, we should throw an error here
+                    attn_processor = getattr(attn_processor, sub_key)
+                    # try:
+                    #     attn_processor = getattr(attn_processor, sub_key)
+                    # except Exception as e:
+                    #     logger.error(e)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
@@ -390,52 +405,59 @@ class UNet2DConditionLoadersMixin:
                     value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
                     lora.load_state_dict(value_dict)
                     non_attn_lora_layers.append((attn_processor, lora))
-                    continue
-
-                # To handle SDXL.
-                rank_mapping = {}
-                hidden_size_mapping = {}
-                for projection_id in ["to_k", "to_q", "to_v", "to_out"]:
-                    rank = value_dict[f"{projection_id}_lora.down.weight"].shape[0]
-                    hidden_size = value_dict[f"{projection_id}_lora.up.weight"].shape[0]
-                    rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
-                    hidden_size_mapping.update({f"{projection_id}_lora.up.weight": hidden_size})
-
-                if isinstance(
-                    attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
-                ):
-                    cross_attention_dim = value_dict["add_k_proj_lora.down.weight"].shape[1]
-                    attn_processor_class = LoRAAttnAddedKVProcessor
                 else:
-                    cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
-                    if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
-                        attn_processor_class = LoRAXFormersAttnProcessor
+                    # To handle SDXL.
+                    rank_mapping = {}
+                    hidden_size_mapping = {}
+                    for projection_id in ["to_k", "to_q", "to_v", "to_out"]:
+                        rank = value_dict[f"{projection_id}_lora.down.weight"].shape[0]
+                        hidden_size = value_dict[f"{projection_id}_lora.up.weight"].shape[0]
+                        rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
+                        hidden_size_mapping.update({f"{projection_id}_lora.up.weight": hidden_size})
+
+                    if isinstance(
+                        attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
+                    ):
+                        cross_attention_dim = value_dict["add_k_proj_lora.down.weight"].shape[1]
+                        attn_processor_class = LoRAAttnAddedKVProcessor
                     else:
-                        attn_processor_class = (
-                            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-                        )
+                        cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
+                        if isinstance(attn_processor, (XFormersAttnProcessor, LoRAXFormersAttnProcessor)):
+                            attn_processor_class = LoRAXFormersAttnProcessor
+                        else:
+                            attn_processor_class = (
+                                LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                            )
 
-                if attn_processor_class is not LoRAAttnAddedKVProcessor:
-                    attn_processors[key] = attn_processor_class(
-                        rank=rank_mapping.get("to_k_lora.down.weight", None),
-                        hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
-                        cross_attention_dim=cross_attention_dim,
-                        network_alpha=mapped_network_alphas.get(key),
-                        q_rank=rank_mapping.get("to_q_lora.down.weight", None),
-                        q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
-                        v_rank=rank_mapping.get("to_v_lora.down.weight", None),
-                        v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
-                        out_rank=rank_mapping.get("to_out_lora.down.weight", None),
-                        out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight", None),
-                    )
-                else:
-                    attn_processors[key] = attn_processor_class(
-                        rank=rank_mapping.get("to_k_lora.down.weight", None),
-                        hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
-                        cross_attention_dim=cross_attention_dim,
-                        network_alpha=mapped_network_alphas.get(key),
-                    )
-                attn_processors[key].load_state_dict(value_dict)
+                    if attn_processor_class is not LoRAAttnAddedKVProcessor:
+                        attn_processors[key] = attn_processor_class(
+                            # rank=rank_mapping.get("to_k_lora.down.weight", None),
+                            rank=rank_mapping.get("to_k_lora.down.weight"),
+                            # hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
+                            hidden_size=hidden_size_mapping.get("to_k_lora.up.weight"),
+                            cross_attention_dim=cross_attention_dim,
+                            network_alpha=mapped_network_alphas.get(key),
+                            q_rank=rank_mapping.get("to_q_lora.down.weight"),
+                            #q_rank=rank_mapping.get("to_q_lora.down.weight", None),
+                            q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight"),
+                            # q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
+                            v_rank=rank_mapping.get("to_v_lora.down.weight"),
+                            # v_rank=rank_mapping.get("to_v_lora.down.weight", None),
+                            v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight"),
+                            # v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
+                            out_rank=rank_mapping.get("to_out_lora.down.weight"),
+                            # out_rank=rank_mapping.get("to_out_lora.down.weight", None),
+                            out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight"),
+                            # out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight", None),
+                        )
+                    else:
+                        attn_processors[key] = attn_processor_class(
+                            rank=rank_mapping.get("to_k_lora.down.weight", None),
+                            hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
+                            cross_attention_dim=cross_attention_dim,
+                            network_alpha=mapped_network_alphas.get(key),
+                        )
+                    attn_processors[key].load_state_dict(value_dict)
 
         elif is_custom_diffusion:
             custom_diffusion_grouped_dict = defaultdict(dict)
@@ -1065,6 +1087,7 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
+        print(f"Number of keys: {len(state_dict)}")
         network_alphas = None
         if all(
             (
@@ -1079,8 +1102,11 @@ class LoraLoaderMixin:
             if unet_config is not None:
                 # use unet config to remap block numbers
                 state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
+            print(f"Number of keys: {len(state_dict)}")
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
+        print(f"Number state_dict of keys: {len(state_dict)}")
+        print(f"Number network alphas of keys: {len(network_alphas)}")
         return state_dict, network_alphas
 
     @classmethod
@@ -1213,6 +1239,8 @@ class LoraLoaderMixin:
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
+        print(f"Number state_dict of keys: {len(state_dict)}")
+        print(f"Number network alphas of keys: {len(network_alphas)}")
         # load loras into unet
         unet.load_attn_procs(state_dict, network_alphas=network_alphas)
 
