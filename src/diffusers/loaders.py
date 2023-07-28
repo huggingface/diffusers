@@ -77,7 +77,7 @@ class PatchedLoraProjection(nn.Module):
         if dtype is None:
             dtype = self.regular_linear_layer.weight.dtype
 
-        print(f"in: {self.regular_linear_layer.in_features}, out: {self.regular_linear_layer.out_features}")
+        # print(f"in: {self.regular_linear_layer.in_features}, out: {self.regular_linear_layer.out_features}")
         self.lora_linear_layer = LoRALinearLayer(
             self.regular_linear_layer.in_features,
             self.regular_linear_layer.out_features,
