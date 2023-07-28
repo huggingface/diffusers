@@ -1293,6 +1293,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_onnx = kwargs.pop("use_onnx", False)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         if use_safetensors and not is_safetensors_available():
@@ -1342,6 +1343,7 @@ class DiffusionPipeline(ConfigMixin):
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            import ipdb; ipdb.set_trace()
 
             if len(variant_filenames) == 0 and variant is not None:
                 deprecation_message = (
@@ -1409,7 +1411,10 @@ class DiffusionPipeline(ConfigMixin):
             elif use_safetensors and is_safetensors_compatible(
                 model_filenames, variant=variant, passed_components=passed_components
             ):
-                ignore_patterns = ["*.bin", "*.msgpack"]
+                ignore_patterns = ["*.bin", "*.msgpack", ".onnx"]
+
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx"]
 
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
                 safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
@@ -1422,6 +1427,9 @@ class DiffusionPipeline(ConfigMixin):
                     )
             else:
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
+
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx"]
 
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
