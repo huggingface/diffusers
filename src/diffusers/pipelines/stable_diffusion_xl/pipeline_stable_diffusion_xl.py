@@ -128,6 +128,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
+        add_watermark: bool = None,
     ):
         super().__init__()
 
@@ -145,7 +146,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.default_sample_size = self.unet.config.sample_size
 
-        self.watermark = StableDiffusionXLWatermarker()
+        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+
+        if add_watermark:
+            self.watermark = StableDiffusionXLWatermarker()
+        else:
+            self.watermark = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -842,7 +848,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
 
-        image = self.watermark.apply_watermark(image)
+        # apply watermark if available
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
+
         image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU

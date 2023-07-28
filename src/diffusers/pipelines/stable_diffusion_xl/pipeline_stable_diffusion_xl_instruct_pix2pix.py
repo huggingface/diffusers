@@ -112,6 +112,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
+        add_watermark: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -131,7 +132,12 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         self.vae.config.force_upcast = True  # force the VAE to be in float32 mode, as it overflows in float16
 
-        self.watermark = StableDiffusionXLWatermarker()
+        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+
+        if add_watermark:
+            self.watermark = StableDiffusionXLWatermarker()
+        else:
+            self.watermark = None
 
     def enable_vae_slicing(self):
         r"""
@@ -911,7 +917,10 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
 
-        image = self.watermark.apply_watermark(image)
+        # apply watermark if available
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
+
         image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU

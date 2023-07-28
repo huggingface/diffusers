@@ -267,6 +267,7 @@ class StableDiffusionXLInpaintPipeline(
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
+        add_watermark: bool = None,
     ):
         super().__init__()
 
@@ -284,7 +285,12 @@ class StableDiffusionXLInpaintPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-        self.watermark = StableDiffusionXLWatermarker()
+        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+
+        if add_watermark:
+            self.watermark = StableDiffusionXLWatermarker()
+        else:
+            self.watermark = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -1267,6 +1273,10 @@ class StableDiffusionXLInpaintPipeline(
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
             return StableDiffusionXLPipelineOutput(images=latents)
+
+        # apply watermark if available
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
