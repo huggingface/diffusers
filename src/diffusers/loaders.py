@@ -325,13 +325,6 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
-        for k in state_dict:
-            new_k = k.replace("lora_unet_", "")
-            new_k = new_k.replace("lora_te_", "")
-            if "lora" not in new_k:
-                pass
-                # print(new_k)
-
         if is_lora:
             is_new_lora_format = all(
                 key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
@@ -1052,16 +1045,13 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # Map SDXL blocks correctly.
-        # Can probably be collated with the next conditional block.
-        if unet_config is not None and any("lora_unet_" in k for k in state_dict):
-            # use unet config to remap block numbers
-            state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
-
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alphas = None
         if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
-            # TODO(SAYAK) - here we're now missing a couple of keys notably:
+            # Map SDXL blocks correctly.
+            if unet_config is not None:
+                # use unet config to remap block numbers
+                state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
@@ -1179,9 +1169,7 @@ class LoraLoaderMixin:
             unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.unet_name)]
 
-            state_dict = {
-                k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
-            }
+            state_dict = {k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
             network_alphas = {
                 k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
             }
@@ -1558,14 +1546,6 @@ class LoraLoaderMixin:
                     te_state_dict[diffusers_name] = state_dict.pop(key)
                     te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-        # HERE, we also see what is still missing in terms of LoRA support.
-        # FOR SDXL we're missing:
-        # - resnet emb_layers (linear time embedding layers of ResNets)
-        # - resnet conv in & out(conv layers)
-        # - downsamplers op (conv layers)
-        # - upsamplers conv (conv layers)
-        # - skip connection conv (conv layers)
-        # DONE - great job Sayak!
         if len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
@@ -1612,6 +1592,9 @@ class LoraLoaderMixin:
 
             network_alphas_renamed.update({diffusers_name: value})
 
+        # with open("network_alphas.json" , "w") as write:
+        #     json.dump(network_alphas_renamed , write)
+        #     print("Serialized to JSON from loaders.py.")
         return new_state_dict, network_alphas_renamed
 
     def unload_lora_weights(self):
