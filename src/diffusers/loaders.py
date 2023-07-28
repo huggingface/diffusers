@@ -1569,11 +1569,27 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            elif lora_name.startswith(("lora_te_", "lora_te1_")):
-                diffusers_name = key.replace("lora_te_", "")
-                diffusers_name = key.replace("lora_te1_", "")
-                print(f"Inside LoRA kohya conversion: {diffusers_name}.")
-                diffusers_name = diffusers_name.replace("_", ".")
+            elif lora_name.startswith("lora_te_"):
+                diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+                diffusers_name = diffusers_name.replace("text.model", "text_model")
+                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+                if "self_attn" in diffusers_name:
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                elif "mlp" in diffusers_name:
+                    # Be aware that this is the new diffusers convention and the rest of the code might
+                    # not utilize it yet.
+                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+            # (sayakpaul): Duplicate code. Needs to be cleaned.
+            elif lora_name.startswith("lora_te1_"):
+                diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
                 diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
