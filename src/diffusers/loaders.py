@@ -1122,6 +1122,7 @@ class LoraLoaderMixin:
         # Retrieves # of down, mid and up blocks
         input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
         for layer in state_dict:
+            print(layer)
             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
             if "input_blocks" in layer:
                 input_block_ids.add(layer_id)
