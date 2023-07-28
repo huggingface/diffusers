@@ -341,9 +341,6 @@ class UNet2DConditionLoadersMixin:
             lora_grouped_dict = defaultdict(dict)
             mapped_network_alphas = {}
 
-            # print(f"Number state_dict of keys: {len(state_dict)}")
-            # print(f"Number network alphas of keys: {len(network_alphas)}")
-
             all_keys = list(state_dict.keys())
             for key in all_keys:
                 value = state_dict.pop(key)
@@ -361,18 +358,10 @@ class UNet2DConditionLoadersMixin:
                     f"The state_dict has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
                 )
 
-            # print(f"Number groupd_dict of keys: {len(lora_grouped_dict)}")
-            # print(f"Number network alphas of keys: {len(mapped_network_alphas)}")
-
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
                 for sub_key in key.split("."):
-                    # Sayak, we should throw an error here
                     attn_processor = getattr(attn_processor, sub_key)
-                    # try:
-                    #     attn_processor = getattr(attn_processor, sub_key)
-                    # except Exception as e:
-                    #     logger.error(e)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
@@ -1086,8 +1075,6 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
-        # print(f"Number of keys: {len(state_dict)}")
         network_alphas = None
         if all(
             (
@@ -1102,11 +1089,8 @@ class LoraLoaderMixin:
             if unet_config is not None:
                 # use unet config to remap block numbers
                 state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            # print(f"Number of keys: {len(state_dict)}")
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
-        # print(f"Number state_dict of keys: {len(state_dict)}")
-        # print(f"Number network alphas of keys: {len(network_alphas)}")
         return state_dict, network_alphas
 
     @classmethod
@@ -1238,8 +1222,6 @@ class LoraLoaderMixin:
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
-        # print(f"Number state_dict of keys: {len(state_dict)}")
-        # print(f"Number network alphas of keys: {len(network_alphas)}")
         # load loras into unet
         unet.load_attn_procs(state_dict, network_alphas=network_alphas)
 
@@ -1383,7 +1365,6 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
 
-        text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
