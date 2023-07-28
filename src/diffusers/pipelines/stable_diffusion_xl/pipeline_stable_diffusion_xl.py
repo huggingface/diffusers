@@ -868,8 +868,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         print("From SDXL pipeline:")
-        for k, v in text_encoder_state_dict.items():
-            print(k, v.shape)
+        print(text_encoder_state_dict)
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_state_dict,
@@ -881,6 +880,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
         if len(text_encoder_2_state_dict) > 0:
+            print("State dict 2.")
             self.load_lora_into_text_encoder(
                 text_encoder_2_state_dict,
                 network_alphas=network_alphas,

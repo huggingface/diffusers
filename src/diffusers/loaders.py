@@ -1623,6 +1623,7 @@ class LoraLoaderMixin:
             for module_name, params in te_state_dict.items()
             if module_name.startswith(("lora_te_", "lora_te1_"))
         }
+        print(f"Initial: {len(te_state_dict)}")
         te2_state_dict = {
             f"text_encoder_2.{module_name}": params
             for module_name, params in te_state_dict.items()
@@ -1630,6 +1631,7 @@ class LoraLoaderMixin:
         }
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
+            print(f"After population: {len(te_state_dict)}")
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
         network_alphas_renamed = {}
