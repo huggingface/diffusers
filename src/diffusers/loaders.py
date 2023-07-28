@@ -1376,28 +1376,28 @@ class LoraLoaderMixin:
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
 
-            q_rank = rank_mapping.get(f"{name}.q_proj.lora_linear_layer.up.weight", None) or rank
-            k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
-            v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
-            out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
+            # q_rank = rank_mapping.get(f"{name}.q_proj.lora_linear_layer.up.weight", None) or rank
+            # k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
+            # v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
+            # out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
 
             attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=q_rank, dtype=dtype
+                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
             attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=k_rank, dtype=dtype
+                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
             attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=v_rank, dtype=dtype
+                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=proj_alpha, rank=out_rank, dtype=dtype
+                attn_module.out_proj, lora_scale, network_alpha=proj_alpha, rank=rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
@@ -1696,10 +1696,6 @@ class LoraLoaderMixin:
             diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
             network_alphas_renamed.update({diffusers_name: value})
-
-        for k in network_alphas_renamed:
-            if "text" in k:
-                print(k)
 
         return new_state_dict, network_alphas_renamed
 
