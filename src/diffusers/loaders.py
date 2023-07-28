@@ -1068,7 +1068,16 @@ class LoraLoaderMixin:
 
         # Convert kohya-ss Style LoRA attn procs to diffusers attn procs
         network_alphas = None
-        if all((k.startswith("lora_te_") or k.startswith("lora_unet_")) for k in state_dict.keys()):
+        if all(
+            (
+                k.startswith("lora_te_")
+                or k.startswith("lora_unet_")
+                or k.startswith("lora_te1_")
+                or k.startswith("lora_te2_")
+            )
+            for k in state_dict.keys()
+        ):
+            # print("Kohya detected.")
             # Map SDXL blocks correctly.
             if unet_config is not None:
                 # use unet config to remap block numbers
@@ -1079,6 +1088,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def _map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
+        is_all_unet = all(k.startswith("lora_unet") for k in state_dict)
         new_state_dict = {}
         inner_block_map = ["resnets", "attentions", "upsamplers"]
 
@@ -1158,8 +1168,12 @@ class LoraLoaderMixin:
                 )
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        if len(state_dict) > 0:
+        # print(f"state_dict: {list(state_dict.keys())[:20]}, {len(state_dict)}")
+        if is_all_unet and len(state_dict) > 0:
             raise ValueError("At this point all state dict entries have to be converted.")
+        else:
+            for k, v in state_dict.items():
+                new_state_dict.update({k: v})
 
         return new_state_dict
 
@@ -1182,6 +1196,7 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
+        # print(keys)
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
@@ -1281,6 +1296,9 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
+                # print(rank)
+                # key = "text_model.encoder.layers.0.self_attn.k_proj.lora_linear_layer.down.weight"
+                # print(text_encoder_lora_state_dict[key].shape[1])
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 cls._modify_text_encoder(text_encoder, lora_scale, network_alphas, rank=rank, patch_mlp=patch_mlp)
@@ -1551,8 +1569,10 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            elif lora_name.startswith("lora_te_"):
+            elif lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
                 diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+                diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
+                diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
                 diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
