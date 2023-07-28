@@ -1413,7 +1413,7 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 if not use_onnx:
-                    ignore_patterns += ["*.onnx"]
+                    ignore_patterns += ["*.onnx", "*.pb"]
 
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
                 safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
@@ -1428,7 +1428,7 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
 
                 if not use_onnx:
-                    ignore_patterns += ["*.onnx"]
+                    ignore_patterns += ["*.onnx", "*.pb"]
 
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
