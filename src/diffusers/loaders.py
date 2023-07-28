@@ -1296,7 +1296,7 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
-                # print(rank)
+                print(rank)
                 key = "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.down.weight"
                 print(text_encoder_lora_state_dict[key].shape[1])
                 # key = "text_model.encoder.layers.0.self_attn.k_proj.lora_linear_layer.down.weight"
