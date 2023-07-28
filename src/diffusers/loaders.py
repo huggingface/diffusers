@@ -1266,7 +1266,7 @@ class LoraLoaderMixin:
                     # This is no actual module at that point, they were monkey patched on to the
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                    rank_mapping = None
+                    rank_mapping = {} if prefix is not None else None
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
