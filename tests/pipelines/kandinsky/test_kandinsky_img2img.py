@@ -40,32 +40,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyImg2ImgPipeline
-    params = ["prompt", "image_embeds", "negative_image_embeds", "image"]
-    batch_params = [
-        "prompt",
-        "negative_prompt",
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-    ]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "strength",
-        "guidance_scale",
-        "negative_prompt",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -84,7 +59,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_tokenizer(self):
@@ -216,6 +191,41 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+
+class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyImg2ImgPipeline
+    params = ["prompt", "image_embeds", "negative_image_embeds", "image"]
+    batch_params = [
+        "prompt",
+        "negative_prompt",
+        "image_embeds",
+        "negative_image_embeds",
+        "image",
+    ]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "strength",
+        "guidance_scale",
+        "negative_prompt",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
+
     def test_kandinsky_img2img(self):
         device = "cpu"
 
@@ -239,9 +249,7 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.61474943, 0.6073539, 0.43308544, 0.5928269, 0.47493595, 0.46755973, 0.4613838, 0.45368797, 0.50119233]
-        )
+        expected_slice = np.array([0.5816, 0.5872, 0.4634, 0.5982, 0.4767, 0.4710, 0.4669, 0.4717, 0.4966])
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"

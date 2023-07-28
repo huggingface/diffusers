@@ -678,7 +678,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
@@ -811,6 +811,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             negative_aesthetic_score,
             dtype=prompt_embeds.dtype,
         )
+        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
         original_prompt_embeds_len = len(prompt_embeds)
         original_add_text_embeds_len = len(add_text_embeds)
@@ -819,6 +820,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, negative_pooled_prompt_embeds], dim=0)
+            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
             add_time_ids = torch.cat([add_time_ids, add_neg_time_ids], dim=0)
 
         # Make dimensions consistent
@@ -828,7 +830,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         prompt_embeds = prompt_embeds.to(device).to(torch.float32)
         add_text_embeds = add_text_embeds.to(device).to(torch.float32)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(device)
 
         # 11. Denoising loop
         self.unet = self.unet.to(torch.float32)

@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 [[open-in-colab]]
 
 Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize 
-a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview.mdx).
+a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview.md).
 
 Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample, 
 schedulers define the whole denoising process, *i.e.*:
