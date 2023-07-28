@@ -189,8 +189,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
-        sigma = self.sigmas[step_index]
+        sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
         return sample
@@ -238,6 +237,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        
+        self.step_index = 0
 
     def step(
         self,
@@ -288,8 +289,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
 
-        step_index = (self.timesteps == timestep).nonzero().item()
-        sigma = self.sigmas[step_index]
+        #step_index = (self.timesteps == timestep).nonzero().item()
+        sigma = self.sigmas[self.step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -304,8 +305,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        sigma_from = self.sigmas[step_index]
-        sigma_to = self.sigmas[step_index + 1]
+        sigma_from = self.sigmas[self.step_index]
+        sigma_to = self.sigmas[self.step_index + 1]
         sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
         sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
 
@@ -320,6 +321,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=device, generator=generator)
 
         prev_sample = prev_sample + noise * sigma_up
+
+        self.step_index += 1
 
         if not return_dict:
             return (prev_sample,)
