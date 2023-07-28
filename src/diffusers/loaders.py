@@ -1262,9 +1262,6 @@ class LoraLoaderMixin:
                     # This is no actual module at that point, they were monkey patched on to the
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                    for k in text_encoder_lora_state_dict:
-                        if "to_q_lora" in k: 
-                            print(k)
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
@@ -1575,6 +1572,7 @@ class LoraLoaderMixin:
             elif lora_name.startswith(("lora_te_", "lora_te1_")):
                 diffusers_name = key.replace("lora_te_", "")
                 diffusers_name = key.replace("lora_te1_", "")
+                print(f"Inside LoRA kohya conversion: {diffusers_name}.")
                 diffusers_name = diffusers_name.replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
@@ -1594,7 +1592,6 @@ class LoraLoaderMixin:
 
             # (sayakpaul): Duplicate code. Needs to be cleaned.
             elif lora_name.startswith("lora_te2_"):
-                diffusers_name = key.replace("lora_te_", "")
                 diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
