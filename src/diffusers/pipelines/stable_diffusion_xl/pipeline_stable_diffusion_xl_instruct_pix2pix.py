@@ -811,6 +811,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             negative_aesthetic_score,
             dtype=prompt_embeds.dtype,
         )
+        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
         original_prompt_embeds_len = len(prompt_embeds)
         original_add_text_embeds_len = len(add_text_embeds)
@@ -819,6 +820,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, negative_pooled_prompt_embeds], dim=0)
+            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
             add_time_ids = torch.cat([add_time_ids, add_neg_time_ids], dim=0)
 
         # Make dimensions consistent
@@ -828,7 +830,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         prompt_embeds = prompt_embeds.to(device).to(torch.float32)
         add_text_embeds = add_text_embeds.to(device).to(torch.float32)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(device)
 
         # 11. Denoising loop
         self.unet = self.unet.to(torch.float32)
