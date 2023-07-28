@@ -1,4 +1,4 @@
-__version__ = "0.19.1"
+__version__ = "0.19.2"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
