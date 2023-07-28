@@ -379,9 +379,9 @@ class UNet2DConditionLoadersMixin:
                     rank = value_dict["lora.down.weight"].shape[0]
 
                     if isinstance(attn_processor, LoRACompatibleConv):
-                        in_features = value_dict["lora.down.weight"].shape[1]
-                        out_features = value_dict["lora.up.weight"].shape[0]
-                        kernel_size = value_dict["lora.down.weight"].shape[-2:]
+                        in_features = attn_processor.in_channels
+                        out_features = attn_processor.out_channels
+                        kernel_size = attn_processor.kernel_size
 
                         lora = LoRAConv2dLayer(
                             in_features=in_features,
@@ -1122,17 +1122,15 @@ class LoraLoaderMixin:
         # Retrieves # of down, mid and up blocks
         input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
         for layer in state_dict:
-            if "input_blocks" in layer:
-                target_set = input_block_ids
-            elif "middle_block" in layer:
-                target_set = middle_block_ids
-            elif "output_blocks" in layer:
-                target_set = output_block_ids
-            else:
-                continue
-
             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
-            target_set.add(layer_id)
+            if "input_blocks" in layer:
+                input_block_ids.add(layer_id)
+            elif "middle_block" in layer:
+                middle_block_ids.add(layer_id)
+            elif "output_blocks" in layer:
+                output_block_ids.add(layer_id)
+            else:
+                raise ValueError("Checkpoint not supported")
 
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
@@ -1542,9 +1540,10 @@ class LoraLoaderMixin:
             lora_name = key.split(".")[0]
             lora_name_up = lora_name + ".lora_up.weight"
             lora_name_alpha = lora_name + ".alpha"
-            if lora_name_alpha in state_dict:
-                alpha = state_dict.pop(lora_name_alpha).item()
-                network_alphas.update({lora_name_alpha: alpha})
+
+            # if lora_name_alpha in state_dict:
+            #     alpha = state_dict.pop(lora_name_alpha).item()
+            #     network_alphas.update({lora_name_alpha: alpha})
 
             if lora_name.startswith("lora_unet_"):
                 diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
@@ -1657,6 +1656,12 @@ class LoraLoaderMixin:
                     te2_state_dict[diffusers_name] = state_dict.pop(key)
                     te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
+            # let's rename alphas here
+            if lora_name_alpha in state_dict:
+                alpha = state_dict.pop(lora_name_alpha).item()
+                new_name = "unet." + diffusers_name.split(".lora.")[0] + ".alpha"
+                network_alphas.update({new_name: alpha})
+
         if len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
@@ -1680,54 +1685,58 @@ class LoraLoaderMixin:
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
-        network_alphas_renamed = {}
-        for k in network_alphas:
-            value = network_alphas[k]
+        # network_alphas_renamed = {}
+        # network_alphas_renamed = network_alphas
+        # network_alphas = {}
+        # for k in network_alphas:
+        #     value = network_alphas[k]
 
-            diffusers_name = k.replace("lora_unet_", "unet.")
-            diffusers_name = diffusers_name.replace("lora_te_", "textencoder.")
-            diffusers_name = diffusers_name.replace("lora_te1_", "textencoder.")
-            diffusers_name = diffusers_name.replace("lora_te2_", "textencoder2.")
-            diffusers_name = diffusers_name.replace("_", ".")
-            diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
-            diffusers_name = diffusers_name.replace("textencoder2", "text_encoder_2")
-            diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-            diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-            diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
-            diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-            diffusers_name = diffusers_name.replace("middle.block", "mid_block")
-            diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-            diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
-            diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
-            diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
-            diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
-            diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
-            diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
-            diffusers_name = diffusers_name.replace("proj.in", "proj_in")
-            diffusers_name = diffusers_name.replace("proj.out", "proj_out")
-            diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
-            diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-            diffusers_name = diffusers_name.replace("text.model", "text_model")
-            diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-            diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-            diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-            diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-            diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+        #     diffusers_name = k.replace("lora_unet_", "unet.")
+        #     diffusers_name = diffusers_name.replace("lora_te_", "textencoder.")
+        #     diffusers_name = diffusers_name.replace("lora_te1_", "textencoder.")
+        #     diffusers_name = diffusers_name.replace("lora_te2_", "textencoder2.")
+        #     diffusers_name = diffusers_name.replace("_", ".")
+        #     diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
+        #     diffusers_name = diffusers_name.replace("textencoder2", "text_encoder_2")
+        #     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+        #     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+        #     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
+        #     diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+        #     diffusers_name = diffusers_name.replace("middle.block", "mid_block")
+        #     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+        #     diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+        #     diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
+        #     diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
+        #     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
+        #     diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
+        #     diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+        #     diffusers_name = diffusers_name.replace("proj.in", "proj_in")
+        #     diffusers_name = diffusers_name.replace("proj.out", "proj_out")
+        #     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
+        #     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+        #     diffusers_name = diffusers_name.replace("text.model", "text_model")
+        #     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+        #     diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+        #     diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+        #     diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+        #     diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+        #     diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
 
-            if "mlp" in diffusers_name:
-                diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+        #     if "mlp" in diffusers_name:
+        #         diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
 
-            if "emb" in diffusers_name:
-                pattern = r"\.\d+(?=\D*$)"
-                diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
-            diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
-            diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
-            diffusers_name = diffusers_name.replace("op", "conv")
-            diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+        #     if "emb" in diffusers_name:
+        #         pattern = r"\.\d+(?=\D*$)"
+        #         diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
 
-            network_alphas_renamed.update({diffusers_name: value})
+        #     diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
+        #     diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
+        #     diffusers_name = diffusers_name.replace("op", "conv")
+        #     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
-        return new_state_dict, network_alphas_renamed
+        #     network_alphas_renamed.update({diffusers_name: value})
+
+        return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
         """
