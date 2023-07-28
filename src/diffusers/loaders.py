@@ -1227,7 +1227,7 @@ class LoraLoaderMixin:
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alpha (`Dict[str, float]`):
+            network_alphas (`Dict[str, float]`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
@@ -1309,7 +1309,7 @@ class LoraLoaderMixin:
                     k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
                     for k, v in text_encoder_lora_state_dict.items()
                 }
-
+                print(text_encoder.__class__.__name__)
                 load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                 if len(load_state_dict_results.unexpected_keys) != 0:
                     raise ValueError(
