@@ -77,7 +77,6 @@ class PatchedLoraProjection(nn.Module):
         if dtype is None:
             dtype = self.regular_linear_layer.weight.dtype
 
-        # print(f"in: {self.regular_linear_layer.in_features}, out: {self.regular_linear_layer.out_features}")
         self.lora_linear_layer = LoRALinearLayer(
             self.regular_linear_layer.in_features,
             self.regular_linear_layer.out_features,
@@ -1078,7 +1077,6 @@ class LoraLoaderMixin:
             )
             for k in state_dict.keys()
         ):
-            # print("Kohya detected.")
             # Map SDXL blocks correctly.
             if unet_config is not None:
                 # use unet config to remap block numbers
@@ -1169,10 +1167,10 @@ class LoraLoaderMixin:
                 )
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        # print(f"state_dict: {list(state_dict.keys())[:20]}, {len(state_dict)}")
         if is_all_unet and len(state_dict) > 0:
             raise ValueError("At this point all state dict entries have to be converted.")
         else:
+            # Remaining is the text encoder state dict.
             for k, v in state_dict.items():
                 new_state_dict.update({k: v})
 
@@ -1197,7 +1195,6 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        # print(keys)
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
@@ -1371,11 +1368,9 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         rank_mapping = kwargs.pop("rank_mapping", None) or {}
-        # print(f"From patched projection: {rank_mapping}")
 
         text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            # print(name, te_state_dict[name + ".q_proj.weight"].shape)
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
@@ -1612,6 +1607,7 @@ class LoraLoaderMixin:
                     te_state_dict[diffusers_name] = state_dict.pop(key)
                     te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
+            # (sayakpaul): Duplicate code. Needs to be cleaned.
             elif lora_name.startswith("lora_te2_"):
                 diffusers_name = key.replace("lora_te_", "")
                 diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
@@ -1641,7 +1637,6 @@ class LoraLoaderMixin:
         te_state_dict = {
             f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
         }
-        print(f"Initial: {len(te_state_dict)}")
         te2_state_dict = (
             {
                 f"text_encoder_2.{module_name.replace('lora.te2.', '')}": params
@@ -1652,7 +1647,7 @@ class LoraLoaderMixin:
         )
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
-            print(f"After population: {len(te_state_dict)}")
+
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
         network_alphas_renamed = {}
@@ -1701,6 +1696,8 @@ class LoraLoaderMixin:
             diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
             network_alphas_renamed.update({diffusers_name: value})
+
+        print(network_alphas_renamed)
 
         return new_state_dict, network_alphas_renamed
 
