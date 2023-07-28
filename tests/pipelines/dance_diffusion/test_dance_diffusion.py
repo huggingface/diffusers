@@ -42,7 +42,6 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     }
     batch_params = UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS
     test_attention_slicing = False
-    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

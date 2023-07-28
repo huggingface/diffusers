@@ -103,7 +103,7 @@ if is_torch_available():
     )
     from .torch_utils import maybe_allow_in_graph
 
-from .testing_utils import export_to_gif, export_to_video
+from .testing_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
 
 
 logger = get_logger(__name__)

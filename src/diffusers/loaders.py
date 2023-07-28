@@ -14,46 +14,40 @@
 import os
 import warnings
 from collections import defaultdict
+from contextlib import nullcontext
+from io import BytesIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
+import requests
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
-from .models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    AttnProcessor,
-    AttnProcessor2_0,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRALinearLayer,
-    LoRAXFormersAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-)
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     _get_model_file,
     deprecate,
+    is_accelerate_available,
+    is_omegaconf_available,
     is_safetensors_available,
     is_transformers_available,
     logging,
 )
+from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_safetensors_available():
     import safetensors
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
 
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
 
@@ -62,6 +56,7 @@ UNET_NAME = "unet"
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+TOTAL_EXAMPLE_KEYS = 5
 
 TEXT_INVERSION_NAME = "learned_embeds.bin"
 TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
@@ -73,6 +68,8 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
+        from .models.lora import LoRALinearLayer
+
         self.regular_linear_layer = regular_linear_layer
 
         device = self.regular_linear_layer.weight.device
@@ -98,7 +95,7 @@ class PatchedLoraProjection(nn.Module):
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
 
-    if isinstance(text_encoder, CLIPTextModel):
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
             name = f"text_model.encoder.layers.{i}.self_attn"
             mod = layer.self_attn
@@ -107,6 +104,20 @@ def text_encoder_attn_modules(text_encoder):
         raise ValueError(f"do not know how to get attention modules for: {text_encoder.__class__.__name__}")
 
     return attn_modules
+
+
+def text_encoder_mlp_modules(text_encoder):
+    mlp_modules = []
+
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
+        for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+            mlp_mod = layer.mlp
+            name = f"text_model.encoder.layers.{i}.mlp"
+            mlp_modules.append((name, mlp_mod))
+    else:
+        raise ValueError(f"do not know how to get mlp modules for: {text_encoder.__class__.__name__}")
+
+    return mlp_modules
 
 
 def text_encoder_lora_state_dict(text_encoder):
@@ -178,7 +189,7 @@ class UNet2DConditionLoadersMixin:
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
-        [`cross_attention.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py)
+        [`attention_processor.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
         and be a `torch.nn.Module` class.
 
         Parameters:
@@ -221,6 +232,18 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
+        from .models.attention_processor import (
+            AttnAddedKVProcessor,
+            AttnAddedKVProcessor2_0,
+            CustomDiffusionAttnProcessor,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            SlicedAttnAddedKVProcessor,
+            XFormersAttnProcessor,
+        )
+        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -297,6 +320,7 @@ class UNet2DConditionLoadersMixin:
 
         # fill attn processors
         attn_processors = {}
+        non_attn_lora_layers = []
 
         is_lora = all("lora" in k for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
@@ -320,12 +344,32 @@ class UNet2DConditionLoadersMixin:
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
             for key, value_dict in lora_grouped_dict.items():
-                rank = value_dict["to_k_lora.down.weight"].shape[0]
-                hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
-
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
+
+                # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
+                # or add_{k,v,q,out_proj}_proj_lora layers.
+                if "lora.down.weight" in value_dict:
+                    rank = value_dict["lora.down.weight"].shape[0]
+                    hidden_size = value_dict["lora.up.weight"].shape[0]
+
+                    if isinstance(attn_processor, LoRACompatibleConv):
+                        lora = LoRAConv2dLayer(hidden_size, hidden_size, rank, network_alpha)
+                    elif isinstance(attn_processor, LoRACompatibleLinear):
+                        lora = LoRALinearLayer(
+                            attn_processor.in_features, attn_processor.out_features, rank, network_alpha
+                        )
+                    else:
+                        raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+
+                    value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
+                    lora.load_state_dict(value_dict)
+                    non_attn_lora_layers.append((attn_processor, lora))
+                    continue
+
+                rank = value_dict["to_k_lora.down.weight"].shape[0]
+                hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
@@ -383,9 +427,15 @@ class UNet2DConditionLoadersMixin:
 
         # set correct dtype & device
         attn_processors = {k: v.to(device=self.device, dtype=self.dtype) for k, v in attn_processors.items()}
+        non_attn_lora_layers = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in non_attn_lora_layers]
 
         # set layers
         self.set_attn_processor(attn_processors)
+
+        # set ff layers
+        for target_module, lora_layer in non_attn_lora_layers:
+            if hasattr(target_module, "set_lora_layer"):
+                target_module.set_lora_layer(lora_layer)
 
     def save_attn_procs(
         self,
@@ -394,7 +444,6 @@ class UNet2DConditionLoadersMixin:
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
-        **kwargs,
     ):
         r"""
         Save an attention processor to a directory so that it can be reloaded using the
@@ -413,12 +462,11 @@ class UNet2DConditionLoadersMixin:
                 `DIFFUSERS_SAVE_MODE`.
 
         """
-        weight_name = weight_name or deprecate(
-            "weights_name",
-            "0.20.0",
-            "`weights_name` is deprecated, please use `weight_name` instead.",
-            take_from=kwargs,
+        from .models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionXFormersAttnProcessor,
         )
+
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
@@ -806,7 +854,8 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into self.unet and self.text_encoder.
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
@@ -821,14 +870,16 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-
-            kwargs:
+            kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
         self.load_lora_into_text_encoder(
-            state_dict, network_alpha=network_alpha, text_encoder=self.text_encoder, lora_scale=self.lora_scale
+            state_dict,
+            network_alpha=network_alpha,
+            text_encoder=self.text_encoder,
+            lora_scale=self.lora_scale,
         )
 
     @classmethod
@@ -1001,23 +1052,25 @@ class LoraLoaderMixin:
         elif not all(
             key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in state_dict.keys()
         ):
-            unet.load_attn_procs(state_dict)
+            unet.load_attn_procs(state_dict, network_alpha=network_alpha)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, lora_scale=1.0):
+    def load_lora_into_text_encoder(cls, state_dict, network_alpha, text_encoder, prefix=None, lora_scale=1.0):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key shoult be prefixed with an
+                A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alpha (`float`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
+            prefix (`str`):
+                Expected prefix of the `text_encoder` in the `state_dict`.
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
@@ -1027,14 +1080,17 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
+        prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(cls.text_encoder_name)]
+            text_encoder_keys = [k for k in keys if k.startswith(prefix)]
             text_encoder_lora_state_dict = {
-                k.replace(f"{cls.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+                k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
+
             if len(text_encoder_lora_state_dict) > 0:
-                logger.info(f"Loading {cls.text_encoder_name}.")
+                logger.info(f"Loading {prefix}.")
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
@@ -1076,8 +1132,9 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
+                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
-                cls._modify_text_encoder(text_encoder, lora_scale, network_alpha, rank=rank)
+                cls._modify_text_encoder(text_encoder, lora_scale, network_alpha, rank=rank, patch_mlp=patch_mlp)
 
                 # set correct dtype & device
                 text_encoder_lora_state_dict = {
@@ -1109,8 +1166,21 @@ class LoraLoaderMixin:
                 attn_module.v_proj = attn_module.v_proj.regular_linear_layer
                 attn_module.out_proj = attn_module.out_proj.regular_linear_layer
 
+        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+            if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                mlp_module.fc1 = mlp_module.fc1.regular_linear_layer
+                mlp_module.fc2 = mlp_module.fc2.regular_linear_layer
+
     @classmethod
-    def _modify_text_encoder(cls, text_encoder, lora_scale=1, network_alpha=None, rank=4, dtype=None):
+    def _modify_text_encoder(
+        cls,
+        text_encoder,
+        lora_scale=1,
+        network_alpha=None,
+        rank=4,
+        dtype=None,
+        patch_mlp=False,
+    ):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
@@ -1141,6 +1211,18 @@ class LoraLoaderMixin:
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
+        if patch_mlp:
+            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+                mlp_module.fc1 = PatchedLoraProjection(
+                    mlp_module.fc1, lora_scale, network_alpha, rank=rank, dtype=dtype
+                )
+                lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
+
+                mlp_module.fc2 = PatchedLoraProjection(
+                    mlp_module.fc2, lora_scale, network_alpha, rank=rank, dtype=dtype
+                )
+                lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
+
         return lora_parameters
 
     @classmethod
@@ -1161,10 +1243,10 @@ class LoraLoaderMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the UNet.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module] or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes 🤗 Transformers.
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1174,23 +1256,10 @@ class LoraLoaderMixin:
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
-        if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
-            return
-
-        if save_function is None:
-            if safe_serialization:
-
-                def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
-
-            else:
-                save_function = torch.save
-
-        os.makedirs(save_directory, exist_ok=True)
-
         # Create a flat dictionary.
         state_dict = {}
+
+        # Populate the dictionary.
         if unet_lora_layers is not None:
             weights = (
                 unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
@@ -1212,6 +1281,38 @@ class LoraLoaderMixin:
             state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def write_lora_layers(
+        state_dict: Dict[str, torch.Tensor],
+        save_directory: str,
+        is_main_process: bool,
+        weight_name: str,
+        save_function: Callable,
+        safe_serialization: bool,
+    ):
+        if os.path.isfile(save_directory):
+            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
+            return
+
+        if save_function is None:
+            if safe_serialization:
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+            else:
+                save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
         if weight_name is None:
             if safe_serialization:
                 weight_name = LORA_WEIGHT_NAME_SAFE
@@ -1226,9 +1327,12 @@ class LoraLoaderMixin:
         unet_state_dict = {}
         te_state_dict = {}
         network_alpha = None
+        unloaded_keys = []
 
         for key, value in state_dict.items():
-            if "lora_down" in key:
+            if "hada" in key or "skip" in key:
+                unloaded_keys.append(key)
+            elif "lora_down" in key:
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
                 lora_name_alpha = lora_name + ".alpha"
@@ -1249,12 +1353,21 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
                     diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
                     diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+                    diffusers_name = diffusers_name.replace("proj.in", "proj_in")
+                    diffusers_name = diffusers_name.replace("proj.out", "proj_out")
                     if "transformer_blocks" in diffusers_name:
                         if "attn1" in diffusers_name or "attn2" in diffusers_name:
                             diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
                             diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
                             unet_state_dict[diffusers_name] = value
                             unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                        elif "ff" in diffusers_name:
+                            unet_state_dict[diffusers_name] = value
+                            unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                    elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
+                        unet_state_dict[diffusers_name] = value
+                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+
                 elif lora_name.startswith("lora_te_"):
                     diffusers_name = key.replace("lora_te_", "").replace("_", ".")
                     diffusers_name = diffusers_name.replace("text.model", "text_model")
@@ -1266,6 +1379,19 @@ class LoraLoaderMixin:
                     if "self_attn" in diffusers_name:
                         te_state_dict[diffusers_name] = value
                         te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+                    elif "mlp" in diffusers_name:
+                        # Be aware that this is the new diffusers convention and the rest of the code might
+                        # not utilize it yet.
+                        diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+                        te_state_dict[diffusers_name] = value
+                        te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
+
+        logger.info("Kohya-style checkpoint detected.")
+        if len(unloaded_keys) > 0:
+            example_unloaded_keys = ", ".join(x for x in unloaded_keys[:TOTAL_EXAMPLE_KEYS])
+            logger.warning(
+                f"There are some keys (such as: {example_unloaded_keys}) in the checkpoints we don't provide support for."
+            )
 
         unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
@@ -1284,22 +1410,36 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        is_unet_lora = all(
-            isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor, LoRAAttnAddedKVProcessor))
-            for _, processor in self.unet.attn_processors.items()
+        from .models.attention_processor import (
+            LORA_ATTENTION_PROCESSORS,
+            AttnProcessor,
+            AttnProcessor2_0,
+            LoRAAttnAddedKVProcessor,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAXFormersAttnProcessor,
+            XFormersAttnProcessor,
         )
-        # Handle attention processors that are a mix of regular attention and AddedKV
-        # attention.
-        if is_unet_lora:
-            is_attn_procs_mixed = all(
-                isinstance(processor, (LoRAAttnProcessor2_0, LoRAAttnProcessor))
-                for _, processor in self.unet.attn_processors.items()
-            )
-            if not is_attn_procs_mixed:
-                unet_attn_proc_cls = AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                self.unet.set_attn_processor(unet_attn_proc_cls())
-            else:
+
+        unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
+
+        if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
+            # Handle attention processors that are a mix of regular attention and AddedKV
+            # attention.
+            if len(unet_attention_classes) > 1 or LoRAAttnAddedKVProcessor in unet_attention_classes:
                 self.unet.set_default_attn_processor()
+            else:
+                regular_attention_classes = {
+                    LoRAAttnProcessor: AttnProcessor,
+                    LoRAAttnProcessor2_0: AttnProcessor2_0,
+                    LoRAXFormersAttnProcessor: XFormersAttnProcessor,
+                }
+                [attention_proc_class] = unet_attention_classes
+                self.unet.set_attn_processor(regular_attention_classes[attention_proc_class]())
+
+            for _, module in self.unet.named_modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -1319,8 +1459,8 @@ class FromSingleFileMixin:
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` format. The pipeline
-        is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
+        format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -1344,7 +1484,7 @@ class FromSingleFileMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
@@ -1358,7 +1498,7 @@ class FromSingleFileMixin:
                 weights. If set to `False`, safetensors weights are not loaded.
             extract_ema (`bool`, *optional*, defaults to `False`):
                 Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better to continue finetuning.
+                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
             upcast_attention (`bool`, *optional*, defaults to `None`):
                 Whether the attention computation should always be upcasted.
             image_size (`int`, *optional*, defaults to 512):
@@ -1368,23 +1508,22 @@ class FromSingleFileMixin:
                 The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
                 the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
             num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it will be automatically inferred.
+                The number of input channels. If `None`, it is automatically inferred.
             scheduler_type (`str`, *optional*, defaults to `"pndm"`):
                 Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
                 "ddim"]`.
             load_safety_checker (`bool`, *optional*, defaults to `True`):
                 Whether to load the safety checker or not.
-            text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
-                An instance of
-                [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel) to use,
-                specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
-                variant. If this parameter is `None`, the function will load a new instance of [CLIP] by itself, if
-                needed.
-            tokenizer (`CLIPTokenizer`, *optional*, defaults to `None`):
-                An instance of
-                [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
-                to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by
-                itself, if needed.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
+                An instance of `CLIPTextModel` to use, specifically the
+                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
+                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
+            vae (`AutoencoderKL`, *optional*, defaults to `None`):
+                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+                this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
+                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
+                of `CLIPTokenizer` by itself if needed.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1430,6 +1569,8 @@ class FromSingleFileMixin:
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
         text_encoder = kwargs.pop("text_encoder", None)
+        vae = kwargs.pop("vae", None)
+        controlnet = kwargs.pop("controlnet", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -1446,11 +1587,18 @@ class FromSingleFileMixin:
         # TODO: For now we only support stable diffusion
         stable_unclip = None
         model_type = None
-        controlnet = False
 
-        if pipeline_name == "StableDiffusionControlNetPipeline":
+        if pipeline_name in [
+            "StableDiffusionControlNetPipeline",
+            "StableDiffusionControlNetImg2ImgPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
+        ]:
+            from .models.controlnet import ControlNetModel
+            from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
+
             # Model type will be inferred from the checkpoint.
-            controlnet = True
+            if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
+                raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
             pass
@@ -1476,8 +1624,8 @@ class FromSingleFileMixin:
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = "/".join(ckpt_path.parts[:2])
-            file_path = "/".join(ckpt_path.parts[2:])
+            repo_id = os.path.join(*ckpt_path.parts[:2])
+            file_path = os.path.join(*ckpt_path.parts[2:])
 
             if file_path.startswith("blob/"):
                 file_path = file_path[len("blob/") :]
@@ -1512,6 +1660,7 @@ class FromSingleFileMixin:
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
             text_encoder=text_encoder,
+            vae=vae,
             tokenizer=tokenizer,
         )
 
@@ -1519,3 +1668,339 @@ class FromSingleFileMixin:
             pipe.to(torch_dtype=torch_dtype)
 
         return pipe
+
+
+class FromOriginalVAEMixin:
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        r"""
+        Instantiate a [`AutoencoderKL`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is format. The pipeline is set in evaluation mode (`model.eval()`) by
+        default.
+
+        Parameters:
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
+                dtype is automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won't be downloaded from the Hub.
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            upcast_attention (`bool`, *optional*, defaults to `None`):
+                Whether the attention computation should always be upcasted.
+            scaling_factor (`float`, *optional*, defaults to 0.18215):
+                The component-wise standard deviation of the trained latent space computed using the first batch of the
+                training set. This is used to scale the latent space to have unit variance when training the diffusion
+                model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+                diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
+                = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
+                Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (for example the pipeline components of the
+                specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
+                method. See example below for more information.
+
+        <Tip warning={true}>
+
+            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you want to load
+            a VAE that does accompany a stable diffusion model of v2 or higher or SDXL.
+
+        </Tip>
+
+        Examples:
+
+        ```py
+        from diffusers import AutoencoderKL
+
+        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"  # can also be local file
+        model = AutoencoderKL.from_single_file(url)
+        ```
+        """
+        if not is_omegaconf_available():
+            raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
+
+        from omegaconf import OmegaConf
+
+        from .models import AutoencoderKL
+
+        # import here to avoid circular dependency
+        from .pipelines.stable_diffusion.convert_from_ckpt import (
+            convert_ldm_vae_checkpoint,
+            create_vae_diffusers_config,
+        )
+
+        config_file = kwargs.pop("config_file", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        image_size = kwargs.pop("image_size", None)
+        scaling_factor = kwargs.pop("scaling_factor", None)
+        kwargs.pop("upcast_attention", None)
+
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+
+        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
+        from_safetensors = file_extension == "safetensors"
+
+        if from_safetensors and use_safetensors is False:
+            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+        # remove huggingface url
+        for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
+            if pretrained_model_link_or_path.startswith(prefix):
+                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+
+        # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
+        ckpt_path = Path(pretrained_model_link_or_path)
+        if not ckpt_path.is_file():
+            # get repo_id and (potentially nested) file path of ckpt in repo
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
+
+            if file_path.startswith("blob/"):
+                file_path = file_path[len("blob/") :]
+
+            if file_path.startswith("main/"):
+                file_path = file_path[len("main/") :]
+
+            pretrained_model_link_or_path = hf_hub_download(
+                repo_id,
+                filename=file_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                force_download=force_download,
+            )
+
+        if from_safetensors:
+            from safetensors import safe_open
+
+            checkpoint = {}
+            with safe_open(pretrained_model_link_or_path, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    checkpoint[key] = f.get_tensor(key)
+        else:
+            checkpoint = torch.load(pretrained_model_link_or_path, map_location="cpu")
+
+        if "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
+        if config_file is None:
+            config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+            config_file = BytesIO(requests.get(config_url).content)
+
+        original_config = OmegaConf.load(config_file)
+
+        # default to sd-v1-5
+        image_size = image_size or 512
+
+        vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+        converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
+
+        if scaling_factor is None:
+            if (
+                "model" in original_config
+                and "params" in original_config.model
+                and "scale_factor" in original_config.model.params
+            ):
+                vae_scaling_factor = original_config.model.params.scale_factor
+            else:
+                vae_scaling_factor = 0.18215  # default SD scaling factor
+
+        vae_config["scaling_factor"] = vae_scaling_factor
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            vae = AutoencoderKL(**vae_config)
+
+        if is_accelerate_available():
+            for param_name, param in converted_vae_checkpoint.items():
+                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        else:
+            vae.load_state_dict(converted_vae_checkpoint)
+
+        if torch_dtype is not None:
+            vae.to(torch_dtype=torch_dtype)
+
+        return vae
+
+
+class FromOriginalControlnetMixin:
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        r"""
+        Instantiate a [`ControlNetModel`] from pretrained controlnet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+        Parameters:
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
+                dtype is automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won't be downloaded from the Hub.
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
+            upcast_attention (`bool`, *optional*, defaults to `None`):
+                Whether the attention computation should always be upcasted.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (for example the pipeline components of the
+                specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
+                method. See example below for more information.
+
+        Examples:
+
+        ```py
+        from diffusers import StableDiffusionControlnetPipeline, ControlNetModel
+
+        url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
+        model = ControlNetModel.from_single_file(url)
+
+        url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
+        pipe = StableDiffusionControlnetPipeline.from_single_file(url, controlnet=controlnet)
+        ```
+        """
+        # import here to avoid circular dependency
+        from .pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
+
+        config_file = kwargs.pop("config_file", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        num_in_channels = kwargs.pop("num_in_channels", None)
+        use_linear_projection = kwargs.pop("use_linear_projection", None)
+        revision = kwargs.pop("revision", None)
+        extract_ema = kwargs.pop("extract_ema", False)
+        image_size = kwargs.pop("image_size", None)
+        upcast_attention = kwargs.pop("upcast_attention", None)
+
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+
+        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
+        from_safetensors = file_extension == "safetensors"
+
+        if from_safetensors and use_safetensors is False:
+            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+        # remove huggingface url
+        for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
+            if pretrained_model_link_or_path.startswith(prefix):
+                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+
+        # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
+        ckpt_path = Path(pretrained_model_link_or_path)
+        if not ckpt_path.is_file():
+            # get repo_id and (potentially nested) file path of ckpt in repo
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
+
+            if file_path.startswith("blob/"):
+                file_path = file_path[len("blob/") :]
+
+            if file_path.startswith("main/"):
+                file_path = file_path[len("main/") :]
+
+            pretrained_model_link_or_path = hf_hub_download(
+                repo_id,
+                filename=file_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                force_download=force_download,
+            )
+
+        if config_file is None:
+            config_url = "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml"
+            config_file = BytesIO(requests.get(config_url).content)
+
+        image_size = image_size or 512
+
+        controlnet = download_controlnet_from_original_ckpt(
+            pretrained_model_link_or_path,
+            original_config_file=config_file,
+            image_size=image_size,
+            extract_ema=extract_ema,
+            num_in_channels=num_in_channels,
+            upcast_attention=upcast_attention,
+            from_safetensors=from_safetensors,
+            use_linear_projection=use_linear_projection,
+        )
+
+        if torch_dtype is not None:
+            controlnet.to(torch_dtype=torch_dtype)
+
+        return controlnet

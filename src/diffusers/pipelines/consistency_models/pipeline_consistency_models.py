@@ -50,20 +50,17 @@ EXAMPLE_DOC_STRING = """
 
 class ConsistencyModelPipeline(DiffusionPipeline):
     r"""
-    Pipeline for consistency models for unconditional or class-conditional image generation, as introduced in [1].
+    Pipeline for unconditional or class-conditional image generation.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-
-    [1] Song, Yang and Dhariwal, Prafulla and Chen, Mark and Sutskever, Ilya. "Consistency Models"
-    https://arxiv.org/pdf/2303.01469
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         unet ([`UNet2DModel`]):
-            Unconditional or class-conditional U-Net architecture to denoise image latents.
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the image latents. Currently only compatible
-            with [`CMStochasticIterativeScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Currently only
+            compatible with [`CMStochasticIterativeScheduler`].
     """
 
     def __init__(self, unet: UNet2DModel, scheduler: CMStochasticIterativeScheduler) -> None:
@@ -76,37 +73,12 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         self.safety_checker = None
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
+        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
+        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
+        iterative execution of the `unet`.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
@@ -128,25 +100,6 @@ class ConsistencyModelPipeline(DiffusionPipeline):
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def prepare_latents(self, batch_size, num_channels, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels, height, width)
@@ -245,8 +198,8 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
             class_labels (`torch.Tensor` or `List[int]` or `int`, *optional*):
-                Optional class labels for conditioning class-conditional consistency models. Will not be used if the
-                model is not class-conditional.
+                Optional class labels for conditioning class-conditional consistency models. Not used if the model is
+                not class-conditional.
             num_inference_steps (`int`, *optional*, defaults to 1):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -254,29 +207,29 @@ class ConsistencyModelPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
             generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
 
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         # 0. Prepare call parameters
         img_size = self.unet.config.sample_size

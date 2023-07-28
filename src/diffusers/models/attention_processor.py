@@ -19,6 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
+from .lora import LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -167,7 +168,7 @@ class Attention(nn.Module):
     ):
         is_lora = hasattr(self, "processor") and isinstance(
             self.processor,
-            (LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor),
+            LORA_ATTENTION_PROCESSORS,
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)
@@ -505,36 +506,6 @@ class AttnProcessor:
         return hidden_states
 
 
-class LoRALinearLayer(nn.Module):
-    def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
-        super().__init__()
-
-        if rank > min(in_features, out_features):
-            raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
-
-        self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
-        self.up = nn.Linear(rank, out_features, bias=False, device=device, dtype=dtype)
-        # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
-        # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
-        self.network_alpha = network_alpha
-        self.rank = rank
-
-        nn.init.normal_(self.down.weight, std=1 / rank)
-        nn.init.zeros_(self.up.weight)
-
-    def forward(self, hidden_states):
-        orig_dtype = hidden_states.dtype
-        dtype = self.down.weight.dtype
-
-        down_hidden_states = self.down(hidden_states.to(dtype))
-        up_hidden_states = self.up(down_hidden_states)
-
-        if self.network_alpha is not None:
-            up_hidden_states *= self.network_alpha / self.rank
-
-        return up_hidden_states.to(orig_dtype)
-
-
 class LoRAAttnProcessor(nn.Module):
     r"""
     Processor for implementing the LoRA attention mechanism.
@@ -667,9 +638,9 @@ class CustomDiffusionAttnProcessor(nn.Module):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         if self.train_q_out:
-            query = self.to_q_custom_diffusion(hidden_states)
+            query = self.to_q_custom_diffusion(hidden_states).to(attn.to_q.weight.dtype)
         else:
-            query = attn.to_q(hidden_states)
+            query = attn.to_q(hidden_states.to(attn.to_q.weight.dtype))
 
         if encoder_hidden_states is None:
             crossattn = False
@@ -680,8 +651,10 @@ class CustomDiffusionAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states)
-            value = self.to_v_custom_diffusion(encoder_hidden_states)
+            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
+            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
+            key = key.to(attn.to_q.weight.dtype)
+            value = value.to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -1096,7 +1069,6 @@ class AttnProcessor2_0:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-        inner_dim = hidden_states.shape[-1]
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -1117,6 +1089,7 @@ class AttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
@@ -1392,9 +1365,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if self.train_q_out:
-            query = self.to_q_custom_diffusion(hidden_states)
+            query = self.to_q_custom_diffusion(hidden_states).to(attn.to_q.weight.dtype)
         else:
-            query = attn.to_q(hidden_states)
+            query = attn.to_q(hidden_states.to(attn.to_q.weight.dtype))
 
         if encoder_hidden_states is None:
             crossattn = False
@@ -1405,8 +1378,10 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states)
-            value = self.to_v_custom_diffusion(encoder_hidden_states)
+            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
+            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
+            key = key.to(attn.to_q.weight.dtype)
+            value = value.to(attn.to_q.weight.dtype)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -1622,6 +1597,13 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
 ]
+
+LORA_ATTENTION_PROCESSORS = (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+)
 
 
 class SpatialNorm(nn.Module):

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -49,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableDiffusionXLPipeline
 
         >>> pipe = StableDiffusionXLPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -146,17 +147,15 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
@@ -164,42 +163,19 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
-        Enable tiled VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
-        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
         """
         self.vae.enable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.text_encoder_2, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -231,32 +207,15 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
     def encode_prompt(
         self,
-        prompt,
+        prompt: str,
+        prompt_2: Optional[str] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt=None,
+        negative_prompt: Optional[str] = None,
+        negative_prompt_2: Optional[str] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -267,8 +226,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
+            prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
+                used in both text-encoders
             device: (`torch.device`):
                 torch device
             num_images_per_prompt (`int`):
@@ -279,6 +241,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            negative_prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
+                `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -317,9 +282,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         )
 
         if prompt_embeds is None:
+            prompt_2 = prompt_2 or prompt
             # textual inversion: procecss multi-vector tokens if necessary
             prompt_embeds_list = []
-            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+            prompts = [prompt, prompt_2]
+            for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
                 if isinstance(self, TextualInversionLoaderMixin):
                     prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
@@ -330,7 +297,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                     truncation=True,
                     return_tensors="pt",
                 )
+
                 text_input_ids = text_inputs.input_ids
+                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
                 untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
@@ -351,11 +320,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 pooled_prompt_embeds = prompt_embeds[0]
                 prompt_embeds = prompt_embeds.hidden_states[-2]
 
-                bs_embed, seq_len, _ = prompt_embeds.shape
-                # duplicate text embeddings for each generation per prompt, using mps friendly method
-                prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-                prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-
                 prompt_embeds_list.append(prompt_embeds)
 
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
@@ -367,6 +331,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
+            negative_prompt_2 = negative_prompt_2 or negative_prompt
+
             uncond_tokens: List[str]
             if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
@@ -374,7 +340,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt, negative_prompt_2]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -382,17 +348,16 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                     " the batch size of `prompt`."
                 )
             else:
-                uncond_tokens = negative_prompt
+                uncond_tokens = [negative_prompt, negative_prompt_2]
 
             negative_prompt_embeds_list = []
-            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                # textual inversion: procecss multi-vector tokens if necessary
+            for negative_prompt, tokenizer, text_encoder in zip(uncond_tokens, tokenizers, text_encoders):
                 if isinstance(self, TextualInversionLoaderMixin):
-                    uncond_tokens = self.maybe_convert_prompt(uncond_tokens, tokenizer)
+                    negative_prompt = self.maybe_convert_prompt(negative_prompt, tokenizer)
 
                 max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
-                    uncond_tokens,
+                    negative_prompt,
                     padding="max_length",
                     max_length=max_length,
                     truncation=True,
@@ -407,32 +372,30 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 negative_pooled_prompt_embeds = negative_prompt_embeds[0]
                 negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
 
-                if do_classifier_free_guidance:
-                    # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-                    seq_len = negative_prompt_embeds.shape[1]
-
-                    negative_prompt_embeds = negative_prompt_embeds.to(dtype=text_encoder.dtype, device=device)
-
-                    negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-                    negative_prompt_embeds = negative_prompt_embeds.view(
-                        batch_size * num_images_per_prompt, seq_len, -1
-                    )
-
-                    # For classifier free guidance, we need to do two forward passes.
-                    # Here we concatenate the unconditional and text embeddings into a single batch
-                    # to avoid doing two forward passes
-
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
-        bs_embed = pooled_prompt_embeds.shape[0]
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        if do_classifier_free_guidance:
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
         pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
             bs_embed * num_images_per_prompt, -1
         )
-        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-            bs_embed * num_images_per_prompt, -1
-        )
+        if do_classifier_free_guidance:
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+                bs_embed * num_images_per_prompt, -1
+            )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -457,10 +420,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     def check_inputs(
         self,
         prompt,
+        prompt_2,
         height,
         width,
         callback_steps,
         negative_prompt=None,
+        negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
@@ -482,16 +447,28 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
                 " only forward one of the two."
             )
+        elif prompt_2 is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt_2`: {prompt_2} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
         elif prompt is None and prompt_embeds is None:
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
+            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        elif negative_prompt_2 is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt_2`: {negative_prompt_2} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
@@ -572,12 +549,14 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        prompt_2: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -603,6 +582,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
+                used in both text-encoders
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -612,11 +594,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 expense of slower inference.
             denoising_end (`float`, *optional*):
                 When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
-                completed before it is intentionally prematurely terminated. For instance, if denoising_end is set to
-                0.7 and `num_inference_steps` is fixed at 50, the process will execute only 35 (i.e., 0.7 * 50)
-                denoising steps. As a result, the returned sample will still retain a substantial amount of noise. The
-                denoising_end parameter should ideally be utilized when this pipeline forms a part of a "Mixture of
-                Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
+                completed before it is intentionally prematurely terminated. As a result, the returned sample will
+                still retain a substantial amount of noise as determined by the discrete timesteps selected by the
+                scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a part of a
+                "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
                 Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output)
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
@@ -628,6 +609,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            negative_prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
+                `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -658,8 +642,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -669,27 +653,33 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
                 [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
                 Guidance rescale factor should fix overexposure when using zero terminal SNR.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                TODO
+                If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
+                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
+                explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                TODO
+                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
+                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
+                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                TODO
+                For most cases, `target_size` should be set to the desired height and width of the generated image. If
+                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
+                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
 
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple. When returning a tuple, the first element is a list with the generated images, and the second
-            element is a list of `bool`s denoting whether the corresponding generated image likely represents
-            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.default_sample_size * self.vae_scale_factor
@@ -701,10 +691,12 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
+            prompt_2,
             height,
             width,
             callback_steps,
             negative_prompt,
+            negative_prompt_2,
             prompt_embeds,
             negative_prompt_embeds,
             pooled_prompt_embeds,
@@ -736,11 +728,13 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
         ) = self.encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
+            prompt=prompt,
+            prompt_2=prompt_2,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            negative_prompt_2=negative_prompt_2,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -788,9 +782,15 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         # 7.1 Apply denoising_end
-        if denoising_end is not None:
-            num_inference_steps = int(round(denoising_end * num_inference_steps))
-            timesteps = timesteps[: num_warmup_steps + self.scheduler.order * num_inference_steps]
+        if denoising_end is not None and type(denoising_end) == float and denoising_end > 0 and denoising_end < 1:
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_end * self.scheduler.config.num_train_timesteps)
+                )
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -850,3 +850,66 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             return (image,)
 
         return StableDiffusionXLPipelineOutput(images=image)
+
+    # Overrride to properly handle the loading and unloading of the additional text encoder.
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+        state_dict, network_alpha = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        self.load_lora_into_unet(state_dict, network_alpha=network_alpha, unet=self.unet)
+
+        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
+        if len(text_encoder_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_state_dict,
+                network_alpha=network_alpha,
+                text_encoder=self.text_encoder,
+                prefix="text_encoder",
+                lora_scale=self.lora_scale,
+            )
+
+        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
+        if len(text_encoder_2_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_2_state_dict,
+                network_alpha=network_alpha,
+                text_encoder=self.text_encoder_2,
+                prefix="text_encoder_2",
+                lora_scale=self.lora_scale,
+            )
+
+    @classmethod
+    def save_lora_weights(
+        self,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = False,
+    ):
+        state_dict = {}
+
+        def pack_weights(layers, prefix):
+            layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
+            layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            return layers_state_dict
+
+        state_dict.update(pack_weights(unet_lora_layers, "unet"))
+
+        if text_encoder_lora_layers and text_encoder_2_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def _remove_text_encoder_monkey_patch(self):
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
