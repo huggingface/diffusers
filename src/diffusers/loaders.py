@@ -350,7 +350,6 @@ class UNet2DConditionLoadersMixin:
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
-
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
                     for k in network_alphas:
@@ -358,7 +357,9 @@ class UNet2DConditionLoadersMixin:
                             mapped_network_alphas.update({attn_processor_key: network_alphas[k]})
 
             if len(state_dict) > 0:
-                raise ValueError(f"The state_dict has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}")
+                raise ValueError(
+                    f"The state_dict has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
+                )
 
             # print(f"Number groupd_dict of keys: {len(lora_grouped_dict)}")
             # print(f"Number network alphas of keys: {len(mapped_network_alphas)}")
@@ -427,7 +428,9 @@ class UNet2DConditionLoadersMixin:
                             attn_processor_class = LoRAXFormersAttnProcessor
                         else:
                             attn_processor_class = (
-                                LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                                LoRAAttnProcessor2_0
+                                if hasattr(F, "scaled_dot_product_attention")
+                                else LoRAAttnProcessor
                             )
 
                     if attn_processor_class is not LoRAAttnAddedKVProcessor:
@@ -1663,12 +1666,10 @@ class LoraLoaderMixin:
                 if lora_name_alpha.startswith("lora_unet_"):
                     prefix = "unet."
                 elif lora_name_alpha.startswith(("lora_te_", "lora_te1_")):
-                    prefix = "text_encoder." 
+                    prefix = "text_encoder."
                 else:
                     prefix = "text_encoder_2."
                 new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
-                if "text" in new_name:
-                    print(new_name)
                 network_alphas.update({new_name: alpha})
 
         if len(state_dict) > 0:
@@ -1682,10 +1683,7 @@ class LoraLoaderMixin:
             f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
         }
         te2_state_dict = (
-            {
-                f"text_encoder_2.{module_name.replace('lora.te2.', '')}": params
-                for module_name, params in te2_state_dict.items()
-            }
+            {f"text_encoder_2.{module_name}": params for module_name, params in te2_state_dict.items()}
             if len(te2_state_dict) > 0
             else None
         )
@@ -1693,58 +1691,6 @@ class LoraLoaderMixin:
             te_state_dict.update(te2_state_dict)
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
-
-        # network_alphas_renamed = {}
-        # network_alphas_renamed = network_alphas
-        # network_alphas = {}
-        # for k in network_alphas:
-        #     value = network_alphas[k]
-
-        #     diffusers_name = k.replace("lora_unet_", "unet.")
-        #     diffusers_name = diffusers_name.replace("lora_te_", "textencoder.")
-        #     diffusers_name = diffusers_name.replace("lora_te1_", "textencoder.")
-        #     diffusers_name = diffusers_name.replace("lora_te2_", "textencoder2.")
-        #     diffusers_name = diffusers_name.replace("_", ".")
-        #     diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
-        #     diffusers_name = diffusers_name.replace("textencoder2", "text_encoder_2")
-        #     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-        #     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-        #     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
-        #     diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-        #     diffusers_name = diffusers_name.replace("middle.block", "mid_block")
-        #     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-        #     diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
-        #     diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
-        #     diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
-        #     diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
-        #     diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
-        #     diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
-        #     diffusers_name = diffusers_name.replace("proj.in", "proj_in")
-        #     diffusers_name = diffusers_name.replace("proj.out", "proj_out")
-        #     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
-        #     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-        #     diffusers_name = diffusers_name.replace("text.model", "text_model")
-        #     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-        #     diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-        #     diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-        #     diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-        #     diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-        #     diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
-
-        #     if "mlp" in diffusers_name:
-        #         diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-
-        #     if "emb" in diffusers_name:
-        #         pattern = r"\.\d+(?=\D*$)"
-        #         diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
-
-        #     diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
-        #     diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
-        #     diffusers_name = diffusers_name.replace("op", "conv")
-        #     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
-
-        #     network_alphas_renamed.update({diffusers_name: value})
-
         return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
