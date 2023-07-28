@@ -184,6 +184,7 @@ with "make it in Japan” as the prompt. It can be seen that SDXL starts preserv
 <p align="center">
     <img src="assets/sd_example_1000_step_inference.gif" alt="input for make it Japan" width=600/>
 </p>
+
 * SDXL
 <p align="center">
     <img src="assets/sdxl_example_1000_step_inference.gif" alt="input for make it Japan" width=600/>
