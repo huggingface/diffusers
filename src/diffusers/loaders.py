@@ -1384,6 +1384,7 @@ class LoraLoaderMixin:
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
 
             q_rank = rank_mapping.get(f"{name}.q_proj.lora_linear_layer.up.weight", None) or rank
+            print(f"From patched projection: {rank_mapping.get(f'{name}.q_proj.lora_linear_layer.up.weight')}")
             k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
             v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
             out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
