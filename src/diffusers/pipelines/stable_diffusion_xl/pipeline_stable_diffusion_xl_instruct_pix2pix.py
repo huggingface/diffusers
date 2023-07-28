@@ -34,12 +34,15 @@ from ...utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
+    is_invisible_watermark_available,
     logging,
     randn_tensor,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
-from .watermark import StableDiffusionXLWatermarker
+
+if is_invisible_watermark_available():
+    from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

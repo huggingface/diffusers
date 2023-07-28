@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
+from diffusers.utils.import_utils import is_invisible_watermark_available
+
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
@@ -42,7 +44,10 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
-from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+
+if is_invisible_watermark_available():
+    from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+
 from .multicontrolnet import MultiControlNetModel
 
 

@@ -36,10 +36,13 @@ from ...utils import (
     logging,
     randn_tensor,
     replace_example_docstring,
+    is_invisible_watermark_available,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
-from .watermark import StableDiffusionXLWatermarker
+
+if is_invisible_watermark_available():
+    from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
