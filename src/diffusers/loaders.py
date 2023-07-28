@@ -1266,6 +1266,7 @@ class LoraLoaderMixin:
                     # This is no actual module at that point, they were monkey patched on to the
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
+                    rank_mapping = None
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
@@ -1293,17 +1294,14 @@ class LoraLoaderMixin:
                             f"{name}.out_proj.lora_linear_layer.down.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
 
+                        if prefix is not None:
+                            for proj in ["k_proj", "v_proj", "q_proj", "out_proj"]:
+                                for direction in ["up", "down"]:
+                                    key_name = f"{name}.{proj}.lora_linear_layer.{direction}.weight"
+                                    rank_mapping.update({key_name: text_encoder_lora_state_dict[key_name].shape[1]})
+
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
-                ].shape[1]
-                k_rank = text_encoder_lora_state_dict[
-                    "text_model.encoder.layers.0.self_attn.k_proj.lora_linear_layer.up.weight"
-                ].shape[1]
-                q_rank = text_encoder_lora_state_dict[
-                    "text_model.encoder.layers.0.self_attn.q_proj.lora_linear_layer.up.weight"
-                ].shape[1]
-                v_rank = text_encoder_lora_state_dict[
-                    "text_model.encoder.layers.0.self_attn.v_proj.lora_linear_layer.up.weight"
                 ].shape[1]
 
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
@@ -1313,10 +1311,8 @@ class LoraLoaderMixin:
                     lora_scale,
                     network_alphas,
                     rank=rank,
-                    k_rank=k_rank,
-                    q_rank=q_rank,
-                    v_rank=v_rank,
                     patch_mlp=patch_mlp,
+                    rank_mapping=rank_mapping,
                 )
 
                 # set correct dtype & device
@@ -1374,6 +1370,7 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
+        rank_mapping = kwargs.pop("rank_mapping", None) or {}
 
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
@@ -1381,10 +1378,10 @@ class LoraLoaderMixin:
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
 
-            q_rank = kwargs.pop("q_rank", None) or rank
-            v_rank = kwargs.pop("v_rank", None) or rank
-            k_rank = kwargs.pop("k_rank", None) or rank
-            print(q_rank, rank, v_rank, k_rank)
+            q_rank = rank_mapping.get(f"{name}.q_proj.lora_linear_layer.up.weight", None) or rank
+            k_rank = rank_mapping.get(f"{name}.k_proj.lora_linear_layer.up.weight", None) or rank
+            v_rank = rank_mapping.get(f"{name}.v_proj.lora_linear_layer.up.weight", None) or rank
+            out_rank = rank_mapping.get(f"{name}.out_proj.lora_linear_layer.up.weight", None) or rank
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=q_rank, dtype=dtype
@@ -1402,7 +1399,7 @@ class LoraLoaderMixin:
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=proj_alpha, rank=rank, dtype=dtype
+                attn_module.out_proj, lora_scale, network_alpha=proj_alpha, rank=out_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
