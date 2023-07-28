@@ -1300,7 +1300,7 @@ class LoraLoaderMixin:
                                 for direction in ["up", "down"]:
                                     key_name = f"{name}.{proj}.lora_linear_layer.{direction}.weight"
                                     rank_mapping.update({key_name: text_encoder_lora_state_dict[key_name].shape[1]})
-                
+
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
@@ -1373,7 +1373,7 @@ class LoraLoaderMixin:
         rank_mapping = kwargs.pop("rank_mapping", None) or {}
         # print(f"From patched projection: {rank_mapping}")
 
-        te_state_dict = text_encoder.state_dict()
+        text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             # print(name, te_state_dict[name + ".q_proj.weight"].shape)
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
@@ -1619,8 +1619,17 @@ class LoraLoaderMixin:
         logger.info("Kohya-style checkpoint detected.")
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {
-            f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
+            f"{cls.text_encoder_name}.{module_name}": params
+            for module_name, params in te_state_dict.items()
+            if module_name.startswith(("lora_te_", "lora_te1_"))
         }
+        te2_state_dict = {
+            f"text_encoder_2.{module_name}": params
+            for module_name, params in te_state_dict.items()
+            if module_name.startswith("lora_te2_")
+        }
+        if te2_state_dict is not None:
+            te_state_dict.update(te2_state_dict)
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
         network_alphas_renamed = {}
