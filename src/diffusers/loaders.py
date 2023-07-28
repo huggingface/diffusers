@@ -1303,7 +1303,7 @@ class LoraLoaderMixin:
                                     key_name = f"{name}.{proj}.lora_linear_layer.{direction}.weight"
                                     rank_mapping.update({key_name: text_encoder_lora_state_dict[key_name].shape[1]})
 
-                for k, v in rank_mapping:
+                for k, v in rank_mapping.items():
                     if v < 1280:
                         print(k, v)
                 
