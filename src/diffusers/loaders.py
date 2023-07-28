@@ -1697,7 +1697,8 @@ class LoraLoaderMixin:
 
             network_alphas_renamed.update({diffusers_name: value})
 
-        print(network_alphas_renamed)
+        unique_alphas = {v for _, v in network_alphas_renamed.items()}
+        print(unique_alphas)
 
         return new_state_dict, network_alphas_renamed
 
