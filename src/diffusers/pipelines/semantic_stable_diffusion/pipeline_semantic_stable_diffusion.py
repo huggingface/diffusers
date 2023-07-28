@@ -16,78 +16,34 @@ from . import SemanticStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-EXAMPLE_DOC_STRING = """
-    Examples:
-        ```py
-        >>> import torch
-        >>> from diffusers import SemanticStableDiffusionPipeline
-
-        >>> pipe = SemanticStableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-
-        >>> out = pipe(
-        ...     prompt="a photo of the face of a woman",
-        ...     num_images_per_prompt=1,
-        ...     guidance_scale=7,
-        ...     editing_prompt=[
-        ...         "smiling, smile",  # Concepts to apply
-        ...         "glasses, wearing glasses",
-        ...         "curls, wavy hair, curly hair",
-        ...         "beard, full beard, mustache",
-        ...     ],
-        ...     reverse_editing_direction=[
-        ...         False,
-        ...         False,
-        ...         False,
-        ...         False,
-        ...     ],  # Direction of guidance i.e. increase all concepts
-        ...     edit_warmup_steps=[10, 10, 10, 10],  # Warmup period for each concept
-        ...     edit_guidance_scale=[4, 5, 5, 5.4],  # Guidance scale for each concept
-        ...     edit_threshold=[
-        ...         0.99,
-        ...         0.975,
-        ...         0.925,
-        ...         0.96,
-        ...     ],  # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
-        ...     edit_momentum_scale=0.3,  # Momentum scale that will be added to the latent guidance
-        ...     edit_mom_beta=0.6,  # Momentum beta
-        ...     edit_weights=[1, 1, 1, 1, 1],  # Weights of the individual concepts against each other
-        ... )
-        >>> image = out.images[0]
-        ```
-"""
 
 
 class SemanticStableDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation with latent editing.
+    Pipeline for text-to-image generation using Stable Diffusion with latent editing.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-
-    This model builds on the implementation of ['StableDiffusionPipeline']
+    This model inherits from [`DiffusionPipeline`] and builds on the [`StableDiffusionPipeline`]. Check the superclass
+    documentation for the generic methods implemented for all pipelines (downloading, saving, running on a particular
+    device, etc.).
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        text_encoder ([`~transformers.CLIPTextModel`]):
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        unet ([`UNet2DConditionModel`]):
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`Q16SafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
-        feature_extractor ([`CLIPImageProcessor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -277,97 +233,130 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         sem_guidance: Optional[List[torch.Tensor]] = None,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The prompt or prompts to guide image generation.
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 7.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
+                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
+                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor is generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             editing_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to use for Semantic guidance. Semantic guidance is disabled by setting
+                The prompt or prompts to use for semantic guidance. Semantic guidance is disabled by setting
                 `editing_prompt = None`. Guidance direction of prompt should be specified via
                 `reverse_editing_direction`.
-            editing_prompt_embeddings (`torch.Tensor>`, *optional*):
+            editing_prompt_embeddings (`torch.Tensor`, *optional*):
                 Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be
                 specified via `reverse_editing_direction`.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
-                Guidance scale for semantic guidance. If provided as list values should correspond to `editing_prompt`.
-                `edit_guidance_scale` is defined as `s_e` of equation 6 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                Guidance scale for semantic guidance. If provided as a list, values should correspond to
+                `editing_prompt`.
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
-                Number of diffusion steps (for each prompt) for which semantic guidance will not be applied. Momentum
-                will still be calculated for those steps and applied once all warmup periods are over.
-                `edit_warmup_steps` is defined as `delta` (δ) of [SEGA Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                Number of diffusion steps (for each prompt) for which semantic guidance is not applied. Momentum is
+                calculated for those steps and applied once all warmup periods are over.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
-                Number of diffusion steps (for each prompt) after which semantic guidance will no longer be applied.
+                Number of diffusion steps (for each prompt) after which semantic guidance is longer applied.
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
                 Threshold of semantic guidance.
             edit_momentum_scale (`float`, *optional*, defaults to 0.1):
-                Scale of the momentum to be added to the semantic guidance at each diffusion step. If set to 0.0
-                momentum will be disabled. Momentum is already built up during warmup, i.e. for diffusion steps smaller
-                than `sld_warmup_steps`. Momentum will only be added to latent guidance once all warmup periods are
-                finished. `edit_momentum_scale` is defined as `s_m` of equation 7 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                Scale of the momentum to be added to the semantic guidance at each diffusion step. If set to 0.0,
+                momentum is disabled. Momentum is already built up during warmup (for diffusion steps smaller than
+                `sld_warmup_steps`). Momentum is only added to latent guidance once all warmup periods are finished.
             edit_mom_beta (`float`, *optional*, defaults to 0.4):
                 Defines how semantic guidance momentum builds up. `edit_mom_beta` indicates how much of the previous
-                momentum will be kept. Momentum is already built up during warmup, i.e. for diffusion steps smaller
-                than `edit_warmup_steps`. `edit_mom_beta` is defined as `beta_m` (β) of equation 8 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                momentum is kept. Momentum is already built up during warmup (for diffusion steps smaller than
+                `edit_warmup_steps`).
             edit_weights (`List[float]`, *optional*, defaults to `None`):
                 Indicates how much each individual concept should influence the overall guidance. If no weights are
-                provided all concepts are applied equally. `edit_mom_beta` is defined as `g_i` of equation 9 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                provided all concepts are applied equally.
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
 
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> from diffusers import SemanticStableDiffusionPipeline
+
+        >>> pipe = SemanticStableDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> out = pipe(
+        ...     prompt="a photo of the face of a woman",
+        ...     num_images_per_prompt=1,
+        ...     guidance_scale=7,
+        ...     editing_prompt=[
+        ...         "smiling, smile",  # Concepts to apply
+        ...         "glasses, wearing glasses",
+        ...         "curls, wavy hair, curly hair",
+        ...         "beard, full beard, mustache",
+        ...     ],
+        ...     reverse_editing_direction=[
+        ...         False,
+        ...         False,
+        ...         False,
+        ...         False,
+        ...     ],  # Direction of guidance i.e. increase all concepts
+        ...     edit_warmup_steps=[10, 10, 10, 10],  # Warmup period for each concept
+        ...     edit_guidance_scale=[4, 5, 5, 5.4],  # Guidance scale for each concept
+        ...     edit_threshold=[
+        ...         0.99,
+        ...         0.975,
+        ...         0.925,
+        ...         0.96,
+        ...     ],  # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
+        ...     edit_momentum_scale=0.3,  # Momentum scale that will be added to the latent guidance
+        ...     edit_mom_beta=0.6,  # Momentum beta
+        ...     edit_weights=[1, 1, 1, 1, 1],  # Weights of the individual concepts against each other
+        ... )
+        >>> image = out.images[0]
+        ```
+
         Returns:
             [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] if `return_dict` is True,
-            otherwise a `tuple. When returning a tuple, the first element is a list with the generated images, and the
-            second element is a list of `bool`s denoting whether the corresponding generated image likely represents
-            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
+                If `return_dict` is `True`,
+                [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is a list with the generated images and the second element
+                is a list of `bool`s indicating whether the corresponding generated image contains "not-safe-for-work"
+                (nsfw) content.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import glob
 import json
 import os
 import random
@@ -56,6 +57,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
+from diffusers.pipelines.pipeline_utils import variant_compatible_siblings
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
@@ -819,7 +821,12 @@ class CustomPipelineTests(unittest.TestCase):
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
 
-        assert dict(pipe_new.config) == dict(pipe.config)
+        conf_1 = dict(pipe.config)
+        conf_2 = dict(pipe_new.config)
+
+        del conf_2["_name_or_path"]
+
+        assert conf_1 == conf_2
 
     @slow
     @require_torch_gpu
@@ -1360,6 +1367,41 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.requires_safety_checker == [True, True]
             assert sd.config.safety_checker != (None, None)
             assert sd.config.feature_extractor != (None, None)
+
+    def test_name_or_path(self):
+        model_path = "hf-internal-testing/tiny-stable-diffusion-torch"
+        sd = DiffusionPipeline.from_pretrained(model_path)
+
+        assert sd.name_or_path == model_path
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            sd = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.name_or_path == tmpdirname
+
+    def test_warning_no_variant_available(self):
+        variant = "fp16"
+        with self.assertWarns(FutureWarning) as warning_context:
+            cached_folder = StableDiffusionPipeline.download(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
+            )
+
+        assert "but no such modeling files are available" in str(warning_context.warning)
+        assert variant in str(warning_context.warning)
+
+        def get_all_filenames(directory):
+            filenames = glob.glob(directory + "/**", recursive=True)
+            filenames = [f for f in filenames if os.path.isfile(f)]
+            return filenames
+
+        filenames = get_all_filenames(str(cached_folder))
+
+        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
+
+        # make sure that none of the model names are variant model names
+        assert len(variant_model_files) == 0
+        assert len(all_model_files) > 0
 
 
 @slow
