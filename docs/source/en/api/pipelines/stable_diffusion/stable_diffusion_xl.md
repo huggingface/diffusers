@@ -38,7 +38,23 @@ You can install the libraries as follows:
 pip install transformers
 pip install accelerate
 pip install safetensors
+```
+
+### Watermarker
+
+We recommend to add an invisible watermark to images generating by Stable Diffusion XL, this can help with identifying if an image is machine-synthesised for downstream applications. To do so, please install
+the [invisible-watermark library](https://pypi.org/project/invisible-watermark/) via:
+
+```
 pip install invisible-watermark>=0.2.0
+```
+
+If the `invisible-watermark` library is installed the watermarker will be used **by default**.
+
+If you have other provisions for generating or deploying images safely, you can disable the watermarker as follows:
+
+```py
+pipe = StableDiffusionXLPipeline.from_pretrained(..., add_watermarker=False)
 ```
 
 ### Text-to-Image
