@@ -1375,7 +1375,7 @@ class LoraLoaderMixin:
 
         te_state_dict = text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            print(name, te_state_dict[name].shape)
+            print(name, te_state_dict[name + "q_proj"].shape)
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
