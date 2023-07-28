@@ -30,10 +30,20 @@ from ...models.attention_processor import (
     XFormersAttnProcessor,
 )
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    is_invisible_watermark_available,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
-from .watermark import StableDiffusionXLWatermarker
+
+
+if is_invisible_watermark_available():
+    from .watermark import StableDiffusionXLWatermarker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -265,6 +275,7 @@ class StableDiffusionXLInpaintPipeline(
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -282,7 +293,12 @@ class StableDiffusionXLInpaintPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-        self.watermark = StableDiffusionXLWatermarker()
+        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
+
+        if add_watermarker:
+            self.watermark = StableDiffusionXLWatermarker()
+        else:
+            self.watermark = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -1265,6 +1281,10 @@ class StableDiffusionXLInpaintPipeline(
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
             return StableDiffusionXLPipelineOutput(images=latents)
+
+        # apply watermark if available
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
