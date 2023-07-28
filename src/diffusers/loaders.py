@@ -393,8 +393,13 @@ class UNet2DConditionLoadersMixin:
                     non_attn_lora_layers.append((attn_processor, lora))
                     continue
 
-                rank = value_dict["to_k_lora.down.weight"].shape[0]
-                hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
+                rank_mapping = {}
+                hidden_size_mapping = {}
+                for projection_id in ["to_k", "to_q", "to_v", "to_out"]:
+                    rank = value_dict[f"{projection_id}_lora.down.weight"].shape[0]
+                    hidden_size = value_dict[f"{projection_id}_lora.up.weight"].shape[0]
+                    rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
+                    hidden_size_mapping.update({f"{projection_id}_lora.up.weight": rank})
 
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
@@ -410,11 +415,18 @@ class UNet2DConditionLoadersMixin:
                             LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
                         )
 
+                # Only for LoRAAttnProcessor2_0 at the moment.
                 attn_processors[key] = attn_processor_class(
                     hidden_size=hidden_size,
                     cross_attention_dim=cross_attention_dim,
                     rank=rank,
                     network_alpha=mapped_network_alphas.get(key),
+                    q_rank=rank_mapping.get("to_q_lora.down.weight", None),
+                    q_hidden_size=rank_mapping.get("to_q_lora.up.weight", None),
+                    v_rank=rank_mapping.get("to_v_lora.down.weight", None),
+                    v_hidden_size=rank_mapping.get("to_v_lora.up.weight", None),
+                    out_rank=rank_mapping.get("to_out_lora.down.weight", None),
+                    out_hidden_size=rank_mapping.get("to_out_lora.up.weight", None),
                 )
                 attn_processors[key].load_state_dict(value_dict)
 
