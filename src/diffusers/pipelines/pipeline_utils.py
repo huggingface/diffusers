@@ -1365,7 +1365,7 @@ class DiffusionPipeline(ConfigMixin):
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
-            model_folder_names = {os.path.split(f)[0] for f in model_filenames}
+            model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
