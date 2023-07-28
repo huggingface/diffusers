@@ -415,8 +415,8 @@ class UNet2DConditionLoadersMixin:
                             LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
                         )
 
-                # Only for LoRAAttnProcessor2_0 at the moment.
-                print(f"attn_processor_class: {attn_processor_class}")
+                # Only for LoRAAttnProcessor2_0 at the moment. Need to update
+                # other non-addedKV attention processors for LoRA.
                 if attn_processor_class is not LoRAAttnAddedKVProcessor:
                     attn_processors[key] = attn_processor_class(
                         rank=rank_mapping.get("to_k_lora.down.weight", None),
