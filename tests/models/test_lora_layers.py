@@ -737,6 +737,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
+        print(",".join([str(round(x, 4)) for x in images.tolist()]))
 
         expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
 
