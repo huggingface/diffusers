@@ -42,7 +42,7 @@ class LoRALinearLayer(nn.Module):
         up_hidden_states = self.up(down_hidden_states)
 
         if self.network_alpha is not None:
-            up_hidden_states *= self.network_alpha / self.rank
+            up_hidden_states *= (self.network_alpha / self.rank)
 
         return up_hidden_states.to(orig_dtype)
 
@@ -77,7 +77,7 @@ class LoRAConv2dLayer(nn.Module):
         up_hidden_states = self.up(down_hidden_states)
 
         if self.network_alpha is not None:
-            up_hidden_states *= self.network_alpha / self.rank
+            up_hidden_states *= (self.network_alpha / self.rank)
 
         return up_hidden_states.to(orig_dtype)
 

@@ -361,7 +361,7 @@ class UNet2DConditionLoadersMixin:
                 raise ValueError("Has to be empty")
 
             print(f"Number groupd_dict of keys: {len(lora_grouped_dict)}")
-            print(f"Number network alphas of keys: {len(network_alphas)}")
+            print(f"Number network alphas of keys: {len(mapped_network_alphas)}")
 
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
@@ -412,6 +412,7 @@ class UNet2DConditionLoadersMixin:
                     for projection_id in ["to_k", "to_q", "to_v", "to_out"]:
                         rank = value_dict[f"{projection_id}_lora.down.weight"].shape[0]
                         hidden_size = value_dict[f"{projection_id}_lora.up.weight"].shape[0]
+
                         rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
                         hidden_size_mapping.update({f"{projection_id}_lora.up.weight": hidden_size})
 
@@ -431,23 +432,23 @@ class UNet2DConditionLoadersMixin:
 
                     if attn_processor_class is not LoRAAttnAddedKVProcessor:
                         attn_processors[key] = attn_processor_class(
-                            # rank=rank_mapping.get("to_k_lora.down.weight", None),
                             rank=rank_mapping.get("to_k_lora.down.weight"),
-                            # hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
                             hidden_size=hidden_size_mapping.get("to_k_lora.up.weight"),
                             cross_attention_dim=cross_attention_dim,
                             network_alpha=mapped_network_alphas.get(key),
                             q_rank=rank_mapping.get("to_q_lora.down.weight"),
-                            #q_rank=rank_mapping.get("to_q_lora.down.weight", None),
                             q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight"),
-                            # q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
                             v_rank=rank_mapping.get("to_v_lora.down.weight"),
-                            # v_rank=rank_mapping.get("to_v_lora.down.weight", None),
                             v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight"),
-                            # v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
                             out_rank=rank_mapping.get("to_out_lora.down.weight"),
-                            # out_rank=rank_mapping.get("to_out_lora.down.weight", None),
                             out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight"),
+                            # rank=rank_mapping.get("to_k_lora.down.weight", None),
+                            # hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
+                            # q_rank=rank_mapping.get("to_q_lora.down.weight", None),
+                            # q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
+                            # v_rank=rank_mapping.get("to_v_lora.down.weight", None),
+                            # v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
+                            # out_rank=rank_mapping.get("to_out_lora.down.weight", None),
                             # out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight", None),
                         )
                     else:
@@ -457,6 +458,7 @@ class UNet2DConditionLoadersMixin:
                             cross_attention_dim=cross_attention_dim,
                             network_alpha=mapped_network_alphas.get(key),
                         )
+
                     attn_processors[key].load_state_dict(value_dict)
 
         elif is_custom_diffusion:
@@ -501,8 +503,10 @@ class UNet2DConditionLoadersMixin:
 
         # set ff layers
         for target_module, lora_layer in non_attn_lora_layers:
-            if hasattr(target_module, "set_lora_layer"):
-                target_module.set_lora_layer(lora_layer)
+            target_module.set_lora_layer(lora_layer)
+            # It should raise an error if we don't have a set lora here
+            # if hasattr(target_module, "set_lora_layer"):
+            #     target_module.set_lora_layer(lora_layer)
 
     def save_attn_procs(
         self,
