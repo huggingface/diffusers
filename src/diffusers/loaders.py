@@ -1592,9 +1592,10 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
             elif lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
-                diffusers_name = key.replace("lora_te_", "").replace("_", ".")
-                diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
-                diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
+                # diffusers_name = key.replace("lora_te_", "")
+                # diffusers_name = key.replace("lora_te1_", "")
+                # diffusers_name = key.replace("lora_te2_", "")
+                diffusers_name = diffusers_name.replace("_", ".")
                 diffusers_name = diffusers_name.replace("text.model", "text_model")
                 diffusers_name = diffusers_name.replace("self.attn", "self_attn")
                 diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
@@ -1618,16 +1619,19 @@ class LoraLoaderMixin:
 
         logger.info("Kohya-style checkpoint detected.")
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
+        for k in te_state_dict:
+            if "lora_te" in k:
+                print(k)
         te_state_dict = {
-            f"{cls.text_encoder_name}.{module_name}": params
+            f"{cls.text_encoder_name}.{module_name.replace('lora.te.', '').replace('lora.te1.', '')}": params
             for module_name, params in te_state_dict.items()
-            if module_name.startswith(("lora_te_", "lora_te1_"))
+            if module_name.startswith(("lora.te.", "lora.te1."))
         }
         print(f"Initial: {len(te_state_dict)}")
         te2_state_dict = {
-            f"text_encoder_2.{module_name}": params
+            f"text_encoder_2.{module_name.replace('lora.te2.', '')}": params
             for module_name, params in te_state_dict.items()
-            if module_name.startswith("lora_te2_")
+            if module_name.startswith("lora.te2.")
         }
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
@@ -1640,8 +1644,11 @@ class LoraLoaderMixin:
 
             diffusers_name = k.replace("lora_unet_", "unet.")
             diffusers_name = diffusers_name.replace("lora_te_", "textencoder.")
+            diffusers_name = diffusers_name.replace("lora_te1_", "textencoder.")
+            diffusers_name = diffusers_name.replace("lora_te2_", "textencoder2.")
             diffusers_name = diffusers_name.replace("_", ".")
             diffusers_name = diffusers_name.replace("textencoder", "text_encoder")
+            diffusers_name = diffusers_name.replace("textencoder2", "text_encoder_2")
             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
             diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
             diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
@@ -1658,6 +1665,16 @@ class LoraLoaderMixin:
             diffusers_name = diffusers_name.replace("proj.out", "proj_out")
             diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
             diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+            diffusers_name = diffusers_name.replace("text.model", "text_model")
+            diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+            diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+            diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+            diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+            diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+
+            if "mlp" in diffusers_name:
+                diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+
             if "emb" in diffusers_name:
                 pattern = r"\.\d+(?=\D*$)"
                 diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
