@@ -1657,9 +1657,11 @@ class LoraLoaderMixin:
                     te2_state_dict[diffusers_name] = state_dict.pop(key)
                     te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            # let's rename alphas here
+            # Rename the alphas so that they can be mapped appropriately.
             if lora_name_alpha in state_dict:
-                print(f"lora_name_alpha: {lora_name_alpha}")
+                if "text" in lora_name_alpha:
+                    print(f"lora_name_alpha: {lora_name_alpha}")
+                    print(diffusers_name.split(".lora.")[0])
                 alpha = state_dict.pop(lora_name_alpha).item()
                 new_name = "unet." + diffusers_name.split(".lora.")[0] + ".alpha"
                 network_alphas.update({new_name: alpha})
