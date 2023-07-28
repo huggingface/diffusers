@@ -14,7 +14,12 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
-from .modeling_tortoise_tts import AttnEncoderBlock1D, ConditioningEncoder, TortoiseTTSDenoisingModel
+from .modeling_tortoise_tts import (
+    AttnEncoderBlock1D,
+    ConditioningEncoder,
+    RandomLatentConverter,
+    TortoiseTTSDenoisingModel,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -47,12 +52,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     def __init__(
         self,
         autoregressive_conditioning_encoder: ConditioningEncoder,
+        autoregressive_random_latent_converter: RandomLatentConverter,
         autoregressive_model: GPT2LMHeadModel,
         speech_encoder,
         text_encoder,
         tokenizer,
         diffusion_conditioning_encoder: ConditioningEncoder,
-        denoising_model: TortoiseTTSDenoisingModel,
+        diffusion_random_latent_converter: RandomLatentConverter,
+        diffusion_denoising_model: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder,
     ):
@@ -60,12 +67,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         self.register_modules(
             autoregressive_conditioning_encoder=autoregressive_conditioning_encoder,
+            autoregressive_random_latent_converter=autoregressive_random_latent_converter,
             autoregressive_model=autoregressive_model,
             speech_encoder=speech_encoder,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             diffusion_conditioning_encoder=diffusion_conditioning_encoder,
-            denoising_model=denoising_model,
+            diffusion_random_latent_converter=diffusion_random_latent_converter,
+            diffusion_denoising_model=diffusion_denoising_model,
             scheduler=scheduler,
             vocoder=vocoder,
         )
@@ -364,11 +373,13 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         dtype,
         device,
         generator,
+        latent_conversion_type=None,
         latents=None,
     ):
         """
         Prepares latents in the shape of a MEL spectrogram.
         """
+        # TODO: is this the right shape? might be (batch_size, seq_length, channels) or (batch_size, channels)
         shape = (batch_size, channels, seq_length)
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -382,7 +393,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
         
-        # TODO: run the Gaussian latents through RandomLatentConverter????
+        if latent_conversion_type == "autoregressive":
+            latents = self.autoregressive_random_latent_converter(latents).latents
+        elif latent_conversion_type == "diffusion":
+            latents = self.diffusion_random_latent_converter(latents).latents
+        
         return latents
     
     def prepare_autoregressive_conditioning_embedding(
@@ -408,7 +423,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         else:
             # Neither raw audio or embeddings supplied, randomly generate a conditioning embedding.
             # TODO: number of channels hardcoded for now, get correct expression based on configs
-            num_channels = 2048
+            num_channels = 1024
             autoregressive_cond_emb = self.prepare_spectrogram_latents(
                 batch_size,
                 num_channels,
@@ -416,6 +431,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 dtype,
                 device,
                 generator,
+                latent_conversion_type="autoregressive",
             )
         return autoregressive_cond_emb
 
@@ -481,6 +497,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 self.diffusion_conditioning_encoder.config.input_spectrogram_sampling_rate,
                 dtype,
                 generator,
+                latent_conversion_type="diffusion",
             )
         return diffusion_cond_emb
 
@@ -815,7 +832,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.denoising_model(
+                noise_pred = self.diffusion_denoising_model(
                     latent_model_input,
                     t,
                     top_k_autoregressive_latents,

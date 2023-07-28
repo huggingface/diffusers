@@ -899,3 +899,105 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
             return (sample,)
         
         return TortoiseTTSDenoisingModelOutput(sample=sample)
+
+
+# From tortoise.models.random_latent_generator.fused_leaky_relu
+# https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/random_latent_generator.py#L8
+def fused_leaky_relu(input, bias=None, negative_slope=0.2, scale=2**0.5):
+    if bias is not None:
+        rest_dim = [1] * (input.ndim - bias.ndim - 1)
+        return (
+            F.leaky_relu(
+                input + bias.view(1, bias.shape[0], *rest_dim),
+                negative_slope=negative_slope,
+            )
+            * scale
+        )
+    else:
+        return F.leaky_relu(input, negative_slope=0.2) * scale
+
+
+# From tortoise.models.random_latent_generator.EqualLinear
+# https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/random_latent_generator.py#L22
+class EqualLinear(nn.Module):
+    def __init__(self, in_dim, out_dim, bias=True, bias_init=0, lr_mul=1):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(out_dim, in_dim).div_(lr_mul))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_dim).fill_(bias_init))
+        else:
+            self.bias = None
+        self.scale = (1 / math.sqrt(in_dim)) * lr_mul
+        self.lr_mul = lr_mul
+
+    def forward(self, input):
+        out = F.linear(input, self.weight * self.scale)
+        out = fused_leaky_relu(out, self.bias * self.lr_mul)
+        return out
+
+
+@dataclass
+class RandomLatentConverterOutput(BaseOutput):
+    """
+    The output of [`RandomLatentConverter`].
+
+    Args:
+        TODO: fix
+        latents (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output from the last layer of the model.
+    """
+
+    latents: torch.FloatTensor
+
+
+# Based on tortoise.models.random_latent_generator.RandomLatentConverter
+# https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/random_latent_generator.py#L39
+class RandomLatentConverter(ModelMixin, ConfigMixin):
+    """
+    Converts standard Gaussian noise to random latents suitable for use as conditioning embeddings in place of output
+    from a [`ConditioningEncoder`] class, when no conditioning audio is available.
+
+    Parameters:
+        channels (`int`):
+            The number of input channels of the incoming Gaussian noise tensors.
+        num_equallinear_layers (`int`, *optional*, defaults to 5):
+            The number of `EqualLinear` layers to use (before the final linear layer).
+        lr_mul (`float`, *optional*, defaults to 0.1):
+            TODO
+    """
+    @register_to_config
+    def __init__(self, channels: int, num_equallinear_layers: int = 5, lr_mul: float = 0.1):
+        super().__init__()
+
+        self.equallinear = nn.ModuleList(
+            [
+                EqualLinear(channels, channels, lr_mul=lr_mul)
+                for _ in range(num_equallinear_layers)
+            ]
+        )
+        self.linear = nn.Linear(channels, channels)
+    
+    def forward(self, noise: torch.FloatTensor, return_dict: bool = True):
+        """
+        Converts standard Gaussian noise into latents.
+
+        Args:
+            noise (`torch.FloatTensor`):
+                A tensor of standard Gaussian noise (e.g. from `torch.randn`).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`RandomLatentConverterOutput`] instead of a plain tuple.
+
+        Returns:
+            [`RandomLatentConverterOutput`] or `tuple`:
+            [`RandomLatentConverterOutput`] if `return_dict` is `True`, otherwise a `tuple`.
+            When returning a tuple the first element is the rnadom latents.
+        """
+        assert noise.shape[-1] == self.config.channels, "The last dim of `noise` must match `self.config.channels`."
+        
+        latents = self.equallinear(noise)
+        latents = self.linear(latents)
+        
+        if not return_dict:
+            return (latents,)
+        
+        return RandomLatentConverterOutput(latents=latents)
