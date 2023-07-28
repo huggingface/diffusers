@@ -1371,11 +1371,11 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         rank_mapping = kwargs.pop("rank_mapping", None) or {}
-        print(f"From patched projection: {rank_mapping}")
+        # print(f"From patched projection: {rank_mapping}")
 
         te_state_dict = text_encoder.state_dict()
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            print(name, te_state_dict[name + ".q_proj.weight"].shape)
+            # print(name, te_state_dict[name + ".q_proj.weight"].shape)
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
