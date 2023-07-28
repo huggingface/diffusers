@@ -1262,6 +1262,9 @@ class LoraLoaderMixin:
                     # This is no actual module at that point, they were monkey patched on to the
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
+                    for k in text_encoder_lora_state_dict:
+                        if "to_q_lora" in k: 
+                            print(f"{text_encoder_lora_state_dict['k']}")
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
