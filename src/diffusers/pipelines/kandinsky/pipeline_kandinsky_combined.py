@@ -188,6 +188,9 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
+
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -397,6 +400,9 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
+
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -629,6 +635,9 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
+
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
