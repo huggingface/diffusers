@@ -415,8 +415,6 @@ class UNet2DConditionLoadersMixin:
                             LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
                         )
 
-                # Only for LoRAAttnProcessor2_0 at the moment. Need to update
-                # other non-addedKV attention processors for LoRA.
                 if attn_processor_class is not LoRAAttnAddedKVProcessor:
                     attn_processors[key] = attn_processor_class(
                         rank=rank_mapping.get("to_k_lora.down.weight", None),
@@ -1309,7 +1307,6 @@ class LoraLoaderMixin:
                     k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
                     for k, v in text_encoder_lora_state_dict.items()
                 }
-                print(text_encoder.__class__.__name__)
                 load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                 if len(load_state_dict_results.unexpected_keys) != 0:
                     raise ValueError(
