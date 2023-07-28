@@ -355,9 +355,8 @@ class UNet2DConditionLoadersMixin:
                 for sub_key in key.split("."):
                     try:
                         attn_processor = getattr(attn_processor, sub_key)
-                    except Exception:
-                        print(attn_processor.__class__.__name__)
-                        print(key)
+                    except Exception as e:
+                        logger.error(e)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
@@ -402,7 +401,6 @@ class UNet2DConditionLoadersMixin:
                     rank_mapping.update({f"{projection_id}_lora.down.weight": rank})
                     hidden_size_mapping.update({f"{projection_id}_lora.up.weight": hidden_size})
 
-                print(f"rank_mapping: {rank_mapping}, hidden_size_mapping: {hidden_size_mapping}")
                 if isinstance(
                     attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)
                 ):
@@ -1606,9 +1604,6 @@ class LoraLoaderMixin:
 
             network_alphas_renamed.update({diffusers_name: value})
 
-        # with open("network_alphas.json" , "w") as write:
-        #     json.dump(network_alphas_renamed , write)
-        #     print("Serialized to JSON from loaders.py.")
         return new_state_dict, network_alphas_renamed
 
     def unload_lora_weights(self):

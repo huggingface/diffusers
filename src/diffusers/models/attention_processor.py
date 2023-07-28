@@ -1255,11 +1255,6 @@ class LoRAAttnProcessor2_0(nn.Module):
         out_rank = out_rank if out_rank is not None else rank
         out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
 
-        print(f"rank: {rank}, q_rank: {q_rank}, v_rank: {v_rank}, out_rank: {out_rank}")
-        print(
-            f"hidden_size: {hidden_size}, q_hidden_size: {q_hidden_size}, v_hidden_size: {v_hidden_size}, out_hidden_size: {out_hidden_size}"
-        )
-
         self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
         self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
