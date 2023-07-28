@@ -144,7 +144,7 @@ def log_validation(
 
         scheduler_args["variance_type"] = variance_type
 
-    if not args.use_ddpm_scheduler:
+    if not args.use_original_scheduler:
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
     else:
         pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
