@@ -16,8 +16,9 @@ from functools import partial
 from typing import List, Union, Dict, Optional
 from flax.core.frozen_dict import FrozenDict
 from transformers import CLIPTokenizer, FlaxCLIPTextModel
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
+import numpy as np
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
@@ -138,22 +139,24 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 
         return FlaxStableDiffusionXLPipelineOutput(images=images)
 
-    def get_embeddings(self, prompt_ids: jnp.array, params: Union[Dict, FrozenDict]):
+    def get_embeddings(self, prompt_ids: jnp.array, params):
         # We assume we have the two encoders
-        # [2, 77] -> [2, 1, 77]
-        prompt_ids = jnp.expand_dims(prompt_ids, axis=-2)
 
-        prompt_embeds = self.text_encoder(prompt_ids[0], params=params['text_encoder'], output_hidden_states=True)
+        # bs, encoder_input, seq_length
+        te_1_inputs = prompt_ids[:, 0, :]
+        te_2_inputs = prompt_ids[:, 1, :]
+        
+        prompt_embeds = self.text_encoder(te_1_inputs, params=params['text_encoder'], output_hidden_states=True)
         prompt_embeds = prompt_embeds['hidden_states'][-2]
-        prompt_embeds_2_out = self.text_encoder_2(prompt_ids[1], params=params['text_encoder_2'], output_hidden_states=True)
+        prompt_embeds_2_out = self.text_encoder_2(te_2_inputs, params=params['text_encoder_2'], output_hidden_states=True)
         prompt_embeds_2 = prompt_embeds_2_out['hidden_states'][-2]
         pooled_embeds = prompt_embeds_2_out['pooler_output']
         prompt_embeds = jnp.concatenate([prompt_embeds, prompt_embeds_2], axis=-1)
         return prompt_embeds, pooled_embeds
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)  # TODO: This is currently not jit'able - probably need pass add_time_ids as input to __call__
-        add_time_ids = jnp.array([add_time_ids], dtype=dtype)
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, bs, dtype):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+        add_time_ids = jnp.array([add_time_ids]*bs, dtype=dtype)
         return add_time_ids
 
     def _generate(
@@ -167,9 +170,6 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         guidance_scale: float,
         latents: Optional[jnp.array] = None,
         neg_prompt_ids: Optional[jnp.array] = None,
-        original_size: tuple = (1024, 1024),
-        crops_coords_top_left: tuple = (0, 0),
-        target_size: tuple = (1024, 1024),
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -185,7 +185,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         neg_prompt_embeds, negative_pooled_embeds = self.get_embeddings(neg_prompt_ids, params)
 
         add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+            (1024, 1024), (0, 0), (1024, 1024), prompt_embeds.shape[0], dtype=prompt_embeds.dtype
         )
 
         prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
