@@ -30,9 +30,17 @@ from ...models.attention_processor import (
     XFormersAttnProcessor,
 )
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring, is_invisible_watermark_available
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    is_invisible_watermark_available,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
+
 
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
@@ -267,7 +275,7 @@ class StableDiffusionXLInpaintPipeline(
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermark: bool = None,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -285,9 +293,9 @@ class StableDiffusionXLInpaintPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
-        if add_watermark:
+        if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None

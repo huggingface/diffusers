@@ -38,7 +38,24 @@ You can install the libraries as follows:
 pip install transformers
 pip install accelerate
 pip install safetensors
+```
+
+### Watermarker
+
+We recommend to add a watermark to images generating by Stable Diffusion XL. To do so, please install 
+the [invisible-watermark library](https://pypi.org/project/invisible-watermark/) via:
+
+```
 pip install invisible-watermark>=0.2.0
+```
+
+If the `invisible-watermark` library is installed the watermarker will be used **by default**.
+
+As per [official license](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md) and [Discussion on Stability AI's ComfyUI](https://github.com/comfyanonymous/ComfyUI/issues/949) the watermarker is not mandatory. 
+If the watermarker's artifacts are degrading the image quality of your workflow too much, you can disable the watermarker as follows:
+
+```py
+pipe = StableDiffusionXLPipeline.from_pretrained(..., add_watermarker=False)
 ```
 
 ### Text-to-Image

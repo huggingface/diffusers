@@ -50,6 +50,7 @@ else:
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionXLControlNetPipeline,
     )
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
@@ -106,14 +107,13 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
-    from .controlnet import StableDiffusionXLControlNetPipeline
+    from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .stable_diffusion_xl import (
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
         StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
-    from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .t2i_adapter import StableDiffusionAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline

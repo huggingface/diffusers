@@ -41,6 +41,7 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 
+
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
 
@@ -112,7 +113,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermark: Optional[bool] = None,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -132,9 +133,9 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         self.vae.config.force_upcast = True  # force the VAE to be in float32 mode, as it overflows in float16
 
-        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
-        if add_watermark:
+        if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None

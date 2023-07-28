@@ -45,6 +45,7 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
+
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
@@ -114,7 +115,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         controlnet: ControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermark: Optional[bool] = None,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -136,9 +137,9 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
-        add_watermark = add_watermark if add_watermark is not None else is_invisible_watermark_available()
+        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
-        if add_watermark:
+        if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
