@@ -36,7 +36,6 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "negative_prompt",
         "negative_prompt_embeds",
         "cross_attention_kwargs",
-        "prompt_embeds",
     }
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
@@ -112,12 +111,12 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
@@ -129,14 +128,14 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         inputs["height"] = 136
         inputs["width"] = 136
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
@@ -148,13 +147,13 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_rdm_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -167,13 +166,13 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -186,13 +185,13 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -205,13 +204,13 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -224,21 +223,21 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         image_count = 4
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_1 = sd_pipe(**inputs)
+        output_1 = pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        sd_pipe.enable_vae_slicing()
+        pipe.enable_vae_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_2 = sd_pipe(**inputs)
+        output_2 = pipe(**inputs)
 
         # there is a small discrepancy at image borders vs. full batch decode
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
@@ -248,15 +247,15 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
 
         # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
         generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = sd_pipe(
+        output_1 = pipe(
             [prompt],
             generator=generator,
             guidance_scale=6.0,
@@ -267,9 +266,9 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         # make sure tiled vae decode yields the same result
-        sd_pipe.enable_vae_tiling()
+        pipe.enable_vae_tiling()
         generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = sd_pipe(
+        output_2 = pipe(
             [prompt],
             generator=generator,
             guidance_scale=6.0,
@@ -285,19 +284,19 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
         for shape in shapes:
             zeros = torch.zeros(shape).to(device)
-            sd_pipe.vae.decode(zeros)
+            pipe.vae.decode(zeros)
 
     def test_rdm_with_retrieved_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = RDMPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
-        output = sd_pipe(**inputs)
+        output = pipe(**inputs)
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
@@ -331,12 +330,12 @@ class RDMPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_rdm_pndm(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
@@ -344,13 +343,13 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_ddim(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
@@ -358,13 +357,13 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_lms(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
@@ -372,13 +371,13 @@ class RDMPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_rdm_dpm(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
@@ -665,17 +664,17 @@ class RDMPipelineSlowTests(unittest.TestCase):
             print(f"Test `test_rdm_ddim` is skipped because {torch._version_} is < 2.0")
             return
 
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm")
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
 
-        sd_pipe.unet.to(memory_format=torch.channels_last)
-        sd_pipe.unet = torch.compile(sd_pipe.unet, mode="reduce-overhead", fullgraph=True)
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
@@ -706,11 +705,11 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def test_rdm_pndm(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -720,12 +719,12 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_rdm_ddim(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -735,12 +734,12 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_rdm_lms(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -750,12 +749,12 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_rdm_euler(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -765,13 +764,13 @@ class RDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_rdm_dpm(self):
-        sd_pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = RDMPipeline.from_pretrained("fusing/rdm").to(torch_device)
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
         inputs["num_inference_steps"] = 25
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
