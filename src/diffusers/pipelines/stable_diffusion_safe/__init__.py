@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_torch_available, is_transformers_available
+from ...utils import BaseOutput, OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
 
 
 @dataclass
@@ -66,6 +66,11 @@ class StableDiffusionSafePipelineOutput(BaseOutput):
     applied_safety_concept: Optional[str]
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *
+else:
     from .pipeline_stable_diffusion_safe import StableDiffusionPipelineSafe
     from .safety_checker import SafeStableDiffusionSafetyChecker

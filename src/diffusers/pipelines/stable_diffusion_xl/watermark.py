@@ -1,6 +1,11 @@
 import numpy as np
 import torch
-from imwatermark import WatermarkEncoder
+
+from ...utils import is_invisible_watermark_available
+
+
+if is_invisible_watermark_available():
+    from imwatermark import WatermarkEncoder
 
 
 # Copied from https://github.com/Stability-AI/generative-models/blob/613af104c6b85184091d42d374fef420eddb356d/scripts/demo/streamlit_helpers.py#L66

@@ -48,7 +48,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, skip_first_text_encoder=False):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -64,8 +64,8 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+            projection_class_embeddings_input_dim=72,  # 5 * 8 + 32
+            cross_attention_dim=64 if not skip_first_text_encoder else 32,
         )
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -100,23 +100,30 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         components = {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "text_encoder": text_encoder if not skip_first_text_encoder else None,
+            "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
-            # "feature_extractor": None,
+            "requires_aesthetics_score": True,
         }
         return components
+
+    def test_components_function(self):
+        init_components = self.get_dummy_components()
+        init_components.pop("requires_aesthetics_score")
+        pipe = self.pipeline_class(**init_components)
+
+        self.assertTrue(hasattr(pipe, "components"))
+        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
@@ -132,7 +139,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "output_type": "numpy",
-            "strength": 0.75,
+            "strength": 0.8,
         }
         return inputs
 
@@ -149,7 +156,25 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.4656, 0.4840, 0.4439, 0.6698, 0.5574, 0.4524, 0.5799, 0.5943, 0.5165])
+        expected_slice = np.array([0.4664, 0.4886, 0.4403, 0.6902, 0.5592, 0.4534, 0.5931, 0.5951, 0.5224])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_xl_refiner(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(skip_first_text_encoder=True)
+
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+
+        expected_slice = np.array([0.4578, 0.4981, 0.4301, 0.6454, 0.5588, 0.4442, 0.5678, 0.5940, 0.5176])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -231,3 +256,62 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_stable_diffusion_xl_multi_prompts(self):
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(torch_device)
+
+        # forward with single prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["prompt_2"] = inputs["prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["prompt_2"] = "different prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+        # manually set a negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with same negative_prompt duplicated
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = inputs["negative_prompt"]
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+        # forward with different negative_prompt
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        inputs["negative_prompt"] = "negative prompt"
+        inputs["negative_prompt_2"] = "different negative prompt"
+        output = sd_pipe(**inputs)
+        image_slice_3 = output.images[0, -3:, -3:, -1]
+
+        # ensure the results are not equal
+        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4

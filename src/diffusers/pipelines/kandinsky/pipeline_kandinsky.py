@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import (
@@ -20,8 +20,6 @@ from transformers import (
 )
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -30,6 +28,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
@@ -229,28 +228,6 @@ class KandinskyPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.unet,
-            self.text_encoder,
-            self.movq,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -276,25 +253,6 @@ class KandinskyPipeline(DiffusionPipeline):
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -311,6 +269,8 @@ class KandinskyPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -351,6 +311,12 @@ class KandinskyPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -385,9 +351,9 @@ class KandinskyPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=prompt_embeds.dtype, device=device
-        )
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=prompt_embeds.dtype, device=device
+            )
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
@@ -439,6 +405,10 @@ class KandinskyPipeline(DiffusionPipeline):
                 latents,
                 generator=generator,
             ).prev_sample
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
+
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 

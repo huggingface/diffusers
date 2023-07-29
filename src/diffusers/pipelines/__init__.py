@@ -2,7 +2,6 @@ from ..utils import (
     OptionalDependencyNotAvailable,
     is_faiss_available,
     is_flax_available,
-    is_invisible_watermark_available,
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
@@ -18,6 +17,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .auto_pipeline import AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image
     from .consistency_models import ConsistencyModelPipeline
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
@@ -51,6 +51,7 @@ else:
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionXLControlNetPipeline,
     )
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
@@ -61,15 +62,21 @@ else:
         IFSuperResolutionPipeline,
     )
     from .kandinsky import (
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
         KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
     )
     from .kandinsky2_2 import (
+        KandinskyV22CombinedPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
         KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
         KandinskyV22InpaintPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
@@ -103,6 +110,12 @@ else:
         StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .stable_diffusion_xl import (
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLInstructPix2PixPipeline,
+        StableDiffusionXLPipeline,
+    )
     from .t2i_adapter import StableDiffusionAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
@@ -115,18 +128,6 @@ else:
     )
     from .vq_diffusion import VQDiffusionPipeline
 
-
-try:
-    if not (is_torch_available() and is_transformers_available() and is_invisible_watermark_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
-else:
-    from .stable_diffusion_xl import (
-        StableDiffusionXLImg2ImgPipeline,
-        StableDiffusionXLInpaintPipeline,
-        StableDiffusionXLPipeline,
-    )
 
 try:
     if not is_onnx_available():
