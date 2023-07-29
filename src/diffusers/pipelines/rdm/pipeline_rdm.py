@@ -198,6 +198,23 @@ class RDMPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.clip, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
     def _encode_prompt(
         self,
         prompt
@@ -324,6 +341,8 @@ class RDMPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -342,7 +361,7 @@ class RDMPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-        if prompt_embeds is not None:
+        if prompt_embeds is None:
             prompt_embeds = self._encode_prompt(prompt)
         if retrieved_images is not None:
             image_embeddings = self._encode_image(retrieved_images, batch_size)
@@ -424,7 +443,7 @@ class RDMPipeline(DiffusionPipeline):
         else:
             image = latents
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=[True] * image.shape[0])
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
