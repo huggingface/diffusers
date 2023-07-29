@@ -404,7 +404,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
-    
+
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -641,7 +641,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
-    
+
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
