@@ -8,7 +8,7 @@ from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
 from diffusers.utils import is_accelerate_available
 
-from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
@@ -19,8 +19,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...image_processor import VaeImageProcessor
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import logging, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
