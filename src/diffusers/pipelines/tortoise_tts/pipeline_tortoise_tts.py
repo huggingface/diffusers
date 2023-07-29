@@ -11,7 +11,13 @@ from transformers import GPT2LMHeadModel
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 from .modeling_tortoise_tts import (
@@ -54,7 +60,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         autoregressive_conditioning_encoder: ConditioningEncoder,
         autoregressive_random_latent_converter: RandomLatentConverter,
         autoregressive_model: GPT2LMHeadModel,
-        speech_encoder,
+        speech_encoder,  # TODO: get appropriate CLVP components
         text_encoder,
         tokenizer,
         diffusion_conditioning_encoder: ConditioningEncoder,
@@ -79,22 +85,41 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             vocoder=vocoder,
         )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
+    def enable_model_cpu_offload(self, gpu_id=0):
         r"""
-        Enable sliced VAE decoding.
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
+        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
+        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
+        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
+        iterative execution of the `unet`.
         """
-        self.vae.enable_slicing()
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        models_to_offload = [
+            self.autoregressive_conditioning_encoder,
+            self.autoregressive_random_latent_converter,
+            self.autoregressive_model,
+            self.speech_encoder,
+            self.text_encoder,
+            self.diffusion_conditioning_encoder,
+            self.diffusion_random_latent_converter,
+            self.diffusion_denoising_model,
+            self.vocoder,
+        ]
+        for cpu_offloaded_model in models_to_offload:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -109,7 +134,18 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.speech_encoder, self.text_encoder, self.vocoder]:
+        models_to_offload = [
+            self.autoregressive_conditioning_encoder,
+            self.autoregressive_random_latent_converter,
+            self.autoregressive_model,
+            self.speech_encoder,
+            self.text_encoder,
+            self.diffusion_conditioning_encoder,
+            self.diffusion_random_latent_converter,
+            self.diffusion_denoising_model,
+            self.vocoder,
+        ]
+        for cpu_offloaded_model in models_to_offload:
             cpu_offload(cpu_offloaded_model, device)
 
     @property
@@ -406,7 +442,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         dtype,
         device,
         generator,
-        batch_size,
+        batch_size: int = 1,
         cond_length: int = 132300,
         latents: Optional[torch.FloatTensor] = None,
     ):
@@ -415,6 +451,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         """
         if latents:
             autoregressive_cond_emb = latents.to(device)
+            # TODO: handle batch sizes
         elif audio:
             target_sampling_rate = self.autoregressive_conditioning_encoder.config.input_spectrogram_sampling_rate
             audio = self.prepare_audio_waveforms(audio, target_sampling_rate, device=device)
@@ -451,6 +488,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         """
         if latents:
             diffusion_cond_emb = latents.to(device)
+            # TODO: handle batch sizes
         elif audio:
             target_sampling_rate = self.diffusion_conditioning_encoder.config.input_spectrogram_sampling_rate
             audio = self.prepare_audio_waveforms(audio, target_sampling_rate, device=device)
@@ -500,6 +538,15 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 latent_conversion_type="diffusion",
             )
         return diffusion_cond_emb
+    
+    def generate_autoregressive_samples(
+        self,
+        prompt_embeds,
+        autoregressive_cond_emb,
+        max_tokens,
+        **generate_kwargs,
+    ):
+        pass
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -586,17 +633,20 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # Diffusion generation parameters 
         audio_length_in_s: Optional[float] = 5.12,
         num_inference_steps: int = 100,
-        guidance_scale: float = 2.5,
+        guidance_scale: float = 2.0,
         diffusion_temperature: float = 1.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         # Autoregressive parameters
-        num_autoregressive_samples: int = 512,
-        autoregressive_temperature: float = 0.8,
-        autoregressive_length_penalty: float = 1.0,
-        autoregressive_repetition_penalty: float = 2.0,
+        autoregressive_num_samples: int = 512,
+        autoregressive_batch_size: Optional[int] = None,
+        autoregressive_max_tokens: int = 500,
+        autoregressive_temperature: float = 0.2,
         autoregressive_top_p: float = 0.8,
+        autoregressive_repetition_penalty: float = 2.0,
+        autoregressive_length_penalty: float = 1.0,
+        autoregressive_generate_kwargs: Optional[Dict[str, Any]] = None,
         # General Tortoise TTS parameters
         latent_averaging_mode: int = 0,
         # diffusers pipeline arguments
@@ -649,21 +699,31 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
-            num_autoregressive_samples (`int`, *optional*, defaults to 512):
+            autoregressive_num_samples (`int`, *optional*, defaults to 512):
                 The number of candidates which will be sampled from the autoregressive model for reranking by the CLVP
                 model. More samples will increase the likelihood of generating good samples, but will be more
                 computationally expensive.
+            autoregressive_batch_size (`int`, *optional*):
+                The batch size to use when generating samples from the autoregressive model. If `None`, this will be
+                set to `autoregressive_num_samples` (e.g., all of the samples will be processed in a single batch).
+            autoregressive_max_tokens (`int`, *optional*, defaults to 500):
+                The maximum number of output MEL tokens from the autoregressive model. Should be an integer in (0, 600].
             autoregressive_temperature (`float`, *optional*, defaults to 0.8):
                 The softmax temperature used when sampling from the autoregressive model's next-token distribution.
-            autoregressive_length_penalty (`float`, *optional*, defaults to 1.0):
-                A length penalty applied when generating samples from the autoregressive model. Higher values will cause
-                to produce shorter samples.
+            autoregressive_top_p (`float`, *optional*, defaults to 0.8):
+                The p parameter used for nucleus sampling from the autoregressive model, which limits the candidate
+                tokens to the smallest set of (and therefore most likely) tokens whose probabilities sum to at least
+                p. Lower values will cause the autoregressive model to produce more "likely" outputs, which are
+                typically more bland.
             autoregressive_repetition_penalty (`float`, *optional*, defaults to 2.0):
                 A penalty which penalizes the autoregressive model producing repetitive outputs. Higher values will
                 tend to reduce the incidence of long silences, "uhhhs", and other repetitve outputs.
-            autoregressive_top_p (`float`, *optional*, defaults to 0.8):
-                The p parameter used for nucleus sampling, which is used when TODO. Lower values will cause the
-                autoregressive model to produce more "likely" outputs, which are typically more bland.
+            autoregressive_length_penalty (`float`, *optional*, defaults to 1.0):
+                A length penalty applied when generating samples from the autoregressive model. Higher values will cause
+                to produce shorter samples.
+            autoregressive_generate_kwargs: (`dict`, *optional*):
+                A dict holding other keyword args to supply to the [`transformers.GenerationMixin.generate`] method.
+                See [`transformers.GenerationConfig`] for documentation of the available options.
             latent_averaging_mode (`int`, *optional*, defaults to 1):
                 The strategy 0/1/2 used to average the conditioning latents:
                 0 - latents will be generated as in original tortoise, using ~4.27s from each voice sample, averaging latent across all samples
@@ -743,6 +803,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        
+        autoregressive_batch_size = autoregressive_batch_size or autoregressive_num_samples
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -768,12 +830,31 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             prompt_embeds.dtype,
             device,
             generator,
-            batch_size,
+            batch_size=1,
             latents=audio_ar_latents,
         )
 
         # 5. Generate candidates using the autoregressive model
-        # TODO
+        generate_kwargs = {
+            "do_sample": True,
+            "num_return_sequences": autoregressive_batch_size,
+            "temperature": autoregressive_temperature,
+            "top_p": autoregressive_top_p,
+            "repetition_penalty": autoregressive_repetition_penalty,
+            "length_penalty": autoregressive_length_penalty,
+            **autoregressive_generate_kwargs,
+        }
+        autoregressive_samples = []
+        # Assume evenly divisible for now
+        num_autoregressive_batches = autoregressive_num_samples // autoregressive_batch_size
+        with self.progress_bar(total=num_autoregressive_batches) as progress_bar:
+            for i in range(num_autoregressive_batches):
+                samples = self.generate_autoregressive_samples(
+                    prompt_embeds, autoregressive_cond_audio_emb, autoregressive_max_tokens, **generate_kwargs
+                )
+                autoregressive_samples.append(samples)
+
+                progress_bar.update()
 
         # 6. Rerank candidates using the CLVP CLIP-like discriminator model
         # TODO
@@ -862,6 +943,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         if output_type == "np":
             audio = audio.numpy()
+        
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (audio,)
