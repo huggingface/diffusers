@@ -180,12 +180,14 @@ The following two GIFs provide intuitive visual results. We observed, for each s
 </p>
 with "make it in Japan” as the prompt. It can be seen that SDXL starts preserving the details of the original image earlier, resulting in higher fidelity outcomes sooner.
 
-* SD-1.5
+* SD-1.5: https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_ip2p_training_val_img_progress.gif
+
 <p align="center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_ip2p_training_val_img_progress.gif" alt="input for make it Japan" width=600/>
 </p>
 
-* SDXL
+* SDXL: https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_ip2p_training_val_img_progress.gif
+
 <p align="center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_ip2p_training_val_img_progress.gif" alt="input for make it Japan" width=600/>
 </p>
