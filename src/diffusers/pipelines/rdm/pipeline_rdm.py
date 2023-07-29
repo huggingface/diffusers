@@ -198,6 +198,7 @@ class RDMPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.clip, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
     @property
     def _execution_device(self):
         r"""
@@ -215,10 +216,8 @@ class RDMPipeline(DiffusionPipeline):
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
-    def _encode_prompt(
-        self,
-        prompt
-    ):
+
+    def _encode_prompt(self, prompt):
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -240,11 +239,8 @@ class RDMPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds / torch.linalg.norm(prompt_embeds, dim=-1, keepdim=True)
         prompt_embeds = prompt_embeds[:, None, :]
         return prompt_embeds
-    def _encode_image(
-        self,
-        retrieved_images,
-        batch_size
-    ):
+
+    def _encode_image(self, retrieved_images, batch_size):
         retrieved_images = normalize_images(retrieved_images)
         retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(
             self.clip.device, dtype=self.clip.dtype
@@ -254,6 +250,7 @@ class RDMPipeline(DiffusionPipeline):
         image_embeddings = image_embeddings[None, ...]
         image_embeddings = image_embeddings.repeat(batch_size, 1, 1)
         return image_embeddings
+
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -270,6 +267,7 @@ class RDMPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+
     @torch.no_grad()
     def __call__(
         self,
@@ -404,7 +402,6 @@ class RDMPipeline(DiffusionPipeline):
         # It's more optimized to move all timesteps to correct device beforehand
         timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
-
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
@@ -443,7 +440,9 @@ class RDMPipeline(DiffusionPipeline):
         else:
             image = latents
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=[True] * image.shape[0])
+        image = self.image_processor.postprocess(
+            image, output_type=output_type, do_denormalize=[True] * image.shape[0]
+        )
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
