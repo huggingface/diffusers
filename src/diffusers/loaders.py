@@ -1362,11 +1362,12 @@ class LoraLoaderMixin:
         # print(f"Text encoder network alphas: {list(filter(lambda x: x.startswith('text_encoder'), text_encoder_net_alphas))[:10]}")
         # print(f"Text encoder 2 network alphas: {list(filter(lambda x: x.startswith('text_encoder_2'), text_encoder_net_alphas))[:10]}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            print(f"From modification: {name}")
+            # print(f"From modification: {name}")
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
+            print(query_alpha, key_alpha, value_alpha, proj_alpha)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
