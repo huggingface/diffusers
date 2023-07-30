@@ -1310,6 +1310,7 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
                     print(f"{prefix}: {alpha_keys[:20]}")
+                    print(f"{prefix}: {any('text_encoder_2' in k for k in alpha_keys)}")
                 
                 cls._modify_text_encoder(
                     text_encoder,
@@ -1373,6 +1374,7 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         is_network_alphas_populated = len(network_alphas) > 0
+        print(f"is_network_alphas_populated: {is_network_alphas_populated}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
             key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
@@ -1405,6 +1407,7 @@ class LoraLoaderMixin:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
                 fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
                 fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
+                print(fc1_alpha, fc2_alpha)
 
                 mlp_module.fc1 = PatchedLoraProjection(
                     mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
