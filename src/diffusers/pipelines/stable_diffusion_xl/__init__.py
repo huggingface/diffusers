@@ -30,7 +30,7 @@ try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils.dummy_torch_and_transformers_and_objects import *  # noqa F403
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
     from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
