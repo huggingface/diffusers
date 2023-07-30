@@ -1248,6 +1248,7 @@ class LoraLoaderMixin:
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
+        print("Text encoder called.")
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
 
