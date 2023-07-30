@@ -1310,7 +1310,9 @@ class LoraLoaderMixin:
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
-
+                if "2" not in prefix:
+                    any_te2 = any("text_encoder_2" in k for k in network_alphas)
+                    print(f"{prefix}: {any_te2}")
                 cls._modify_text_encoder(
                     text_encoder,
                     lora_scale,
@@ -1378,6 +1380,7 @@ class LoraLoaderMixin:
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
+            print(name + ".k.proj.alpha", name + ".q.proj.alpha", name + ".v.proj.alpha", ame + ".out.proj.alpha")
             print(query_alpha, key_alpha, value_alpha, proj_alpha)
 
             attn_module.q_proj = PatchedLoraProjection(
@@ -1401,6 +1404,7 @@ class LoraLoaderMixin:
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
         if patch_mlp:
+            # Handle this too (sayakpaul).
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
                 fc1_alpha = network_alphas.get(name + ".fc1.alpha")
                 fc2_alpha = network_alphas.get(name + ".fc2.alpha")
