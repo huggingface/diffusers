@@ -258,6 +258,7 @@ class UNet2DConditionLoadersMixin:
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         network_alphas = kwargs.pop("network_alphas", None)
+        is_network_alphas_none = network_alphas is None
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -353,11 +354,15 @@ class UNet2DConditionLoadersMixin:
                         if k.replace(".alpha", "") in key:
                             mapped_network_alphas.update({attn_processor_key: network_alphas[k]})
             
-
+            if not is_network_alphas_none:
+                if len(network_alphas) > 0:
+                    raise ValueError(
+                        f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
+                    )
 
             if len(state_dict) > 0:
                 raise ValueError(
-                    f"The state_dict has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
+                    f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
                 )
 
             for key, value_dict in lora_grouped_dict.items():
@@ -1303,8 +1308,6 @@ class LoraLoaderMixin:
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
-                    # print(list(network_alphas.keys())[:10])
-                    # print(f"{prefix} alphas: {alpha_keys[:10]}")
 
                 cls._modify_text_encoder(
                     text_encoder,
@@ -1367,7 +1370,7 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-
+        print(f"From text encoder: {network_alphas}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
