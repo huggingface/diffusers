@@ -352,6 +352,8 @@ class UNet2DConditionLoadersMixin:
                     for k in network_alphas:
                         if k.replace(".alpha", "") in key:
                             mapped_network_alphas.update({attn_processor_key: network_alphas[k]})
+            
+
 
             if len(state_dict) > 0:
                 raise ValueError(
@@ -434,14 +436,6 @@ class UNet2DConditionLoadersMixin:
                             v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight"),
                             out_rank=rank_mapping.get("to_out_lora.down.weight"),
                             out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight"),
-                            # rank=rank_mapping.get("to_k_lora.down.weight", None),
-                            # hidden_size=hidden_size_mapping.get("to_k_lora.up.weight", None),
-                            # q_rank=rank_mapping.get("to_q_lora.down.weight", None),
-                            # q_hidden_size=hidden_size_mapping.get("to_q_lora.up.weight", None),
-                            # v_rank=rank_mapping.get("to_v_lora.down.weight", None),
-                            # v_hidden_size=hidden_size_mapping.get("to_v_lora.up.weight", None),
-                            # out_rank=rank_mapping.get("to_out_lora.down.weight", None),
-                            # out_hidden_size=hidden_size_mapping.get("to_out_lora.up.weight", None),
                         )
                     else:
                         attn_processors[key] = attn_processor_class(
@@ -496,9 +490,6 @@ class UNet2DConditionLoadersMixin:
         # set ff layers
         for target_module, lora_layer in non_attn_lora_layers:
             target_module.set_lora_layer(lora_layer)
-            # It should raise an error if we don't have a set lora here
-            # if hasattr(target_module, "set_lora_layer"):
-            #     target_module.set_lora_layer(lora_layer)
 
     def save_attn_procs(
         self,
@@ -1216,6 +1207,7 @@ class LoraLoaderMixin:
                 network_alphas = {
                     k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                 }
+                print(f"UNet network alphas: {network_alphas}")
 
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -1366,12 +1358,13 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-
+        text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
+        print(f"Text encoder network alphas: {text_encoder_net_alphas}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            query_alpha = network_alphas.get(name + ".k.proj.alpha")
-            key_alpha = network_alphas.get(name + ".q.proj.alpha")
-            value_alpha = network_alphas.get(name + ".v.proj.alpha")
-            proj_alpha = network_alphas.get(name + ".out.proj.alpha")
+            query_alpha = network_alphas.get(name + ".k.proj.alpha", None)
+            key_alpha = network_alphas.get(name + ".q.proj.alpha", None)
+            value_alpha = network_alphas.get(name + ".v.proj.alpha", None)
+            proj_alpha = network_alphas.get(name + ".out.proj.alpha", None)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
@@ -1665,6 +1658,7 @@ class LoraLoaderMixin:
         te_alphas = list(filter(lambda x: "unet" in x, network_alphas))
         unet_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
         print(len(te_alphas), len(unet_alphas))
+        print(te_alphas, unet_alphas)
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alphas
