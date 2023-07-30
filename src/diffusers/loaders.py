@@ -1655,8 +1655,10 @@ class LoraLoaderMixin:
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
 
-        te_alphas = list(filter(lambda x: "unet" in x, network_alphas))
-        unet_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
+        unet_alphas = list(filter(lambda x: "unet" in x, network_alphas))
+        te_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
+        any_te2 = any("text_encoder_2" in k for k in te_alphas)
+        print(f"Any text encoder 2 alpha present: {any_te2}")
         print(f"From load_lora_weights: {len(te_alphas)}, {len(unet_alphas)}")
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
