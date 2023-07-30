@@ -1358,14 +1358,15 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-        text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
-        print(f"Text encoder network alphas: {list(filter(lambda x: x.startswith('text_encoder'), text_encoder_net_alphas))[:10]}")
-        print(f"Text encoder 2 network alphas: {list(filter(lambda x: x.startswith('text_encoder_2'), text_encoder_net_alphas))[:10]}")
+        # text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
+        # print(f"Text encoder network alphas: {list(filter(lambda x: x.startswith('text_encoder'), text_encoder_net_alphas))[:10]}")
+        # print(f"Text encoder 2 network alphas: {list(filter(lambda x: x.startswith('text_encoder_2'), text_encoder_net_alphas))[:10]}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            query_alpha = network_alphas.get(name + ".k.proj.alpha", None)
-            key_alpha = network_alphas.get(name + ".q.proj.alpha", None)
-            value_alpha = network_alphas.get(name + ".v.proj.alpha", None)
-            proj_alpha = network_alphas.get(name + ".out.proj.alpha", None)
+            print(f"From modification: {name}")
+            query_alpha = network_alphas.get(name + ".k.proj.alpha")
+            key_alpha = network_alphas.get(name + ".q.proj.alpha")
+            value_alpha = network_alphas.get(name + ".v.proj.alpha")
+            proj_alpha = network_alphas.get(name + ".out.proj.alpha")
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
