@@ -352,7 +352,7 @@ class UNet2DConditionLoadersMixin:
                 if network_alphas is not None:
                     for k in network_alphas:
                         if k.replace(".alpha", "") in key:
-                            mapped_network_alphas.update({attn_processor_key: network_alphas[k]})
+                            mapped_network_alphas.update({attn_processor_key: network_alphas.pop(k)})
             
             if not is_network_alphas_none:
                 if len(network_alphas) > 0:
