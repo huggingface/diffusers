@@ -1359,7 +1359,8 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
-        print(f"Text encoder network alphas: {text_encoder_net_alphas[:10]}")
+        print(f"Text encoder network alphas: {list(filter(lambda x: x.startswith('text_encoder'), text_encoder_net_alphas))[:10]}")
+        print(f"Text encoder 2 network alphas: {list(filter(lambda x: x.startswith('text_encoder_2'), text_encoder_net_alphas))[:10]}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha", None)
             key_alpha = network_alphas.get(name + ".q.proj.alpha", None)
