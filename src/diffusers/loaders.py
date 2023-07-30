@@ -1214,7 +1214,6 @@ class LoraLoaderMixin:
                 network_alphas = {
                     k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                 }
-                print(f"UNet network alphas: {alpha_keys[:10]}")
 
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -1380,7 +1379,7 @@ class LoraLoaderMixin:
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
             proj_alpha = network_alphas.get(name + ".out.proj.alpha")
-            print(name + ".k.proj.alpha", name + ".q.proj.alpha", name + ".v.proj.alpha", ame + ".out.proj.alpha")
+            print(name + ".k.proj.alpha", name + ".q.proj.alpha", name + ".v.proj.alpha", name + ".out.proj.alpha")
             print(query_alpha, key_alpha, value_alpha, proj_alpha)
 
             attn_module.q_proj = PatchedLoraProjection(
