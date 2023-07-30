@@ -1214,6 +1214,7 @@ class LoraLoaderMixin:
                 network_alphas = {
                     k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                 }
+                print(f"From UNet: {alpha_keys}")
 
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -1373,7 +1374,6 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-        print(f"From text encoder: {network_alphas}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
