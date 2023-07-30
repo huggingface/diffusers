@@ -1303,6 +1303,7 @@ class LoraLoaderMixin:
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
+                    print(list(network_alphas.keys())[:10])
                     print(f"{prefix} alphas: {alpha_keys[:10]}")
 
                 cls._modify_text_encoder(
