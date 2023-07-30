@@ -1245,6 +1245,7 @@ class LoraLoaderMixin:
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
 
+        # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
             text_encoder_keys = [k for k in keys if k.startswith(prefix)]
@@ -1296,6 +1297,13 @@ class LoraLoaderMixin:
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+
+                if network_alphas is not None:
+                    alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix)]
+                    network_alphas = {
+                        k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+                    }
+                    print(f"{prefix} alphas: {alpha_keys[:10]}")
 
                 cls._modify_text_encoder(
                     text_encoder,
@@ -1358,11 +1366,8 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
-        # text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
-        # print(f"Text encoder network alphas: {list(filter(lambda x: x.startswith('text_encoder'), text_encoder_net_alphas))[:10]}")
-        # print(f"Text encoder 2 network alphas: {list(filter(lambda x: x.startswith('text_encoder_2'), text_encoder_net_alphas))[:10]}")
+
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            # print(f"From modification: {name}")
             query_alpha = network_alphas.get(name + ".k.proj.alpha")
             key_alpha = network_alphas.get(name + ".q.proj.alpha")
             value_alpha = network_alphas.get(name + ".v.proj.alpha")
@@ -1660,8 +1665,6 @@ class LoraLoaderMixin:
 
         unet_alphas = list(filter(lambda x: "unet" in x, network_alphas))
         te_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
-        any_te2 = any("text_encoder_2" in k for k in te_alphas)
-        print(f"Any text encoder 2 alpha present: {any_te2}")
         print(f"From load_lora_weights: {len(te_alphas)}, {len(unet_alphas)}")
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
