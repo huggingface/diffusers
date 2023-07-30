@@ -1207,7 +1207,7 @@ class LoraLoaderMixin:
                 network_alphas = {
                     k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                 }
-                print(f"UNet network alphas: {network_alphas}")
+                print(f"UNet network alphas: {alpha_keys[:10]}")
 
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -1241,7 +1241,7 @@ class LoraLoaderMixin:
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
-        print("Text encoder called.")
+        print(f"{prefix} called.")
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
 
@@ -1359,7 +1359,7 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         text_encoder_net_alphas = list(filter(lambda x: "text" in x, network_alphas))
-        print(f"Text encoder network alphas: {text_encoder_net_alphas}")
+        print(f"Text encoder network alphas: {text_encoder_net_alphas[:10]}")
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.get(name + ".k.proj.alpha", None)
             key_alpha = network_alphas.get(name + ".q.proj.alpha", None)
@@ -1657,8 +1657,7 @@ class LoraLoaderMixin:
 
         te_alphas = list(filter(lambda x: "unet" in x, network_alphas))
         unet_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
-        print(len(te_alphas), len(unet_alphas))
-        print(te_alphas, unet_alphas)
+        print(f"From load_lora_weights: {len(te_alphas)}, {len(unet_alphas)}")
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alphas
