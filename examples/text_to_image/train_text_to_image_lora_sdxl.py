@@ -865,7 +865,6 @@ def main(args):
                 image = crop(image, y1, x1, h, w)
             if args.random_flip and random.random() < 0.5:
                 # flip
-                y1 = image.height - y1
                 x1 = image.width - x1
                 image = train_flip(image)
             crop_top_left = (y1, x1)
@@ -1034,10 +1033,9 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # time ids
-
-                def compute_time_ids(target_size, crops_coords_top_left):
+                def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-                    original_size = (args.resolution, args.resolution)
+                    target_size = (args.resolution, args.resolution)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
                     add_time_ids = torch.tensor([add_time_ids])
                     add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
