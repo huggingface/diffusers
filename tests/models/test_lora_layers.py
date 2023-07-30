@@ -760,7 +760,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
-    def test_unload_lora(self):
+    def test_unload_kohya_lora(self):
         generator = torch.manual_seed(0)
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
