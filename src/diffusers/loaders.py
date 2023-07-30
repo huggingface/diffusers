@@ -1214,7 +1214,6 @@ class LoraLoaderMixin:
                 network_alphas = {
                     k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                 }
-                print(f"From UNet: {alpha_keys}")
 
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -1306,13 +1305,12 @@ class LoraLoaderMixin:
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 if network_alphas is not None:
-                    alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix)]
+                    alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".", 1)[0] == prefix]
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
-                if "2" not in prefix:
-                    any_te2 = any("text_encoder_2" in k for k in network_alphas)
-                    print(f"{prefix}: {any_te2}")
+                    print(f"{prefix}: {alpha_keys[:20]}")
+                
                 cls._modify_text_encoder(
                     text_encoder,
                     lora_scale,
@@ -1374,13 +1372,14 @@ class LoraLoaderMixin:
 
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
+        is_network_alphas_populated = len(network_alphas) > 0
         for name, attn_module in text_encoder_attn_modules(text_encoder):
-            query_alpha = network_alphas.get(name + ".k.proj.alpha")
-            key_alpha = network_alphas.get(name + ".q.proj.alpha")
-            value_alpha = network_alphas.get(name + ".v.proj.alpha")
-            proj_alpha = network_alphas.get(name + ".out.proj.alpha")
+            query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
+            key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
+            value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
+            out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
             print(name + ".k.proj.alpha", name + ".q.proj.alpha", name + ".v.proj.alpha", name + ".out.proj.alpha")
-            print(query_alpha, key_alpha, value_alpha, proj_alpha)
+            print(query_alpha, key_alpha, value_alpha, out_alpha)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
@@ -1398,15 +1397,14 @@ class LoraLoaderMixin:
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=proj_alpha, rank=rank, dtype=dtype
+                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
         if patch_mlp:
-            # Handle this too (sayakpaul).
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.get(name + ".fc1.alpha")
-                fc2_alpha = network_alphas.get(name + ".fc2.alpha")
+                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
+                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
 
                 mlp_module.fc1 = PatchedLoraProjection(
                     mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
@@ -1417,6 +1415,11 @@ class LoraLoaderMixin:
                     mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=rank, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
+
+        if is_network_alphas_populated and len(network_alphas) > 0:
+            raise ValueError(
+                    f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
+                )
 
         return lora_parameters
 
