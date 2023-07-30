@@ -134,9 +134,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         added_cond_kwargs = None
         if self.addition_embed_type == "text_time":
+            # TODO: how to get this from the config? It's no longer cross_attention_dim
+            text_embeds_dim = 1280
+            time_ids_channels = self.projection_class_embeddings_input_dim - text_embeds_dim
+            time_ids_dims = time_ids_channels // self.addition_time_embed_dim
             added_cond_kwargs = {
-                "text_embeds": jnp.zeros((1, 1280), dtype=jnp.float32),  # TODO: This should be set based on config
-                "time_ids": jnp.zeros((1, 6), dtype=jnp.float32),
+                "text_embeds": jnp.zeros((1, text_embeds_dim), dtype=jnp.float32),
+                "time_ids": jnp.zeros((1, time_ids_dims), dtype=jnp.float32),
             }
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
