@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import os
 import re
-import copy
 import warnings
 from collections import defaultdict
 from contextlib import nullcontext
@@ -355,7 +355,7 @@ class UNet2DConditionLoadersMixin:
                     for k in network_alphas_:
                         if k.replace(".alpha", "") in key:
                             mapped_network_alphas.update({attn_processor_key: network_alphas.pop(k)})
-            
+
             if not is_network_alphas_none:
                 if len(network_alphas) > 0:
                     raise ValueError(
@@ -1199,7 +1199,6 @@ class LoraLoaderMixin:
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
-        print("UNet called.")
         keys = list(state_dict.keys())
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
@@ -1247,14 +1246,13 @@ class LoraLoaderMixin:
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
-        print(f"{prefix} called.")
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(prefix)]
+            text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".", 1)[0] == prefix]
             text_encoder_lora_state_dict = {
                 k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
@@ -1305,13 +1303,13 @@ class LoraLoaderMixin:
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 if network_alphas is not None:
-                    alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".", 1)[0] == prefix]
+                    alpha_keys = [
+                        k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".", 1)[0] == prefix
+                    ]
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
-                    print(f"{prefix}: {alpha_keys[:20]}")
-                    print(f"{prefix}: {any('text_encoder_2' in k for k in alpha_keys)}")
-                
+
                 cls._modify_text_encoder(
                     text_encoder,
                     lora_scale,
@@ -1374,14 +1372,12 @@ class LoraLoaderMixin:
         lora_parameters = []
         network_alphas = {} if network_alphas is None else network_alphas
         is_network_alphas_populated = len(network_alphas) > 0
-        print(f"is_network_alphas_populated: {is_network_alphas_populated}")
+
         for name, attn_module in text_encoder_attn_modules(text_encoder):
             query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
             key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
             value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
             out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
-            print(name + ".k.proj.alpha", name + ".q.proj.alpha", name + ".v.proj.alpha", name + ".out.proj.alpha")
-            print(query_alpha, key_alpha, value_alpha, out_alpha)
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
@@ -1407,7 +1403,6 @@ class LoraLoaderMixin:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
                 fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
                 fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
-                print(fc1_alpha, fc2_alpha)
 
                 mlp_module.fc1 = PatchedLoraProjection(
                     mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
@@ -1421,8 +1416,8 @@ class LoraLoaderMixin:
 
         if is_network_alphas_populated and len(network_alphas) > 0:
             raise ValueError(
-                    f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-                )
+                f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
+            )
 
         return lora_parameters
 
@@ -1677,10 +1672,6 @@ class LoraLoaderMixin:
         )
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
-
-        unet_alphas = list(filter(lambda x: "unet" in x, network_alphas))
-        te_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
-        print(f"From load_lora_weights: {len(te_alphas)}, {len(unet_alphas)}")
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alphas
