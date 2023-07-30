@@ -63,7 +63,13 @@ logger = get_logger(__name__)
 
 
 def save_model_card(
-    repo_id: str, images=None, base_model=str, dataset_name=str, train_text_encoder=False, repo_folder=None, vae_path=None
+    repo_id: str,
+    images=None,
+    base_model=str,
+    dataset_name=str,
+    train_text_encoder=False,
+    repo_folder=None,
+    vae_path=None,
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -628,7 +634,9 @@ def main(args):
         lora_attn_processor_class = (
             LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
         )
-        module = lora_attn_processor_class(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank)
+        module = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank
+        )
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
 
@@ -662,8 +670,12 @@ def main(args):
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-        text_lora_parameters_one = LoraLoaderMixin._modify_text_encoder(text_encoder_one, dtype=torch.float32, rank=args.rank)
-        text_lora_parameters_two = LoraLoaderMixin._modify_text_encoder(text_encoder_two, dtype=torch.float32, rank=args.rank)
+        text_lora_parameters_one = LoraLoaderMixin._modify_text_encoder(
+            text_encoder_one, dtype=torch.float32, rank=args.rank
+        )
+        text_lora_parameters_two = LoraLoaderMixin._modify_text_encoder(
+            text_encoder_two, dtype=torch.float32, rank=args.rank
+        )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -827,7 +839,7 @@ def main(args):
     # Preprocessing the datasets.
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.)
+    train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -845,8 +857,8 @@ def main(args):
             original_sizes.append((image.height, image.width))
             image = train_resize(image)
             if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.)))
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
                 image = train_crop(image)
             else:
                 y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
@@ -882,7 +894,13 @@ def main(args):
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
         input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
-        return {"pixel_values": pixel_values, "input_ids_one": input_ids_one, "input_ids_two": input_ids_two, "original_sizes": original_sizes, "crop_top_lefts": crop_top_lefts}
+        return {
+            "pixel_values": pixel_values,
+            "input_ids_one": input_ids_one,
+            "input_ids_two": input_ids_two,
+            "original_sizes": original_sizes,
+            "crop_top_lefts": crop_top_lefts,
+        }
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -1026,7 +1044,9 @@ def main(args):
                     return add_time_ids
 
                 # Handle instance prompt.
-                add_time_ids = torch.cat([compute_time_ids(s, c) for s, c in zip(batch['original_sizes'], batch['crop_top_lefts'])])
+                add_time_ids = torch.cat(
+                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                )
 
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
@@ -1034,7 +1054,7 @@ def main(args):
                     text_encoders=[text_encoder_one, text_encoder_two],
                     tokenizers=None,
                     prompt=None,
-                    text_input_ids_list=[batch['input_ids_one'], batch['input_ids_two']],
+                    text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
                 )
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
                 prompt_embeds = prompt_embeds
