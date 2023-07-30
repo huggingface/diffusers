@@ -1521,10 +1521,6 @@ class LoraLoaderMixin:
             lora_name_up = lora_name + ".lora_up.weight"
             lora_name_alpha = lora_name + ".alpha"
 
-            # if lora_name_alpha in state_dict:
-            #     alpha = state_dict.pop(lora_name_alpha).item()
-            #     network_alphas.update({lora_name_alpha: alpha})
-
             if lora_name.startswith("lora_unet_"):
                 diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
@@ -1665,6 +1661,10 @@ class LoraLoaderMixin:
         )
         if te2_state_dict is not None:
             te_state_dict.update(te2_state_dict)
+
+        te_alphas = list(filter(lambda x: "unet" in x, network_alphas))
+        unet_alphas = list(filter(lambda x: "text_encoder" in x, network_alphas))
+        print(len(te_alphas), len(unet_alphas))
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
         return new_state_dict, network_alphas
