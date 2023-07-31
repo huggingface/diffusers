@@ -20,6 +20,7 @@ from ...utils import (
 )
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
+from .modeling_autoregressive import TortoiseTTSAutoregressiveModel
 from .modeling_common import ConditioningEncoder, RandomLatentConverter
 from .modeling_diffusion import TortoiseTTSDenoisingModel
 
@@ -55,7 +56,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         autoregressive_conditioning_encoder: ConditioningEncoder,
         autoregressive_random_latent_converter: RandomLatentConverter,
-        autoregressive_model: GPT2LMHeadModel,
+        autoregressive_model: TortoiseTTSAutoregressiveModel,
         speech_encoder,  # TODO: get appropriate CLVP components
         text_encoder,
         tokenizer,
@@ -534,16 +535,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 latent_conversion_type="diffusion",
             )
         return diffusion_cond_emb
-    
-    def generate_autoregressive_samples(
-        self,
-        prompt_embeds,
-        autoregressive_cond_emb,
-        num_samples,
-        max_tokens,
-        **generate_kwargs,
-    ):
-        pass
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -845,11 +836,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         num_autoregressive_batches = autoregressive_num_samples // autoregressive_batch_size
         with self.progress_bar(total=num_autoregressive_batches) as progress_bar:
             for i in range(num_autoregressive_batches):
-                samples = self.generate_autoregressive_samples(
-                    prompt_embeds,
+                samples = self.autoregressive_model.generate_samples(
                     autoregressive_cond_audio_emb,
-                    autoregressive_batch_size,  # TODO: handle case where last batch is not same size?
-                    autoregressive_max_tokens,
+                    prompt_embeds,
+                    num_samples=autoregressive_batch_size,  # TODO: handle case where last batch is not same size?
+                    max_sample_length=autoregressive_max_tokens,
                     **generate_kwargs,
                 )
                 autoregressive_samples.append(samples)

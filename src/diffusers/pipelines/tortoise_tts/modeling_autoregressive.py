@@ -160,7 +160,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
     ):
         super().__init__(config)
         self.num_mel_tokens = num_mel_tokens
-        self.num_text_tokens = num_mel_tokens
+        self.num_text_tokens = num_text_tokens
 
         # Input embeddings
         mel_embedding = nn.Embedding(num_mel_tokens, config.n_embd)
@@ -191,6 +191,45 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
         self.mel_head = nn.Linear(config.n_embd, num_mel_tokens)
         self.text_head = nn.Linear(config.n_embd, num_text_tokens)
     
+    # TODO: add/rename input args? only requirement is that first non-keyword argument is some sort of input_ids
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
+        # TODO: implement kv_cache stuff? can we just use past_key_values instead?
+        token_type_ids = kwargs.get("token_type_ids", None)  # usually None
+        # only last token for inputs_ids if past is defined in kwargs
+        if past_key_values:
+            input_ids = input_ids[:, -1].unsqueeze(-1)
+            if token_type_ids is not None:
+                token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+
+        attention_mask = kwargs.get("attention_mask", None)
+        position_ids = kwargs.get("position_ids", None)
+
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                position_ids = position_ids[:, -1].unsqueeze(-1)
+        else:
+            position_ids = None
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"text_inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"text_input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "position_ids": position_ids,
+                "attention_mask": attention_mask,
+                "token_type_ids": token_type_ids,
+            }
+        )
+        return model_inputs
+    
     def forward(
         self,
         audio_conditioning_embed: Optional[torch.FloatTensor] = None,
@@ -208,6 +247,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
         Gets the next token distribution from text and mel inputs???
         """
         # TODO: doesn't yet support caching mel embs???
+        # TODO: maybe add other optimizations when performing inference...???
         # 1. Check and preprocess audio cond, text, and audio input tensors
         received_audio_cond_emb = audio_conditioning_embed is not None
         if received_audio_cond_emb and audio_conditioning_embed.dim() == 2:
@@ -369,9 +409,13 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         max_mel_tokens: int = 604,
         max_text_tokens: int = 402,
         max_conditioning_inputs: int = 2,
+        mel_length_compression: int = 1024,
         mel_channels: int = 80,
         mel_encoder_resblocks: int = 1,
-        use_mel_codes_as_input: bool = True,
+        start_mel_token: int = 8192,
+        stop_mel_token: int = 8193,
+        start_text_token: Optional[int] = None,  # Not sure why this is optional...
+        stop_text_token: int = 0,
         # GPT2Config args
         vocab_size=50257,
         n_positions=1024,
@@ -442,9 +486,117 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             n_embd, mel_channels=mel_channels, resblocks_per_reduction=mel_encoder_resblocks
         )
     
+    # From tortoise.models.autoregressive.UnifiedVoice.set_mel_padding
+    # https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/autoregressive.py#L280
+    def set_mel_padding(self, mel_input_tokens, wav_lengths):
+        """
+        Given mel tokens that are derived from a padded audio clip and the actual lengths of each batch element in
+        that audio clip, reformats the tokens with STOP_MEL_TOKEN in place of the zero padding. This is required
+        preformatting to create a working TTS model.
+        """
+        # Set padding areas within MEL (currently it is coded with the MEL code for <zero>).
+        mel_lengths = torch.div(
+            wav_lengths, self.config.mel_length_compression, rounding_mode="trunc"
+        )
+        for b in range(len(mel_lengths)):
+            actual_end = (
+                mel_lengths[b] + 1
+            )  # Due to the convolutional nature of how these tokens are generated, it would be best if the model predicts a token past the actual last token.
+            if actual_end < mel_input_tokens.shape[-1]:
+                mel_input_tokens[b, actual_end:] = self.config.stop_mel_token
+        return mel_input_tokens
+    
     def forward(
         self,
         audio_conditioning_latent,
+        text_inputs,
+        mel_inputs,
+        waveform_lengths,
+        training=False,
+        create_text_labels=False,
+        use_mel_codes_as_input=True,
+        text_first=True,
+        return_dict=True,
+        types=None,
     ):
-        pass
+        # 0. If types is specified, exapnd the text embedding space.
+        if types is not None:
+            text_inputs = text_inputs * (1 + types).unsqueeze(-1)
+        
+        # TODO: implement clip_inputs...? don't really understand why this is necessary yet
 
+        # 1. Pad text and audio (mel) inputs
+        mel_inputs = self.set_mel_padding(mel_inputs, waveform_lengths)
+
+        text_inputs = F.pad(text_inputs, (1, 0), value=self.config.start_text_token)
+        text_inputs = F.pad(text_inputs, (0, 1), value=self.config.stop_text_token)
+        mel_inputs = F.pad(mel_inputs, (1, 0), value=self.config.start_mel_token)
+        mel_inputs = F.pad(mel_inputs, (0, 1), value=self.config.stop_mel_token)
+
+        # 2. If training, prepare the targets from the given inputs
+        mel_labels = None
+        text_labels = None
+        # TODO: use self.training instead? believe this ultimately inherits from torch.nn.Module
+        if training:
+            # We already shift inside the GPT2 model so these are the same?
+            mel_labels = mel_inputs
+            if create_text_labels:
+                text_labels = text_inputs
+
+        # 3. Call the autoregressive model
+        if use_mel_codes_as_input:
+            # Use self.mel_encoder to get mel_inputs_embeds
+            # Note: mel inputs are expected in this case
+            mel_inputs_embeds = self.mel_encoder(mel_inputs)
+            autoregressive_output = self.autoregressive(
+                audio_conditioning_embed=audio_conditioning_latent,
+                text_input_ids=text_inputs,
+                mel_inputs_embeds=mel_inputs_embeds,
+                text_labels=text_labels,
+                mel_labels=mel_labels,
+                text_first=text_first,
+                return_dict=return_dict,
+            )
+        else:
+            autoregressive_output = self.autoregressive(
+                audio_conditioning_embed=audio_conditioning_latent,
+                text_input_ids=text_inputs,
+                mel_input_ids = mel_inputs,
+                text_labels=text_labels,
+                mel_labels=mel_labels,
+                text_first=text_first,
+                return_dict=return_dict,
+            )
+        
+        return autoregressive_output
+    
+    def generate_samples(
+        self,
+        audio_conditioning_latent,
+        text_inputs,
+        num_samples=1,
+        max_sample_length=None,
+        **generate_kwargs,
+    ):
+        # For now, don't support input_tokens of typical_sampling like the original code
+        text_inputs = F.pad(text_inputs, (1, 0), value=self.config.start_text_token)
+        text_inputs = F.pad(text_inputs, (0, 1), value=self.config.stop_text_token)
+
+        trunc_index = audio_conditioning_latent.shape[1] + text_inputs.shape[1]
+        if max_sample_length is None:
+            max_length = trunc_index + self.config.max_mel_tokens - 1
+        else:
+            max_length = trunc_index + max_sample_length
+        
+        samples = self.autoregressive.generate(
+            text_inputs,
+            bos_token_id=self.config.start_mel_token,
+            pad_token_id=self.config.stop_mel_token,
+            eos_token_id=self.config.stop_mel_token,
+            max_length=max_length,
+            num_return_sequences=num_samples,
+            **generate_kwargs,
+        )
+
+        # Remove the conditioning information + prompting text
+        return samples[:, trunc_index:]
