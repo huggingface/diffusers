@@ -195,6 +195,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         num_decoder_blocks: Tuple[int] = (3, 3, 3, 1),
         latent_magnitude: int = 3,
         latent_shift: float = 0.5,
+        scaling_factor: float = 1.0,
     ):
         super().__init__()
 
@@ -224,6 +225,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
 
         self.latent_magnitude = latent_magnitude
         self.latent_shift = latent_shift
+        self.scaling_factor = scaling_factor
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (TinyEncoder, TinyDecoder)):
