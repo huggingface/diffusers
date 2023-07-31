@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Tuple, Union, Callable
+from typing import Callable, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -83,9 +83,7 @@ class TinyEncoder(nn.Module):
             if i == 0:
                 layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
             else:
-                layers.append(
-                    nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False)
-                )
+                layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
 
             for _ in range(num_block):
                 layers.append(TinyAutoencoderBlock(num_channels, num_channels, act_fn))
@@ -93,6 +91,7 @@ class TinyEncoder(nn.Module):
         layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
 
         self.layers = nn.Sequential(*layers)
+        self.gradient_checkpointing = False
 
     def forward(self, x):
         if self.training and self.gradient_checkpointing:
@@ -142,6 +141,7 @@ class TinyDecoder(nn.Module):
             layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
 
         self.layers = nn.Sequential(*layers)
+        self.gradient_checkpointing = False
 
     def forward(self, x):
         if self.training and self.gradient_checkpointing:
@@ -204,10 +204,10 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
             raise ValueError("`decoder_block_out_channels` should have the same length as `num_decoder_blocks`.")
 
         act_fn = get_activation(act_fn)
-        
+
         self.encoder = TinyEncoder(
-            in_channels,
-            out_channels,
+            in_channels=in_channels,
+            out_channels=latent_channels,
             num_blocks=num_encoder_blocks,
             block_out_channels=encoder_block_out_channels,
             act_fn=act_fn,
