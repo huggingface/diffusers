@@ -344,6 +344,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -359,6 +360,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         # disable slicing
         pipe.disable_attention_slicing()
+        pipe.unet.set_default_attn_processor()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image = pipe(**inputs).images
 
