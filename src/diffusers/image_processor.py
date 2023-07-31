@@ -110,11 +110,17 @@ class VaeImageProcessor(ConfigMixin):
         return 2.0 * images - 1.0
 
     @staticmethod
-    def denormalize(images):
+    def denormalize(images, is_tiny_vae):
         """
         Denormalize an image array to [0,1].
+
+        Refer to https://github.com/madebyollin/taesd/issues/3#issuecomment-1657729279 to know why `is_tiny_vae`
+        exists.
         """
-        return (images / 2 + 0.5).clamp(0, 1)
+        if not is_tiny_vae:
+            return (images / 2 + 0.5).clamp(0, 1)
+        else:
+            return images.clamp(0, 1)
 
     @staticmethod
     def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
@@ -217,6 +223,7 @@ class VaeImageProcessor(ConfigMixin):
         image: torch.FloatTensor,
         output_type: str = "pil",
         do_denormalize: Optional[List[bool]] = None,
+        is_tiny_vae: bool = False,
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
