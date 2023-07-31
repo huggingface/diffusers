@@ -21,12 +21,17 @@ class StableDiffusionXLWatermarker:
 
         self.encoder.set_watermark("bits", self.watermark)
 
-    def apply_watermark(self, images: torch.FloatTensor):
+    def apply_watermark(self, images: torch.FloatTensor, is_tiny_vae: bool = False):
         # can't encode images that are smaller than 256
         if images.shape[-1] < 256:
             return images
 
-        images = (255 * (images / 2 + 0.5)).cpu().permute(0, 2, 3, 1).float().numpy()
+        # Refer to https://github.com/madebyollin/taesd/issues/3#issuecomment-1657729279 to know why `is_tiny_vae`
+        # exists.
+        if not is_tiny_vae:
+            images = (255 * (images / 2 + 0.5)).cpu().permute(0, 2, 3, 1).float().numpy()
+        else:
+            images = (255 * images).cpu().permute(0, 2, 3, 1).float().numpy()
 
         images = [self.encoder.encode(image, "dwtDct") for image in images]
 

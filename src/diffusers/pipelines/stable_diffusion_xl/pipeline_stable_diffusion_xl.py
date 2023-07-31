@@ -855,10 +855,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             return StableDiffusionXLPipelineOutput(images=image)
 
         # apply watermark if available
+        is_tiny_vae = "tiny" in str(self.vae.__class__)
         if self.watermark is not None:
-            image = self.watermark.apply_watermark(image)
+            image = self.watermark.apply_watermark(image, is_tiny_vae=is_tiny_vae)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        image = self.image_processor.postprocess(image, output_type=output_type, is_tiny_vae=is_tiny_vae)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
