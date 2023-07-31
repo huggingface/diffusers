@@ -109,5 +109,5 @@ if __name__ == "__main__":
         print(sample.keys())
         print(sample["original_image"].shape)
         print(sample["edited_image"].shape)
-        print(sample["edit_prompt"].shape)
+        print(len(sample["edit_prompt"]))
         break
