@@ -17,7 +17,7 @@ Example - From the diffusers root directory:
 Download the weights:
 ```sh
 $ wget -q https://huggingface.co/madebyollin/taesd/resolve/main/taesd_encoder.safetensors
-$ wget -q https://huggingface.co/madebyollin/taesd/resolve/main/taesd_decoder.safetensors  
+$ wget -q https://huggingface.co/madebyollin/taesd/resolve/main/taesd_decoder.safetensors
 ```
 
 Convert the model:
