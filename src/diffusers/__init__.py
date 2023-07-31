@@ -60,6 +60,7 @@ else:
     from .pipelines import (
         AudioPipelineOutput,
         ConsistencyModelPipeline,
+        BlipDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
