@@ -705,6 +705,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
+        print(f"Do normalization: {do_denormalize}")
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
