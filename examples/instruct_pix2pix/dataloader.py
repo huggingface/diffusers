@@ -90,7 +90,7 @@ def get_dataloader(args):
 
 if __name__ == "__main__":
     args = Namespace(
-        dataset_path="pipe:aws s3 cp s3://muse-datasets/instructpix2pix-clip-filtered-wds/{000000..000062}.tar",
+        dataset_path="pipe:aws s3 cp s3://muse-datasets/instructpix2pix-clip-filtered-wds/{000000..000062}.tar -",
         num_train_examples=313010,
         per_gpu_batch_size=8,
         global_batch_size=64,
