@@ -66,10 +66,12 @@ def get_dataloader(
         .shuffle(690, handler=wds.warn_and_continue)
         .decode("pil", handler=wds.warn_and_continue)
         .rename(
-            original_image="jpg;png;jpeg;webp",
-            edited_image="jpg;png;jpeg;webp",
-            edit_prompt="text;txt;caption",
-        )
+            orig_prompt_ids="original_prompt.txt",
+            original_image="original_image.jpg",
+            edit_prompt="edit_prompt.txt",
+            edited_image="edited_image.jpg",
+            handler=wds.warn_and_continue
+        ) \
         .map(filter_keys({"original_image", "edit_prompt", "edited_image"}), handler=wds.warn_and_continue)
         .map(preprocess_images, handler=wds.warn_and_continue)
         .batched(per_gpu_batch_size, partial=False, collation_fn=default_collate)
@@ -105,3 +107,4 @@ if __name__ == "__main__":
     for sample in dataloader:
         print(sample.keys())
         print(sample["original_image"].shape)
+        break
