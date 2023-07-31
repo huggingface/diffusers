@@ -845,6 +845,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             self.upcast_vae()
             if hasattr(self.vae, "post_quant_conv"):
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            else:
+                latents = latents.to(self.vae.dtype)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
