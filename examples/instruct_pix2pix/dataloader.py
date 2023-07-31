@@ -50,6 +50,8 @@ def get_dataloader(args):
 
         # Separate the original and edited images and the edit prompt.
         original_image, edited_image = transformed_images.chunk(2)
+        original_image = original_image.squeeze(0)
+        edited_image = edited_image.squeeze(0)
         return {"original_image": original_image, "edited_image": edited_image, "edit_prompt": sample["edit_prompt"]}
 
     dataset = (
