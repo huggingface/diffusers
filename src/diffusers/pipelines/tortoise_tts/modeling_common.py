@@ -225,6 +225,8 @@ class TortoiseTTSDiffusionModelAttention(nn.Module):
                     hidden_states = past_key_value
             return hidden_states
 
+        scale = 1 / math.sqrt(self.d_model // self.n_heads)
+
         # get query states
         query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
 
@@ -238,7 +240,7 @@ class TortoiseTTSDiffusionModelAttention(nn.Module):
 
         # compute scores
         scores = torch.matmul(
-            query_states, key_states.transpose(3, 2)
+            query_states * scale, key_states.transpose(3, 2)
         )  # equivalent of torch.einsum("bnqd,bnkd->bnqk", query_states, key_states), compatible with onnx op>9
 
         if position_bias is None:
@@ -321,7 +323,6 @@ class TortoiseTTSDiffusionModelSelfAttention(nn.Module):
             use_cache=use_cache,
             output_attentions=output_attentions,
         )
-        print(attention_output[0])
 
         hidden_states = torch.permute(hidden_states, (0, 2, 1))
         hidden_states = hidden_states + self.dropout(attention_output[0])
