@@ -64,6 +64,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -75,8 +76,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
-
+        expected_slice = np.array([0.0689, 0.0699, 0.0790, 0.0536, 0.0470, 0.0488, 0.041, 0.0508, 0.04179])
         assert np.abs(expected_slice - image_slice).max() < 3e-3
     except Exception:
         error = f"{traceback.format_exc()}"
