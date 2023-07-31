@@ -20,12 +20,8 @@ from ...utils import (
 )
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
-from .modeling_tortoise_tts import (
-    AttnEncoderBlock1D,
-    ConditioningEncoder,
-    RandomLatentConverter,
-    TortoiseTTSDenoisingModel,
-)
+from .modeling_common import ConditioningEncoder, RandomLatentConverter
+from .modeling_diffusion import TortoiseTTSDenoisingModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -543,6 +539,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         prompt_embeds,
         autoregressive_cond_emb,
+        num_samples,
         max_tokens,
         **generate_kwargs,
     ):
@@ -837,7 +834,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # 5. Generate candidates using the autoregressive model
         generate_kwargs = {
             "do_sample": True,
-            "num_return_sequences": autoregressive_batch_size,
             "temperature": autoregressive_temperature,
             "top_p": autoregressive_top_p,
             "repetition_penalty": autoregressive_repetition_penalty,
@@ -850,7 +846,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_autoregressive_batches) as progress_bar:
             for i in range(num_autoregressive_batches):
                 samples = self.generate_autoregressive_samples(
-                    prompt_embeds, autoregressive_cond_audio_emb, autoregressive_max_tokens, **generate_kwargs
+                    prompt_embeds,
+                    autoregressive_cond_audio_emb,
+                    autoregressive_batch_size,  # TODO: handle case where last batch is not same size?
+                    autoregressive_max_tokens,
+                    **generate_kwargs,
                 )
                 autoregressive_samples.append(samples)
 
