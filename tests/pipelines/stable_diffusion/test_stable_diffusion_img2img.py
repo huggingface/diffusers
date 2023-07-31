@@ -63,9 +63,9 @@ def _test_img2img_compile(in_queue, out_queue, timeout):
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
         pipe.unet.to(memory_format=torch.channels_last)
         pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
