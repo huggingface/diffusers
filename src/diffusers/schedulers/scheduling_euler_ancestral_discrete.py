@@ -238,7 +238,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-        self.step_index = 0
+        self.step_index = None
 
     def step(
         self,
@@ -289,7 +289,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
 
-        # step_index = (self.timesteps == timestep).nonzero().item()
+        if self.step_index is None:
+            self.step_index = (self.timesteps == timestep).nonzero().item()
+
         sigma = self.sigmas[self.step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
