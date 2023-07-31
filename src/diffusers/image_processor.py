@@ -244,7 +244,7 @@ class VaeImageProcessor(ConfigMixin):
             do_denormalize = [self.config.do_normalize] * image.shape[0]
 
         image = torch.stack(
-            [self.denormalize(image[i]) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
+            [self.denormalize(image[i], is_tiny_vae) if do_denormalize[i] else image[i] for i in range(image.shape[0])]
         )
 
         if output_type == "pt":
