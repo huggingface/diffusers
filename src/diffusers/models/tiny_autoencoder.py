@@ -195,6 +195,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         num_decoder_blocks: Tuple[int] = (3, 3, 3, 1),
         latent_magnitude: int = 3,
         latent_shift: float = 0.5,
+        force_upcast: float = True,
         scaling_factor: float = 1.0,
     ):
         super().__init__()

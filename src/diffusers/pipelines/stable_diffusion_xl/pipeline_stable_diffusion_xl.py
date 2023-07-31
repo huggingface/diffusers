@@ -537,15 +537,18 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     def upcast_vae(self):
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
-            ),
-        )
+
+        use_torch_2_0_or_xformers = False
+        if hasattr(self.vae.decoder, "mid_block"):
+            use_torch_2_0_or_xformers = isinstance(
+                self.vae.decoder.mid_block.attentions[0].processor,
+                (
+                    AttnProcessor2_0,
+                    XFormersAttnProcessor,
+                    LoRAXFormersAttnProcessor,
+                    LoRAAttnProcessor2_0,
+                ),
+            )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
         if use_torch_2_0_or_xformers:
