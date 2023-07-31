@@ -108,4 +108,6 @@ if __name__ == "__main__":
     for sample in dataloader:
         print(sample.keys())
         print(sample["original_image"].shape)
+        print(sample["edited_image"].shape)
+        print(sample["edit_prompt"].shape)
         break
