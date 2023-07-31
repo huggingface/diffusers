@@ -7,7 +7,6 @@ import PIL
 from ...utils import (
     BaseOutput,
     OptionalDependencyNotAvailable,
-    is_invisible_watermark_available,
     is_torch_available,
     is_transformers_available,
 )
@@ -28,10 +27,10 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
 
 
 try:
-    if not (is_transformers_available() and is_torch_available() and is_invisible_watermark_available()):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
     from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline

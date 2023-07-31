@@ -58,7 +58,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -210,7 +210,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: openrail++
 base_model: {base_model}
 tags:
 - stable-diffusion-xl
@@ -227,12 +227,7 @@ inference: true
 These are controlnet weights trained on {base_model} with new type of conditioning.
 {img_str}
 """
-    model_card += """
 
-## License
-
-[SDXL 0.9 Research License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9/blob/main/LICENSE.md)
-"""
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 

@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import copy
 import gc
 import hashlib
 import itertools
@@ -69,7 +70,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.19.0.dev0")
+check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -924,10 +925,10 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alpha = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alpha=network_alpha, unet=unet_)
+        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alpha=network_alpha, text_encoder=text_encoder_
+            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1067,7 +1068,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_config = vars(args)
+        tracker_config = vars(copy.deepcopy(args))
         tracker_config.pop("validation_images")
         accelerator.init_trackers("dreambooth-lora", config=tracker_config)
 

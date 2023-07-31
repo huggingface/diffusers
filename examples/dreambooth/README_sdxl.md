@@ -76,7 +76,7 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="stabilityai/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="lora-trained-xl"
 
@@ -127,7 +127,7 @@ image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).image
 image.save("sks_dog.png")
 ```
 
-We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9):
+We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
 
 ```python
 from huggingface_hub.repocard import RepoCard
@@ -145,7 +145,7 @@ pipe.load_lora_weights(lora_model_id)
 
 # Load the refiner.
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 

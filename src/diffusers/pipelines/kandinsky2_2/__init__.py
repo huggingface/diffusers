@@ -12,6 +12,11 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import *
 else:
     from .pipeline_kandinsky2_2 import KandinskyV22Pipeline
+    from .pipeline_kandinsky2_2_combined import (
+        KandinskyV22CombinedPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
+        KandinskyV22InpaintCombinedPipeline,
+    )
     from .pipeline_kandinsky2_2_controlnet import KandinskyV22ControlnetPipeline
     from .pipeline_kandinsky2_2_controlnet_img2img import KandinskyV22ControlnetImg2ImgPipeline
     from .pipeline_kandinsky2_2_img2img import KandinskyV22Img2ImgPipeline

@@ -1,19 +1,9 @@
 from ...utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
-    is_invisible_watermark_available,
     is_torch_available,
     is_transformers_available,
 )
-
-
-try:
-    if not (is_transformers_available() and is_torch_available() and is_invisible_watermark_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ...utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
-else:
-    from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
 
 
 try:
@@ -26,6 +16,7 @@ else:
     from .pipeline_controlnet import StableDiffusionControlNetPipeline
     from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
     from .pipeline_controlnet_inpaint import StableDiffusionControlNetInpaintPipeline
+    from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
 
 
 if is_transformers_available() and is_flax_available():
