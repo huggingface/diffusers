@@ -110,7 +110,7 @@ class VaeImageProcessor(ConfigMixin):
         return 2.0 * images - 1.0
 
     @staticmethod
-    def denormalize(images, is_tiny_vae):
+    def denormalize(images, is_tiny_vae=False):
         """
         Denormalize an image array to [0,1].
 
