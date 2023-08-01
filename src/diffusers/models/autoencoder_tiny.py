@@ -250,8 +250,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         return AutoencoderTinyOutput(latents=output)
 
-    apply_forward_hook
-
+    @apply_forward_hook
     def decode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         output = self.decoder(x)
 
