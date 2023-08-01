@@ -24,11 +24,16 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 class ScoreSdeVePipeline(DiffusionPipeline):
     r"""
+    Pipeline for unconditional image generation.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
     Parameters:
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image. scheduler ([`SchedulerMixin`]):
-            The [`ScoreSdeVeScheduler`] scheduler to be used in combination with `unet` to denoise the encoded image.
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image.
+        scheduler ([`ScoreSdeVeScheduler`]):
+            A `ScoreSdeVeScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
@@ -48,21 +53,23 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
-            generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            generator (`torch.Generator`, `optional`):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            output_type (`str`, `optional`, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
 
         img_size = self.unet.config.sample_size

@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalVAEMixin
 from ..utils import BaseOutput, apply_forward_hook
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .modeling_utils import ModelMixin
@@ -38,7 +39,7 @@ class AutoencoderKLOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
@@ -64,6 +65,10 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+        force_upcast (`bool`, *optional*, default to `True`):
+            If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
+            can be fine-tuned / trained to a lower range without loosing too much precision in which case
+            `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
     """
 
     _supports_gradient_checkpointing = True
@@ -82,6 +87,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
+        force_upcast: float = True,
     ):
         super().__init__()
 

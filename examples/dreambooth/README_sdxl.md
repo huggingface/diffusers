@@ -76,7 +76,7 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="diffusers/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="lora-trained-xl"
 
@@ -127,7 +127,7 @@ image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).image
 image.save("sks_dog.png")
 ```
 
-We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9):
+We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
 
 ```python
 from huggingface_hub.repocard import RepoCard
@@ -145,7 +145,7 @@ pipe.load_lora_weights(lora_model_id)
 
 # Load the refiner.
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 
@@ -164,9 +164,20 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sks_dog.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_sks_dog.png) |
 
+### Training with text encoder(s)
+
+Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
+
+* SDXL has two text encoders. So, we fine-tune both using LoRA.
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
+
+### Specifying a better VAE
+
+SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
 ## Notes
 
-In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
+In our experiments, we found that SDXL yields good initial results without extensive hyperparameter tuning. For example, without fine-tuning the text encoders and without using prior-preservation, we observed decent results. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
 
 ## Results
 

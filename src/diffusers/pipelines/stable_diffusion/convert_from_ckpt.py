@@ -15,6 +15,7 @@
 """ Conversion script for the Stable Diffusion checkpoints."""
 
 import re
+from contextlib import nullcontext
 from io import BytesIO
 from typing import Optional
 
@@ -24,6 +25,7 @@ from transformers import (
     AutoFeatureExtractor,
     BertTokenizerFast,
     CLIPImageProcessor,
+    CLIPTextConfig,
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
@@ -48,7 +50,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_omegaconf_available, is_safetensors_available, logging
+from ...utils import is_accelerate_available, is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
@@ -56,6 +58,10 @@ from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -615,8 +621,8 @@ def convert_ldm_unet_checkpoint(
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
-    vae_key = "first_stage_model."
     keys = list(checkpoint.keys())
+    vae_key = "first_stage_model." if any(k.startswith("first_stage_model.") for k in keys) else ""
     for key in keys:
         if key.startswith(vae_key):
             vae_state_dict[key.replace(vae_key, "")] = checkpoint.get(key)
@@ -770,11 +776,13 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 
 
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
-    text_model = (
-        CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-        if text_encoder is None
-        else text_encoder
-    )
+    if text_encoder is None:
+        config_name = "openai/clip-vit-large-patch14"
+        config = CLIPTextConfig.from_pretrained(config_name)
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            text_model = CLIPTextModel(config)
 
     keys = list(checkpoint.keys())
 
@@ -787,7 +795,14 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
             if key.startswith(prefix):
                 text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
 
-    text_model.load_state_dict(text_model_dict)
+    if is_accelerate_available():
+        for param_name, param in text_model_dict.items():
+            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+    else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
+        text_model.load_state_dict(text_model_dict)
 
     return text_model
 
@@ -884,13 +899,26 @@ def convert_paint_by_example_checkpoint(checkpoint):
     return model
 
 
-def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
+def convert_open_clip_checkpoint(
+    checkpoint, config_name, prefix="cond_stage_model.model.", has_projection=False, **config_kwargs
+):
     # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
-    text_model = CLIPTextModelWithProjection.from_pretrained(
-        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
-    )
+    # text_model = CLIPTextModelWithProjection.from_pretrained(
+    #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
+    # )
+    config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs)
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        text_model = CLIPTextModelWithProjection(config) if has_projection else CLIPTextModel(config)
 
     keys = list(checkpoint.keys())
+
+    keys_to_ignore = []
+    if config_name == "stabilityai/stable-diffusion-2" and config.num_hidden_layers == 23:
+        # make sure to remove all keys > 22
+        keys_to_ignore += [k for k in keys if k.startswith("cond_stage_model.model.transformer.resblocks.23")]
+        keys_to_ignore += ["cond_stage_model.model.text_projection"]
 
     text_model_dict = {}
 
@@ -902,11 +930,11 @@ def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     for key in keys:
-        # if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
-        #     continue
+        if key in keys_to_ignore:
+            continue
         if key[len(prefix) :] in textenc_conversion_map:
             if key.endswith("text_projection"):
-                value = checkpoint[key].T
+                value = checkpoint[key].T.contiguous()
             else:
                 value = checkpoint[key]
 
@@ -931,7 +959,14 @@ def convert_open_clip_checkpoint(checkpoint, prefix="cond_stage_model.model."):
 
                 text_model_dict[new_key] = checkpoint[key]
 
-    text_model.load_state_dict(text_model_dict)
+    if is_accelerate_available():
+        for param_name, param in text_model_dict.items():
+            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+    else:
+        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+            text_model_dict.pop("text_model.embeddings.position_ids", None)
+
+        text_model.load_state_dict(text_model_dict)
 
     return text_model
 
@@ -1035,7 +1070,7 @@ def convert_controlnet_checkpoint(
     if cross_attention_dim is not None:
         ctrlnet_config["cross_attention_dim"] = cross_attention_dim
 
-    controlnet_model = ControlNetModel(**ctrlnet_config)
+    controlnet = ControlNetModel(**ctrlnet_config)
 
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
@@ -1053,15 +1088,15 @@ def convert_controlnet_checkpoint(
         skip_extract_state_dict=skip_extract_state_dict,
     )
 
-    controlnet_model.load_state_dict(converted_ctrl_checkpoint)
+    controlnet.load_state_dict(converted_ctrl_checkpoint)
 
-    return controlnet_model
+    return controlnet
 
 
 def download_from_original_stable_diffusion_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 512,
+    image_size: Optional[int] = None,
     prediction_type: str = None,
     model_type: str = None,
     extract_ema: bool = False,
@@ -1078,6 +1113,7 @@ def download_from_original_stable_diffusion_ckpt(
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
     vae_path=None,
+    vae=None,
     text_encoder=None,
     tokenizer=None,
 ) -> DiffusionPipeline:
@@ -1127,6 +1163,9 @@ def download_from_original_stable_diffusion_ckpt(
             The pipeline class to use. Pass `None` to determine automatically.
         local_files_only (`bool`, *optional*, defaults to `False`):
             Whether or not to only look at local files (i.e., do not try to download the model).
+        vae (`AutoencoderKL`, *optional*, defaults to `None`):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
+            this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
         text_encoder (`CLIPTextModel`, *optional*, defaults to `None`):
             An instance of [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)
             to use, specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)
@@ -1144,6 +1183,7 @@ def download_from_original_stable_diffusion_ckpt(
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLPipeline,
@@ -1152,7 +1192,7 @@ def download_from_original_stable_diffusion_ckpt(
     )
 
     if pipeline_class is None:
-        pipeline_class = StableDiffusionPipeline
+        pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
 
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
@@ -1166,12 +1206,9 @@ def download_from_original_stable_diffusion_ckpt(
         if not is_safetensors_available():
             raise ValueError(BACKENDS_MAPPING["safetensors"][1])
 
-        from safetensors import safe_open
+        from safetensors.torch import load_file as safe_load
 
-        checkpoint = {}
-        with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
-            for key in f.keys():
-                checkpoint[key] = f.get_tensor(key)
+        checkpoint = safe_load(checkpoint_path, device="cpu")
     else:
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1183,7 +1220,7 @@ def download_from_original_stable_diffusion_ckpt(
     if "global_step" in checkpoint:
         global_step = checkpoint["global_step"]
     else:
-        logger.warning("global_step key not found in model")
+        logger.debug("global_step key not found in model")
         global_step = None
 
     # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
@@ -1230,8 +1267,15 @@ def download_from_original_stable_diffusion_ckpt(
             model_type = "SDXL"
         else:
             model_type = "SDXL-Refiner"
+        if image_size is None:
+            image_size = 1024
 
-    if num_in_channels is not None:
+    if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
+        num_in_channels = 9
+    elif num_in_channels is None:
+        num_in_channels = 4
+
+    if "unet_config" in original_config.model.params:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
 
     if (
@@ -1252,18 +1296,14 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 512
 
-    if controlnet is None:
-        controlnet = "control_stage_config" in original_config.model.params
-
-    if controlnet:
-        controlnet_model = convert_controlnet_checkpoint(
+    if controlnet is None and "control_stage_config" in original_config.model.params:
+        controlnet = convert_controlnet_checkpoint(
             checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
         )
 
     num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
-        image_size = 1024
         scheduler_dict = {
             "beta_schedule": "scaled_linear",
             "beta_start": 0.00085,
@@ -1279,7 +1319,6 @@ def download_from_original_stable_diffusion_ckpt(
         }
         scheduler = EulerDiscreteScheduler.from_config(scheduler_dict)
         scheduler_type = "euler"
-        vae_path = "stabilityai/sdxl-vae"
     else:
         beta_start = getattr(original_config.model.params, "linear_start", None) or 0.02
         beta_end = getattr(original_config.model.params, "linear_end", None) or 0.085
@@ -1318,36 +1357,64 @@ def download_from_original_stable_diffusion_ckpt(
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
-    unet = UNet2DConditionModel(**unet_config)
-
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
     )
-    unet.load_state_dict(converted_unet_checkpoint)
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        unet = UNet2DConditionModel(**unet_config)
+
+    if is_accelerate_available():
+        for param_name, param in converted_unet_checkpoint.items():
+            set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+    else:
+        unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model.
-    if vae_path is None:
+    if vae_path is None and vae is None:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-        vae = AutoencoderKL(**vae_config)
-        vae.load_state_dict(converted_vae_checkpoint)
-    else:
+        if (
+            "model" in original_config
+            and "params" in original_config.model
+            and "scale_factor" in original_config.model.params
+        ):
+            vae_scaling_factor = original_config.model.params.scale_factor
+        else:
+            vae_scaling_factor = 0.18215  # default SD scaling factor
+
+        vae_config["scaling_factor"] = vae_scaling_factor
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            vae = AutoencoderKL(**vae_config)
+
+        if is_accelerate_available():
+            for param_name, param in converted_vae_checkpoint.items():
+                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        else:
+            vae.load_state_dict(converted_vae_checkpoint)
+    elif vae is None:
         vae = AutoencoderKL.from_pretrained(vae_path)
 
     if model_type == "FrozenOpenCLIPEmbedder":
-        text_model = convert_open_clip_checkpoint(checkpoint)
+        config_name = "stabilityai/stable-diffusion-2"
+        config_kwargs = {"subfolder": "text_encoder"}
+
+        text_model = convert_open_clip_checkpoint(checkpoint, config_name, **config_kwargs)
         tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")
 
         if stable_unclip is None:
             if controlnet:
-                pipe = StableDiffusionControlNetPipeline(
+                pipe = pipeline_class(
                     vae=vae,
                     text_encoder=text_model,
                     tokenizer=tokenizer,
                     unet=unet,
                     scheduler=scheduler,
-                    controlnet=controlnet_model,
+                    controlnet=controlnet,
                     safety_checker=None,
                     feature_extractor=None,
                     requires_safety_checker=False,
@@ -1444,12 +1511,12 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor = None
 
         if controlnet:
-            pipe = StableDiffusionControlNetPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_model,
                 tokenizer=tokenizer,
                 unet=unet,
-                controlnet=controlnet_model,
+                controlnet=controlnet,
                 scheduler=scheduler,
                 safety_checker=safety_checker,
                 feature_extractor=feature_extractor,
@@ -1469,7 +1536,12 @@ def download_from_original_stable_diffusion_ckpt(
             tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.1.model.")
+
+            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config_kwargs = {"projection_dim": 1280}
+            text_encoder_2 = convert_open_clip_checkpoint(
+                checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
+            )
 
             pipe = StableDiffusionXLPipeline(
                 vae=vae,
@@ -1485,7 +1557,12 @@ def download_from_original_stable_diffusion_ckpt(
             tokenizer = None
             text_encoder = None
             tokenizer_2 = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!")
-            text_encoder_2 = convert_open_clip_checkpoint(checkpoint, prefix="conditioner.embedders.0.model.")
+
+            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config_kwargs = {"projection_dim": 1280}
+            text_encoder_2 = convert_open_clip_checkpoint(
+                checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
+            )
 
             pipe = StableDiffusionXLImg2ImgPipeline(
                 vae=vae,
@@ -1554,7 +1631,7 @@ def download_controlnet_from_original_ckpt(
     if "control_stage_config" not in original_config.model.params:
         raise ValueError("`control_stage_config` not present in original config")
 
-    controlnet_model = convert_controlnet_checkpoint(
+    controlnet = convert_controlnet_checkpoint(
         checkpoint,
         original_config,
         checkpoint_path,
@@ -1565,4 +1642,4 @@ def download_controlnet_from_original_ckpt(
         cross_attention_dim=cross_attention_dim,
     )
 
-    return controlnet_model
+    return controlnet
