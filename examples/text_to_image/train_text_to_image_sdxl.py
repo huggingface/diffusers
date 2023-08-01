@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 Harutatsu Akiyama and The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 pseudoterminalX, CaptnSeraph and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,16 +18,13 @@ import argparse
 import logging
 import math
 import os
-import random
 import shutil
 import warnings
 from pathlib import Path
 from urllib.parse import urlparse
+from helpers.aspect_bucket import BalancedBucketSampler
 
 import accelerate
-from diffusers.pipelines import (
-    StableDiffusionXLInstructPix2PixPipeline,
-)
 import datasets
 import numpy as np
 import PIL
@@ -38,7 +35,6 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
@@ -51,23 +47,23 @@ from transformers import AutoTokenizer, PretrainedConfig
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import (
+    StableDiffusionXLPipeline,
+)
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
 
 
-if is_wandb_available():
-    import wandb
-
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.20.0.dev0")
 
-logger = get_logger(__name__, log_level="INFO")
+logger = get_logger(__name__, log_level="DEBUG")
 
 DATASET_NAME_MAPPING = {
+    "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
-WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
+WANDB_TABLE_COL_NAMES = ["image", "text"]
 
 
 def import_model_class_from_model_name_or_path(
@@ -91,7 +87,7 @@ def import_model_class_from_model_name_or_path(
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Script to train Stable Diffusion XL for InstructPix2Pix.")
+    parser = argparse.ArgumentParser(description="Script to train Stable Diffusion XL for general fine-tuning.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -138,30 +134,33 @@ def parse_args():
             " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
         ),
     )
-    parser.add_argument(
-        "--original_image_column",
-        type=str,
-        default="input_image",
-        help="The column of the dataset containing the original image on which edits where made.",
-    )
-    parser.add_argument(
-        "--edited_image_column",
-        type=str,
-        default="edited_image",
-        help="The column of the dataset containing the edited image.",
-    )
-    parser.add_argument(
-        "--edit_prompt_column",
-        type=str,
-        default="edit_prompt",
-        help="The column of the dataset containing the edit instruction.",
-    )
-    parser.add_argument(
-        "--val_image_url_or_path",
-        type=str,
-        default=None,
-        help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
-    )
+    # TODO: Fix this
+    # parser.add_argument(
+    #     "--original_image_column",
+    #     type=str,
+    #     default="input_image",
+    #     help="The column of the dataset containing the original image on which edits where made.",
+    # )
+    # parser.add_argument(
+    #     "--edited_image_column",
+    #     type=str,
+    #     default="edited_image",
+    #     help="The column of the dataset containing the edited image.",
+    # )
+    # parser.add_argument(
+    #     "--edit_prompt_column",
+    #     type=str,
+    #     default="edit_prompt",
+    #     help="The column of the dataset containing the edit instruction.",
+    # )
+    
+    # TODO: Delete this.
+    # parser.add_argument(
+    #     "--val_image_url_or_path",
+    #     type=str,
+    #     default=None,
+    #     help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
+    # )
     parser.add_argument(
         "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
     )
@@ -192,6 +191,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
+        default="instruct-pix2pix-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -204,7 +204,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=256,
+        default=1024,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this resolution."
         ),
@@ -411,7 +411,9 @@ def convert_to_np(image, resolution):
 
 
 def main():
+    logging.info('Begin! Parsing commandline arguments.')
     args = parse_args()
+    logging.debug(f'args: {args}')
 
     if args.non_ema_revision is not None:
         deprecate(
@@ -424,26 +426,15 @@ def main():
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    logging.debug(f'Accelerate project config: {accelerator_project_config}')
+    logging.info(f'Loading up Accelerator using {args.mixed_precision} precision.')
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
-
     # Make one log on every process with the configuration for debugging.
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
@@ -453,6 +444,17 @@ def main():
         datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # If passed along, set the training seed now.
     if args.seed is not None:
@@ -482,29 +484,14 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
-    # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
-    # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
-    # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
-    # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
-    # initialized to zero.
-    logger.info("Initializing the XL InstructPix2Pix UNet from the pretrained UNet.")
-    in_channels = 8
-    out_channels = unet.conv_in.out_channels
-    unet.register_to_config(in_channels=in_channels)
-
-    with torch.no_grad():
-        new_conv_in = nn.Conv2d(
-            in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
-        )
-        new_conv_in.weight.zero_()
-        new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
-        unet.conv_in = new_conv_in
-
     # Create EMA for the unet.
     if args.use_ema:
+        logging.info("Using EMA. Creating EMAModel.")
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
+        logging.info("EMA model creation complete.")
 
     if args.enable_xformers_memory_efficient_attention:
+        logging.info('Enabling xformers memory-efficient attention.')
         if is_xformers_available():
             import xformers
 
@@ -557,15 +544,21 @@ def main():
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
+        logging.info('Enabling tf32 precision boost for NVIDIA devices.')
         torch.backends.cuda.matmul.allow_tf32 = True
+    else:
+        logging.warning('If using an Ada or Ampere NVIDIA device, --allow_tf32 could add a bit more performance.')
 
     if args.scale_lr:
+        logging.info(f'Scaling learning rate ({args.learning_rate}), due to --scale_lr')
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+    logging.info(f'Learning rate: {args.learning_rate}')
 
     # Initialize the optimizer
     if args.use_8bit_adam:
+        logging.info('Using 8bit AdamW optimizer.')
         try:
             import bitsandbytes as bnb
         except ImportError:
@@ -575,8 +568,9 @@ def main():
 
         optimizer_cls = bnb.optim.AdamW8bit
     else:
+        logging.info('Using AdamW optimizer.')
         optimizer_cls = torch.optim.AdamW
-
+    logging.info(f'Optimizer arguments, weight_decay={args.adam_weight_decay} eps={args.adam_epsilon}')
     optimizer = optimizer_cls(
         unet.parameters(),
         lr=args.learning_rate,
@@ -591,6 +585,7 @@ def main():
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
     if args.dataset_name is not None:
+        logging.info(f'Loading Huggingface Hub dataset: {args.dataset_name}')
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
             args.dataset_name,
@@ -598,6 +593,7 @@ def main():
             cache_dir=args.cache_dir,
         )
     else:
+        logging.warning(f'Loading custom dataset from {args.train_data_dir}')
         data_files = {}
         if args.train_data_dir is not None:
             data_files["train"] = os.path.join(args.train_data_dir, "**")
@@ -614,31 +610,34 @@ def main():
     column_names = dataset["train"].column_names
 
     # 6. Get the column names for input/target.
-    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    if args.original_image_column is None:
-        original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+    if hasattr(args, 'dataset_name') and args.dataset_name is not None:
+        dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
+        if args.original_image_column is None:
+            original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        else:
+            original_image_column = args.original_image_column
+            if original_image_column not in column_names:
+                raise ValueError(
+                    f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
+                )
+        if args.edit_prompt_column is None:
+            edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        else:
+            edit_prompt_column = args.edit_prompt_column
+            if edit_prompt_column not in column_names:
+                raise ValueError(
+                    f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
+                )
+        if args.edited_image_column is None:
+            edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
+        else:
+            edited_image_column = args.edited_image_column
+            if edited_image_column not in column_names:
+                raise ValueError(
+                    f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
+                )
     else:
-        original_image_column = args.original_image_column
-        if original_image_column not in column_names:
-            raise ValueError(
-                f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
-            )
-    if args.edit_prompt_column is None:
-        edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    else:
-        edit_prompt_column = args.edit_prompt_column
-        if edit_prompt_column not in column_names:
-            raise ValueError(
-                f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
-            )
-    if args.edited_image_column is None:
-        edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
-    else:
-        edited_image_column = args.edited_image_column
-        if edited_image_column not in column_names:
-            raise ValueError(
-                f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
-            )
+        logging.error('We are probably going to hit some pain for that, but we bypassed the column config.')
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -672,6 +671,7 @@ def main():
     )
 
     def preprocess_images(examples):
+        logging.debug(f'Received examples for preprocess_images: {examples}')
         original_images = np.concatenate(
             [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
         )
@@ -816,7 +816,7 @@ def main():
         edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
 
         # Collate the preprocessed images into the `examples`.
-        examples["original_pixel_values"] = original_images
+        examples["pixel_values"] = original_images
         examples["edited_pixel_values"] = edited_images
 
         # Preprocess the captions.
@@ -833,15 +833,12 @@ def main():
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
-        original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
-        original_pixel_values = original_pixel_values.to(memory_format=torch.contiguous_format).float()
-        edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
-        edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
+        pixel_values = torch.stack([example["pixel_values"] for example in examples])
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         prompt_embeds = torch.concat([example["prompt_embeds"] for example in examples], dim=0)
         add_text_embeds = torch.concat([example["add_text_embeds"] for example in examples], dim=0)
         return {
-            "original_pixel_values": original_pixel_values,
-            "edited_pixel_values": edited_pixel_values,
+            "pixel_values": pixel_values,
             "prompt_embeds": prompt_embeds,
             "add_text_embeds": add_text_embeds,
         }
@@ -894,12 +891,10 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_config = dict(vars(args))
-        tracker_config.pop("validation_prompts")
-        accelerator.init_trackers(args.tracker_project_name, tracker_config)
+        accelerator.init_trackers("instruct-pix2pix-xl", config=vars(args))
 
     # Train!
-        total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
@@ -981,10 +976,10 @@ def main():
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
                 if args.pretrained_vae_model_name_or_path is not None:
-                    original_pixel_values = batch["original_pixel_values"].to(dtype=weight_dtype)
+                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
                 else:
-                    original_pixel_values = batch["original_pixel_values"]
-                original_image_embeds = vae.encode(original_pixel_values).latent_dist.sample()
+                    pixel_values = batch["pixel_values"]
+                original_image_embeds = vae.encode(pixel_values).latent_dist.sample()
                 if args.pretrained_vae_model_name_or_path is None:
                     original_image_embeds = original_image_embeds.to(weight_dtype)
 
