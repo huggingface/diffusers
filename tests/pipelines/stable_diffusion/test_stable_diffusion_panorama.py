@@ -29,7 +29,7 @@ from diffusers import (
     StableDiffusionPanoramaPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import slow, torch_device, nightly
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -245,9 +245,9 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
-class StableDiffusionPanoramaSlowTests(unittest.TestCase):
+class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -268,6 +268,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -298,6 +299,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -379,6 +381,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -396,6 +399,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
