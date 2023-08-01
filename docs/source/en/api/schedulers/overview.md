@@ -21,7 +21,7 @@ Depending on the context, a scheduler defines how to iteratively add noise to an
 
 Many schedulers are implemented from the [k-diffusion](https://github.com/crowsonkb/k-diffusion) library by [Katherine Crowson](https://github.com/crowsonkb/), and they're also widely used in A1111. To help you map the schedulers from k-diffusion and A1111 to the schedulers in 🤗 Diffusers, take a look at the table below:
 
-| A111/k-diffusion    | 🤗 Diffusers                         | Usage                                                                                                         |
+| A1111/k-diffusion    | 🤗 Diffusers                         | Usage                                                                                                         |
 |---------------------|-------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | DPM++ 2M            | [`DPMSolverMultistepScheduler`]     |                                                                                                               |
 | DPM++ 2M Karras     | [`DPMSolverMultistepScheduler`]     | init with `use_karras_sigmas=True`                                                                            |
