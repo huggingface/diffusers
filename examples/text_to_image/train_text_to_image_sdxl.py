@@ -141,26 +141,14 @@ def parse_args():
     #     default="input_image",
     #     help="The column of the dataset containing the original image on which edits where made.",
     # )
+    # TODO: fix help description
     # parser.add_argument(
-    #     "--edited_image_column",
-    #     type=str,
-    #     default="edited_image",
-    #     help="The column of the dataset containing the edited image.",
-    # )
-    # parser.add_argument(
-    #     "--edit_prompt_column",
+    #     "--image_prompt_column",
     #     type=str,
     #     default="edit_prompt",
     #     help="The column of the dataset containing the edit instruction.",
     # )
     
-    # TODO: Delete this.
-    # parser.add_argument(
-    #     "--val_image_url_or_path",
-    #     type=str,
-    #     default=None,
-    #     help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
-    # )
     parser.add_argument(
         "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
     )
@@ -620,21 +608,13 @@ def main():
                 raise ValueError(
                     f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
                 )
-        if args.edit_prompt_column is None:
-            edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        if args.image_prompt_column is None:
+            image_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
         else:
-            edit_prompt_column = args.edit_prompt_column
-            if edit_prompt_column not in column_names:
+            image_prompt_column = args.image_prompt_column
+            if image_prompt_column not in column_names:
                 raise ValueError(
-                    f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
-                )
-        if args.edited_image_column is None:
-            edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
-        else:
-            edited_image_column = args.edited_image_column
-            if edited_image_column not in column_names:
-                raise ValueError(
-                    f"--edited_image_column' value '{args.edited_image_column}' needs to be one of: {', '.join(column_names)}"
+                    f"--image_prompt_column' value '{args.image_prompt_column}' needs to be one of: {', '.join(column_names)}"
                 )
     else:
         logging.error('We are probably going to hit some pain for that, but we bypassed the column config.')
@@ -669,7 +649,7 @@ def main():
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
         ]
     )
-
+#TODO this has to be fixed
     def preprocess_images(examples):
         logging.debug(f'Received examples for preprocess_images: {examples}')
         original_images = np.concatenate(
@@ -804,7 +784,7 @@ def main():
         return add_time_ids.to(accelerator.device).repeat(args.train_batch_size, 1)
 
     add_time_ids = compute_time_ids()
-
+#TODO this needs to be fixed 
     def preprocess_train(examples):
         # Preprocess images.
         preprocessed_images = preprocess_images(examples)
@@ -820,7 +800,7 @@ def main():
         examples["edited_pixel_values"] = edited_images
 
         # Preprocess the captions.
-        captions = list(examples[edit_prompt_column])
+        captions = list(examples[image_prompt_column])
         prompt_embeds_all, add_text_embeds_all = compute_embeddings_for_prompts(captions, text_encoders, tokenizers)
         examples["prompt_embeds"] = prompt_embeds_all
         examples["add_text_embeds"] = add_text_embeds_all
@@ -891,7 +871,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("instruct-pix2pix-xl", config=vars(args))
+        accelerator.init_trackers("text-to-image-xl", config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1087,7 +1067,7 @@ def main():
                         ema_unet.copy_to(unet.parameters())
 
                     # The models need unwrapping because for compatibility in distributed training mode.
-                    pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
+                    pipeline = StableDiffusionXLPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=accelerator.unwrap_model(unet),
                         text_encoder=text_encoder_1,
@@ -1116,18 +1096,8 @@ def main():
                         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
                     ):
                         edited_images = []
-                        for val_img_idx in range(args.num_validation_images):
-                            a_val_img = pipeline(
-                                args.validation_prompt,
-                                image=original_image,
-                                num_inference_steps=20,
-                                image_guidance_scale=1.5,
-                                guidance_scale=7,
-                                generator=generator,
-                            ).images[0]
-                            edited_images.append(a_val_img)
-                            a_val_img.save(os.path.join(val_save_dir, f"step_{global_step}_val_img_{val_img_idx}.png"))
-
+                        num_images_per_prompt=args.num_validation_images
+                        
                     for tracker in accelerator.trackers:
                         if tracker.name == "wandb":
                             wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
@@ -1154,7 +1124,7 @@ def main():
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
-        pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             text_encoder=text_encoder_1,
             text_encoder_2=text_encoder_2,
@@ -1178,18 +1148,8 @@ def main():
             edited_images = []
             pipeline = pipeline.to(accelerator.device)
             with torch.autocast(str(accelerator.device).replace(":0", "")):
-                for _ in range(args.num_validation_images):
-                    edited_images.append(
-                        pipeline(
-                            args.validation_prompt,
-                            image=original_image,
-                            num_inference_steps=20,
-                            image_guidance_scale=1.5,
-                            guidance_scale=7,
-                            generator=generator,
-                        ).images[0]
-                    )
-
+                num_images_per_prompt=args.num_validation_images
+                
             for tracker in accelerator.trackers:
                 if tracker.name == "wandb":
                     wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
