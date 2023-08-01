@@ -294,9 +294,9 @@ class AutoPipelineForText2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipeline = AutoPipelineForTextToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> print(pipeline.__class__)
         ```
         """
@@ -328,13 +328,13 @@ class AutoPipelineForText2Image(ConfigMixin):
                 an instantiated `DiffusionPipeline` object
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForImageToImage
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImageToImage
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
-        >>> pipe_t2i = AutoPipelineForTextToImage.from_pipe(pipe_t2i)
+        >>> pipe_t2i = AutoPipelineForText2Image.from_pipe(pipe_t2i)
         ```
         """
 
@@ -537,7 +537,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForText2Image
 
         >>> pipeline = AutoPipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> print(pipeline.__class__)
@@ -573,7 +573,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForImageToImage
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImageToImage
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
@@ -781,7 +781,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForText2Image
 
         >>> pipeline = AutoPipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> print(pipeline.__class__)
@@ -817,7 +817,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForInpainting
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForInpainting
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
         ...     "DeepFloyd/IF-I-XL-v1.0", requires_safety_checker=False
