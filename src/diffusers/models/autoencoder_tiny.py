@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Callable, Tuple, Union
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -45,8 +45,9 @@ class Clamp(nn.Module):
 
 
 class AutoencoderTinyBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, act_fn: Callable):
+    def __init__(self, in_channels: int, out_channels: int, act_fn: str):
         super().__init__()
+        act_fn = get_activation(act_fn)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             act_fn,
@@ -72,7 +73,7 @@ class EncoderTiny(nn.Module):
         out_channels: int,
         num_blocks: int,
         block_out_channels: int,
-        act_fn: Callable,
+        act_fn: str,
     ):
         super().__init__()
 
@@ -121,7 +122,7 @@ class DecoderTiny(nn.Module):
         num_blocks: int,
         block_out_channels: int,
         upsampling_scaling_factor: int,
-        act_fn: Callable,
+        act_fn: str,
     ):
         super().__init__()
 
@@ -204,8 +205,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             raise ValueError("`encoder_block_out_channels` should have the same length as `num_encoder_blocks`.")
         if len(decoder_block_out_channels) != len(num_decoder_blocks):
             raise ValueError("`decoder_block_out_channels` should have the same length as `num_decoder_blocks`.")
-
-        act_fn = get_activation(act_fn)
 
         self.encoder = EncoderTiny(
             in_channels=in_channels,
