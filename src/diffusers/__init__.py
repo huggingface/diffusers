@@ -44,7 +44,7 @@ else:
         PriorTransformer,
         T2IAdapter,
         T5FilmDecoder,
-        TinyAutoencoder,
+        AutoencoderTiny,
         Transformer2DModel,
         UNet1DModel,
         UNet2DConditionModel,

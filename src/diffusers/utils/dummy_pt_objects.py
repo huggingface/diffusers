@@ -122,7 +122,7 @@ class T5FilmDecoder(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class TinyAutoencoder(metaclass=DummyObject):
+class AutoencoderTiny(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
