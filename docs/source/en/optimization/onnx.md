@@ -86,7 +86,7 @@ optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task 
 
 ### Inference
 
-Here is an example of how you can load a SDXL ONNX model from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and run inference using ONNX Runtime :
+Here is an example of how you can load a SDXL ONNX model from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and run inference with ONNX Runtime :
 
 ```python
 from optimum.onnxruntime import ORTStableDiffusionXLPipeline
