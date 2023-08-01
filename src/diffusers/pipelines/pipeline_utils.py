@@ -28,7 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import hf_hub_download, model_info, snapshot_download
+from huggingface_hub import ModelCard, hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
@@ -78,6 +78,7 @@ INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
+CONNECTED_PIPES_KEYS = ["prior"]
 
 
 logger = logging.get_logger(__name__)
@@ -322,7 +323,9 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
     return class_obj, class_candidates
 
 
-def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None, revision=None):
+def _get_pipeline_class(
+    class_obj, config, load_connected_pipeline=False, custom_pipeline=None, cache_dir=None, revision=None
+):
     if custom_pipeline is not None:
         if custom_pipeline.endswith(".py"):
             path = Path(custom_pipeline)
@@ -340,7 +343,22 @@ def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None,
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    return getattr(diffusers_module, config["_class_name"])
+    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+
+    if load_connected_pipeline:
+        from .auto_pipeline import _get_connected_pipeline
+
+        connected_pipeline_cls = _get_connected_pipeline(pipeline_cls)
+        if connected_pipeline_cls is not None:
+            logger.info(
+                f"Loading connected pipeline {connected_pipeline_cls.__name__} instead of {pipeline_cls.__name__} as specified via `load_connected_pipeline=True`"
+            )
+        else:
+            logger.info(f"{pipeline_cls.__name__} has no connected pipeline class. Loading {pipeline_cls.__name__}.")
+
+        pipeline_cls = connected_pipeline_cls or pipeline_cls
+
+    return pipeline_cls
 
 
 def load_sub_model(
@@ -475,6 +493,8 @@ class DiffusionPipeline(ConfigMixin):
     config_name = "model_index.json"
     _optional_components = []
     _exclude_from_cpu_offload = []
+    _load_connected_pipes = False
+    _is_onnx = False
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -820,6 +840,11 @@ class DiffusionPipeline(ConfigMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            use_onnx (`bool`, *optional*, defaults to `None`):
+                If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
+                will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
+                `False` for non-ONNX pipelines and `True` for ONNX pipelines. ONNX weights include both files ending
+                with `.onnx` and `.pb`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -875,6 +900,7 @@ class DiffusionPipeline(ConfigMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -893,6 +919,7 @@ class DiffusionPipeline(ConfigMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
+                load_connected_pipeline=load_connected_pipeline,
                 **kwargs,
             )
         else:
@@ -920,7 +947,12 @@ class DiffusionPipeline(ConfigMixin):
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         pipeline_class = _get_pipeline_class(
-            cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+            cls,
+            config_dict,
+            load_connected_pipeline=load_connected_pipeline,
+            custom_pipeline=custom_pipeline,
+            cache_dir=cache_dir,
+            revision=custom_revision,
         )
 
         # DEPRECATED: To be removed in 1.0.0
@@ -1060,6 +1092,42 @@ class DiffusionPipeline(ConfigMixin):
                 )
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
+
+        if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
+            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+            connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
+            load_kwargs = {
+                "cache_dir": cache_dir,
+                "resume_download": resume_download,
+                "force_download": force_download,
+                "proxies": proxies,
+                "local_files_only": local_files_only,
+                "use_auth_token": use_auth_token,
+                "revision": revision,
+                "torch_dtype": torch_dtype,
+                "custom_pipeline": custom_pipeline,
+                "custom_revision": custom_revision,
+                "provider": provider,
+                "sess_options": sess_options,
+                "device_map": device_map,
+                "max_memory": max_memory,
+                "offload_folder": offload_folder,
+                "offload_state_dict": offload_state_dict,
+                "low_cpu_mem_usage": low_cpu_mem_usage,
+                "variant": variant,
+                "use_safetensors": use_safetensors,
+            }
+            connected_pipes = {
+                prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy())
+                for prefix, repo_id in connected_pipes.items()
+                if repo_id is not None
+            }
+
+            for prefix, connected_pipe in connected_pipes.items():
+                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
+                init_kwargs.update(
+                    {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+                )
 
         # 7. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
@@ -1206,6 +1274,15 @@ class DiffusionPipeline(ConfigMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            use_onnx (`bool`, *optional*, defaults to `False`):
+                If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
+                will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
+                `False` for non-ONNX pipelines and `True` for ONNX pipelines. ONNX weights include both files ending
+                with `.onnx` and `.pb`.
 
         Returns:
             `os.PathLike`:
@@ -1231,6 +1308,8 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_onnx = kwargs.pop("use_onnx", None)
+        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -1242,7 +1321,6 @@ class DiffusionPipeline(ConfigMixin):
             use_safetensors = is_safetensors_available()
             allow_pickle = True
 
-        pipeline_is_cached = False
         allow_patterns = None
         ignore_patterns = None
 
@@ -1297,12 +1375,12 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.20.0"):
+            ) >= version.parse("0.22.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
-            model_folder_names = {os.path.split(f)[0] for f in model_filenames}
+            model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
@@ -1322,7 +1400,12 @@ class DiffusionPipeline(ConfigMixin):
 
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
-                cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+                cls,
+                config_dict,
+                load_connected_pipeline=load_connected_pipeline,
+                custom_pipeline=custom_pipeline,
+                cache_dir=cache_dir,
+                revision=custom_revision,
             )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
@@ -1344,6 +1427,10 @@ class DiffusionPipeline(ConfigMixin):
             ):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
+                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx", "*.pb"]
+
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
                 safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
                 if (
@@ -1356,6 +1443,10 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
 
+                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx", "*.pb"]
+
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
                 if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
@@ -1367,6 +1458,10 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
+
+            if pipeline_class._load_connected_pipes:
+                allow_patterns.append("README.md")
+
             # Don't download index files of forbidden patterns either
             ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
 
@@ -1390,7 +1485,7 @@ class DiffusionPipeline(ConfigMixin):
 
         # download all allow_patterns - ignore_patterns
         try:
-            return snapshot_download(
+            cached_folder = snapshot_download(
                 pretrained_model_name,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -1402,6 +1497,29 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+
+            # retrieve pipeline class from local file
+            cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+            pipeline_class = getattr(diffusers, cls_name, None)
+
+            if pipeline_class is not None and pipeline_class._load_connected_pipes:
+                modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+                connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
+                for connected_pipe_repo_id in connected_pipes:
+                    download_kwargs = {
+                        "cache_dir": cache_dir,
+                        "resume_download": resume_download,
+                        "force_download": force_download,
+                        "proxies": proxies,
+                        "local_files_only": local_files_only,
+                        "use_auth_token": use_auth_token,
+                        "variant": variant,
+                        "use_safetensors": use_safetensors,
+                    }
+                    DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
+
+            return cached_folder
+
         except FileNotFoundError:
             # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
             # This can happen in two cases:

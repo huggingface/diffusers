@@ -1,4 +1,4 @@
-__version__ = "0.19.0.dev0"
+__version__ = "0.20.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -141,13 +141,19 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
         ImageTextPipelineOutput,
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
         KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
         KandinskyInpaintPipeline,
         KandinskyPipeline,
         KandinskyPriorPipeline,
+        KandinskyV22CombinedPipeline,
         KandinskyV22ControlnetImg2ImgPipeline,
         KandinskyV22ControlnetPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
         KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
         KandinskyV22InpaintPipeline,
         KandinskyV22Pipeline,
         KandinskyV22PriorEmb2EmbPipeline,
@@ -179,6 +185,11 @@ else:
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLControlNetPipeline,
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLInstructPix2PixPipeline,
+        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
@@ -194,20 +205,6 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
-    )
-
-try:
-    if not (is_torch_available() and is_transformers_available() and is_invisible_watermark_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_invisible_watermark_objects import *  # noqa F403
-else:
-    from .pipelines import (
-        StableDiffusionXLControlNetPipeline,
-        StableDiffusionXLImg2ImgPipeline,
-        StableDiffusionXLInpaintPipeline,
-        StableDiffusionXLInstructPix2PixPipeline,
-        StableDiffusionXLPipeline,
     )
 
 try:

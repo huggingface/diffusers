@@ -26,8 +26,8 @@ The abstract of the paper is the following:
 
 ### Available checkpoints:
 
-- *Text-to-Image (1024x1024 resolution)*: [stabilityai/stable-diffusion-xl-base-0.9](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9) with [`StableDiffusionXLPipeline`]
-- *Image-to-Image / Refiner (1024x1024 resolution)*: [stabilityai/stable-diffusion-xl-refiner-0.9](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9) with [`StableDiffusionXLImg2ImgPipeline`]
+- *Text-to-Image (1024x1024 resolution)*: [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) with [`StableDiffusionXLPipeline`]
+- *Image-to-Image / Refiner (1024x1024 resolution)*: [stabilityai/stable-diffusion-xl-refiner-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0) with [`StableDiffusionXLImg2ImgPipeline`]
 
 ## Usage Example
 
@@ -38,7 +38,23 @@ You can install the libraries as follows:
 pip install transformers
 pip install accelerate
 pip install safetensors
+```
+
+### Watermarker
+
+We recommend to add an invisible watermark to images generating by Stable Diffusion XL, this can help with identifying if an image is machine-synthesised for downstream applications. To do so, please install
+the [invisible-watermark library](https://pypi.org/project/invisible-watermark/) via:
+
+```
 pip install invisible-watermark>=0.2.0
+```
+
+If the `invisible-watermark` library is installed the watermarker will be used **by default**.
+
+If you have other provisions for generating or deploying images safely, you can disable the watermarker as follows:
+
+```py
+pipe = StableDiffusionXLPipeline.from_pretrained(..., add_watermarker=False)
 ```
 
 ### Text-to-Image
@@ -50,7 +66,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -68,7 +84,7 @@ from diffusers import StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe = pipe.to("cuda")
 url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
@@ -88,7 +104,7 @@ from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -104,8 +120,8 @@ image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inferen
 
 ### Refining the image output
 
-In addition to the [base model checkpoint](https://huggingface.co/stabilityai/stable-diffusion-xl-base-0.9), 
-StableDiffusion-XL also includes a [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9)
+In addition to the [base model checkpoint](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), 
+StableDiffusion-XL also includes a [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0)
 that is specialized in denoising low-noise stage images to generate images of improved high-frequency quality.
 This refiner checkpoint can be used as a "second-step" pipeline after having run the base checkpoint to improve
 image quality.
@@ -149,12 +165,12 @@ from diffusers import DiffusionPipeline
 import torch
 
 base = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
-pipe.to("cuda")
+base.to("cuda")
 
 refiner = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=base.text_encoder_2,
     vae=base.vae,
     torch_dtype=torch.float16,
@@ -219,7 +235,7 @@ The ensemble-of-experts method works well on all available schedulers!
 #### 2.) Refining the image output from fully denoised base image
 
 In standard [`StableDiffusionImg2ImgPipeline`]-fashion, the fully-denoised image generated of the base model 
-can be further improved using the [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9).
+can be further improved using the [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0).
 
 For this, you simply run the refiner as a normal image-to-image pipeline after the "base" text-to-image 
 pipeline. You can leave the outputs of the base model in latent space.
@@ -229,12 +245,12 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
 refiner = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=pipe.text_encoder_2,
     vae=pipe.vae,
     torch_dtype=torch.float16,
@@ -267,12 +283,12 @@ from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
 refiner = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=pipe.text_encoder_2,
     vae=pipe.vae,
     torch_dtype=torch.float16,
@@ -321,12 +337,12 @@ from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipelin
 import torch
 
 pipe = StableDiffusionXLPipeline.from_single_file(
-    "./sd_xl_base_0.9.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "./sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "./sd_xl_refiner_0.9.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "./sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 ```
@@ -399,7 +415,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 

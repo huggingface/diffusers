@@ -563,10 +563,10 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
         text_encoder_one_lora_layers = create_text_encoder_lora_layers(text_encoder)
@@ -737,8 +737,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-
-        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+        expected = np.array([0.3725, 0.3767, 0.3761, 0.3796, 0.3827, 0.3763, 0.3831, 0.3809, 0.3392])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 

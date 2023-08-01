@@ -378,7 +378,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 Extra_step_kwargs.
             cross_attention_kwargs:
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             num_warmup_steps:
                 number of warmup steps.
 

@@ -7,6 +7,8 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...models import PriorTransformer
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -162,7 +164,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         negative_prior_prompt: Optional[str] = None,
-        negative_prompt: Union[str] = "",
+        negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
     ):
@@ -392,6 +394,35 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.prior]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.prior_hook = hook
+
+        _, hook = cpu_offload_with_hook(self.image_encoder, device, prev_module_hook=self.prior_hook)
+
+        self.final_offload_hook = hook
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -549,8 +580,12 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         # if negative prompt has been defined, we retrieve split the image embedding into two
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.final_offload_hook.offload()
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.prior_hook.offload()
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
