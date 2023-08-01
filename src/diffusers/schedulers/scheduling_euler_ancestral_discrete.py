@@ -189,6 +189,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
+        if self.step_index is None:
+            self.step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
