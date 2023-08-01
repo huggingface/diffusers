@@ -3,6 +3,9 @@ from typing import List, Optional, Union
 
 import numpy as np
 import PIL
+from ...models import AutoencoderKL, UNet2DConditionModel
+from .modeling_ctx_clip import CtxCLIPTextModel
+from transformers import CLIPTokenizer
 from ...pipelines import DiffusionPipeline
 import torch
 from ...schedulers import DDIMScheduler, DDPMScheduler
@@ -13,17 +16,40 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from torch import nn
+from transformers.activations import QuickGELUActivation as QuickGELU
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+class ProjLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_dim, drop_p=0.1, eps=1e-12):
+        super().__init__()
+
+        # Dense1 -> Act -> Dense2 -> Drop -> Res -> Norm
+        self.dense1 = nn.Linear(in_dim, hidden_dim)
+        self.act_fn = QuickGELU()
+        self.dense2 = nn.Linear(hidden_dim, out_dim)
+        self.dropout = nn.Dropout(drop_p)
+
+        self.LayerNorm = nn.LayerNorm(out_dim, eps=eps)
+
+    def forward(self, x):
+        x_in = x
+
+        x = self.LayerNorm(x)
+        x = self.dropout(self.dense2(self.act_fn(self.dense1(x)))) + x_in
+
+        return x
 
 
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, scheduler: DDPMScheduler):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, proj_layer: ProjLayer, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: DDPMScheduler):
         super().__init__()
         
-        self.register_modules(scheduler=scheduler)
+        self.register_modules(tokenizer=tokenizer, text_encoder=CtxCLIPTextModel, proj_layer=proj_layer, vae=vae, unet=unet, scheduler=scheduler)
 
     def prepare_latents():
         pass
