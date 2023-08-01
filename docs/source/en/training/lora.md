@@ -355,3 +355,51 @@ lora_model_id = "sayakpaul/civitai-light-shadow-lora"
 lora_filename = "light_and_shadow.safetensors"
 pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 ```
+
+### Supporting Stable Diffusion XL LoRAs trained using the Kohya-trainer
+
+With this [PR](https://github.com/huggingface/diffusers/pull/4287), there should now be better support for loading Kohya-style LoRAs trained on Stable Diffusion XL (SDXL).
+
+Here are some example checkpoints we tried out:
+
+* SDXL 0.9:
+  * https://civitai.com/models/22279?modelVersionId=118556 
+  * https://civitai.com/models/104515/sdxlor30costumesrevue-starlight-saijoclaudine-lora 
+  * https://civitai.com/models/108448/daiton-sdxl-test 
+  * https://filebin.net/2ntfqqnapiu9q3zx/pixelbuildings128-v1.safetensors
+* SDXL 1.0:
+  * https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors
+
+Here is an example of how to perform inference with these checkpoints in `diffusers`:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+base_model_id = "stabilityai/stable-diffusion-xl-base-0.9"
+pipeline = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipeline.load_lora_weights(".", weight_name="Kamepan.safetensors")
+
+prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, offical wallpaper, glint <lora:kame_sdxl_v2:1>"
+negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad propotions"
+generator = torch.manual_seed(2947883060)
+num_inference_steps = 30
+guidance_scale = 7
+
+image = pipeline(
+    prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps,
+    generator=generator, guidance_scale=guidance_scale
+).images[0]
+image.save("Kamepan.png")
+```
+
+`Kamepan.safetensors` comes from https://civitai.com/models/22279?modelVersionId=118556 . 
+
+If you notice carefully, the inference UX is exactly identical to what we presented in the sections above. 
+
+Thanks to [@isidentical](https://github.com/isidentical) for helping us on integrating this feature.
+
+### Known limitations specific to the Kohya-styled LoRAs
+
+* SDXL LoRAs that have both the text encoders are currently leading to weird results. We're actively investigating the issue. 
+* When images don't looks similar to other UIs such ComfyUI, it can be beacause of multiple reasons as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736). 

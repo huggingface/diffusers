@@ -925,10 +925,10 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alpha = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alpha=network_alpha, unet=unet_)
+        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alpha=network_alpha, text_encoder=text_encoder_
+            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
