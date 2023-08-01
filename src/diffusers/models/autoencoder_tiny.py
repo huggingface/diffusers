@@ -126,7 +126,11 @@ class DecoderTiny(nn.Module):
     ):
         super().__init__()
 
-        layers = [Clamp(), nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1), act_fn]
+        layers = [
+            Clamp(),
+            nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1),
+            get_activation(act_fn),
+        ]
 
         for i, num_block in enumerate(num_blocks):
             is_final_block = i == (len(num_blocks) - 1)

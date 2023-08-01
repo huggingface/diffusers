@@ -8,7 +8,7 @@ if is_safetensors_available():
 else:
     raise ImportError("Please install `safetensors`.")
 
-from diffusers import TinyAutoencoder
+from diffusers import AutoencoderTiny
 
 
 """
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     decoder_state_dict = safetensors.torch.load_file(args.decoder_ckpt_path)
 
     print("Populating the state_dicts in the diffusers format...")
-    tiny_autoencoder = TinyAutoencoder()
+    tiny_autoencoder = AutoencoderTiny()
     new_state_dict = {}
 
     for k in encoder_state_dict:
