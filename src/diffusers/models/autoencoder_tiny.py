@@ -253,6 +253,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         output = self.decoder(x)
+        # Refer to the following discussion to know why this is needed.
+        # https://github.com/huggingface/diffusers/pull/4384#discussion_r1279401854
+        output = output.mul_(2).sub_(1)
 
         if not return_dict:
             return (output,)
