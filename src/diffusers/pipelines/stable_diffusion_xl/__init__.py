@@ -51,3 +51,4 @@ if is_transformers_available() and is_flax_available():
 
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
     from .pipeline_flax_stable_diffusion_xl import FlaxStableDiffusionXLPipeline
+    from .pipeline_flax_stable_diffusion_xl_img2img import FlaxStableDiffusionXLImg2ImgPipeline

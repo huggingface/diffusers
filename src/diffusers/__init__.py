@@ -284,6 +284,7 @@ else:
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
         FlaxStableDiffusionXLPipeline,
+        FlaxStableDiffusionXLImg2ImgPipeline,
     )
 
 try:
