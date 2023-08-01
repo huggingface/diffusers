@@ -133,19 +133,46 @@ class AttentionStore:
 
 
 class AttendExciteAttnProcessor:
-    def __init__(self, attnstore, place_in_unet):
+    def __init__(self, attnstore: AttentionStore, place_in_unet: str):
         super().__init__()
         self.attnstore = attnstore
         self.place_in_unet = place_in_unet
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = hidden_states.shape
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
         is_cross = encoder_hidden_states is not None
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -155,7 +182,7 @@ class AttendExciteAttnProcessor:
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
 
-        # only need to store attention maps during the Attend and Excite process
+        # only need to store cross attention maps during the Attend and Excite process
         if attention_probs.requires_grad:
             self.attnstore(attention_probs, is_cross, self.place_in_unet)
 
@@ -166,6 +193,110 @@ class AttendExciteAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class AttendExciteAttnProcessor2_0:
+    def __init__(self, attnstore: AttentionStore, place_in_unet: str):
+        super().__init__()
+
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+        self.attnstore = attnstore
+        self.place_in_unet = place_in_unet
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        is_cross = encoder_hidden_states is not None
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # only need to store cross attention maps during the Attend and Excite process
+        if hidden_states.requires_grad:
+            dummy_value_eye = torch.eye(value.shape[2], device=value.device, dtype=value.dtype).expand(
+                batch_size, attn.heads, -1, -1
+            )
+            attention_probs = F.scaled_dot_product_attention(
+                query, key, dummy_value_eye, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+            self.attnstore(attention_probs.flatten(0, 1), is_cross, self.place_in_unet)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
 
@@ -685,7 +816,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
             iteration += 1
 
             latents = latents.clone().detach().requires_grad_(True)
-            self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
+            _ = self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
             self.unet.zero_grad()
 
             # Get max activation value for each subject token
@@ -732,13 +863,18 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
                 continue
 
             cross_att_count += 1
-            attn_procs[name] = AttendExciteAttnProcessor(attnstore=self.attention_store, place_in_unet=place_in_unet)
+            attn_processor_class = (
+                AttendExciteAttnProcessor2_0
+                if hasattr(F, "scaled_dot_product_attention")
+                else AttendExciteAttnProcessor
+            )
+            attn_procs[name] = attn_processor_class(attnstore=self.attention_store, place_in_unet=place_in_unet)
 
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
 
-    def get_indices(self, prompt: str) -> Dict[str, int]:
-        """Utility function to list the indices of the tokens you wish to alte"""
+    def get_indices(self, prompt: str) -> Dict[int, str]:
+        """Utility function to list the indices of the tokens you wish to alter"""
         ids = self.tokenizer(prompt).input_ids
         indices = {i: tok for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
         return indices
@@ -768,7 +904,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         max_iter_to_alter: int = 25,
         thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
         scale_factor: int = 20,
-        attn_res: Optional[Tuple[int]] = (16, 16),
+        attn_res: Optional[Tuple[int, int]] = (16, 16),
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -777,7 +913,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            token_indices (`List[int]`):
+            token_indices (`List[int] or List[List[int]]`):
                 The token indices to alter with attend-and-excite.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -949,7 +1085,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
                         latent = latent.unsqueeze(0)
                         text_embedding = text_embedding.unsqueeze(0)
 
-                        self.unet(
+                        _ = self.unet(
                             latent,
                             t,
                             encoder_hidden_states=text_embedding,
@@ -1055,8 +1191,8 @@ class GaussianSmoothing(torch.nn.Module):
     def __init__(
         self,
         channels: int = 1,
-        kernel_size: int = 3,
-        sigma: float = 0.5,
+        kernel_size: Union[int, List[int]] = 3,
+        sigma: Union[float, List[float]] = 0.5,
         dim: int = 2,
     ):
         super().__init__()
