@@ -33,7 +33,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_numpy, slow, nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, load_pt, require_torch_gpu, skip_mps
 
 from ..pipeline_params import (
@@ -499,6 +499,7 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
+        pipe.unet.set_default_attn_processor()
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -521,6 +522,7 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
         )
+        pipe.unet.set_default_attn_processor()
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -535,9 +537,18 @@ class InversionPipelineSlowTests(unittest.TestCase):
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
         assert inv_latents.shape == (1, 4, 64, 64)
-        expected_slice = np.array([0.8970, -0.1611, 0.4766, -1.1162, -0.5923, 0.1050, -0.9678, 1.0537, -0.6050])
+        expected_slice = np.array([0.8452, -0.1538, 0.4570, -1.0918, -0.6138, 0.1060, -1.0088, 1.0371, -0.5713])
 
         assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
+
+
+@nightly
+@require_torch_gpu
+class InversionPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def test_stable_diffusion_pix2pix_full(self):
         # numpy array of https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/pix2pix/dog.png
