@@ -64,6 +64,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -75,8 +76,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
-
+        expected_slice = np.array([0.0689, 0.0699, 0.0790, 0.0536, 0.0470, 0.0488, 0.041, 0.0508, 0.04179])
         assert np.abs(expected_slice - image_slice).max() < 3e-3
     except Exception:
         error = f"{traceback.format_exc()}"
@@ -382,6 +382,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -391,8 +392,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.1350, 0.1123, 0.1350, 0.1641, 0.1328, 0.1230, 0.1289, 0.1531, 0.1687])
-
+        expected_slice = np.array([0.1509, 0.1245, 0.1672, 0.1655, 0.1519, 0.1226, 0.1462, 0.1567, 0.2451])
         assert np.abs(expected_slice - image_slice).max() < 5e-2
 
     def test_stable_diffusion_inpaint_pndm(self):
@@ -485,6 +485,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
             "runwayml/stable-diffusion-inpainting", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -497,11 +498,12 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, 253:256, 253:256, -1].flatten()
-        expected_slice = np.array([0.0021, 0.2350, 0.3712, 0.0575, 0.2485, 0.3451, 0.1857, 0.3156, 0.3943])
-        assert np.abs(expected_slice - image_slice).max() < 3e-3
+        expected_slice = np.array([0.2728, 0.2803, 0.2665, 0.2511, 0.2774, 0.2586, 0.2391, 0.2392, 0.2582])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_simple_inpaint_ddim(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -512,9 +514,8 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.5157, 0.6858, 0.6873, 0.4619, 0.6416, 0.6898, 0.3702, 0.5960, 0.6935])
-
-        assert np.abs(expected_slice - image_slice).max() < 6e-4
+        expected_slice = np.array([0.3757, 0.3875, 0.4445, 0.4353, 0.3780, 0.4513, 0.3965, 0.3984, 0.4362])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_download_local(self):
         filename = hf_hub_download("runwayml/stable-diffusion-inpainting", filename="sd-v1-5-inpainting.ckpt")
