@@ -699,7 +699,7 @@ accelerate launch train_dreambooth.py \
   --use_8bit_adam \
   --set_grads_to_none \
   --skip_save_text_encoder \
-  --use_original_scheduler \
+  --validation_scheduler DDPMScheduler \
   --push_to_hub
 ```
 
@@ -738,7 +738,7 @@ accelerate launch train_dreambooth.py \
   --text_encoder_use_attention_mask \
   --validation_images $VALIDATION_IMAGES \
   --class_labels_conditioning timesteps \
-  --use_original_scheduler \
+  --validation_scheduler DDPMScheduler\
   --push_to_hub
 ```
 

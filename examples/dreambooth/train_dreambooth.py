@@ -144,10 +144,7 @@ def log_validation(
 
         scheduler_args["variance_type"] = variance_type
 
-    if not args.use_original_scheduler:
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-    else:
-        pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+    pipeline.scheduler = eval(args.validation_scheduler).from_config(pipeline.scheduler.config, **scheduler_args)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -551,10 +548,11 @@ def parse_args(input_args=None):
         help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
     )
     parser.add_argument(
-        "--use_original_scheduler",
-        action="store_true",
-        default=False,
-        help="Whether to use original scheduler, especially for DeepFloyd IF.",
+        "--validation_scheduler",
+        type=str,
+        default="DPMSolverMultistepScheduler",
+        choices=["DPMSolverMultistepScheduler", "DDPMScheduler"],
+        help="Select which scheduler to use for validation. DDPMScheduler is recommended for DeepFloyd IF.",
     )
 
     if input_args is not None:
