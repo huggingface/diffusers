@@ -84,51 +84,49 @@ class AttentionStore:
     def get_empty_store():
         return {"down": [], "mid": [], "up": []}
 
-    def __call__(self, attn, is_cross: bool, place_in_unet: str):
-        if self.cur_att_layer >= 0 and is_cross:
-            if attn.shape[1] == np.prod(self.attn_res):
-                self.step_store[place_in_unet].append(attn)
-
-        self.cur_att_layer += 1
-        if self.cur_att_layer == self.num_att_layers:
-            self.cur_att_layer = 0
-            self.between_steps()
+    def __call__(self, attn, place_in_unet: str):
+        if attn.shape[1] == np.prod(self.attn_res):
+            self.step_store[place_in_unet].append(attn)
 
     def between_steps(self):
         self.attention_store = self.step_store
         self.step_store = self.get_empty_store()
 
-    def get_average_attention(self):
-        average_attention = self.attention_store
-        return average_attention
-
-    def aggregate_attention(self, from_where: List[str]) -> torch.Tensor:
-        """Aggregates the attention across the different layers and heads at the specified resolution."""
-        out = []
-        attention_maps = self.get_average_attention()
-        for location in from_where:
-            for item in attention_maps[location]:
-                cross_maps = item.reshape(-1, self.attn_res[0], self.attn_res[1], item.shape[-1])
-                out.append(cross_maps)
-        out = torch.cat(out, dim=0)
-        out = out.sum(0) / out.shape[0]
-        return out
-
     def reset(self):
-        self.cur_att_layer = 0
         self.step_store = self.get_empty_store()
         self.attention_store = {}
+
+    def compute_max_attention_per_index(
+        self,
+        indices: List[int],
+    ) -> torch.Tensor:
+        """Aggregates the attention for each token and computes the max activation value for each token to alter."""
+
+        # Average over cross-attention layers and attention heads (batch size is 1 and folded into attention heads)
+        cross_maps = []
+        for location in ("up", "down", "mid"):
+            for item in self.attention_store[location]:
+                cross_maps.append(item.reshape(-1, self.attn_res[0], self.attn_res[1], item.shape[-1]))
+        attention_maps = torch.cat(cross_maps, dim=0).mean(0)
+        attention_for_text = torch.nn.functional.softmax(attention_maps[:, :, 1:-1] * 100, dim=-1)
+
+        # Shift indices since we removed the first token
+        selected_maps_bchw = attention_for_text[None, :, :, [index - 1 for index in indices]].permute(3, 0, 1, 2)
+        smoothing = GaussianSmoothing().to(attention_maps.device)
+
+        # Extract the maximum values
+        max_indices, _ = (
+            smoothing(F.pad(selected_maps_bchw, (1, 1, 1, 1), mode="reflect")).squeeze(1).flatten(1, 2).max(1)
+        )
+        return max_indices
 
     def __init__(self, attn_res):
         """
         Initialize an empty AttentionStore :param step_index: used to visualize only a specific step in the diffusion
         process
         """
-        self.num_att_layers = -1
-        self.cur_att_layer = 0
         self.step_store = self.get_empty_store()
         self.attention_store = {}
-        self.curr_step_index = 0
         self.attn_res = attn_res
 
 
@@ -167,7 +165,6 @@ class AttendExciteAttnProcessor:
 
         query = attn.to_q(hidden_states)
 
-        is_cross = encoder_hidden_states is not None
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
@@ -184,7 +181,7 @@ class AttendExciteAttnProcessor:
 
         # only need to store cross attention maps during the Attend and Excite process
         if attention_probs.requires_grad:
-            self.attnstore(attention_probs, is_cross, self.place_in_unet)
+            self.attnstore(attention_probs, self.place_in_unet)
 
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -249,7 +246,6 @@ class AttendExciteAttnProcessor2_0:
 
         query = attn.to_q(hidden_states)
 
-        is_cross = encoder_hidden_states is not None
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
@@ -274,7 +270,7 @@ class AttendExciteAttnProcessor2_0:
             attention_probs = F.scaled_dot_product_attention(
                 query, key, dummy_value_eye, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
-            self.attnstore(attention_probs.flatten(0, 1), is_cross, self.place_in_unet)
+            self.attnstore(attention_probs.flatten(0, 1), self.place_in_unet)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
@@ -745,47 +741,9 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         return latents
 
     @staticmethod
-    def _compute_max_attention_per_index(
-        attention_maps: torch.Tensor,
-        indices: List[int],
-    ) -> List[torch.Tensor]:
-        """Computes the maximum attention value for each of the tokens we wish to alter."""
-        attention_for_text = attention_maps[:, :, 1:-1]
-        attention_for_text *= 100
-        attention_for_text = torch.nn.functional.softmax(attention_for_text, dim=-1)
-
-        # Shift indices since we removed the first token
-        indices = [index - 1 for index in indices]
-
-        # Extract the maximum values
-        max_indices_list = []
-        for i in indices:
-            image = attention_for_text[:, :, i]
-            smoothing = GaussianSmoothing().to(attention_maps.device)
-            input = F.pad(image.unsqueeze(0).unsqueeze(0), (1, 1, 1, 1), mode="reflect")
-            image = smoothing(input).squeeze(0).squeeze(0)
-            max_indices_list.append(image.max())
-        return max_indices_list
-
-    def _aggregate_and_get_max_attention_per_token(
-        self,
-        indices: List[int],
-    ):
-        """Aggregates the attention for each token and computes the max activation value for each token to alter."""
-        attention_maps = self.attention_store.aggregate_attention(
-            from_where=("up", "down", "mid"),
-        )
-        max_attention_per_index = self._compute_max_attention_per_index(
-            attention_maps=attention_maps,
-            indices=indices,
-        )
-        return max_attention_per_index
-
-    @staticmethod
-    def _compute_loss(max_attention_per_index: List[torch.Tensor]) -> torch.Tensor:
+    def _compute_loss(max_attention_per_index: torch.Tensor) -> torch.Tensor:
         """Computes the attend-and-excite loss using the maximum attention value for each token."""
-        losses = [max(0, 1.0 - curr_max) for curr_max in max_attention_per_index]
-        loss = max(losses)
+        loss = torch.maximum(torch.zeros_like(max_attention_per_index), 1.0 - max_attention_per_index).max()
         return loss
 
     @staticmethod
@@ -818,11 +776,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
             latents = latents.clone().detach().requires_grad_(True)
             _ = self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
             self.unet.zero_grad()
+            self.attention_store.between_steps()
 
             # Get max activation value for each subject token
-            max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
-                indices=indices,
-            )
+            max_attention_per_index = self.attention_store.compute_max_attention_per_index(indices=indices)
 
             loss = self._compute_loss(max_attention_per_index)
 
@@ -840,18 +797,16 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         latents = latents.clone().detach().requires_grad_(True)
         _ = self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
         self.unet.zero_grad()
+        self.attention_store.between_steps()
 
         # Get max activation value for each subject token
-        max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
-            indices=indices,
-        )
+        max_attention_per_index = self.attention_store.compute_max_attention_per_index(indices=indices)
         loss = self._compute_loss(max_attention_per_index)
         logger.info(f"\t Finished with loss of: {loss}")
         return loss, latents, max_attention_per_index
 
     def register_attention_control(self):
         attn_procs = {}
-        cross_att_count = 0
         for name in self.unet.attn_processors.keys():
             if name.startswith("mid_block"):
                 place_in_unet = "mid"
@@ -862,16 +817,17 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
             else:
                 continue
 
-            cross_att_count += 1
-            attn_processor_class = (
-                AttendExciteAttnProcessor2_0
-                if hasattr(F, "scaled_dot_product_attention")
-                else AttendExciteAttnProcessor
-            )
-            attn_procs[name] = attn_processor_class(attnstore=self.attention_store, place_in_unet=place_in_unet)
+            if "attn2" in name:
+                attn_processor_class = (
+                    AttendExciteAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else AttendExciteAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(attnstore=self.attention_store, place_in_unet=place_in_unet)
+            else:
+                attn_procs[name] = self.unet.attn_processors[name]
 
         self.unet.set_attn_processor(attn_procs)
-        self.attention_store.num_att_layers = cross_att_count
 
     def get_indices(self, prompt: str) -> Dict[int, str]:
         """Utility function to list the indices of the tokens you wish to alter"""
@@ -1092,11 +1048,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
                             cross_attention_kwargs=cross_attention_kwargs,
                         ).sample
                         self.unet.zero_grad()
+                        self.attention_store.between_steps()
 
                         # Get max activation value for each subject token
-                        max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
-                            indices=index,
-                        )
+                        max_attention_per_index = self.attention_store.compute_max_attention_per_index(indices=index)
 
                         loss = self._compute_loss(max_attention_per_index=max_attention_per_index)
 
