@@ -22,7 +22,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device, nightly
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import (
@@ -186,14 +186,52 @@ class CycleDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterM
         return super().test_attention_slicing_forward_pass()
 
 
-@slow
+@nightly
 @require_torch_gpu
-class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
+class CycleDiffusionPipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
+
+    def test_cycle_diffusion_pipeline(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/cycle-diffusion/black_colored_car.png"
+        )
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy"
+        )
+        init_image = init_image.resize((512, 512))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
+        pipe = CycleDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, safety_checker=None)
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        source_prompt = "A black colored car"
+        prompt = "A blue colored car"
+
+        generator = torch.manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            source_prompt=source_prompt,
+            image=init_image,
+            num_inference_steps=100,
+            eta=0.1,
+            strength=0.85,
+            guidance_scale=3,
+            source_guidance_scale=1,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images
+
+        assert np.abs(image - expected_image).max() < 2e-2
 
     def test_cycle_diffusion_pipeline_fp16(self):
         init_image = load_image(
@@ -235,41 +273,3 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(image - expected_image).max() < 5e-1
-
-    def test_cycle_diffusion_pipeline(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/cycle-diffusion/black_colored_car.png"
-        )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy"
-        )
-        init_image = init_image.resize((512, 512))
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = CycleDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, safety_checker=None)
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        source_prompt = "A black colored car"
-        prompt = "A blue colored car"
-
-        generator = torch.manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            source_prompt=source_prompt,
-            image=init_image,
-            num_inference_steps=100,
-            eta=0.1,
-            strength=0.85,
-            guidance_scale=3,
-            source_guidance_scale=1,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images
-
-        assert np.abs(image - expected_image).max() < 2e-2
