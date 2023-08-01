@@ -160,7 +160,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="instruct-pix2pix-model",
+        default="outputs",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -406,7 +406,7 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -786,194 +786,200 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    output_list = []
     #Initialize mlflow
     # mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    experiment_id = mlflow.create_experiment('{}_{}'.format(args.pretrained_model_name_or_path, current_datetime))
-    experiment = mlflow.get_experiment(experiment_id)
-    mlflow_runner = mlflow.start_run(run_name=args.pretrained_model_name_or_path, experiment_id=experiment.experiment_id)
-    with mlflow_runner:
-        start_time = time.time()
-        for epoch in range(first_epoch, args.num_train_epochs):
-            start_time_epoch = time.time()
-            unet.train()
-            train_loss = 0.0
-            for step, batch in enumerate(train_dataloader):
-                # Skip steps until we reach the resumed step
-                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                    if step % args.gradient_accumulation_steps == 0:
-                        progress_bar.update(1)
-                    continue
+    # current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    # experiment_name = args.pretrained_model_name_or_path
 
-                with accelerator.accumulate(unet):
-                    # We want to learn the denoising process w.r.t the edited images which
-                    # are conditioned on the original image (which was edited) and the edit instruction.
-                    # So, first, convert images to latent space.
-                    latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
-                    latents = latents * vae.config.scaling_factor
+    # if not mlflow.get_experiment_by_name(experiment_name):        
+    #     experiment_id = mlflow.create_experiment(experiment_name)
 
-                    # Sample noise that we'll add to the latents
-                    noise = torch.randn_like(latents)
-                    bsz = latents.shape[0]
-                    # Sample a random timestep for each image
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                    timesteps = timesteps.long()
+    # experiment = mlflow.get_experiment_by_name(experiment_name)
+    # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
-                    # Add noise to the latents according to the noise magnitude at each timestep
-                    # (this is the forward diffusion process)
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                    # Get the text embedding for conditioning.
-                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-
-                    # Get the additional image embedding for conditioning.
-                    # Instead of getting a diagonal Gaussian here, we simply take the mode.
-                    original_image_embeds = vae.encode(batch["original_pixel_values"].to(weight_dtype)).latent_dist.mode()
-
-                    # Conditioning dropout to support classifier-free guidance during inference. For more details
-                    # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
-                    if args.conditioning_dropout_prob is not None:
-                        random_p = torch.rand(bsz, device=latents.device, generator=generator)
-                        # Sample masks for the edit prompts.
-                        prompt_mask = random_p < 2 * args.conditioning_dropout_prob
-                        prompt_mask = prompt_mask.reshape(bsz, 1, 1)
-                        # Final text conditioning.
-                        null_conditioning = text_encoder(tokenize_captions([""]).to(accelerator.device))[0]
-                        encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
-
-                        # Sample masks for the original images.
-                        image_mask_dtype = original_image_embeds.dtype
-                        image_mask = 1 - (
-                            (random_p >= args.conditioning_dropout_prob).to(image_mask_dtype)
-                            * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
-                        )
-                        image_mask = image_mask.reshape(bsz, 1, 1, 1)
-                        # Final image conditioning.
-                        original_image_embeds = image_mask * original_image_embeds
-
-                    # Concatenate the `original_image_embeds` with the `noisy_latents`.
-                    concatenated_noisy_latents = torch.cat([noisy_latents, original_image_embeds], dim=1)
-
-                    # Get the target for loss depending on the prediction type
-                    if noise_scheduler.config.prediction_type == "epsilon":
-                        target = noise
-                    elif noise_scheduler.config.prediction_type == "v_prediction":
-                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                    else:
-                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                    # Predict the noise residual and compute loss
-                    model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
-                    # Gather the losses across all processes for logging (if we use distributed training).
-                    avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                    train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                    # Backpropagate
-                    accelerator.backward(loss)
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
-
-                # Checks if the accelerator has performed an optimization step behind the scenes
-                if accelerator.sync_gradients:
-                    if args.use_ema:
-                        ema_unet.step(unet.parameters())
+    mlflow.start_run()
+    start_time = time.time()
+    for epoch in range(first_epoch, args.num_train_epochs):
+        interval_start_time = time.time()
+        unet.train()
+        train_loss = 0.0
+        for step, batch in enumerate(train_dataloader):
+            # Skip steps until we reach the resumed step
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
-                    global_step += 1
-                    accelerator.log({"train_loss": train_loss}, step=global_step)
-                    train_loss = 0.0
+                continue
 
-                    if global_step % args.checkpointing_steps == 0:
-                        if accelerator.is_main_process:
-                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                            accelerator.save_state(save_path)
-                            logger.info(f"Saved state to {save_path}")
+            with accelerator.accumulate(unet):
+                # We want to learn the denoising process w.r.t the edited images which
+                # are conditioned on the original image (which was edited) and the edit instruction.
+                # So, first, convert images to latent space.
+                latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
+                latents = latents * vae.config.scaling_factor
 
-                if (step+1) % args.logging_steps == 0:
-                    logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}                    
-                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
-                    progress_bar.set_postfix(**logs)
+                # Sample noise that we'll add to the latents
+                noise = torch.randn_like(latents)
+                bsz = latents.shape[0]
+                # Sample a random timestep for each image
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = timesteps.long()
 
-                if global_step >= args.max_train_steps:
-                    break
+                # Add noise to the latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-            if accelerator.is_main_process:
-                if (
-                    (args.val_image_url is not None)
-                    and (args.validation_prompt is not None)
-                    and (epoch % args.validation_epochs == 0)
+                # Get the text embedding for conditioning.
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+
+                # Get the additional image embedding for conditioning.
+                # Instead of getting a diagonal Gaussian here, we simply take the mode.
+                original_image_embeds = vae.encode(batch["original_pixel_values"].to(weight_dtype)).latent_dist.mode()
+
+                # Conditioning dropout to support classifier-free guidance during inference. For more details
+                # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
+                if args.conditioning_dropout_prob is not None:
+                    random_p = torch.rand(bsz, device=latents.device, generator=generator)
+                    # Sample masks for the edit prompts.
+                    prompt_mask = random_p < 2 * args.conditioning_dropout_prob
+                    prompt_mask = prompt_mask.reshape(bsz, 1, 1)
+                    # Final text conditioning.
+                    null_conditioning = text_encoder(tokenize_captions([""]).to(accelerator.device))[0]
+                    encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
+
+                    # Sample masks for the original images.
+                    image_mask_dtype = original_image_embeds.dtype
+                    image_mask = 1 - (
+                        (random_p >= args.conditioning_dropout_prob).to(image_mask_dtype)
+                        * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
+                    )
+                    image_mask = image_mask.reshape(bsz, 1, 1, 1)
+                    # Final image conditioning.
+                    original_image_embeds = image_mask * original_image_embeds
+
+                # Concatenate the `original_image_embeds` with the `noisy_latents`.
+                concatenated_noisy_latents = torch.cat([noisy_latents, original_image_embeds], dim=1)
+
+                # Get the target for loss depending on the prediction type
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                # Predict the noise residual and compute loss
+                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
+                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                # Gather the losses across all processes for logging (if we use distributed training).
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
+                # Backpropagate
+                accelerator.backward(loss)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
+                progress_bar.update(1)
+                global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
+                train_loss = 0.0
+
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
+
+            if (step+1) % args.logging_steps == 0:
+                logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}                    
+                
+                interval_elapsed_time = time.time() - interval_start_time
+                interval_start_time = time.time()
+                interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
+                                    
+                mlflow.log_metric('interval_loss', loss.detach().item(), step=global_step)
+                mlflow.log_metric('interval_throughput', interval_throughput, step=global_step)
+                
+                progress_bar.set_postfix(**logs)
+
+            if global_step >= args.max_train_steps:
+                elapsed_time = (time.time() - start_time) 
+                one_epoch_time = elapsed_time/ (args.max_train_steps / num_update_steps_per_epoch)
+                throughput = (args.max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
+
+                mlflow.log_metric('avg_throughput', throughput)
+                mlflow.log_metric('one_epoch_time', one_epoch_time)
+                mlflow.log_params({'task': 'instruct_pix2pix', 'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
+                break
+
+        if accelerator.is_main_process:
+            if (
+                (args.val_image_url is not None)
+                and (args.validation_prompt is not None)
+                and (epoch % args.validation_epochs == 0)
+            ):
+                logger.info(
+                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
+                # create pipeline
+                if args.use_ema:
+                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                    ema_unet.store(unet.parameters())
+                    ema_unet.copy_to(unet.parameters())
+                # The models need unwrapping because for compatibility in distributed training mode.
+                pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    vae=accelerator.unwrap_model(vae),
+                    revision=args.revision,
+                    torch_dtype=weight_dtype,
+                )
+                pipeline = pipeline.to(accelerator.device)
+                pipeline.set_progress_bar_config(disable=True)
+
+                # run inference
+                original_image = download_image(args.val_image_url)
+                edited_images = []
+                with torch.autocast(
+                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
                 ):
-                    logger.info(
-                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                        f" {args.validation_prompt}."
-                    )
-                    # create pipeline
-                    if args.use_ema:
-                        # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                        ema_unet.store(unet.parameters())
-                        ema_unet.copy_to(unet.parameters())
-                    # The models need unwrapping because for compatibility in distributed training mode.
-                    pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-                        args.pretrained_model_name_or_path,
-                        unet=accelerator.unwrap_model(unet),
-                        text_encoder=accelerator.unwrap_model(text_encoder),
-                        vae=accelerator.unwrap_model(vae),
-                        revision=args.revision,
-                        torch_dtype=weight_dtype,
-                    )
-                    pipeline = pipeline.to(accelerator.device)
-                    pipeline.set_progress_bar_config(disable=True)
+                    for _ in range(args.num_validation_images):
+                        edited_images.append(
+                            pipeline(
+                                args.validation_prompt,
+                                image=original_image,
+                                num_inference_steps=20,
+                                image_guidance_scale=1.5,
+                                guidance_scale=7,
+                                generator=generator,
+                            ).images[0]
+                        )
 
-                    # run inference
-                    original_image = download_image(args.val_image_url)
-                    edited_images = []
-                    with torch.autocast(
-                        str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                    ):
-                        for _ in range(args.num_validation_images):
-                            edited_images.append(
-                                pipeline(
-                                    args.validation_prompt,
-                                    image=original_image,
-                                    num_inference_steps=20,
-                                    image_guidance_scale=1.5,
-                                    guidance_scale=7,
-                                    generator=generator,
-                                ).images[0]
+                for tracker in accelerator.trackers:
+                    if tracker.name == "wandb":
+                        wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
+                        for edited_image in edited_images:
+                            wandb_table.add_data(
+                                wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
                             )
+                        tracker.log({"validation": wandb_table})
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
 
-                    for tracker in accelerator.trackers:
-                        if tracker.name == "wandb":
-                            wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                            for edited_image in edited_images:
-                                wandb_table.add_data(
-                                    wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                                )
-                            tracker.log({"validation": wandb_table})
-                    if args.use_ema:
-                        # Switch back to the original UNet parameters.
-                        ema_unet.restore(unet.parameters())
-
-                    del pipeline
-                    torch.cuda.empty_cache()
-
-            elapsed_time = time.time() - start_time_epoch
-            epoch_throughput = (len(train_dataset)) / elapsed_time
-            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
-            output_list.append(output_dict)
-            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
-            
-        elapsed_time = time.time() - start_time
-        throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-        output_list.append(output_dict)
-        mlflow.log_metric('avg_throughput', throughput)
-        mlflow.log_params({'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size})
+                del pipeline
+                torch.cuda.empty_cache()
+    mlflow.end_run()
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
@@ -1024,11 +1030,6 @@ def main():
                         )
                     tracker.log({"test": wandb_table})
 
-    
-    import json
-    with open(args.log_dir, "w") as f:
-        json.dump(output_list, f, indent=4)
-    logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 

@@ -582,7 +582,7 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -829,116 +829,120 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data.clone()
 
-    output_list = []
     #Initialize mlflow
     # mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    experiment_id = mlflow.create_experiment('{}_{}'.format(args.pretrained_model_name_or_path, current_datetime))
-    experiment = mlflow.get_experiment(experiment_id)
-    mlflow_runner = mlflow.start_run(run_name=args.pretrained_model_name_or_path, experiment_id=experiment.experiment_id)
-    with mlflow_runner:
-        start_time = time.time()
-        for epoch in range(first_epoch, args.num_train_epochs):
-            start_time_epoch = time.time()
-            text_encoder.train()
-            for step, batch in enumerate(train_dataloader):
-                # Skip steps until we reach the resumed step
-                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                    if step % args.gradient_accumulation_steps == 0:
-                        progress_bar.update(1)
-                    continue
+    # current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    # experiment_name = args.pretrained_model_name_or_path
 
-                with accelerator.accumulate(text_encoder):
-                    # Convert images to latent space
-                    latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
-                    latents = latents * vae.config.scaling_factor
+    # if not mlflow.get_experiment_by_name(experiment_name):        
+    #     experiment_id = mlflow.create_experiment(experiment_name)
 
-                    # Sample noise that we'll add to the latents
-                    noise = torch.randn_like(latents)
-                    bsz = latents.shape[0]
-                    # Sample a random timestep for each image
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                    timesteps = timesteps.long()
+    # experiment = mlflow.get_experiment_by_name(experiment_name)
+    # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
-                    # Add noise to the latents according to the noise magnitude at each timestep
-                    # (this is the forward diffusion process)
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                    # Get the text embedding for conditioning
-                    encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
-
-                    # Predict the noise residual
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-
-                    # Get the target for loss depending on the prediction type
-                    if noise_scheduler.config.prediction_type == "epsilon":
-                        target = noise
-                    elif noise_scheduler.config.prediction_type == "v_prediction":
-                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                    else:
-                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
-                    accelerator.backward(loss)
-
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
-
-                    # Let's make sure we don't update any embedding weights besides the newly added token
-                    index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
-                    index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
-
-                    with torch.no_grad():
-                        accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
-                            index_no_updates
-                        ] = orig_embeds_params[index_no_updates]
-
-                # Checks if the accelerator has performed an optimization step behind the scenes
-                if accelerator.sync_gradients:
-                    images = []
+    mlflow.start_run()
+    start_time = time.time()
+    for epoch in range(first_epoch, args.num_train_epochs):
+        interval_start_time = time.time()
+        text_encoder.train()
+        for step, batch in enumerate(train_dataloader):
+            # Skip steps until we reach the resumed step
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                if step % args.logging_steps == 0:
                     progress_bar.update(1)
-                    global_step += 1
-                    if global_step % args.save_steps == 0:
-                        save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
-                        save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
+                continue
 
-                    if accelerator.is_main_process:
-                        if global_step % args.checkpointing_steps == 0:
-                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                            accelerator.save_state(save_path)
-                            logger.info(f"Saved state to {save_path}")
+            with accelerator.accumulate(text_encoder):
+                # Convert images to latent space
+                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
+                latents = latents * vae.config.scaling_factor
 
-                        if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                            images = log_validation(
-                                text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
-                            )
+                # Sample noise that we'll add to the latents
+                noise = torch.randn_like(latents)
+                bsz = latents.shape[0]
+                # Sample a random timestep for each image
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = timesteps.long()
 
-                if (step+1) % args.logging_steps == 0:
-                    logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-                    # Log loss to mlflow
-                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
-                    progress_bar.set_postfix(**logs)
-                    accelerator.log(logs, step=global_step)
+                # Add noise to the latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                if global_step >= args.max_train_steps:
-                    break
-            # Log epoch throughput
-            elapsed_time = time.time() - start_time_epoch
-            epoch_throughput = (len(train_dataset)) / elapsed_time
-            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
-            output_list.append(output_dict)
-            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
-        
-        # Log summary throughput
-        elapsed_time = time.time() - start_time
-        throughput = (len(train_dataset)*args.num_train_epochs) / elapsed_time
-        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-        output_list.append(output_dict)
-        mlflow.log_metric('avg_throughput', throughput)
-        mlflow.log_params({'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size})
-    
+                # Get the text embedding for conditioning
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
+
+                # Predict the noise residual
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+
+                # Get the target for loss depending on the prediction type
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                accelerator.backward(loss)
+
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+
+                # Let's make sure we don't update any embedding weights besides the newly added token
+                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
+
+                with torch.no_grad():
+                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
+                        index_no_updates
+                    ] = orig_embeds_params[index_no_updates]
+
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                images = []
+                progress_bar.update(1)
+                global_step += 1
+                if global_step % args.save_steps == 0:
+                    save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
+                    save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
+
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
+
+                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                        images = log_validation(
+                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                        )
+
+            if (step+1) % args.logging_steps == 0:
+                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                
+                interval_elapsed_time = time.time() - interval_start_time
+                interval_start_time = time.time()
+                interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
+                                    
+                mlflow.log_metric('interval_loss', loss.detach().item(), step=global_step)
+                mlflow.log_metric('interval_throughput', interval_throughput, step=global_step)
+
+                progress_bar.set_postfix(**logs)
+                accelerator.log(logs, step=global_step)
+
+            if global_step >= args.max_train_steps:
+                elapsed_time = (time.time() - start_time) 
+                one_epoch_time = elapsed_time/ (args.max_train_steps / num_update_steps_per_epoch)
+                throughput = (args.max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
+
+                mlflow.log_metric('avg_throughput', throughput)
+                mlflow.log_metric('one_epoch_time', one_epoch_time)
+                mlflow.log_params({'task': 'textual_inversion', 'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
+                break
+    mlflow.end_run()
+
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -974,10 +978,6 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
     
-    import json
-    with open(args.log_dir, "w") as f:
-        json.dump(output_list, f, indent=4)
-    logger.info(f"Output logs saved in {args.log_dir}")
     accelerator.end_training()
 
 
