@@ -840,11 +840,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                         callback(i, t, latents)
 
         # make sure the VAE is in float32 mode, as it overflows in float16
-        is_tiny_vae = "tiny" in str(self.vae.__class__)
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            if not is_tiny_vae:
-                self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            self.upcast_vae()
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -856,6 +854,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         if self.watermark is not None:
             image = self.watermark.apply_watermark(image)
 
+        is_tiny_vae = "tiny" in str(self.vae.__class__)
         image = self.image_processor.postprocess(image, output_type=output_type, is_tiny_vae=is_tiny_vae)
 
         # Offload last model to CPU

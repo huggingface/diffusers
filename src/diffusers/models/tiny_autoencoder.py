@@ -171,8 +171,8 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
     [`TinyAutoencoder`] is just wrapper around the original implementation of `TAESD` found in the above-mentioned
     repository.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
-    for all models (such as downloading or saving).
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
+    all models (such as downloading or saving).
 
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
@@ -195,7 +195,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         num_decoder_blocks: Tuple[int] = (3, 3, 3, 1),
         latent_magnitude: int = 3,
         latent_shift: float = 0.5,
-        force_upcast: float = True,
+        force_upcast: float = False,
         scaling_factor: float = 1.0,
     ):
         super().__init__()
