@@ -27,9 +27,9 @@ from .vae import DecoderOutput
 
 
 @dataclass
-class TinyAutoencoderOutput(BaseOutput):
+class AutoencoderTinyOutput(BaseOutput):
     """
-    Output of TinyAutoencoder encoding method.
+    Output of AutoencoderTiny encoding method.
 
     Args:
         latents (`torch.Tensor`): Encoded outputs of the `Encoder`.
@@ -44,7 +44,7 @@ class Clamp(nn.Module):
         return torch.tanh(x / 3) * 3
 
 
-class TinyAutoencoderBlock(nn.Module):
+class AutoencoderTinyBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, act_fn: Callable):
         super().__init__()
         self.conv = nn.Sequential(
@@ -65,7 +65,7 @@ class TinyAutoencoderBlock(nn.Module):
         return self.fuse(self.conv(x) + self.skip(x))
 
 
-class TinyEncoder(nn.Module):
+class EncoderTiny(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -86,7 +86,7 @@ class TinyEncoder(nn.Module):
                 layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
 
             for _ in range(num_block):
-                layers.append(TinyAutoencoderBlock(num_channels, num_channels, act_fn))
+                layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
 
         layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
 
@@ -113,7 +113,7 @@ class TinyEncoder(nn.Module):
         return x
 
 
-class TinyDecoder(nn.Module):
+class DecoderTiny(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -132,7 +132,7 @@ class TinyDecoder(nn.Module):
             num_channels = block_out_channels[i]
 
             for _ in range(num_block):
-                layers.append(TinyAutoencoderBlock(num_channels, num_channels, act_fn))
+                layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
 
             if not is_final_block:
                 layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
@@ -163,12 +163,12 @@ class TinyDecoder(nn.Module):
         return x
 
 
-class TinyAutoencoder(ModelMixin, ConfigMixin):
+class AutoencoderTiny(ModelMixin, ConfigMixin):
     r"""
     A tiny VAE model for encoding images into latents and decoding latent representations into images. It was distilled
     by Ollin Boer Bohan as detailed in [https://github.com/madebyollin/taesd](https://github.com/madebyollin/taesd).
 
-    [`TinyAutoencoder`] is just wrapper around the original implementation of `TAESD` found in the above-mentioned
+    [`AutoencoderTiny`] is just wrapper around the original implementation of `TAESD` found in the above-mentioned
     repository.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
@@ -207,7 +207,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
 
         act_fn = get_activation(act_fn)
 
-        self.encoder = TinyEncoder(
+        self.encoder = EncoderTiny(
             in_channels=in_channels,
             out_channels=latent_channels,
             num_blocks=num_encoder_blocks,
@@ -215,7 +215,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
-        self.decoder = TinyDecoder(
+        self.decoder = DecoderTiny(
             in_channels=latent_channels,
             out_channels=out_channels,
             num_blocks=num_decoder_blocks,
@@ -229,7 +229,7 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
         self.scaling_factor = scaling_factor
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (TinyEncoder, TinyDecoder)):
+        if isinstance(module, (EncoderTiny, DecoderTiny)):
             module.gradient_checkpointing = value
 
     def scale_latents(self, x):
@@ -243,13 +243,13 @@ class TinyAutoencoder(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[TinyAutoencoderOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[AutoencoderTinyOutput, Tuple[torch.FloatTensor]]:
         output = self.encoder(x)
 
         if not return_dict:
             return (output,)
 
-        return TinyAutoencoderOutput(latents=output)
+        return AutoencoderTinyOutput(latents=output)
 
     apply_forward_hook
 
