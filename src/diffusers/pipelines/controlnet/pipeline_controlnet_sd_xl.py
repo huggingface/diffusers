@@ -916,8 +916,10 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
-        if guess_mode and do_classifier_free_guidance:
-            # we will infer ControlNet only for the conditional batch
+        use_controlnet_conditional_branch_only = (
+            guess_mode and do_classifier_free_guidance
+        )
+        if use_controlnet_conditional_branch_only:
             controlnet_prompt_embeds = prompt_embeds
             controlnet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
@@ -929,8 +931,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
 
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-        if not guess_mode:
-            # if guess_mode is off, controlnet inputs are the same as inputs of base unet model
+        if not use_controlnet_conditional_branch_only:
+            # controlnet inputs are the same as inputs of base unet model
             controlnet_prompt_embeds = prompt_embeds
             controlnet_added_cond_kwargs = added_cond_kwargs
 
@@ -943,8 +945,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 latent_model_input = torch.cat([scaled_latents] * 2) if do_classifier_free_guidance else scaled_latents
 
                 # controlnet(s) inference
-                if guess_mode and do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
+                if use_controlnet_conditional_branch_only:
                     control_model_input = scaled_latents
                 else:
                     control_model_input = latent_model_input
