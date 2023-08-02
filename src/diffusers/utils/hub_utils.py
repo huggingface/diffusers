@@ -430,10 +430,8 @@ class PushToHubMixin:
         if commit_message is None:
             if "Model" in self.__class__.__name__:
                 commit_message = "Upload model"
-            elif "Config" in self.__class__.__name__:
-                commit_message = "Upload config"
-            elif "Processor" in self.__class__.__name__:
-                commit_message = "Upload processor"
+            elif "Scheduler" in self.__class__.__name__:
+                commit_message = "Upload scheduler"
             else:
                 commit_message = f"Upload {self.__class__.__name__}"
         modified_files = [
@@ -477,9 +475,8 @@ class PushToHubMixin:
         commit_message: Optional[str] = None,
         private: Optional[bool] = None,
         use_auth_token: Optional[Union[bool, str]] = None,
-        max_shard_size: Optional[Union[int, str]] = "10GB",
         create_pr: bool = False,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
     ) -> str:
         """
         Upload the {object_files} to the 🤗 Model Hub while synchronizing a local clone of the repo in
