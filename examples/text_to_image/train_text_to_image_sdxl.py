@@ -180,14 +180,17 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", 
+        type=int, 
+        default=None, 
+        help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--resolution",
         type=int,
         default=1024,
-        help=(
-            "The resolution for input images, all the images in the train/validation dataset will be resized to this resolution."
-        ),
+        help="The resolution for input images, all the images in the train/validation dataset will be resized to this resolution.",
     )
     parser.add_argument(
         "--crops_coords_top_left_h",
@@ -218,7 +221,11 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
     )
-    parser.add_argument("--num_train_epochs", type=int, default=100)
+    parser.add_argument(
+        "--num_train_epochs", 
+        type=int, 
+        default=100,
+    )
     parser.add_argument(
         "--max_train_steps",
         type=int,
