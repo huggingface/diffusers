@@ -1118,8 +1118,9 @@ def main(args):
                 interval_elapsed_time = time.time() - interval_start_time
                 interval_start_time = time.time()
                 interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
-                mlflow.log_metric('interval_loss', loss.detach().item(), step=global_step)
-                mlflow.log_metric('interval_throughput', interval_throughput, step=global_step)
+                mlflow.log_metric('loss', loss.detach().item(), step=global_step)
+                mlflow.log_metric('throughput', interval_throughput, step=global_step)
+                mlflow.log_metric('lr', args.learning_rate, step=global_step)
 
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
