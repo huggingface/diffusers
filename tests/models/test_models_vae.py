@@ -282,9 +282,9 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         model.to(torch_device).eval()
         return model
 
-    def test_stable_diffusion(self, seed, expected_slice):
+    def test_stable_diffusion(self):
         model = self.get_sd_vae_model()
-        image = self.get_sd_image(seed)
+        image = self.get_sd_image(seed=0)
 
         with torch.no_grad():
             sample = model(image).sample
