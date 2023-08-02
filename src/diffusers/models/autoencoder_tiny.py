@@ -177,7 +177,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        x: torch.FloatTensor,
+        sample: torch.FloatTensor,
         return_dict: bool = True,
     ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         r"""
@@ -186,7 +186,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
-        enc = self.encode(x)
+        enc = self.encode(sample).latents
         scaled_enc = self.scale_latents(enc).mul_(255).round_().byte()
         unscaled_enc = self.unscale_latents(scaled_enc)
         dec = self.decode(unscaled_enc)

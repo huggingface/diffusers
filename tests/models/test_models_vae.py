@@ -19,7 +19,7 @@ import unittest
 import torch
 from parameterized import parameterized
 
-from diffusers import AsymmetricAutoencoderKL, AutoencoderKL
+from diffusers import AsymmetricAutoencoderKL, AutoencoderKL, AutoencoderTiny
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism
@@ -220,6 +220,44 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         pass
 
     def test_forward_with_norm_groups(self):
+        pass
+
+class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
+    model_class = AutoencoderTiny
+    main_input_name = "sample"
+    base_precision = 1e-2
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+
+        return {"sample": image}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "encoder_block_out_channels": (32, 32),
+            "decoder_block_out_channels": (32, 32),
+            "num_encoder_blocks": (1, 2),
+            "num_decoder_blocks": (2, 1),
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+    
+    def test_outputs_equivalence(self):
         pass
 
 
