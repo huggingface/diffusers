@@ -50,6 +50,8 @@
       title: Textual inversion
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
+    - local: using-diffusers/distilled_sd
+      title: Distilled Stable Diffusion inference
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/control_brightness
