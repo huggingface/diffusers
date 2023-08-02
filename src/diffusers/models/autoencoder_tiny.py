@@ -87,7 +87,8 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         force_upcast (`bool`, *optional*, default to `False`):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
             can be fine-tuned / trained to a lower range without losing too much precision, in which case
-            `force_upcast` can be set to `False` (see this fp16-friendly [AutoEncoder](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+            `force_upcast` can be set to `False` (see this fp16-friendly
+            [AutoEncoder](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
     """
     _supports_gradient_checkpointing = True
 
