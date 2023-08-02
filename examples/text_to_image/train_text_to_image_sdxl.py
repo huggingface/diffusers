@@ -22,38 +22,33 @@ import shutil
 import warnings
 from pathlib import Path
 from urllib.parse import urlparse
-from helpers.aspect_bucket import BalancedBucketSampler
-
-import accelerate
-import datasets
 import numpy as np
-import PIL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
+import accelerate
+import datasets
+import diffusers
+import PIL
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
+from diffusers.training_utils import EMAModel
+from diffusers.utils import accelerate_utils, check_min_version, deprecate, is_wandb_available, load_image
+from diffusers.utils.import_utils import is_xformers_available
+from helpers.aspect_bucket import BalancedBucketSampler
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-
-import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import (
-    StableDiffusionXLPipeline,
-)
-from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
-from diffusers.utils.import_utils import is_xformers_available
-
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.20.0.dev0")
@@ -134,21 +129,18 @@ def parse_args():
             " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
         ),
     )
-    # TODO: Fix this
-    # parser.add_argument(
-    #     "--original_image_column",
-    #     type=str,
-    #     default="input_image",
-    #     help="The column of the dataset containing the original image on which edits where made.",
-    # )
-    # TODO: fix help description
-    # parser.add_argument(
-    #     "--image_prompt_column",
-    #     type=str,
-    #     default="edit_prompt",
-    #     help="The column of the dataset containing the edit instruction.",
-    # )
-    
+    parser.add_argument(
+        "--image_column",
+        type=str,
+        default="input_image",
+        help="The column in the dataset that contains the original images to be used for text-to-image generation.",
+    )
+    parser.add_argument(
+        "--image_prompt_column",
+        type=str,
+        default="edit_prompt",
+        help="The column in the dataset that contains the textual prompts for image generation.",
+    )
     parser.add_argument(
         "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
     )
@@ -179,7 +171,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="instruct-pix2pix-model",
+        default="text-to-image-sdxl",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -272,7 +264,13 @@ def parse_args():
         "--conditioning_dropout_prob",
         type=float,
         default=None,
-        help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://arxiv.org/abs/2211.09800.",
+        help=(
+            "Conditioning dropout probability. This dropout is applied to the caption embeddings during training. "
+            "It helps to prevent overfitting and improves the diversity of generated samples by forcing the model to "
+            "generate images based on a partial understanding of the captions. Specifically, it controls the proportion "
+            "of examples for which the conditionings are set to their null values during training, as described in the "
+            "classifier-free diffusion guidance method."
+        ),
     )
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
@@ -389,7 +387,6 @@ def parse_args():
         args.non_ema_revision = args.revision
 
     return args
-
 
 def convert_to_np(image, resolution):
     if isinstance(image, str):
@@ -600,13 +597,13 @@ def main():
     # 6. Get the column names for input/target.
     if hasattr(args, 'dataset_name') and args.dataset_name is not None:
         dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-        if args.original_image_column is None:
-            original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        if args.image_column is None:
+            image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
         else:
-            original_image_column = args.original_image_column
-            if original_image_column not in column_names:
+            image_column = args.image_column
+            if image_column not in column_names:
                 raise ValueError(
-                    f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
+                    f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
                 )
         if args.image_prompt_column is None:
             image_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
@@ -645,26 +642,25 @@ def main():
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            transforms.ToTensor(),
         ]
     )
-#TODO this has to be fixed
-    def preprocess_images(examples):
-        logging.debug(f'Received examples for preprocess_images: {examples}')
-        original_images = np.concatenate(
-            [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
-        )
-        edited_images = np.concatenate(
-            [convert_to_np(image, args.resolution) for image in examples[edited_image_column]]
-        )
-        # We need to ensure that the original and the edited images undergo the same
-        # augmentation transforms.
-        images = np.concatenate([original_images, edited_images])
-        images = torch.tensor(images)
-        images = 2 * (images / 255) - 1
-        return train_transforms(images)
 
+    def preprocess_images(examples):
+        """
+        Preprocess images for training the UNet. This function will convert the images to RGB, apply 
+        transformations (resize, crop, flip, etc.), convert them to tensors, and normalize them to the range [-1, 1].
+        """
+        images = [image.convert("RGB") for image in examples[image_column]]
+        images = [train_transforms(image) for image in images]
+        images = [2 * image - 1 for image in images]  # Scale the pixel values to [-1, 1]
+        examples["pixel_values"] = images
+        return examples
+
+    
     # Load scheduler, tokenizer and models.
     tokenizer_1 = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
@@ -784,33 +780,13 @@ def main():
         return add_time_ids.to(accelerator.device).repeat(args.train_batch_size, 1)
 
     add_time_ids = compute_time_ids()
-#TODO this needs to be fixed 
     def preprocess_train(examples):
-        # Preprocess images.
-        preprocessed_images = preprocess_images(examples)
-        # Since the original and edited images were concatenated before
-        # applying the transformations, we need to separate them and reshape
-        # them accordingly.
-        original_images, edited_images = preprocessed_images.chunk(2)
-        original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
-        edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
 
-        # Collate the preprocessed images into the `examples`.
-        examples["pixel_values"] = original_images
-        examples["edited_pixel_values"] = edited_images
-
-        # Preprocess the captions.
-        captions = list(examples[image_prompt_column])
-        prompt_embeds_all, add_text_embeds_all = compute_embeddings_for_prompts(captions, text_encoders, tokenizers)
-        examples["prompt_embeds"] = prompt_embeds_all
-        examples["add_text_embeds"] = add_text_embeds_all
-        return examples
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        with accelerator.main_process_first():
+            if args.max_train_samples is not None:
+                dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            # Set the training transforms
+            train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -898,7 +874,7 @@ def main():
             path = dirs[-1] if len(dirs) > 0 else None
 
         if path is None:
-            accelerator.print(
+            accelerate_utils.print(
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
             )
             args.resume_from_checkpoint = None
@@ -926,14 +902,12 @@ def main():
                 continue
 
             with accelerator.accumulate(unet):
-                # We want to learn the denoising process w.r.t the edited images which
-                # are conditioned on the original image (which was edited) and the edit instruction.
-                # So, first, convert images to latent space.
+                # Convert images to latent space.
                 if args.pretrained_vae_model_name_or_path is not None:
-                    edited_pixel_values = batch["edited_pixel_values"].to(dtype=weight_dtype)
+                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
                 else:
-                    edited_pixel_values = batch["edited_pixel_values"]
-                latents = vae.encode(edited_pixel_values).latent_dist.sample()
+                    pixel_values = batch["pixel_values"]
+                latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
@@ -1052,22 +1026,22 @@ def main():
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
-            ### BEGIN: Perform validation every `validation_epochs` steps
+            ### BEGIN: # Perform validation every `validation_steps` steps
             if global_step % args.validation_steps == 0 or global_step == 1:
-                if (args.val_image_url_or_path is not None) and (args.validation_prompt is not None):
+                if args.validation_prompt is not None:
                     logger.info(
                         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
                     )
 
-                    # create pipeline
+                    # Create pipeline
                     if args.use_ema:
                         # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                         ema_unet.store(unet.parameters())
                         ema_unet.copy_to(unet.parameters())
 
                     # The models need unwrapping because for compatibility in distributed training mode.
-                    pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    pipeline = TextToImagePipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=accelerator.unwrap_model(unet),
                         text_encoder=text_encoder_1,
@@ -1081,41 +1055,30 @@ def main():
                     pipeline = pipeline.to(accelerator.device)
                     pipeline.set_progress_bar_config(disable=True)
 
-                    # run inference
-                    # Save validation images
-                    val_save_dir = os.path.join(args.output_dir, "validation_images")
-                    if not os.path.exists(val_save_dir):
-                        os.makedirs(val_save_dir)
-
-                    original_image = (
-                        lambda image_url_or_path: load_image(image_url_or_path)
-                        if urlparse(image_url_or_path).scheme
-                        else Image.open(image_url_or_path).convert("RGB")
-                    )(args.val_image_url_or_path)
-                    with torch.autocast(
-                        str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                    ):
-                        edited_images = []
-                        num_images_per_prompt=args.num_validation_images
+                    # Run inference and save validation images
+                    for _ in range(args.num_validation_images):
+                        # Generate an image for the validation prompt
+                        validation_image = pipeline(args.validation_prompt)
+                        # TODO: Save the generated image to the `val_save_dir` directory
                         
+                    # Log images to wandb
                     for tracker in accelerator.trackers:
                         if tracker.name == "wandb":
                             wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                            for edited_image in edited_images:
-                                wandb_table.add_data(
-                                    wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                                )
+                            for validation_image in validation_images:
+                                wandb_table.add_data(wandb.Image(validation_image), args.validation_prompt)
                             tracker.log({"validation": wandb_table})
+
                     if args.use_ema:
                         # Switch back to the original UNet parameters.
                         ema_unet.restore(unet.parameters())
 
                     del pipeline
                     torch.cuda.empty_cache()
-            ### END: Perform validation every `validation_epochs` steps
 
-            if global_step >= args.max_train_steps:
-                break
+                if global_step >= args.max_train_steps:
+                    break
+
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
