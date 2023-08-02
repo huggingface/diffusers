@@ -401,5 +401,4 @@ Thanks to [@isidentical](https://github.com/isidentical) for helping us on integ
 
 ### Known limitations specific to the Kohya-styled LoRAs
 
-* SDXL LoRAs that have both the text encoders are currently leading to weird results. We're actively investigating the issue. 
 * When images don't looks similar to other UIs such ComfyUI, it can be beacause of multiple reasons as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736). 
