@@ -221,9 +221,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     return mask, masked_image
 
 
-class StableDiffusionXLInpaintPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
-):
+class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
@@ -231,7 +229,6 @@ class StableDiffusionXLInpaintPipeline(
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
         - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
         - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
