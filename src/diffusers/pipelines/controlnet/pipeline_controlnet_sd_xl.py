@@ -916,9 +916,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
-        use_controlnet_conditional_branch_only = (
-            guess_mode and do_classifier_free_guidance
-        )
+        use_controlnet_conditional_branch_only = guess_mode and do_classifier_free_guidance
         if use_controlnet_conditional_branch_only:
             controlnet_prompt_embeds = prompt_embeds
             controlnet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
