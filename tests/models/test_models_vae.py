@@ -222,6 +222,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
     def test_forward_with_norm_groups(self):
         pass
 
+
 class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderTiny
     main_input_name = "sample"
@@ -256,7 +257,7 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
+
     def test_outputs_equivalence(self):
         pass
 
