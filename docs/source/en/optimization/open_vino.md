@@ -85,11 +85,13 @@ You can find more examples in the optimum [documentation](https://huggingface.co
 
 ### Inference
 
+Here is an example of how you can load a SDXL OpenVINO model from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and run inference with OpenVINO Runtime :
+
 ```python
 from optimum.intel import OVStableDiffusionXLPipeline
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id, export=True)
+pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id)
 prompt = "sailing ship in storm by Rembrandt"
 image = pipeline(prompt).images[0]
 ```
