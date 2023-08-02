@@ -164,6 +164,8 @@
       title: AutoencoderKL
     - local: api/models/asymmetricautoencoderkl
       title: AsymmetricAutoencoderKL
+    - local: api/models/autoencoder_tiny
+      title: Tiny AutoEncoder
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
