@@ -258,3 +258,17 @@ class ControlNetPipelineSDXLFastTests(
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+
+class ControlNetPipelineSDXLGuessModeFastTests(ControlNetPipelineSDXLFastTests):
+    def get_dummy_inputs(self, device, seed=0):
+        inputs = super().get_dummy_inputs(device, seed=seed)
+        inputs["guess_mode"] = True
+        return inputs
+
+
+class ControlNetPipelineSDXLNoCFGFastTests(ControlNetPipelineSDXLFastTests):
+    def get_dummy_inputs(self, device, seed=0):
+        inputs = super().get_dummy_inputs(device, seed=seed)
+        inputs["guidance_scale"] = 1.0
+        return inputs
