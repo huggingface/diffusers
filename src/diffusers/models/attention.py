@@ -38,8 +38,8 @@ class GatedSelfAttentionDense(nn.Module):
         self.norm1 = nn.LayerNorm(query_dim)
         self.norm2 = nn.LayerNorm(query_dim)
 
-        self.register_parameter('alpha_attn', nn.Parameter(torch.tensor(0.)))
-        self.register_parameter('alpha_dense', nn.Parameter(torch.tensor(0.)))
+        self.register_parameter("alpha_attn", nn.Parameter(torch.tensor(0.0)))
+        self.register_parameter("alpha_dense", nn.Parameter(torch.tensor(0.0)))
 
         self.enabled = True
 
@@ -189,7 +189,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 0. Prepare GLIGEN inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-        gligen_kwargs = cross_attention_kwargs.pop('gligen', None)
+        gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
@@ -205,7 +205,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 1.5 GLIGEN Control
         if gligen_kwargs is not None:
-            hidden_states = self.fuser(hidden_states, gligen_kwargs['objs'])
+            hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
         # 1.5 ends
 
         # 2. Cross-Attention

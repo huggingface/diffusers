@@ -515,6 +515,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
 
     def enable_fuser(self, enabled=True):
         from diffusers.models.attention import GatedSelfAttentionDense
+
         for module in self.unet.modules():
             if type(module) is GatedSelfAttentionDense:
                 module.enabled = enabled
@@ -670,7 +671,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             for box in boxes:
                 x0, x1 = box[0] * size[0], box[2] * size[0]
                 y0, y1 = box[1] * size[1], box[3] * size[1]
-                inpaint_mask[int(y0):int(y1), int(x0):int(x1)] = 0
+                inpaint_mask[int(y0) : int(y1), int(x0) : int(x1)] = 0
             return inpaint_mask
 
         # 5.1 Prepare GLIGEN variables
@@ -679,7 +680,9 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             assert batch_size == 1
             max_objs = 30
             _boxes = gligen_boxes
-            tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(self.text_encoder.device)
+            tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(
+                self.text_encoder.device
+            )
             _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
             n_objs = min(len(_boxes), max_objs)
             device = self.text_encoder.device
@@ -698,18 +701,15 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
             masks = masks.unsqueeze(0).expand(repeat_batch, -1).clone()
             if do_classifier_free_guidance:
-                masks[:repeat_batch // 2] = 0
+                masks[: repeat_batch // 2] = 0
             if cross_attention_kwargs is None:
                 cross_attention_kwargs = {}
-            cross_attention_kwargs['gligen'] = {
-                'boxes': boxes,
-                'positive_embeddings': text_embeddings,
-                'masks': masks
-            }
+            cross_attention_kwargs["gligen"] = {"boxes": boxes, "positive_embeddings": text_embeddings, "masks": masks}
 
             # Prepare latent variables for GLIGEN inpainting
             if gligen_inpaint_image is not None:
                 if gligen_inpaint_image.size != (self.vae.sample_size, self.vae.sample_size):
+
                     def crop(im, new_width, new_height):
                         width, height = im.size
                         left = (width - new_width) / 2
@@ -733,9 +733,13 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 gligen_inpaint_latent = self.vae.encode(gligen_inpaint_image).latent_dist.sample()
                 gligen_inpaint_latent = self.vae.config.scaling_factor * gligen_inpaint_latent
                 gligen_inpaint_mask = draw_inpaint_mask_from_boxes(_boxes[:n_objs], gligen_inpaint_latent.shape[2:])
-                gligen_inpaint_mask = gligen_inpaint_mask.to(dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device)
+                gligen_inpaint_mask = gligen_inpaint_mask.to(
+                    dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device
+                )
                 gligen_inpaint_mask = gligen_inpaint_mask[None, None]
-                gligen_inpaint_mask_addition = torch.cat((gligen_inpaint_latent * gligen_inpaint_mask, gligen_inpaint_mask), dim=1)
+                gligen_inpaint_mask_addition = torch.cat(
+                    (gligen_inpaint_latent * gligen_inpaint_mask, gligen_inpaint_mask), dim=1
+                )
                 gligen_inpaint_mask_addition = gligen_inpaint_mask_addition.expand(repeat_batch, -1, -1, -1).clone()
 
         num_grounding_steps = int(gligen_scheduled_sampling_beta * len(timesteps))
@@ -756,12 +760,14 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                     latents = torch.randn_like(latents[:, :4])
 
                 if gligen_inpaint_image is not None:
-                    gligen_inpaint_latent_with_noise = self.scheduler.add_noise(
-                        gligen_inpaint_latent,
-                        torch.randn_like(gligen_inpaint_latent),
-                        t
-                    ).expand(latents.shape[0], -1, -1, -1).clone()
-                    latents = gligen_inpaint_latent_with_noise * gligen_inpaint_mask + latents * (1 - gligen_inpaint_mask)
+                    gligen_inpaint_latent_with_noise = (
+                        self.scheduler.add_noise(gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), t)
+                        .expand(latents.shape[0], -1, -1, -1)
+                        .clone()
+                    )
+                    latents = gligen_inpaint_latent_with_noise * gligen_inpaint_mask + latents * (
+                        1 - gligen_inpaint_mask
+                    )
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents

@@ -72,7 +72,7 @@ class FourierEmbedder(nn.Module):
 
         freq_bands = temperature ** (torch.arange(num_freqs) / num_freqs)
         freq_bands = freq_bands[None, None, None]
-        self.register_buffer('freq_bands', freq_bands, persistent=False)
+        self.register_buffer("freq_bands", freq_bands, persistent=False)
 
     def __call__(self, x):
         x = self.freq_bands * x.unsqueeze(-1)
@@ -80,13 +80,13 @@ class FourierEmbedder(nn.Module):
 
 
 class PositionNet(nn.Module):
-    def __init__(self,  positive_len, out_dim, fourier_freqs=8):
+    def __init__(self, positive_len, out_dim, fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
 
         self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
-        self.position_dim = fourier_freqs * 2 * 4 # 2: sin/cos, 4: xyxy
+        self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
 
         if isinstance(out_dim, tuple):
             out_dim = out_dim[0]
@@ -105,7 +105,7 @@ class PositionNet(nn.Module):
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
-        xyxy_embedding = self.fourier_embedder(boxes) # B*N*4 -> B*N*C
+        xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
 
         # learnable null embedding
         positive_null = self.null_positive_feature.view(1, 1, -1)
@@ -963,12 +963,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_in(sample)
 
         # 2.5 GLIGEN position net
-        if cross_attention_kwargs is not None and cross_attention_kwargs.get('gligen', None) is not None:
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
             cross_attention_kwargs = cross_attention_kwargs.copy()
-            gligen_args = cross_attention_kwargs.pop('gligen')
-            cross_attention_kwargs['gligen'] = {
-                'objs': self.position_net(**gligen_args)
-            }
+            gligen_args = cross_attention_kwargs.pop("gligen")
+            cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
 
