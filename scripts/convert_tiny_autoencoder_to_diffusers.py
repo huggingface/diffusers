@@ -60,10 +60,15 @@ if __name__ == "__main__":
     tiny_autoencoder = AutoencoderTiny()
     new_state_dict = {}
 
+    # Modify the encoder state dict.
     for k in encoder_state_dict:
         new_state_dict.update({f"encoder.layers.{k}": encoder_state_dict[k]})
+
+    # Modify the decoder state dict.
     for k in decoder_state_dict:
-        new_state_dict.update({f"decoder.layers.{k}": decoder_state_dict[k]})
+        layer_id = int(k.split(".")[0]) - 1
+        new_k = str(layer_id) + "." + ".".join(k.split(".")[1:])
+        new_state_dict.update({f"decoder.layers.{new_k}": decoder_state_dict[k]})
 
     # Assertion tests with the original implementation can be found here:
     # https://gist.github.com/sayakpaul/337b0988f08bd2cf2b248206f760e28f

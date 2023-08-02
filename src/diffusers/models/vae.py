@@ -771,6 +771,7 @@ class DecoderTiny(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x):
+        # Clamp.
         x = torch.tanh(x / 3) * 3
 
         if self.training and self.gradient_checkpointing:
