@@ -381,6 +381,7 @@ def load_sub_model(
     variant: str,
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
+    if_consistency=False,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
@@ -464,6 +465,8 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = False
 
     # check if the module is in a subdirectory
+    if if_consistency:
+        loading_kwargs["if_consistency"] = True
     if os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
     else:
@@ -902,6 +905,14 @@ class DiffusionPipeline(ConfigMixin):
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
+        if type(pretrained_model_name_or_path) == str:
+            if ("openai/diffusers-cd" in pretrained_model_name_or_path) or ("openai/diffusers-ct" in pretrained_model_name_or_path):
+                if_consistency = True
+            else:
+                if_consistency = False
+        else:
+            if_consistency = False
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -1066,27 +1077,51 @@ class DiffusionPipeline(ConfigMixin):
                 loaded_sub_model = passed_class_obj[name]
             else:
                 # load sub model
-                loaded_sub_model = load_sub_model(
-                    library_name=library_name,
-                    class_name=class_name,
-                    importable_classes=importable_classes,
-                    pipelines=pipelines,
-                    is_pipeline_module=is_pipeline_module,
-                    pipeline_class=pipeline_class,
-                    torch_dtype=torch_dtype,
-                    provider=provider,
-                    sess_options=sess_options,
-                    device_map=device_map,
-                    max_memory=max_memory,
-                    offload_folder=offload_folder,
-                    offload_state_dict=offload_state_dict,
-                    model_variants=model_variants,
-                    name=name,
-                    from_flax=from_flax,
-                    variant=variant,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
-                    cached_folder=cached_folder,
-                )
+                if name == "unet" and if_consistency:
+                    loaded_sub_model = load_sub_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        importable_classes=importable_classes,
+                        pipelines=pipelines,
+                        is_pipeline_module=is_pipeline_module,
+                        pipeline_class=pipeline_class,
+                        torch_dtype=torch_dtype,
+                        provider=provider,
+                        sess_options=sess_options,
+                        device_map=device_map,
+                        max_memory=max_memory,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        model_variants=model_variants,
+                        name=name,
+                        from_flax=from_flax,
+                        variant=variant,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        cached_folder=cached_folder,
+                        if_consistency=True,
+                    )
+                else:
+                    loaded_sub_model = load_sub_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        importable_classes=importable_classes,
+                        pipelines=pipelines,
+                        is_pipeline_module=is_pipeline_module,
+                        pipeline_class=pipeline_class,
+                        torch_dtype=torch_dtype,
+                        provider=provider,
+                        sess_options=sess_options,
+                        device_map=device_map,
+                        max_memory=max_memory,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        model_variants=model_variants,
+                        name=name,
+                        from_flax=from_flax,
+                        variant=variant,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        cached_folder=cached_folder,
+                    )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
                 )
