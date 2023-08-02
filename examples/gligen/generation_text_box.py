@@ -1,7 +1,10 @@
 import os
+
 import torch
 import torchvision
+
 from diffusers import StableDiffusionGLIGENPipeline
+
 
 pipe = StableDiffusionGLIGENPipeline.from_pretrained(
     "gligen/diffusers-generation-text-box", revision="fp16", torch_dtype=torch.float16

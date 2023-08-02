@@ -15,6 +15,8 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
@@ -33,9 +35,6 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
-
-import PIL
-import numpy as np
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

@@ -1,9 +1,11 @@
 import os
+
 import torch
 import torchvision
+from PIL import Image
+
 from diffusers import StableDiffusionGLIGENPipeline
 
-from PIL import Image
 
 pipe = StableDiffusionGLIGENPipeline.from_pretrained(
     "gligen/diffusers-inpainting-text-box", revision="fp16", torch_dtype=torch.float16
