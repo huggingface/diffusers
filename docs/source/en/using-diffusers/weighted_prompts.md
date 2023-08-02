@@ -24,12 +24,15 @@ This is called "prompt-weighting" and has been a highly demanded feature by the 
 
 ## How to do prompt-weighting in Diffusers
 
-We believe the role of `diffusers` is to be a toolbox that provides essential features that enable other projects, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers), to build powerful UIs. In order to support arbitrary methods to manipulate prompts, `diffusers` exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`], allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
+We believe the role of `diffusers` is to be a toolbox that provides essential features that enable other projects, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers), to build powerful UIs. In order to support arbitrary methods to manipulate prompts, `diffusers` exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument and an optional [`negative_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.negative_prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`], [`StableDiffusionControlNetPipeline`], [`StableDiffusionXLPipeline`], allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
 
 The [compel library](https://github.com/damian0815/compel) provides an easy way to emphasize or de-emphasize portions of the prompt for you. We strongly recommend it instead of preparing the embeddings yourself.
 
 Let's look at a simple example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
 follows:
+
+
+### StableDiffusionPipeline
 
 ```py
 from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
@@ -108,3 +111,45 @@ compel = Compel(
 
 Also, please check out the documentation of the [compel](https://github.com/damian0815/compel) library for 
 more information.
+
+### StableDiffusionXLPipeline
+
+For StableDiffusionXL we need to not only pass `prompt_embeds` (and optionally `negative_prompt_embeds`), but also [`pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.pooled_prompt_embeds) and optionally [`negative_pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.negative_pooled_prompt_embeds). 
+In addition, [`StableDiffusionXLPipeline`] has two tokenizers and two text encoders which both need to be used to weight the prompt.
+Luckily, [`compel`](https://github.com/damian0815/compel) takes care of SDXL's special needs - all we have to do is to pass both tokenizers and text encoders to the `Compel` class:
+
+```py
+from compel import Compel, ReturnedEmbeddingsType
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16", use_safetensors=True, torch_dtype=torch.float16).to("cuda")
+
+compel = Compel(tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2] , text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2], returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED, requires_pooled=[False, True])
+```
+
+Let's try our example from amove again. We use the same seed for both prompts and upweight ball by a factor of 1.5 for the first 
+generation and downweight ball by 40% for the second prompt.
+
+```py
+# upweight "ball"
+prompt = ["a red cat playing with a (ball)1.5", "a red cat playing with a (ball)0.6"]
+conditioning, pooled = compel(prompt)
+
+
+# generate image
+generator = [torch.Generator().manual_seed(33) for _ in range(len(prompt))]
+images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, generator=generator, num_inference_steps=30).images
+```
+
+Let's have a look at the result.
+
+**Image 1**:
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball1.png)
+
+**Image 2**:
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball2.png)
+
+We can see that the ball is almost completely gone from the second image while it's clearly visible in the first image.
+For more information and more tricks you can use `compel` with, please have a look at the [compel docs](https://github.com/damian0815/compel/blob/main/doc/syntax.md) as well.
