@@ -475,7 +475,7 @@ class UNetMidBlock2D(nn.Module):
                         dim_head=attention_head_dim,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
-                        norm_num_groups=resnet_groups if resnet_time_scale_shift == "default" else None,
+                        norm_num_groups=resnet_groups, # if resnet_time_scale_shift == "default" else None,
                         spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                         residual_connection=True,
                         bias=True,
