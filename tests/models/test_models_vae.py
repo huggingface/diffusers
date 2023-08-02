@@ -263,6 +263,43 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
 
 
 @slow
+class AutoencoderTinyIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
+        dtype = torch.float16 if fp16 else torch.float32
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        return image
+
+    def get_sd_vae_model(self, model_id="hf-internal-testing/taesd-diffusers", fp16=False):
+        torch_dtype = torch.float16 if fp16 else torch.float32
+
+        model = AutoencoderTiny.from_pretrained(model_id, torch_dtype=torch_dtype)
+        model.to(torch_device).eval()
+        return model
+
+    def test_stable_diffusion(self, seed, expected_slice):
+        model = self.get_sd_vae_model()
+        image = self.get_sd_image(seed)
+
+        with torch.no_grad():
+            sample = model(image).sample
+
+        assert sample.shape == image.shape
+
+        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        output_slice_ = output_slice.numpy()
+        print(", ".join([str(round(x, 4)) for x in output_slice_.tolist()]))
+        expected_output_slice = []
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
+
+
+@slow
 class AutoencoderKLIntegrationTests(unittest.TestCase):
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
