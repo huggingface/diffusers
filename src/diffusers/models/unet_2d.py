@@ -110,6 +110,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
+        if_consistency = False,
     ):
         super().__init__()
 
@@ -189,6 +190,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             attention_head_dim=attention_head_dim if attention_head_dim is not None else block_out_channels[-1],
             resnet_groups=norm_num_groups,
             add_attention=add_attention,
+            if_consistency=if_consistency,
         )
 
         # up
