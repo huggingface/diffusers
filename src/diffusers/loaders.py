@@ -1252,7 +1252,7 @@ class LoraLoaderMixin:
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
-            text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".", 1)[0] == prefix]
+            text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
             text_encoder_lora_state_dict = {
                 k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
@@ -1304,7 +1304,7 @@ class LoraLoaderMixin:
 
                 if network_alphas is not None:
                     alpha_keys = [
-                        k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".", 1)[0] == prefix
+                        k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix
                     ]
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
