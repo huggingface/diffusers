@@ -295,9 +295,7 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        output_slice_ = output_slice.numpy()
-        print(", ".join([str(round(x, 4)) for x in output_slice_.tolist()]))
-        expected_output_slice = []
+        expected_output_slice = [0.9858, 0.9262, 0.8629, 1.0974, -0.091, -0.2485, 0.0936, 0.0604]
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
