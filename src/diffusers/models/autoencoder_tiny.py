@@ -39,11 +39,9 @@ class AutoencoderTinyOutput(BaseOutput):
 
 class AutoencoderTiny(ModelMixin, ConfigMixin):
     r"""
-    A tiny VAE model for encoding images into latents and decoding latent representations into images. It was distilled
-    by Ollin Boer Bohan as detailed in [https://github.com/madebyollin/taesd](https://github.com/madebyollin/taesd).
+    A tiny distilled VAE model for encoding images into latents and decoding latent representations into images.
 
-    [`AutoencoderTiny`] is just wrapper around the original implementation of `TAESD` found in the above-mentioned
-    repository.
+    [`AutoencoderTiny`] is a wrapper around the original implementation of `TAESD`.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
     all models (such as downloading or saving).
@@ -57,7 +55,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         decoder_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
             Tuple of integers representing the number of output channels for each decoder block. The length of the
             tuple should be equal to the number of decoder blocks.
-        act_fn (`str`, *optional*, defaults to "relu"):
+        act_fn (`str`, *optional*, defaults to `"relu"`):
             Activation function to be used throughout the model.
         latent_channels (`int`, *optional*, defaults to 4):
             Number of channels in the latent representation. The latent space acts as a compressed representation of
@@ -88,10 +86,8 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             however, no such scaling factor was used, hence the value of 1.0 as the default.
         force_upcast (`bool`, *optional*, default to `False`):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
-            can be fine-tuned / trained to a lower range without loosing too much precision in which case
-            `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix. This
-            AutoEncoder, however, is FP16-friendly. Check:
-            https://github.com/huggingface/diffusers/pull/4384#discussion_r1279410232.
+            can be fine-tuned / trained to a lower range without losing too much precision, in which case
+            `force_upcast` can be set to `False` (see this fp16-friendly [AutoEncoder](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
     """
     _supports_gradient_checkpointing = True
 

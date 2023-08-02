@@ -1,8 +1,8 @@
-# Tiny Autoencoder
+# Tiny AutoEncoder
 
-This Autoencoder was introduced in [this repository](https://github.com/madebyollin/taesd). It is tiny in shape and can decode the latents in a [`StableDiffusionPipeline`] or [`StableDiffusionXLPipeline`] almost instantly. 
+Tiny AutoEncoder for Stable Diffusion (TAESD) was introduced in [madebyollin/taesd](https://github.com/madebyollin/taesd) by Ollin Boer Bohan. It is a tiny distilled version of Stable Diffusion's VAE that can quickly decode the latents in a [`StableDiffusionPipeline`] or [`StableDiffusionXLPipeline`] almost instantly. 
 
-## Using with Stable Diffusion v-2.1
+To use with Stable Diffusion v-2.1:
 
 ```python
 import torch
@@ -19,7 +19,7 @@ image = pipe(prompt, num_inference_steps=25).images[0]
 image.save("cheesecake.png")
 ```
 
-## Using with Stable Diffusion XL 1.0
+To use with Stable Diffusion XL 1.0
 
 ```python
 import torch
