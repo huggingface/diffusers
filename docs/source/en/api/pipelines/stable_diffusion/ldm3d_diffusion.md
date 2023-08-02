@@ -30,8 +30,8 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 	- all
 	- __call__
 
-## StableDiffusionPipelineOutput
+## LDM3DPipelineOutput
 
-[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+[[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d.LDM3DPipelineOutput
 	- all
 	- __call__

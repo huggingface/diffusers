@@ -1186,7 +1186,6 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionXLImg2ImgPipeline,
-        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
@@ -1543,7 +1542,7 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
             )
 
-            pipe = StableDiffusionXLPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_encoder,
                 tokenizer=tokenizer,
