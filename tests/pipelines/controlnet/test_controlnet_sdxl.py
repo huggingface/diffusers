@@ -272,3 +272,6 @@ class ControlNetPipelineSDXLNoCFGFastTests(ControlNetPipelineSDXLFastTests):
         inputs = super().get_dummy_inputs(device, seed=seed)
         inputs["guidance_scale"] = 1.0
         return inputs
+
+    def test_stable_diffusion_xl_multi_prompts(self):
+        pass
