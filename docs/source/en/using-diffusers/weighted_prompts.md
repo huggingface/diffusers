@@ -120,9 +120,9 @@ Luckily, [`compel`](https://github.com/damian0815/compel) takes care of SDXL's s
 
 Let's first make sure we have the newest version of compel installed:
 
-```py
+```
 pip install --upgrade compel
-``
+```
 
 Now we can run an example.
 
