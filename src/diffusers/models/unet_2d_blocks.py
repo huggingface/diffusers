@@ -438,6 +438,7 @@ class UNetMidBlock2D(nn.Module):
         add_attention: bool = True,
         attention_head_dim=1,
         output_scale_factor=1.0,
+        if_consistency=False,
     ):
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -466,6 +467,10 @@ class UNetMidBlock2D(nn.Module):
             )
             attention_head_dim = in_channels
 
+        if if_consistency:
+            att_resnet_groups = resnet_groups
+        else:
+            att_resnet_groups = resnet_groups if resnet_time_scale_shift == "default" else None
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
@@ -475,7 +480,7 @@ class UNetMidBlock2D(nn.Module):
                         dim_head=attention_head_dim,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
-                        norm_num_groups=resnet_groups, # if resnet_time_scale_shift == "default" else None,
+                        norm_num_groups=att_resnet_groups, # if resnet_time_scale_shift == "default" else None,
                         spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
                         residual_connection=True,
                         bias=True,
