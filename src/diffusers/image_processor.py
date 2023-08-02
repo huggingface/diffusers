@@ -51,9 +51,17 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
         do_normalize: bool = True,
-        color_mode: Optional[str] = None, # "RGB", "L"
-    ):
+        do_convert_rgb: bool = False,
+        do_convert_grayscale: bool = False
+    ):  
         super().__init__()
+        if do_convert_rgb and do_convert_grayscale:
+            warnings.warn(
+                "`do_convert_rgb = True` will be ignored since `do_convert_grayscale` is also set to be `True`,"
+                " if you intended to convert the image into RGB format, please set `do_convert_grayscale =False`."
+                FutureWarning,
+            )
+            self.config.do_convert_rgb = False
 
     @staticmethod
     def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
@@ -117,14 +125,22 @@ class VaeImageProcessor(ConfigMixin):
         return (images / 2 + 0.5).clamp(0, 1)
 
     @staticmethod
-    def convert_to_mode(image: PIL.Image.Image, mode: str) -> PIL.Image.Image:
+    def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
         """
-        Converts an image to RGB or L mode.
+        Converts an image to RGB format.
         """
-        image = image.convert(mode)
+        image = image.convert("RGB")
 
-        if mode == "L":
-            image = image.unsqueeze(0)
+        return image
+    
+    @staticmethod
+    def convert_to_grayscale(image: PIL.Image.Image, mode: str) -> PIL.Image.Image:
+        """
+        Converts an image to L mode.
+        """
+        image = image.convert("L")
+        image = image.unsqueeze(0)
+
         return image
 
     def get_default_height_width(self, image, height, width):
@@ -179,7 +195,7 @@ class VaeImageProcessor(ConfigMixin):
         #    2. channnel x height x width:  we should insert batch dimension at position 0,
         #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
         #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
-        if self.config.color_mode == "L" and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
+        if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
             if isinstance(image, torch.Tensor):
                 image = image.unsqueeze(1)
             else: 
@@ -193,8 +209,10 @@ class VaeImageProcessor(ConfigMixin):
             )
 
         if isinstance(image[0], PIL.Image.Image):
-            if self.config.color_mode is not None:
-                image = [self.convert_to_mode(i, self.config.color_mode) for i in image]
+            if self.config.do_convert_rgb:
+                image = [self.convert_to_rgb(i) for i in image]
+            elif self.config.do_convert_grayscale:
+                image = [self.convert_to_grayscale(i) for i in image]
             if self.config.do_resize:
                 image = [self.resize(i, height, width) for i in image]
             image = self.pil_to_numpy(image)  # to np
@@ -203,7 +221,7 @@ class VaeImageProcessor(ConfigMixin):
         elif isinstance(image[0], np.ndarray):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
             
-            if self.config.color_mode == "L" and if image.ndim == 3:
+            if self.config.do_convert_grayscale and if image.ndim == 3:
                 image = np.expand_dims(image, axis=1)
 
             image = self.numpy_to_pt(image)
@@ -219,7 +237,7 @@ class VaeImageProcessor(ConfigMixin):
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
             
-            if self.config.color_mode == "L" and if image.ndim == 3:
+            if self.config.do_convert_grayscale and if image.ndim == 3:
                 image = image.unsqueeze(1)
             
             channel = image.shape[1]
