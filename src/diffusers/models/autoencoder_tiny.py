@@ -39,11 +39,6 @@ class AutoencoderTinyOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class Clamp(nn.Module):
-    def forward(self, x):
-        return torch.tanh(x / 3) * 3
-
-
 class AutoencoderTinyBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, act_fn: str):
         super().__init__()
@@ -127,7 +122,6 @@ class DecoderTiny(nn.Module):
         super().__init__()
 
         layers = [
-            Clamp(),
             nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1),
             get_activation(act_fn),
         ]
@@ -149,6 +143,8 @@ class DecoderTiny(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x):
+        x = torch.tanh(x / 3) * 3
+
         if self.training and self.gradient_checkpointing:
 
             def create_custom_forward(module):
