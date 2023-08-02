@@ -912,6 +912,10 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
 
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+
         if guess_mode and do_classifier_free_guidance:
             # we will infer ControlNet only for the conditional batch
             controlnet_prompt_embeds = prompt_embeds
@@ -929,10 +933,6 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             # if guess_mode is off, controlnet inputs are the same as inputs of base unet model
             controlnet_prompt_embeds = prompt_embeds
             controlnet_added_cond_kwargs = added_cond_kwargs
-
-        prompt_embeds = prompt_embeds.to(device)
-        add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
