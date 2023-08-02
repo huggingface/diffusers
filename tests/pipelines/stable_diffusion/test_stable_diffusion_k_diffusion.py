@@ -20,16 +20,16 @@ import numpy as np
 import torch
 
 from diffusers import StableDiffusionKDiffusionPipeline
-from diffusers.utils import slow, torch_device
+from diffusers.utils import slow, nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
 enable_full_determinism()
 
 
-@slow
+@nightly
 @require_torch_gpu
-class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionKDiffusionPipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
