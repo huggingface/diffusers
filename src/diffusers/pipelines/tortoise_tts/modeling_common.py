@@ -471,7 +471,8 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
             for i in range(x.shape[1]):
                 prefix = x[:, i]
                 prefix = self.input_transform(prefix)
-                prefix = self.attention(prefix)
+                for attn_layer in self.attention:
+                    prefix = attn_layer(prefix)
                 prefix = self.output_transform(prefix)
                 if self.config.output_type == "mean":
                     prefix = prefix.mean(dim=2)
