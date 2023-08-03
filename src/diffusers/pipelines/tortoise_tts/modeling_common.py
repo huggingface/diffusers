@@ -588,8 +588,9 @@ class RandomLatentConverter(ModelMixin, ConfigMixin):
         """
         assert noise.shape[-1] == self.config.channels, "The last dim of `noise` must match `self.config.channels`."
         
-        latents = self.equallinear(noise)
-        latents = self.linear(latents)
+        for equallinear_layer in self.equallinear:
+            noise = equallinear_layer(noise)
+        latents = self.linear(noise)
         
         if not return_dict:
             return (latents,)
