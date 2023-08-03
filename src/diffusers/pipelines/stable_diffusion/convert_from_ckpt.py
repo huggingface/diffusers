@@ -367,7 +367,7 @@ def create_diffusers_schedular(original_config):
 
 
 def create_ldm_bert_config(original_config):
-    bert_params = original_config.model.parms.cond_stage_config.params
+    bert_params = original_config.model.params.cond_stage_config.params
     config = LDMBertConfig(
         d_model=bert_params.n_embed,
         encoder_layers=bert_params.n_layer,
