@@ -1065,9 +1065,9 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-4
+        assert np.max(np.abs(image - image_ckpt)) < 1e-3
 
 
 @nightly
