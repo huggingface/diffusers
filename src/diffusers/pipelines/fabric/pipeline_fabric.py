@@ -20,7 +20,10 @@ from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
-from .cross_attention import AttnProcessor
+from .cross_attention import LoRACrossAttnProcessor
+from .attention import BasicTransformerBlock
+from .pipelines import StableDiffusionPipeline
+from .scheduler import EulerAncestralDiscreateScheduler
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
@@ -35,16 +38,66 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class AttentionBasedGenerator(nn.Module):
-    def __init__(self):
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        model_ckpt: Optional[str] = None,
+        stable_diffusion_version: str = "1.5",
+        lora_weights: Optional[str] = None,
+        torch_dtype=torch.float32,
+    ):
         super().__init__()
-        pass
+        if stable_diffusion_version == "2.1":
+            warnings.warn("StableDiffusion v2.x is not supported and may give unexpected results.")
+
+        if model_name is None:
+            if stable_diffusion_version == "1.5":
+                model_name = "runwayml/stable-diffusion-v1-5"
+            elif stable_diffusion_version == "2.1":
+                model_name = "stabilityai/stable-diffusion-2-1"
+            else:
+                raise ValueError(
+                    f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
+                )
+
+        scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
+
+        if model_ckpt is not None:
+            pipe = StableDiffusionPipeline.from_ckpt(
+                model_ckpt,
+                scheduler=scheduler,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+            )
+            pipe.scheduler = scheduler
+        else:
+            pipe = StableDiffusionPipeline.from_pretrained(
+                model_name,
+                scheduler=scheduler,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+            )
+
+        if lora_weights:
+            print(f"Applying LoRA weights from {lora_weights}")
+            apply_unet_lora_weights(
+                pipeline=pipe, unet_path=lora_weights
+            )
+
+        self.pipeline = pipe
+        self.unet = pipe.unet
+        self.vae = pipe.vae
+        self.text_encoder = pipe.text_encoder
+        self.tokenizer = pipe.tokenizer
+        self.scheduler = scheduler
+        self.dtype = torch_dtype
 
     def generate(
         self, 
         prompt: Union[str, List[str]] = "a photo of an astronaut riding a horse on mars",
-        negative_prompt: Union[str, List[str]] = "",
-        liked: List[Image.Image] = [],
-        disliked: List[Image.Image] = [],
+        negative_prompt: Optional[Union[str, List[str]]] = "",
+        liked: Optional[List[Image.Image]] = [],
+        disliked: Optional[List[Image.Image]] = [],
         seed: int = 42,
         n_images: int = 1,
         guidance_scale: float = 8.0,
@@ -57,6 +110,10 @@ class AttentionBasedGenerator(nn.Module):
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
     )
+
+        with tqdm(total=denoising_steps) as pbar:
+            for i, t in enumerate(timestamp):
+                
         pass
 
 
