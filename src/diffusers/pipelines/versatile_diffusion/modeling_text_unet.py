@@ -298,6 +298,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
+        use_gated_attention: bool = False,
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
@@ -556,6 +557,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                use_gated_attention=use_gated_attention,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
@@ -579,6 +581,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                use_gated_attention=use_gated_attention,
             )
         elif mid_block_type == "UNetMidBlockFlatSimpleCrossAttn":
             self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
@@ -645,6 +648,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                use_gated_attention=use_gated_attention,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
@@ -669,6 +673,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
+
+        if use_gated_attention:
+            self.position_net = PositionNet(positive_len=768, out_dim=cross_attention_dim)
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
@@ -1012,6 +1019,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # 2. pre-process
         sample = self.conv_in(sample)
 
+        # 2.5 GLIGEN position net
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
+            cross_attention_kwargs = cross_attention_kwargs.copy()
+            gligen_args = cross_attention_kwargs.pop("gligen")
+            cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
+
         # 3. down
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
@@ -1331,6 +1344,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        use_gated_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -1367,6 +1381,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        use_gated_attention=use_gated_attention,
                     )
                 )
             else:
@@ -1572,6 +1587,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        use_gated_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -1610,6 +1626,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        use_gated_attention=use_gated_attention,
                     )
                 )
             else:
@@ -1717,6 +1734,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         upcast_attention=False,
+        use_gated_attention=False,
     ):
         super().__init__()
 
@@ -1753,6 +1771,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
+                        use_gated_attention=use_gated_attention,
                     )
                 )
             else:
