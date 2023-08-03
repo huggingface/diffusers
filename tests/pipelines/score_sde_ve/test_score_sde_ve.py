@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import ScoreSdeVePipeline, ScoreSdeVeScheduler, UNet2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch, nightly, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch, torch_device
 
 
 enable_full_determinism()
