@@ -556,12 +556,6 @@ def parse_args(input_args=None):
         default=100,
         help="Log every X updates steps. Default to 10.",
     )
-    parser.add_argument(
-        "--mlflow_uri",
-        type=str,
-        default='http://127.0.0.1:5001',
-        help="URI to log mlflow.",
-    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
