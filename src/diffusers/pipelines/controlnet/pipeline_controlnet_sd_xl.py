@@ -431,6 +431,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        pooled_prompt_embeds=None,
+        negative_pooled_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
@@ -480,6 +482,16 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if prompt_embeds is not None and pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+
+        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            )
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
@@ -668,6 +680,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -738,6 +752,13 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
+            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -809,6 +830,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             negative_prompt_2,
             prompt_embeds,
             negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
@@ -854,6 +877,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             negative_prompt_2,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
 
