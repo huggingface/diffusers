@@ -37,7 +37,7 @@ from .unet_2d_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class AttentionBasedGenerator(nn.Module):
+class FabricModel(nn.Module):
     def __init__(
         self,
         model_name: Optional[str] = None,
@@ -47,6 +47,7 @@ class AttentionBasedGenerator(nn.Module):
         torch_dtype=torch.float32,
     ):
         super().__init__()
+        # Getting UNet from Stable diffusion 
         if stable_diffusion_version == "2.1":
             warnings.warn("StableDiffusion v2.x is not supported and may give unexpected results.")
 
@@ -92,7 +93,7 @@ class AttentionBasedGenerator(nn.Module):
         self.scheduler = scheduler
         self.dtype = torch_dtype
 
-    def generate(
+    def forward(
         self, 
         prompt: Union[str, List[str]] = "a photo of an astronaut riding a horse on mars",
         negative_prompt: Optional[Union[str, List[str]]] = "",
