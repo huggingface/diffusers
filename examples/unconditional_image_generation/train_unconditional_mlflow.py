@@ -310,7 +310,7 @@ def main(args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -565,173 +565,177 @@ def main(args):
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Train!
-    output_list = []
     #Initialize mlflow
     # mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    experiment_id = mlflow.create_experiment('{}_{}'.format(args.model_config_name_or_path, current_datetime))
-    experiment = mlflow.get_experiment(experiment_id)
-    mlflow_runner = mlflow.start_run(run_name=args.model_config_name_or_path, experiment_id=experiment.experiment_id)
-    with mlflow_runner:
-        start_time = time.time()
-        for epoch in range(first_epoch, args.num_epochs):
-            start_time_epoch = time.time()
-            model.train()
-            progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
-            progress_bar.set_description(f"Epoch {epoch}")
-            for step, batch in enumerate(train_dataloader):
-                # Skip steps until we reach the resumed step
-                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                    if step % args.gradient_accumulation_steps == 0:
-                        progress_bar.update(1)
-                    continue
+    # current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    # experiment_name = args.model_config_name_or_path
 
-                clean_images = batch["input"]
-                # Sample noise that we'll add to the images
-                noise = torch.randn(clean_images.shape).to(clean_images.device)
-                bsz = clean_images.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=clean_images.device
-                ).long()
+    # if not mlflow.get_experiment_by_name(experiment_name):        
+    #     experiment_id = mlflow.create_experiment(experiment_name)
 
-                # Add noise to the clean images according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
+    # experiment = mlflow.get_experiment_by_name(experiment_name)
+    # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
-                with accelerator.accumulate(model):
-                    # Predict the noise residual
-                    model_output = model(noisy_images, timesteps).sample
-
-                    if args.prediction_type == "epsilon":
-                        loss = F.mse_loss(model_output, noise)  # this could have different weights!
-                    elif args.prediction_type == "sample":
-                        alpha_t = _extract_into_tensor(
-                            noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
-                        )
-                        snr_weights = alpha_t / (1 - alpha_t)
-                        loss = snr_weights * F.mse_loss(
-                            model_output, clean_images, reduction="none"
-                        )  # use SNR weighting from distillation paper
-                        loss = loss.mean()
-                    else:
-                        raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
-
-                    accelerator.backward(loss)
-
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(model.parameters(), 1.0)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
-
-                # Checks if the accelerator has performed an optimization step behind the scenes
-                if accelerator.sync_gradients:
-                    if args.use_ema:
-                        ema_model.step(model.parameters())
+    mlflow.start_run()
+    start_time = time.time()
+    for epoch in range(first_epoch, args.num_epochs):
+        interval_start_time = time.time()
+        model.train()
+        progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
+        progress_bar.set_description(f"Epoch {epoch}")
+        for step, batch in enumerate(train_dataloader):
+            # Skip steps until we reach the resumed step
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
-                    global_step += 1
+                continue
 
-                    if global_step % args.checkpointing_steps == 0:
-                        if accelerator.is_main_process:
-                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                            accelerator.save_state(save_path)
-                            logger.info(f"Saved state to {save_path}")
+            clean_images = batch["input"]
+            # Sample noise that we'll add to the images
+            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            bsz = clean_images.shape[0]
+            # Sample a random timestep for each image
+            timesteps = torch.randint(
+                0, noise_scheduler.config.num_train_timesteps, (bsz,), device=clean_images.device
+            ).long()
 
-                if (step+1) % args.logging_steps == 0:
-                    logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-                    # Log loss to mlflow
-                    mlflow.log_metric('loss', loss.detach().item(), step=global_step)
-                    if args.use_ema:
-                        logs["ema_decay"] = ema_model.cur_decay_value
-                    progress_bar.set_postfix(**logs)
-                    accelerator.log(logs, step=global_step)
-            
-            progress_bar.close()
-            # Log epoch throughput
-            elapsed_time = time.time() - start_time_epoch
-            epoch_throughput = (len(dataset)) / elapsed_time
-            output_dict = {"epoch": epoch+1, "loss": loss.detach().item(), "throughput": epoch_throughput}
-            output_list.append(output_dict)
-            mlflow.log_metric('epoch_throughput', epoch_throughput, step=epoch+1)
+            # Add noise to the clean images according to the noise magnitude at each timestep
+            # (this is the forward diffusion process)
+            noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
 
-            accelerator.wait_for_everyone()
+            with accelerator.accumulate(model):
+                # Predict the noise residual
+                model_output = model(noisy_images, timesteps).sample
 
-            # Generate sample images for visual inspection
-            if accelerator.is_main_process:
-                # if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-                #     unet = accelerator.unwrap_model(model)
-
-                #     if args.use_ema:
-                #         ema_model.store(unet.parameters())
-                #         ema_model.copy_to(unet.parameters())
-
-                #     pipeline = DDPMPipeline(
-                #         unet=unet,
-                #         scheduler=noise_scheduler,
-                #     )
-
-                #     generator = torch.Generator(device=pipeline.device).manual_seed(0)
-                #     # run pipeline in inference (sample random noise and denoise)
-                #     images = pipeline(
-                #         generator=generator,
-                #         batch_size=args.eval_batch_size,
-                #         num_inference_steps=args.ddpm_num_inference_steps,
-                #         output_type="numpy",
-                #     ).images
-
-                #     if args.use_ema:
-                #         ema_model.restore(unet.parameters())
-
-                #     # denormalize the images and save to tensorboard
-                #     images_processed = (images * 255).round().astype("uint8")
-
-                #     if args.logger == "tensorboard":
-                #         if is_accelerate_version(">=", "0.17.0.dev0"):
-                #             tracker = accelerator.get_tracker("tensorboard", unwrap=True)
-                #         else:
-                #             tracker = accelerator.get_tracker("tensorboard")
-                #         tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
-                #     elif args.logger == "wandb":
-                #         # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
-                #         accelerator.get_tracker("wandb").log(
-                #             {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
-                #             step=global_step,
-                #         )
-
-                if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-                    # save the model
-                    unet = accelerator.unwrap_model(model)
-
-                    if args.use_ema:
-                        ema_model.store(unet.parameters())
-                        ema_model.copy_to(unet.parameters())
-
-                    pipeline = DDPMPipeline(
-                        unet=unet,
-                        scheduler=noise_scheduler,
+                if args.prediction_type == "epsilon":
+                    loss = F.mse_loss(model_output, noise)  # this could have different weights!
+                elif args.prediction_type == "sample":
+                    alpha_t = _extract_into_tensor(
+                        noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
                     )
+                    snr_weights = alpha_t / (1 - alpha_t)
+                    loss = snr_weights * F.mse_loss(
+                        model_output, clean_images, reduction="none"
+                    )  # use SNR weighting from distillation paper
+                    loss = loss.mean()
+                else:
+                    raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
 
-                    pipeline.save_pretrained(args.output_dir)
+                accelerator.backward(loss)
 
-                    if args.use_ema:
-                        ema_model.restore(unet.parameters())
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
-                    if args.push_to_hub:
-                        repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_model.step(model.parameters())
+                progress_bar.update(1)
+                global_step += 1
+
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
+
+            if (step+1) % args.logging_steps == 0:
+                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+                
+                interval_elapsed_time = time.time() - interval_start_time
+                interval_start_time = time.time()
+                interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
+                                    
+                mlflow.log_metric('loss', loss.detach().item(), step=global_step)
+                mlflow.log_metric('throughput', interval_throughput, step=global_step)
+                mlflow.log_metric('lr', args.learning_rate, step=global_step)
+
+                if args.use_ema:
+                    logs["ema_decay"] = ema_model.cur_decay_value
+                progress_bar.set_postfix(**logs)
+                accelerator.log(logs, step=global_step)
+
+            if global_step >= max_train_steps:
+                elapsed_time = time.time() - start_time
+                one_epoch_time = elapsed_time/ args.num_epochs
+                throughput = (max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
+
+                mlflow.log_metric('avg_throughput', throughput)
+                mlflow.log_metric('one_epoch_time', one_epoch_time)
+                mlflow.log_params({'task': 'unconditional_gen_image', 'model': args.model_config_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
+                break
+
+        progress_bar.close()
         
-        # Log summary throughput
-        elapsed_time = time.time() - start_time
-        throughput = (len(dataset)*args.num_epochs) / elapsed_time
-        output_dict = {"epoch": "summary", "loss": loss.detach().item(), "throughput": throughput}
-        output_list.append(output_dict)
-        mlflow.log_metric('avg_throughput', throughput)
-        mlflow.log_params({'model': args.model_config_name_or_path ,'batch_size': args.train_batch_size})
-    
-    import json
-    with open(args.log_dir, "w") as f:
-        json.dump(output_list, f, indent=4)
-    logger.info(f"Output logs saved in {args.log_dir}")
+        accelerator.wait_for_everyone()
+
+        # Generate sample images for visual inspection
+        if accelerator.is_main_process:
+            # if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+            #     unet = accelerator.unwrap_model(model)
+
+            #     if args.use_ema:
+            #         ema_model.store(unet.parameters())
+            #         ema_model.copy_to(unet.parameters())
+
+            #     pipeline = DDPMPipeline(
+            #         unet=unet,
+            #         scheduler=noise_scheduler,
+            #     )
+
+            #     generator = torch.Generator(device=pipeline.device).manual_seed(0)
+            #     # run pipeline in inference (sample random noise and denoise)
+            #     images = pipeline(
+            #         generator=generator,
+            #         batch_size=args.eval_batch_size,
+            #         num_inference_steps=args.ddpm_num_inference_steps,
+            #         output_type="numpy",
+            #     ).images
+
+            #     if args.use_ema:
+            #         ema_model.restore(unet.parameters())
+
+            #     # denormalize the images and save to tensorboard
+            #     images_processed = (images * 255).round().astype("uint8")
+
+            #     if args.logger == "tensorboard":
+            #         if is_accelerate_version(">=", "0.17.0.dev0"):
+            #             tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+            #         else:
+            #             tracker = accelerator.get_tracker("tensorboard")
+            #         tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
+            #     elif args.logger == "wandb":
+            #         # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
+            #         accelerator.get_tracker("wandb").log(
+            #             {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+            #             step=global_step,
+            #         )
+
+            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+                # save the model
+                unet = accelerator.unwrap_model(model)
+
+                if args.use_ema:
+                    ema_model.store(unet.parameters())
+                    ema_model.copy_to(unet.parameters())
+
+                pipeline = DDPMPipeline(
+                    unet=unet,
+                    scheduler=noise_scheduler,
+                )
+
+                pipeline.save_pretrained(args.output_dir)
+
+                if args.use_ema:
+                    ema_model.restore(unet.parameters())
+
+                if args.push_to_hub:
+                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
+    mlflow.end_run()
+
     accelerator.end_training()
 
 
