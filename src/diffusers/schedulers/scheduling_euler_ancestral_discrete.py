@@ -263,7 +263,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0]
 
-        self._step_index = step_index.cpu()
+        self._step_index = step_index.item()
 
     def step(
         self,
