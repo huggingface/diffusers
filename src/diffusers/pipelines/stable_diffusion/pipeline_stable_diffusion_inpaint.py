@@ -285,7 +285,9 @@ class StableDiffusionInpaintPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.mask_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True
+        )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
@@ -869,7 +871,7 @@ class StableDiffusionInpaintPipeline(
         init_image = init_image.to(dtype=torch.float32)
 
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
-        # binarize mask 
+        # binarize mask
         mask[mask < 0.5] = 0
         mask[mask > 0.5] = 1
 
