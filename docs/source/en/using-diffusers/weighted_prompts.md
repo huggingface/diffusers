@@ -124,7 +124,6 @@ Let's first make sure we have the newest version of compel installed:
 pip install --upgrade compel
 ```
 
-Now we can run an example.
 
 ```py
 from compel import Compel, ReturnedEmbeddingsType
