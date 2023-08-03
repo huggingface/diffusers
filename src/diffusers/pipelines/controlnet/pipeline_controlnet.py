@@ -554,7 +554,7 @@ class StableDiffusionControlNetPipeline(
         else:
             assert False
 
-        if isinstance(control_guidance_start, float):
+        if not isinstance(control_guidance_start, (tuple, list)):
             control_guidance_start = [control_guidance_start]
             
         if isinstance(control_guidance_end, float):
