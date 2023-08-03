@@ -4,6 +4,12 @@
 
 Stable Diffusion inference can be a computationally intensive process because it must iteratively denoise the latents to generate an image. To reduce the computational burden, you can use a *distilled* version of the Stable Diffusion model from [Nota AI](https://huggingface.co/nota-ai). The distilled version of their Stable Diffusion model eliminates some of the residual and attention blocks from the UNet, reducing the model size by 51% and improving latency on CPU/GPU by 43%.
 
+<Tip>
+
+Read this [blog post](https://huggingface.co/blog/sd_distillation) to learn more about how knowledge distillation training works to produce a faster, smaller, and cheaper generative model.
+
+</Tip>
+
 Let's load the distilled Stable Diffusion model and compare it against the original Stable Diffusion model:
 
 ```py
