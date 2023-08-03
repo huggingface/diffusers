@@ -42,7 +42,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
-    print_tensor_test,
 )
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
