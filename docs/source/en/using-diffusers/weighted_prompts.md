@@ -28,12 +28,6 @@ We believe the role of `diffusers` is to be a toolbox that provides essential fe
 
 The [compel library](https://github.com/damian0815/compel) provides an easy way to emphasize or de-emphasize portions of the prompt for you. We strongly recommend it instead of preparing the embeddings yourself.
 
-Let's first make sure we have the newest version of compel installed:
-
-``
-pip install --upgrade compel
-``
-
 Let's look at a simple example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
 follows:
 
@@ -62,8 +56,8 @@ As you can see, there is no "ball" in the image. Let's emphasize this part!
 
 For this we should install the `compel` library:
 
-```
-pip install compel
+```py
+pip install compel --upgrade
 ```
 
 and then create a `Compel` object:
@@ -129,9 +123,19 @@ Luckily, [`compel`](https://github.com/damian0815/compel) takes care of SDXL's s
 from compel import Compel, ReturnedEmbeddingsType
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16", use_safetensors=True, torch_dtype=torch.float16).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained(
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  variant="fp16",
+  use_safetensors=True,
+  torch_dtype=torch.float16
+).to("cuda")
 
-compel = Compel(tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2] , text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2], returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED, requires_pooled=[False, True])
+compel = Compel(
+  tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2] ,
+  text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2],
+  returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+  requires_pooled=[False, True]
+)
 ```
 
 Let's try our example from above again. We use the same seed for both prompts and upweight ball by a factor of 1.5 for the first 
