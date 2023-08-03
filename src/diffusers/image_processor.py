@@ -127,7 +127,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
         """
-        Converts an image to RGB format.
+        Converts a PIL image to RGB format.
         """
         image = image.convert("RGB")
 
@@ -136,13 +136,33 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def convert_to_grayscale(image: PIL.Image.Image) -> PIL.Image.Image:
         """
-        Converts an image to L mode.
+        Converts a PIL image to grayscale format.
         """
         image = image.convert("L")
 
         return image
 
-    def get_default_height_width(self, image, height, width):
+    def get_default_height_width(
+        self,
+        image: [PIL.Image.Image, np.ndarray, torch.Tensor],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+    ):
+        """
+        This function return the height and width that are downscaled to the next integer multiple of
+        `vae_scale_factor`.
+
+        Args:
+            image(`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
+                the image input, can be a PIL image, numpy array or pytorch tensor. if it is a numpy array, should have
+                shape [batch, height, width] or [batch, height, width, channel] if it is a pytorch tensor, should have
+                shape [batch, channel, height, width]
+            height (`int`, *optional*, defaults to `None`):
+                The height in preprocessed image. If `None`, will use the height of `image` input
+            width (`int`, *optional*`, defaults to `None`):
+                The width in preprocessed. If `None`, will use the width of the `image` input
+        """
+
         if height is None:
             if isinstance(image, PIL.Image.Image):
                 height = image.height
@@ -172,7 +192,7 @@ class VaeImageProcessor(ConfigMixin):
         width: Optional[int] = None,
     ) -> PIL.Image.Image:
         """
-        Resize a PIL image. Both height and width are downscaled to the next integer multiple of `vae_scale_factor`.
+        Resize a PIL image.
         """
         image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
         return image
@@ -188,17 +208,23 @@ class VaeImageProcessor(ConfigMixin):
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
 
-        # If the image input is a 3-dimensional pytorch tensor or numpy array that represent images in grayscale format,
-        # it could have 2 possible shapes:
-        #    1. batch x height x width: we should insert the channel dimension at position 1
-        #    2. channnel x height x width:  we should insert batch dimension at position 0,
-        #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
-        #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
+        # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
         if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
             if isinstance(image, torch.Tensor):
+                # if image is a pytorch tensor could have 2 possible shapes:
+                #    1. batch x height x width: we should insert the channel dimension at position 1
+                #    2. channnel x height x width: we should insert batch dimension at position 0,
+                #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
+                #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
                 image = image.unsqueeze(1)
             else:
-                image = np.expand_dims(image, axis=1)
+                # if it is a numpy array, it could have 2 possible shapes:
+                #   1. batch x height x width: insert channel dimension on last position
+                #   2. height x width x channel: insert batch dimension on first position
+                if image.shape[-1] == 1:
+                    image = np.expand_dims(image, axis=0)
+                else:
+                    image = np.expand_dims(image, axis=-1)
 
         if isinstance(image, supported_formats):
             image = [image]
