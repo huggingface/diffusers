@@ -189,8 +189,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
+
         if self.step_index is None:
-            self.step_index = (self.timesteps == timestep).nonzero().item()
+            self._init_step_index(timestep)
+
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
@@ -240,7 +242,28 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-        self.step_index = None
+        self._step_index = None
+
+    @property
+    def step_index(self):
+        """
+        TODO: Nice docstring
+        """
+        return self._step_index
+
+    def _init_step_index(self, timestep):
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.cpu()
 
     def step(
         self,
@@ -292,7 +315,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep = timestep.to(self.timesteps.device)
 
         if self.step_index is None:
-            self.step_index = (self.timesteps == timestep).nonzero().item()
+            self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
 
@@ -326,7 +349,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = prev_sample + noise * sigma_up
 
-        self.step_index += 1
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
