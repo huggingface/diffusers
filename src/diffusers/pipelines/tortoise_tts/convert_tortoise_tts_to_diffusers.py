@@ -12,6 +12,36 @@ from diffusers.pipelines.tortoise_tts.modeling_diffusion import TortoiseTTSDenoi
 
 
 # Hardcode Tortoise TTS default model configs.
+CONDITIONING_ENC_AUTO_CONFIG = {
+    "in_channels": 80,
+    "out_channels": 1024,
+    "num_layers": 6,
+    "attention_head_dim": 64,  # TODO: 1024 / 16 (=num_heads) = 64? confirm
+    "relative_pos_embeddings": False,
+    "input_transform": "conv",
+    "input_conv_kernel_size": 1,
+    "input_conv_stride": 1,
+    "input_conv_padding": 0,
+    "output_transform": None,
+    "output_type": "first",
+}
+
+# tortoise.models.diffusion_decoder.DiffusionTts.contextual_embedder
+CONDITIONING_ENC_DIFF_CONFIG = {
+    "in_channels": 100,
+    "out_channels": 2048,
+    "num_layers": 5,
+    "attention_head_dim": 128,  # TODO: 2048 / 16 (=num_heads) = 128? confirm
+    "relative_pos_embeddings": True,
+    "input_transform": "conv2",
+    "input_conv_kernel_size": 3,
+    "input_conv_stride": 2,
+    "input_conv_padding": 1,
+    "input_conv2_hidden_dim": 1024,
+    "output_transform": "groupnorm",
+    "output_type": "none",  # TODO: confirm
+}
+
 RLG_AUTO_CONFIG = {
     "channels": 1024,
     "num_equallinear_layers": 5,
@@ -25,6 +55,16 @@ RLG_DIFFUSION_CONFIG = {
 }
 
 
+def prepare_prefixes(key_prefix, new_key_prefix):
+    if key_prefix:
+        prefix = key_prefix + "."
+    
+    if new_key_prefix:
+        new_prefix = new_key_prefix + "."
+    
+    return prefix, new_prefix
+
+
 def convert_random_latent_converter(checkpoint, config):
     # Convert the EqualLinear layers
     new_checkpoint = {}
@@ -35,6 +75,70 @@ def convert_random_latent_converter(checkpoint, config):
     new_checkpoint[f"linear.weight"] = checkpoint[f"layers.{i + 1}.weight"]
     new_checkpoint[f"linear.bias"] = checkpoint[f"layers.{i + 1}.bias"]
 
+    return new_checkpoint
+
+
+def convert_attention_block(
+    checkpoint,
+    config,
+    new_checkpoint={},
+    key_prefix="",
+    new_key_prefix="",
+):
+    # checkpoint: torch state dict
+    # config: dict of argument, value pairs when initializing the attention block
+    # key_prefix: prefix in original checkpoint (if submodule of another checkpoint)
+    # new_key_prefix: prefix in diffusers checkpoint (if submodule of )
+    prefix, new_prefix = prepare_prefixes(key_prefix, new_key_prefix)
+
+    # TODO: convert Tortoise TTS attention block to diffuser attention block
+
+
+def convert_conditioning_encoder(
+    checkpoint,
+    config,
+    new_checkpoint={},
+    key_prefix="",
+    new_key_prefix="",
+    output_transform_key=None,
+):
+    prefix, new_prefix = prepare_prefixes(key_prefix, new_key_prefix)
+
+    # Handle input transform
+    start_idx = 0
+    attn_name = ""
+    input_transform = config["input_transform"]
+    if input_transform == "conv":
+        if prefix + "init" in checkpoint:
+            new_checkpoint[f"{new_prefix}input_transform.weight"] = checkpoint[f"{prefix}init.weight"]
+            new_checkpoint[f"{new_prefix}input_transform.bias"] = checkpoint[f"{prefix}init.bias"]
+            attn_name = "attn."
+        else:
+            # part of nn.Sequential
+            new_checkpoint[f"{new_prefix}input_transform.weight"] = checkpoint[f"{prefix}.0.weight"]
+            new_checkpoint[f"{new_prefix}input_transform.bias"] = checkpoint[f"{prefix}.0.bias"]
+            start_idx = 1
+    elif input_transform == "conv2":
+        # part of nn.Sequential
+        new_checkpoint[f"{new_prefix}input_transform.0.weight"] = checkpoint[f"{prefix}.0.weight"]
+        new_checkpoint[f"{new_prefix}input_transform.0.bias"] = checkpoint[f"{prefix}.0.bias"]
+        new_checkpoint[f"{new_prefix}input_transform.1.weight"] = checkpoint[f"{prefix}.1.weight"]
+        new_checkpoint[f"{new_prefix}input_transform.1.bias"] = checkpoint[f"{prefix}.1.bias"]
+        start_idx = 2
+    
+    # Handle attention layers
+    # These are always within a nn.Sequential container
+    for i in range(config["num_layers"]):
+        attn_prefix = prefix + attn_name + str(start_idx + i)
+        new_attn_prefix = new_prefix + "attention." + str(i)
+        convert_attention_block(checkpoint, config, new_checkpoint, attn_prefix, new_attn_prefix)
+    
+    # Handle output transform
+    if config["output_transform"] == "groupnorm":
+        # requires full key for output transform
+        new_checkpoint[f"{new_prefix}output_transform.weight"] = checkpoint[f"{output_transform_key}.weight"]
+        new_checkpoint[f"{new_prefix}output_transform.bias"] = checkpoint[f"{output_transform_key}.bias"]
+    
     return new_checkpoint
 
 
