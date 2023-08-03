@@ -146,14 +146,18 @@ class VaeImageProcessor(ConfigMixin):
         if height is None:
             if isinstance(image, PIL.Image.Image):
                 height = image.height
-            else:
+            elif isinstance(image, torch.Tensor):
                 height = image.shape[2]
+            else:
+                height = image.shape[1]
 
         if width is None:
             if isinstance(image, PIL.Image.Image):
                 width = image.width
-            else:
+            elif isinstance(image, torch.Tensor):
                 width = image.shape[3]
+            else:
+                height = image.shape[2]
 
         width, height = (
             x - x % self.config.vae_scale_factor for x in (width, height)
@@ -184,8 +188,6 @@ class VaeImageProcessor(ConfigMixin):
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
 
-        height, width = self.get_default_height_width(image, height, width)
-
         # If the image input is a 3-dimensional pytorch tensor or numpy array that represent images in grayscale format,
         # it could have 2 possible shapes:
         #    1. batch x height x width: we should insert the channel dimension at position 1
@@ -211,6 +213,7 @@ class VaeImageProcessor(ConfigMixin):
             elif self.config.do_convert_grayscale:
                 image = [self.convert_to_grayscale(i) for i in image]
             if self.config.do_resize:
+                height, width = self.get_default_height_width(image[0], height, width)
                 image = [self.resize(i, height, width) for i in image]
             image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
@@ -220,6 +223,7 @@ class VaeImageProcessor(ConfigMixin):
 
             image = self.numpy_to_pt(image)
 
+            height, width = self.get_default_height_width(image, height, width)
             if self.config.do_resize and (image.shape[2] != height or image.shape[3] != width):
                 raise ValueError(
                     f"Currently we only support resizing for PIL image - please resize your numpy array to be {height} and {width}"
@@ -237,6 +241,7 @@ class VaeImageProcessor(ConfigMixin):
             if channel == 4:
                 return image
 
+            height, width = self.get_default_height_width(image, height, width)
             if self.config.do_resize and (image.shape[2] != height or image.shape[3] != width):
                 raise ValueError(
                     f"Currently we only support resizing for PIL image - please resize your torch tensor to be {height} and {width}"
