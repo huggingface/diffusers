@@ -58,7 +58,7 @@ class VaeImageProcessor(ConfigMixin):
         if do_convert_rgb and do_convert_grayscale:
             warnings.warn(
                 "`do_convert_rgb = True` will be ignored since `do_convert_grayscale` is also set to be `True`,"
-                " if you intended to convert the image into RGB format, please set `do_convert_grayscale =False`."
+                " if you intended to convert the image into RGB format, please set `do_convert_grayscale =False`.",
                 FutureWarning,
             )
             self.config.do_convert_rgb = False
@@ -134,12 +134,11 @@ class VaeImageProcessor(ConfigMixin):
         return image
     
     @staticmethod
-    def convert_to_grayscale(image: PIL.Image.Image, mode: str) -> PIL.Image.Image:
+    def convert_to_grayscale(image: PIL.Image.Image) -> PIL.Image.Image:
         """
         Converts an image to L mode.
         """
         image = image.convert("L")
-        image = image.unsqueeze(0)
 
         return image
 
@@ -220,9 +219,6 @@ class VaeImageProcessor(ConfigMixin):
 
         elif isinstance(image[0], np.ndarray):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
-            
-            if self.config.do_convert_grayscale and if image.ndim == 3:
-                image = np.expand_dims(image, axis=1)
 
             image = self.numpy_to_pt(image)
 
@@ -237,7 +233,7 @@ class VaeImageProcessor(ConfigMixin):
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
             
-            if self.config.do_convert_grayscale and if image.ndim == 3:
+            if self.config.do_convert_grayscale and image.ndim == 3:
                 image = image.unsqueeze(1)
             
             channel = image.shape[1]

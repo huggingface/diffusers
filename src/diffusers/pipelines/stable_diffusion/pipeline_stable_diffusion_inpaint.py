@@ -868,12 +868,12 @@ class StableDiffusionInpaintPipeline(
         init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
-        mask = self.mask_processor.preprocess(mask, height=height, width=width)
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
         # binarize mask 
         mask[mask < 0.5] = 0
         mask[mask > 0.5] = 1
 
-        masked_image = image * (mask < 0.5)
+        masked_image = init_image * (mask < 0.5)
 
         mask_condition = mask.clone()
 
