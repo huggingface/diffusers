@@ -166,6 +166,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.is_scale_input_called = False
 
+        self._step_index = None
+
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
@@ -173,6 +175,13 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             return self.sigmas.max()
 
         return (self.sigmas.max() ** 2 + 1) ** 0.5
+
+    @property
+    def step_index(self):
+        """
+        TODO: Nice docstring
+        """
+        return self._step_index
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
@@ -243,13 +252,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
         self._step_index = None
-
-    @property
-    def step_index(self):
-        """
-        TODO: Nice docstring
-        """
-        return self._step_index
 
     def _init_step_index(self, timestep):
         index_candidates = (self.timesteps == timestep).nonzero()
