@@ -28,6 +28,12 @@ We believe the role of `diffusers` is to be a toolbox that provides essential fe
 
 The [compel library](https://github.com/damian0815/compel) provides an easy way to emphasize or de-emphasize portions of the prompt for you. We strongly recommend it instead of preparing the embeddings yourself.
 
+Let's first make sure we have the newest version of compel installed:
+
+``
+pip install --upgrade compel
+``
+
 Let's look at a simple example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
 follows:
 
