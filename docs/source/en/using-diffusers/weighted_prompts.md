@@ -135,8 +135,8 @@ pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-ba
 compel = Compel(tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2] , text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2], returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED, requires_pooled=[False, True])
 ```
 
-Let's try our example from amove again. We use the same seed for both prompts and upweight ball by a factor of 1.5 for the first 
-generation and downweight ball by 40% for the second prompt.
+Let's try our example from above again. We use the same seed for both prompts and upweight ball by a factor of 1.5 for the first 
+prompt and downweight ball by 40% for the second prompt.
 
 ```py
 # upweight "ball"
@@ -151,13 +151,16 @@ images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, gener
 
 Let's have a look at the result.
 
-**Image 1**:
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball1.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"a red cat playing with a (ball)1.5"</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">a red cat playing with a (ball)0.6</figcaption>
+  </div>
+</div>
 
-![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball1.png)
-
-**Image 2**:
-
-![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball2.png)
-
-We can see that the ball is almost completely gone from the second image while it's clearly visible in the first image.
+We can see that the ball is almost completely gone on the right image while it's clearly visible on the left image.
 For more information and more tricks you can use `compel` with, please have a look at the [compel docs](https://github.com/damian0815/compel/blob/main/doc/syntax.md) as well.
