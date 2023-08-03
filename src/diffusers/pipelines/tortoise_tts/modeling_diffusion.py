@@ -10,7 +10,7 @@ from ...models import ModelMixin
 from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
 from ...utils import BaseOutput, logging
-
+from .modeling_common import TortoiseTTSDiffusionModelAttention
 from .modeling_common import AttentionBlock, ConditioningEncoder
 
 
@@ -20,6 +20,16 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class Mish(torch.nn.Module):
     def forward(self, hidden_states):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
+
+class TortoiseTTSDiffusionLayer(nn.Module):
+    def __init__(self, config, has_relative_attention_bias=True):
+        super().__init__()
+        self.resblk = ResBlock(model_channels, model_channels, dropout, model_channels, dims=1, use_scale_shift_norm=True)
+        self.attn = TortoiseTTSDiffusionModelSelfAttention(config, has_relative_attention_bias=has_relative_attention_bias)
+
+    def forward(self, x, time_emb):
+        x = self.resblk(input_tensor=x, temb=time_emb)
+        return self.attn(x)
 
 
 class ResnetBlock1D(nn.Module):
