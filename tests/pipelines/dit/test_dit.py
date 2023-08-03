@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import is_xformers_available, load_numpy, slow, nightly, torch_device
+from diffusers.utils import is_xformers_available, load_numpy, nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import (

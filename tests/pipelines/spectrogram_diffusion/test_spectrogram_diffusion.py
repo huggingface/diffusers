@@ -21,7 +21,7 @@ import torch
 
 from diffusers import DDPMScheduler, MidiProcessor, SpectrogramDiffusionPipeline
 from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
-from diffusers.utils import require_torch_gpu, skip_mps, nightly, torch_device
+from diffusers.utils import nightly, require_torch_gpu, skip_mps, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_note_seq, require_onnxruntime
 
 from ..pipeline_params import TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS, TOKENS_TO_AUDIO_GENERATION_PARAMS

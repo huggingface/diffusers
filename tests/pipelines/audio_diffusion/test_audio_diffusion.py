@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.utils import slow, nightly, torch_device
+from diffusers.utils import nightly, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 

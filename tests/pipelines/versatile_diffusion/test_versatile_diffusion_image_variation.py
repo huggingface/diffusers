@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionImageVariationPipeline
-from diffusers.utils.testing_utils import load_image, require_torch_gpu, nightly, torch_device
+from diffusers.utils.testing_utils import load_image, nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
