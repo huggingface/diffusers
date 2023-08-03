@@ -124,12 +124,6 @@ For StableDiffusionXL we need to not only pass `prompt_embeds` (and optionally `
 In addition, [`StableDiffusionXLPipeline`] has two tokenizers and two text encoders which both need to be used to weight the prompt.
 Luckily, [`compel`](https://github.com/damian0815/compel) takes care of SDXL's special needs - all we have to do is to pass both tokenizers and text encoders to the `Compel` class.
 
-Let's first make sure we have the newest version of compel installed:
-
-```
-pip install --upgrade compel
-```
-
 
 ```py
 from compel import Compel, ReturnedEmbeddingsType
