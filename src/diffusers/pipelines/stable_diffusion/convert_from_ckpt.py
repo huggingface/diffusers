@@ -1079,7 +1079,9 @@ def convert_controlnet_checkpoint(
     if cross_attention_dim is not None:
         ctrlnet_config["cross_attention_dim"] = cross_attention_dim
 
-    controlnet = ControlNetModel(**ctrlnet_config)
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        controlnet = ControlNetModel(**ctrlnet_config)
 
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
@@ -1097,7 +1099,11 @@ def convert_controlnet_checkpoint(
         skip_extract_state_dict=skip_extract_state_dict,
     )
 
-    controlnet.load_state_dict(converted_ctrl_checkpoint)
+    if is_accelerate_available():
+        for param_name, param in converted_ctrl_checkpoint.items():
+            set_module_tensor_to_device(controlnet, param_name, "cpu", value=param)
+    else:
+        controlnet.load_state_dict(converted_ctrl_checkpoint)
 
     return controlnet
 
