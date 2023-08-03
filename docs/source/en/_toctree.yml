@@ -13,6 +13,8 @@
     title: Overview
   - local: using-diffusers/write_own_pipeline
     title: Understanding models and schedulers
+  - local: tutorials/autopipeline
+    title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
@@ -162,6 +164,8 @@
       title: AutoencoderKL
     - local: api/models/asymmetricautoencoderkl
       title: AsymmetricAutoencoderKL
+    - local: api/models/autoencoder_tiny
+      title: Tiny AutoEncoder
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal

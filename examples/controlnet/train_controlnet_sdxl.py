@@ -210,7 +210,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: openrail++
 base_model: {base_model}
 tags:
 - stable-diffusion-xl
@@ -227,12 +227,7 @@ inference: true
 These are controlnet weights trained on {base_model} with new type of conditioning.
 {img_str}
 """
-    model_card += """
 
-## License
-
-[SDXL 1.0 License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md)
-"""
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 

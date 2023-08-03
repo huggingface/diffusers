@@ -494,6 +494,7 @@ class DiffusionPipeline(ConfigMixin):
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
+    _is_onnx = False
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -839,6 +840,11 @@ class DiffusionPipeline(ConfigMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            use_onnx (`bool`, *optional*, defaults to `None`):
+                If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
+                will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
+                `False` for non-ONNX pipelines and `True` for ONNX pipelines. ONNX weights include both files ending
+                with `.onnx` and `.pb`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -1268,6 +1274,15 @@ class DiffusionPipeline(ConfigMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            use_onnx (`bool`, *optional*, defaults to `False`):
+                If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
+                will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
+                `False` for non-ONNX pipelines and `True` for ONNX pipelines. ONNX weights include both files ending
+                with `.onnx` and `.pb`.
 
         Returns:
             `os.PathLike`:
@@ -1293,6 +1308,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         if use_safetensors and not is_safetensors_available():
@@ -1364,7 +1380,7 @@ class DiffusionPipeline(ConfigMixin):
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
-            model_folder_names = {os.path.split(f)[0] for f in model_filenames}
+            model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
@@ -1411,6 +1427,10 @@ class DiffusionPipeline(ConfigMixin):
             ):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
+                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx", "*.pb"]
+
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
                 safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
                 if (
@@ -1422,6 +1442,10 @@ class DiffusionPipeline(ConfigMixin):
                     )
             else:
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
+
+                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
+                if not use_onnx:
+                    ignore_patterns += ["*.onnx", "*.pb"]
 
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
@@ -1474,11 +1498,25 @@ class DiffusionPipeline(ConfigMixin):
                 user_agent=user_agent,
             )
 
-            if pipeline_class._load_connected_pipes:
+            # retrieve pipeline class from local file
+            cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+            pipeline_class = getattr(diffusers, cls_name, None)
+
+            if pipeline_class is not None and pipeline_class._load_connected_pipes:
                 modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
                 connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
                 for connected_pipe_repo_id in connected_pipes:
-                    DiffusionPipeline.download(connected_pipe_repo_id)
+                    download_kwargs = {
+                        "cache_dir": cache_dir,
+                        "resume_download": resume_download,
+                        "force_download": force_download,
+                        "proxies": proxies,
+                        "local_files_only": local_files_only,
+                        "use_auth_token": use_auth_token,
+                        "variant": variant,
+                        "use_safetensors": use_safetensors,
+                    }
+                    DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
 
             return cached_folder
 
