@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import importlib
 import copy
 import gc
 import hashlib
@@ -144,7 +145,9 @@ def log_validation(
 
         scheduler_args["variance_type"] = variance_type
 
-    pipeline.scheduler = eval(args.validation_scheduler).from_config(pipeline.scheduler.config, **scheduler_args)
+    module = importlib.import_module("diffusers")
+    scheduler_class = getattr(module, args.validation_scheduler)
+    pipeline.scheduler = scheduler_class.from_config(pipeline.scheduler.config, **scheduler_args)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
