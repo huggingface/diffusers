@@ -1,11 +1,11 @@
 import os
 import numpy as np
 import torch
-import torchvision
 import transformers
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel
 from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
+
 transformers.utils.logging.set_verbosity_error()
 
 
@@ -20,19 +20,24 @@ def numpy_to_pil(images: np.ndarray) -> list[Image.Image]:
 
     return pil_images
 
-effnet_preprocess = torchvision.transforms.Compose([
-    torchvision.transforms.Resize(768, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
-    torchvision.transforms.CenterCrop(768),
-    torchvision.transforms.Normalize(
-        mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
-    )
-])
 
-transforms = torchvision.transforms.Compose([
-    torchvision.transforms.ToTensor(),
-    torchvision.transforms.Resize(1024),
-    torchvision.transforms.RandomCrop(1024),
-])
+# effnet_preprocess = torchvision.transforms.Compose(
+#     [
+#         torchvision.transforms.Resize(
+#             768, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True
+#         ),
+#         torchvision.transforms.CenterCrop(768),
+#         torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#     ]
+# )
+
+# transforms = torchvision.transforms.Compose(
+#     [
+#         torchvision.transforms.ToTensor(),
+#         torchvision.transforms.Resize(1024),
+#         torchvision.transforms.RandomCrop(1024),
+#     ]
+# )
 device = "cuda"
 dtype = torch.float16
 batch_size = 4
@@ -62,8 +67,10 @@ batch_size = 4
 #     image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
 
 
-prior_pipeline = WuerstchenPriorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenPriorPipeline", torch_dtype=dtype)
-generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenGeneratorPipeline", torch_dtype=dtype)
+prior_pipeline = WuerstchenPriorPipeline.from_pretrained("warp-diffusion/WuerstchenPriorPipeline", torch_dtype=dtype)
+generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained(
+    "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=dtype
+)
 prior_pipeline = prior_pipeline.to("cuda")
 generator_pipeline = generator_pipeline.to("cuda")
 # generator_pipeline.vqgan.to(torch.float16)
@@ -76,19 +83,33 @@ negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly
 # caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
 # caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
 caption = "An armchair in the shape of an avocado"
-clip_tokens = tokenizer([caption] * batch_size, truncation=True, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt")
+clip_tokens = tokenizer(
+    [caption] * batch_size,
+    truncation=True,
+    padding="max_length",
+    max_length=tokenizer.model_max_length,
+    return_tensors="pt",
+)
 clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype).to(device)
-clip_tokens_uncond = tokenizer([negative_prompt] * batch_size, truncation=True, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt")
-clip_text_embeddings_uncond = text_encoder(**clip_tokens_uncond).last_hidden_state.to(dtype).to(device)
+# clip_tokens_uncond = tokenizer(
+#     [negative_prompt] * batch_size,
+#     truncation=True,
+#     padding="max_length",
+#     max_length=tokenizer.model_max_length,
+#     return_tensors="pt",
+# )
+# clip_text_embeddings_uncond = text_encoder(**clip_tokens_uncond).last_hidden_state.to(dtype).to(device)
 
-prior_output = prior_pipeline(caption, guidance_scale=8.0, num_images_per_prompt=batch_size, negative_prompt=negative_prompt)
-generator_output = generator_pipeline(prior_output.image_embeds, clip_text_embeddings, guidance_scale=0.0, output_type="np").images
+prior_output = prior_pipeline(
+    caption, guidance_scale=8.0, num_images_per_prompt=batch_size, negative_prompt=negative_prompt
+)
+generator_output = generator_pipeline(
+    prior_output.image_embeds, clip_text_embeddings, guidance_scale=0.0, output_type="np"
+).images
 images = numpy_to_pil(generator_output)
 os.makedirs("samples", exist_ok=True)
 for i, image in enumerate(images):
     image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
-
-
 
 
 # caption = input("Prompt please: ")
@@ -102,4 +123,3 @@ for i, image in enumerate(images):
 #         image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
 
 #     caption = input("Prompt please: ")
-

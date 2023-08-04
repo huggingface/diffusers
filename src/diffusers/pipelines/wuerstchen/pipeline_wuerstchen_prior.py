@@ -131,6 +131,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask
 
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
@@ -141,8 +142,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+            attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
-        text_encoder_output = self.text_encoder(text_input_ids.to(device))
+        text_encoder_output = self.text_encoder(
+            text_input_ids.to(device),
+            attention_mask=attention_mask.to(device),
+        )
 
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
 
@@ -175,7 +180,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            negative_prompt_embeds_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
+            negative_prompt_embeds_text_encoder_output = self.text_encoder(
+                uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
+            )
 
             uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
