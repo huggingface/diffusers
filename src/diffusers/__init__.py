@@ -38,6 +38,7 @@ else:
     from .models import (
         AsymmetricAutoencoderKL,
         AutoencoderKL,
+        AutoencoderTiny,
         ControlNetModel,
         ModelMixin,
         MultiAdapter,

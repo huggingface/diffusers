@@ -158,16 +158,11 @@ def _get_signature_keys(obj):
 class AutoPipelineForText2Image(ConfigMixin):
     r"""
 
-    AutoPipeline for text-to-image generation.
+    [`AutoPipelineForText2Image`] is a generic pipeline class that instantiates a text-to-image pipeline class. The
+    specific underlying pipeline class is automatically selected from either the
+    [`~AutoPipelineForText2Image.from_pretrained`] or [`~AutoPipelineForText2Image.from_pipe`] methods.
 
-    [`AutoPipelineForText2Image`] is a generic pipeline class that will be instantiated as one of the text-to-image
-    pipeline class in diffusers.
-
-    The pipeline type (for example [`StableDiffusionPipeline`]) is automatically selected when created with the
-    AutoPipelineForText2Image.from_pretrained(pretrained_model_name_or_path) or
-    AutoPipelineForText2Image.from_pipe(pipeline) class methods .
-
-    This class cannot be instantiated using __init__() (throws an error).
+    This class cannot be instantiated using `__init__()` (throws an error).
 
     Class attributes:
 
@@ -294,10 +289,10 @@ class AutoPipelineForText2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipeline = AutoPipelineForTextToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> print(pipeline.__class__)
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> image = pipeline(prompt).images[0]
         ```
         """
         config = cls.load_config(pretrained_model_or_path)
@@ -328,13 +323,14 @@ class AutoPipelineForText2Image(ConfigMixin):
                 an instantiated `DiffusionPipeline` object
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForImageToImage
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
-        >>> pipe_t2i = AutoPipelineForTextToImage.from_pipe(pipe_t2i)
+        >>> pipe_t2i = AutoPipelineForText2Image.from_pipe(pipe_i2i)
+        >>> image = pipe_t2i(prompt).images[0]
         ```
         """
 
@@ -401,16 +397,11 @@ class AutoPipelineForText2Image(ConfigMixin):
 class AutoPipelineForImage2Image(ConfigMixin):
     r"""
 
-    AutoPipeline for image-to-image generation.
+    [`AutoPipelineForImage2Image`] is a generic pipeline class that instantiates an image-to-image pipeline class. The
+    specific underlying pipeline class is automatically selected from either the
+    [`~AutoPipelineForImage2Image.from_pretrained`] or [`~AutoPipelineForImage2Image.from_pipe`] methods.
 
-    [`AutoPipelineForImage2Image`] is a generic pipeline class that will be instantiated as one of the image-to-image
-    pipeline classes in diffusers.
-
-    The pipeline type (for example [`StableDiffusionImg2ImgPipeline`]) is automatically selected when created with the
-    `AutoPipelineForImage2Image.from_pretrained(pretrained_model_name_or_path)` or
-    `AutoPipelineForImage2Image.from_pipe(pipeline)` class methods.
-
-    This class cannot be instantiated using __init__() (throws an error).
+    This class cannot be instantiated using `__init__()` (throws an error).
 
     Class attributes:
 
@@ -438,7 +429,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
             2. Find the image-to-image pipeline linked to the pipeline class using pattern matching on pipeline class
                name.
 
-        If a `controlnet` argument is passed, it will instantiate a StableDiffusionControlNetImg2ImgPipeline object.
+        If a `controlnet` argument is passed, it will instantiate a [`StableDiffusionControlNetImg2ImgPipeline`]
+        object.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
@@ -537,10 +529,10 @@ class AutoPipelineForImage2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForImage2Image
 
-        >>> pipeline = AutoPipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> print(pipeline.__class__)
+        >>> pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> image = pipeline(prompt, image).images[0]
         ```
         """
         config = cls.load_config(pretrained_model_or_path)
@@ -573,13 +565,14 @@ class AutoPipelineForImage2Image(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForImageToImage
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
-        >>> pipe_i2i = AutoPipelineForImageToImage.from_pipe(pipe_t2i)
+        >>> pipe_i2i = AutoPipelineForImage2Image.from_pipe(pipe_t2i)
+        >>> image = pipe_i2i(prompt, image).images[0]
         ```
         """
 
@@ -646,16 +639,11 @@ class AutoPipelineForImage2Image(ConfigMixin):
 class AutoPipelineForInpainting(ConfigMixin):
     r"""
 
-    AutoPipeline for inpainting generation.
+    [`AutoPipelineForInpainting`] is a generic pipeline class that instantiates an inpainting pipeline class. The
+    specific underlying pipeline class is automatically selected from either the
+    [`~AutoPipelineForInpainting.from_pretrained`] or [`~AutoPipelineForInpainting.from_pipe`] methods.
 
-    [`AutoPipelineForInpainting`] is a generic pipeline class that will be instantiated as one of the inpainting
-    pipeline class in diffusers.
-
-    The pipeline type (for example [`IFInpaintingPipeline`]) is automatically selected when created with the
-    AutoPipelineForInpainting.from_pretrained(pretrained_model_name_or_path) or
-    AutoPipelineForInpainting.from_pipe(pipeline) class methods .
-
-    This class cannot be instantiated using __init__() (throws an error).
+    This class cannot be instantiated using `__init__()` (throws an error).
 
     Class attributes:
 
@@ -682,7 +670,8 @@ class AutoPipelineForInpainting(ConfigMixin):
                config object
             2. Find the inpainting pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
-        If a `controlnet` argument is passed, it will instantiate a StableDiffusionControlNetInpaintPipeline object.
+        If a `controlnet` argument is passed, it will instantiate a [`StableDiffusionControlNetInpaintPipeline`]
+        object.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
@@ -781,10 +770,10 @@ class AutoPipelineForInpainting(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage
+        >>> from diffusers import AutoPipelineForInpainting
 
-        >>> pipeline = AutoPipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> print(pipeline.__class__)
+        >>> pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
         config = cls.load_config(pretrained_model_or_path)
@@ -817,13 +806,14 @@ class AutoPipelineForInpainting(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import AutoPipelineForTextToImage, AutoPipelineForInpainting
+        >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForInpainting
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
         ...     "DeepFloyd/IF-I-XL-v1.0", requires_safety_checker=False
         ... )
 
         >>> pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_t2i)
+        >>> image = pipe_inpaint(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
         original_config = dict(pipeline.config)

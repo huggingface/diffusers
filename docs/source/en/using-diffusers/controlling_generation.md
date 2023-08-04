@@ -40,6 +40,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 12. [Custom Diffusion](#custom-diffusion)
 13. [Model Editing](#model-editing)
 14. [DiffEdit](#diffedit)
+15. [T2I-Adapter](#t2i-adapter)
 
 For convenience, we provide a table to denote which methods are inference-only and which require fine-tuning/training.
 
