@@ -1646,13 +1646,13 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import PNDMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
 
 # Use the PNDMScheduler scheduler here instead
 scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
 
 
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
     revision='fp16',
     torch_dtype=torch.float16,
