@@ -144,10 +144,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
             attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
-        text_encoder_output = self.text_encoder(
-            text_input_ids.to(device),
-            attention_mask=attention_mask.to(device),
-        )
+        text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
 
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
 
