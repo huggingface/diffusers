@@ -65,12 +65,6 @@ snapshot_download(
 )
 ```
 
-Since SDXL 0.9 weights are gated, we need to be authenticated to be able to use them. So, let's run:
-
-```bash
-huggingface-cli login
-```
-
 This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform. 
 
 Now, we can launch training using:
