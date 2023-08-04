@@ -51,15 +51,16 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
         do_normalize: bool = True,
+        do_binarize: bool = False,
         do_convert_rgb: bool = False,
         do_convert_grayscale: bool = False,
     ):
         super().__init__()
         if do_convert_rgb and do_convert_grayscale:
-            warnings.warn(
-                "`do_convert_rgb = True` will be ignored since `do_convert_grayscale` is also set to be `True`,"
-                " if you intended to convert the image into RGB format, please set `do_convert_grayscale =False`.",
-                FutureWarning,
+            raise ValueError(
+                "`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,"
+                " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
+                " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
             )
             self.config.do_convert_rgb = False
 
@@ -197,6 +198,14 @@ class VaeImageProcessor(ConfigMixin):
         image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
         return image
 
+    def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        create a mask
+        """
+        image[image < 0.5] = 0
+        image[image >= 0.5] = 1
+        return image
+
     def preprocess(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
@@ -286,6 +295,9 @@ class VaeImageProcessor(ConfigMixin):
 
         if do_normalize:
             image = self.normalize(image)
+
+        if self.config.do_binarize:
+            image = self.binarize(image)
 
         return image
 
