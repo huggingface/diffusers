@@ -11,25 +11,28 @@ from packaging import version
 from torch.onnx import export
 from polygraphy.backend.onnx.loader import fold_constants
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, StableDiffusionControlNetImg2ImgPipeline, ControlNetModel
+from diffusers import (
+    OnnxRuntimeModel,
+    OnnxStableDiffusionPipeline,
+    StableDiffusionControlNetImg2ImgPipeline,
+    ControlNetModel,
+)
 
 
 is_torch_less_than_1_11 = version.parse(version.parse(torch.__version__).base_version) < version.parse("1.11")
 is_torch_2_0_1 = version.parse(version.parse(torch.__version__).base_version) == version.parse("2.0.1")
-        
 
-class Optimizer():
-    def __init__(
-        self,
-        onnx_graph,
-        verbose=False
-    ):
+
+class Optimizer:
+    def __init__(self, onnx_graph, verbose=False):
         self.graph = gs.import_onnx(onnx_graph)
         self.verbose = verbose
 
     def info(self, prefix):
         if self.verbose:
-            print(f"{prefix} .. {len(self.graph.nodes)} nodes, {len(self.graph.tensors().keys())} tensors, {len(self.graph.inputs)} inputs, {len(self.graph.outputs)} outputs")
+            print(
+                f"{prefix} .. {len(self.graph.nodes)} nodes, {len(self.graph.tensors().keys())} tensors, {len(self.graph.inputs)} inputs, {len(self.graph.outputs)} outputs"
+            )
 
     def cleanup(self, return_onnx=False):
         self.graph.cleanup().toposort()
@@ -58,41 +61,43 @@ class Optimizer():
         self.graph = gs.import_onnx(onnx_graph)
         if return_onnx:
             return onnx_graph
-        
+
 
 def optimize(onnx_graph, name, verbose):
     opt = Optimizer(onnx_graph, verbose=verbose)
-    opt.info(name + ': original')
+    opt.info(name + ": original")
     opt.cleanup()
-    opt.info(name + ': cleanup')
+    opt.info(name + ": cleanup")
     opt.fold_constants()
-    opt.info(name + ': fold constants')
+    opt.info(name + ": fold constants")
     # opt.infer_shapes()
     # opt.info(name + ': shape inference')
     onnx_opt_graph = opt.cleanup(return_onnx=True)
-    opt.info(name + ': finished')
+    opt.info(name + ": finished")
     return onnx_opt_graph
-        
+
 
 class UNet2DConditionControlNetModel(torch.nn.Module):
     def __init__(
-            self, 
-            unet, 
-            controlnets: ControlNetModel,
+        self,
+        unet,
+        controlnets: ControlNetModel,
     ):
         super().__init__()
         self.unet = unet
         self.controlnets = controlnets
-        
+
     def forward(
-            self, 
-            sample, 
-            timestep, 
-            encoder_hidden_states, 
-            controlnet_conds, 
-            controlnet_scales,
+        self,
+        sample,
+        timestep,
+        encoder_hidden_states,
+        controlnet_conds,
+        controlnet_scales,
     ):
-        for i, (controlnet_cond, conditioning_scale, controlnet) in enumerate(zip(controlnet_conds, controlnet_scales, self.controlnets)):
+        for i, (controlnet_cond, conditioning_scale, controlnet) in enumerate(
+            zip(controlnet_conds, controlnet_scales, self.controlnets)
+        ):
             down_samples, mid_sample = controlnet(
                 sample,
                 timestep,
@@ -101,7 +106,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
                 conditioning_scale=conditioning_scale,
                 return_dict=False,
             )
-            
+
             # merge samples
             if i == 0:
                 down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
@@ -111,7 +116,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
                     for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
                 ]
                 mid_block_res_sample += mid_sample
-        
+
         noise_pred = self.unet(
             sample,
             timestep,
@@ -121,7 +126,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
             return_dict=False,
         )[0]
         return noise_pred
-    
+
 
 def onnx_export(
     model,
@@ -180,8 +185,10 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         if is_torch_2_0_1:
             controlnet.set_attn_processor(AttnProcessor())
         controlnets.append(controlnet)
-    
-    pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(model_path, controlnet=controlnets, torch_dtype=dtype).to(device)
+
+    pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+        model_path, controlnet=controlnets, torch_dtype=dtype
+    ).to(device)
     output_path = Path(output_path)
     if is_torch_2_0_1:
         pipeline.unet.set_attn_processor(AttnProcessor())
@@ -222,7 +229,7 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         unet_controlnet,
         model_args=(
             torch.randn(2, unet_in_channels, unet_sample_size, unet_sample_size).to(device=device, dtype=dtype),
-            torch.tensor([1.]).to(device=device, dtype=dtype),
+            torch.tensor([1.0]).to(device=device, dtype=dtype),
             torch.randn(2, num_tokens, text_hidden_size).to(device=device, dtype=dtype),
             torch.randn(len(controlnets), 2, 3, img_size, img_size).to(device=device, dtype=dtype),
             torch.randn(len(controlnets), 1).to(device=device, dtype=dtype),
@@ -230,7 +237,7 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         output_path=unet_path,
         ordered_input_names=[
             "sample",
-            "timestep", 
+            "timestep",
             "encoder_hidden_states",
             "controlnet_conds",
             "conditioning_scales",

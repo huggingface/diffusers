@@ -8,7 +8,6 @@ import pycuda.autoinit
 
 
 def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
-    
     # UNET
     unet_in_channels = 4
     unet_sample_size = 64
@@ -32,12 +31,12 @@ def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
     for idx in range(onnx_parser.num_errors):
         print(onnx_parser.get_error(idx))
     if not parse_success:
-        sys.exit('ONNX model parsing failed')
+        sys.exit("ONNX model parsing failed")
     print("Load Onnx model done")
 
-    profile = TRT_BUILDER.create_optimization_profile() 
-    profile.set_shape("sample", latents_shape, latents_shape, latents_shape) 
-    profile.set_shape("encoder_hidden_states", embed_shape, embed_shape, embed_shape) 
+    profile = TRT_BUILDER.create_optimization_profile()
+    profile.set_shape("sample", latents_shape, latents_shape, latents_shape)
+    profile.set_shape("encoder_hidden_states", embed_shape, embed_shape, embed_shape)
     profile.set_shape("controlnet_conds", controlnet_conds_shape, controlnet_conds_shape, controlnet_conds_shape)
 
     config = TRT_BUILDER.create_builder_config()
@@ -52,9 +51,9 @@ def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
     print("Succeeded building engine")
 
     engine = TRT_RUNTIME.deserialize_cuda_engine(plan)
-            
+
     ## save TRT engine
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         f.write(engine.serialize())
 
 
