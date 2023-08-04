@@ -23,7 +23,6 @@ import torch
 from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
 
-DIFFUSERS_PATH = "src/diffusers"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -148,14 +147,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.pipeline_class_name is not None:
-        spec = importlib.util.spec_from_file_location(
-            "diffusers",
-            os.path.join(DIFFUSERS_PATH, "__init__.py"),
-            submodule_search_locations=[DIFFUSERS_PATH],
-        )
-
-        diffusers_module = spec.loader.load_module()
-        pipeline_class = getattr(diffusers_module, args.pipeline_class_name)
+        library = importlib.import_module("diffusers")
+        class_obj = getattr(library, args.pipeline_class_name)
     else:
         pipeline_class = None
 
