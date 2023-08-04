@@ -4,7 +4,7 @@ import sys
 import tensorrt as trt
 
 
-def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
+def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: bool = False):
     # UNET
     unet_in_channels = 4
     unet_sample_size = 64
@@ -15,7 +15,7 @@ def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
 
     latents_shape = (2 * batch_size, unet_in_channels, unet_sample_size, unet_sample_size)
     embed_shape = (2 * batch_size, num_tokens, text_hidden_size)
-    controlnet_conds_shape = (1, 2 * batch_size, 3, img_size, img_size)
+    controlnet_conds_shape = (num_controlnet, 2 * batch_size, 3, img_size, img_size)
 
     TRT_LOGGER = trt.Logger(trt.Logger.VERBOSE)
     TRT_BUILDER = trt.Builder(TRT_LOGGER)
@@ -64,10 +64,12 @@ if __name__ == "__main__":
         help="Path to the onnx checkpoint to convert",
     )
 
+    parser.add_argument("--num_controlnet", type=int)
+
     parser.add_argument("--output_path", type=str, required=True, help="Path to the output model.")
 
     parser.add_argument("--fp16", action="store_true", default=False, help="Export the models in `float16` mode")
 
     args = parser.parse_args()
 
-    convert_models(args.onnx_path, args.output_path, args.fp16)
+    convert_models(args.onnx_path, args.num_controlnet, args.output_path, args.fp16)
