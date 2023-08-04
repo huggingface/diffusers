@@ -1054,7 +1054,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
                     return_image=True,
                 ),
             )
-            # print(mask)
+
             mask = torch.nn.functional.interpolate(mask, size=(latent_height, latent_width))
             mask = torch.cat([mask] * 2)
 
