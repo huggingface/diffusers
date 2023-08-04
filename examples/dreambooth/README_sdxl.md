@@ -115,6 +115,7 @@ By making use of [`gradient_checkpointing`](https://pytorch.org/docs/stable/chec
 +  --enable_xformers_memory_efficient_attention \
 +  --gradient_checkpointing \
 +  --use_8bit_adam \
++ --mixed_precision="fp16" \
 ```
 
 and making sure that you have the following libraries installed:
