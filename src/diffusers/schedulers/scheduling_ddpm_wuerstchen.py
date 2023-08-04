@@ -171,6 +171,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
+        # prev_t=None,
         return_dict: bool = True,
     ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
         """
@@ -194,16 +195,21 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         dtype = model_output.dtype
         device = model_output.device
         t = timestep
+
         prev_t = self.previous_timestep(t)
 
         alpha_cumprod = self._alpha_cumprod(t, device).view(t.size(0), *[1 for _ in sample.shape[1:]])
         alpha_cumprod_prev = self._alpha_cumprod(prev_t, device).view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
         alpha = (alpha_cumprod / alpha_cumprod_prev)
+        # print(f"scheduler: {alpha}")
 
         mu = (1.0 / alpha).sqrt() * (sample - (1 - alpha) * model_output / (1 - alpha_cumprod).sqrt())
+        # print(f"scheduler: {mu.mean()}")
+        # torch.manual_seed(0)
         std_noise = randn_tensor(mu.shape, generator=generator, device=model_output.device, dtype=model_output.dtype)
         # std_noise = torch.randn_like(mu)
         std = ((1 - alpha) * (1. - alpha_cumprod_prev) / (1. - alpha_cumprod)).sqrt() * std_noise
+        # print(f"scheduler: {std.mean()}")
         pred = mu + std * (prev_t != 0).float().view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
 
         if not return_dict:
@@ -247,4 +253,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         # print(self.timesteps[index + 1])
         prev_t = self.timesteps[index + 1][None].expand(timestep.shape[0])
         # print(prev_t.shape, prev_t)
+        # print(timestep)
+        # print(prev_t)
+        # print("======== ===================================================================")
         return prev_t
