@@ -20,7 +20,6 @@ from torch import nn
 from ..utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
-from .cross_attention import CrossAttention
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
 
@@ -466,7 +465,7 @@ class BasicSparseTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
 
         # Temp-Attn
-        self.attn_temp = CrossAttention(
+        self.attn_temp = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
