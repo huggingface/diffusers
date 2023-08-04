@@ -16,7 +16,11 @@ from typing import Optional
 
 import torch.nn.functional as F
 from torch import nn
+import torch
+from ..utils import logging
 
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class LoRALinearLayer(nn.Module):
     def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
@@ -115,6 +119,26 @@ class LoRACompatibleLinear(nn.Linear):
 
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
+
+    def _fuse_lora(self):
+        if self.lora_layer is None:
+            return
+
+        dtype, device = self.weight.data.dtype, self.weight.data.device
+        logger.info(f"Fusing LoRA weights for {self.__class__}")
+
+        w_orig = self.weight.data.float()
+        w_up = self.lora_layer.up.weight.data.float()
+
+        w_down = self.lora_layer.down.weight.data.float()
+        if self.lora_layer.network_alpha is not None:
+            w_up = w_up * self.lora_layer.network_alpha / self.lora_layer.rank
+
+        fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
+        self.weight.data = fused_weight.to(device=device, dtype=dtype)
+
+        # we can drop the lora layer now
+        self.lora_layer = None
 
     def forward(self, x):
         if self.lora_layer is None:
