@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import nightly, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
@@ -99,7 +99,10 @@ class PipelineFastTests(unittest.TestCase):
     @slow
     def test_audio_diffusion(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        mel = Mel()
+        mel = Mel(
+            x_res=self.dummy_unet.config.sample_size[1],
+            y_res=self.dummy_unet.config.sample_size[0],
+        )
 
         scheduler = DDPMScheduler()
         pipe = AudioDiffusionPipeline(vqvae=None, unet=self.dummy_unet, mel=mel, scheduler=scheduler)
@@ -126,6 +129,11 @@ class PipelineFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() == 0
+
+        mel = Mel(
+            x_res=self.dummy_vqvae_and_unet[0].config.sample_size[1],
+            y_res=self.dummy_vqvae_and_unet[0].config.sample_size[0],
+        )
 
         scheduler = DDIMScheduler()
         dummy_vqvae_and_unet = self.dummy_vqvae_and_unet
@@ -154,18 +162,20 @@ class PipelineFastTests(unittest.TestCase):
         pipe = AudioDiffusionPipeline(
             vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_unet_condition, mel=mel, scheduler=scheduler
         )
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         np.random.seed(0)
         encoding = torch.rand((1, 1, 10))
         output = pipe(generator=generator, encoding=encoding)
         image = output.images[0]
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
-        expected_slice = np.array([120, 139, 147, 123, 124, 96, 115, 121, 126, 144])
+        expected_slice = np.array([107, 103, 120, 127, 142, 122, 113, 122, 97, 111])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
 
-@slow
+@nightly
 @require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

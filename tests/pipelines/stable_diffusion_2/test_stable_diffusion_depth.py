@@ -57,14 +57,16 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class StableDiffusionDepth2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionDepth2ImgPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
@@ -415,6 +417,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

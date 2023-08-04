@@ -14,9 +14,10 @@ import torch
 import diffusers
 from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
 
 def to_np(tensor):
@@ -24,6 +25,11 @@ def to_np(tensor):
         tensor = tensor.detach().cpu().numpy()
 
     return tensor
+
+
+def check_same_shape(tensor_list):
+    shapes = [tensor.shape for tensor in tensor_list]
+    return all(shape == shapes[0] for shape in shapes[1:])
 
 
 class PipelineLatentTesterMixin:
@@ -156,6 +162,46 @@ class PipelineLatentTesterMixin:
 
 
 @require_torch
+class PipelineKarrasSchedulerTesterMixin:
+    """
+    This mixin is designed to be used with unittest.TestCase classes.
+    It provides a set of common tests for each PyTorch pipeline that makes use of KarrasDiffusionSchedulers
+    equivalence of dict and tuple outputs, etc.
+    """
+
+    def test_karras_schedulers_shape(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        # make sure that PNDM does not need warm-up
+        pipe.scheduler.register_to_config(skip_prk_steps=True)
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 2
+
+        if "strength" in inputs:
+            inputs["num_inference_steps"] = 4
+            inputs["strength"] = 0.5
+
+        outputs = []
+        for scheduler_enum in KarrasDiffusionSchedulers:
+            if "KDPM2" in scheduler_enum.name:
+                inputs["num_inference_steps"] = 5
+
+            scheduler_cls = getattr(diffusers, scheduler_enum.name)
+            pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
+            output = pipe(**inputs)[0]
+            outputs.append(output)
+
+            if "KDPM2" in scheduler_enum.name:
+                inputs["num_inference_steps"] = 2
+
+        assert check_same_shape(outputs)
+
+
+@require_torch
 class PipelineTesterMixin:
     """
     This mixin is designed to be used with unittest.TestCase classes.
@@ -181,7 +227,7 @@ class PipelineTesterMixin:
 
     # set these parameters to False in the child class if the pipeline does not support the corresponding functionality
     test_attention_slicing = True
-    test_cpu_offload = True
+
     test_xformers_attention = True
 
     def get_generator(self, seed):
@@ -252,9 +298,19 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+            with CaptureLogger(logger) as cap_logger:
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+            for name in pipe_loaded.components.keys():
+                if name not in pipe_loaded._optional_components:
+                    assert name in str(cap_logger)
+
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -331,7 +387,7 @@ class PipelineTesterMixin:
                         batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
 
                         # make last batch super long
-                        batched_inputs[name][-1] = 2000 * "very long"
+                        batched_inputs[name][-1] = 100 * "very long"
                     # or else we have images
                     else:
                         batched_inputs[name] = batch_size * [value]
@@ -406,7 +462,7 @@ class PipelineTesterMixin:
                     batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
 
                     # make last batch super long
-                    batched_inputs[name][-1] = 2000 * "very long"
+                    batched_inputs[name][-1] = 100 * "very long"
                 # or else we have images
                 else:
                     batched_inputs[name] = batch_size * [value]
@@ -472,6 +528,7 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        components = self.get_dummy_components()
         pipe_fp16 = self.pipeline_class(**components)
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
@@ -615,9 +672,6 @@ class PipelineTesterMixin:
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
-        if not self.test_cpu_offload:
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -640,7 +694,9 @@ class PipelineTesterMixin:
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass()
 
-    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True, expected_max_diff=1e-4):
+    def _test_xformers_attention_forwardGenerator_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
+    ):
         if not self.test_xformers_attention:
             return
 
@@ -651,16 +707,23 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         output_without_offload = pipe(**inputs)[0]
+        output_without_offload = (
+            output_without_offload.cpu() if torch.is_tensor(output_without_offload) else output_without_offload
+        )
 
         pipe.enable_xformers_memory_efficient_attention()
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
+        output_with_offload = (
+            output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
+        )
 
         if test_max_difference:
             max_diff = np.abs(output_with_offload - output_without_offload).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
-        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
@@ -709,6 +772,27 @@ class PipelineTesterMixin:
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg.shape == out_no_cfg.shape
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

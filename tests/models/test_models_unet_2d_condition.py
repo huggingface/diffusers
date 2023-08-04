@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import os
 import tempfile
@@ -36,7 +37,7 @@ from diffusers.utils import (
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 logger = logging.get_logger(__name__)
@@ -120,8 +121,9 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DConditionModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -780,6 +782,22 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_pickle(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+        sample_copy = copy.copy(sample)
+
+        assert (sample - sample_copy).abs().max() < 1e-4
 
 
 @slow

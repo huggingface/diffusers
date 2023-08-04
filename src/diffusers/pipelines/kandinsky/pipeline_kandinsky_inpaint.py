@@ -13,20 +13,20 @@
 # limitations under the License.
 
 from copy import deepcopy
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
 import torch.nn.functional as F
+from packaging import version
 from PIL import Image
 from transformers import (
     XLMRobertaTokenizer,
 )
 
+from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -35,6 +35,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
@@ -66,8 +67,8 @@ EXAMPLE_DOC_STRING = """
         ...     "/kandinsky/cat.png"
         ... )
 
-        >>> mask = np.ones((768, 768), dtype=np.float32)
-        >>> mask[:250, 250:-250] = 0
+        >>> mask = np.zeros((768, 768), dtype=np.float32)
+        >>> mask[:250, 250:-250] = 1
 
         >>> out = pipe(
         ...     prompt,
@@ -233,6 +234,8 @@ def prepare_mask_and_masked_image(image, mask, height, width):
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
+    mask = 1 - mask
+
     return mask, image
 
 
@@ -274,7 +277,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
+        self._warn_has_been_called = False
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -388,28 +393,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.unet,
-            self.text_encoder,
-            self.movq,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -432,30 +415,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.movq]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -475,6 +436,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -526,6 +489,12 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -534,6 +503,18 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
+        if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
+            "0.22.0.dev0"
+        ):
+            logger.warn(
+                "Please note that the expected format of `mask_image` has recently been changed. "
+                "Before diffusers == 0.19.0, Kandinsky Inpainting pipelines repainted black pixels and preserved black pixels. "
+                "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
+                "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
+                "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
+                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.22.0"
+            )
+            self._warn_has_been_called = True
 
         # Define call parameters
         if isinstance(prompt, str):
@@ -561,9 +542,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=prompt_embeds.dtype, device=device
-        )
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=prompt_embeds.dtype, device=device
+            )
 
         # preprocess image and mask
         mask_image, image = prepare_mask_and_masked_image(image, mask_image, height, width)
@@ -652,6 +633,9 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 latents,
                 generator=generator,
             ).prev_sample
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]

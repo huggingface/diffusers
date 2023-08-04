@@ -21,15 +21,16 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
-from ...pipelines import DiffusionPipeline
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
     is_accelerate_available,
+    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -147,6 +148,8 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
+    _exclude_from_cpu_offload = ["prior"]
+
     def __init__(
         self,
         prior: PriorTransformer,
@@ -178,7 +181,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         negative_prior_prompt: Optional[str] = None,
-        negative_prompt: Union[str] = "",
+        negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
     ):
@@ -192,7 +195,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 list of weights for each condition in `images_and_prompts`
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -274,6 +277,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         return KandinskyPriorPipelineOutput(image_embeds=image_emb, negative_image_embeds=zero_image_emb)
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -293,45 +297,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         zero_image_emb = self.image_encoder(zero_img)["image_embeds"]
         zero_image_emb = zero_image_emb.repeat(batch_size, 1)
         return zero_image_emb
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.image_encoder,
-            self.text_encoder,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.text_encoder, "_hf_hook"):
-            return self.device
-        for module in self.text_encoder.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def _encode_prompt(
         self,
@@ -430,6 +395,35 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.prior]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.prior_hook = hook
+
+        _, hook = cpu_offload_with_hook(self.image_encoder, device, prev_module_hook=self.prior_hook)
+
+        self.final_offload_hook = hook
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -441,7 +435,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: Optional[str] = "pt",
         return_dict: bool = True,
     ):
         """
@@ -455,7 +449,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -562,8 +556,14 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         # if negative prompt has been defined, we retrieve split the image embedding into two
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
+
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.final_offload_hook.offload()
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
+
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.prior_hook.offload()
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")

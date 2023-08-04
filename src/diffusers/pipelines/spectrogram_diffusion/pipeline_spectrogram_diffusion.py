@@ -38,6 +38,21 @@ TARGET_FEATURE_LENGTH = 256
 
 
 class SpectrogramDiffusionPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for unconditional audio generation.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    Args:
+        notes_encoder ([`SpectrogramNotesEncoder`]):
+        continuous_encoder ([`SpectrogramContEncoder`]):
+        decoder ([`T5FilmDecoder`]):
+            A [`T5FilmDecoder`] to denoise the encoded audio latents.
+        scheduler ([`DDPMScheduler`]):
+            A scheduler to be used in combination with `decoder` to denoise the encoded audio latents.
+        melgan ([`OnnxRuntimeModel`]):
+    """
     _optional_components = ["melgan"]
 
     def __init__(
@@ -127,6 +142,48 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+        r"""
+        The call function to the pipeline for generation.
+
+        Args:
+            input_tokens (`List[List[int]]`):
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            num_inference_steps (`int`, *optional*, defaults to 100):
+                The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
+                expense of slower inference.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
+            output_type (`str`, *optional*, defaults to `"numpy"`):
+                The output format of the generated audio.
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
+
+        Example:
+
+        ```py
+        >>> from diffusers import SpectrogramDiffusionPipeline, MidiProcessor
+
+        >>> pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
+        >>> pipe = pipe.to("cuda")
+        >>> processor = MidiProcessor()
+
+        >>> # Download MIDI from: wget http://www.piano-midi.de/midis/beethoven/beethoven_hammerklavier_2.mid
+        >>> output = pipe(processor("beethoven_hammerklavier_2.mid"))
+
+        >>> audio = output.audios[0]
+        ```
+
+        Returns:
+            [`pipelines.AudioPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`pipelines.AudioPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated audio.
+        """
 
         pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims], dtype=np.float32)
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
