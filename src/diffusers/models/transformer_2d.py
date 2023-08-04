@@ -204,7 +204,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
-        self.gradient_checkpointing = True
+        self.gradient_checkpointing = False
 
     def forward(
         self,
