@@ -101,7 +101,7 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
@@ -190,7 +190,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
@@ -207,7 +207,7 @@ def get_mid_block(
     resnet_eps,
     resnet_act_fn,
     resnet_groups,
-    attn_num_head_channels,
+    num_attention_heads,
     output_scale_factor,
     cross_attention_dim,
     dual_cross_attention=False,
@@ -223,7 +223,7 @@ def get_mid_block(
             resnet_act_fn=resnet_act_fn,
             output_scale_factor=output_scale_factor,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
@@ -238,7 +238,7 @@ def get_mid_block(
             resnet_act_fn=resnet_act_fn,
             output_scale_factor=output_scale_factor,
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attn_num_head_channels,
+            num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
@@ -940,7 +940,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -953,7 +953,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -976,8 +976,8 @@ class CrossAttnUpBlockInflated3D(nn.Module):
 
             attentions.append(
                 Transformer3DModel(
-                    num_attention_heads=attn_num_head_channels,
-                    attention_head_dim=out_channels // attn_num_head_channels,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=out_channels // num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -1045,7 +1045,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         downsample_padding=1,
@@ -1059,7 +1059,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1080,8 +1080,8 @@ class CrossAttnDownBlockInflated3D(nn.Module):
 
             attentions.append(
                 Transformer3DModel(
-                    num_attention_heads=attn_num_head_channels,
-                    attention_head_dim=out_channels // attn_num_head_channels,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=out_channels // num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -1151,7 +1151,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attn_num_head_channels=1,
+        num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         use_linear_projection=True,
@@ -1160,7 +1160,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         super().__init__()
 
         self.has_cross_attention = True
-        self.attn_num_head_channels = attn_num_head_channels
+        self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -1184,8 +1184,8 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         for _ in range(num_layers):
             attentions.append(
                 Transformer3DModel(
-                    attn_num_head_channels,
-                    in_channels // attn_num_head_channels,
+                    num_attention_heads,
+                    in_channels // num_attention_heads,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
