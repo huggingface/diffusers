@@ -188,7 +188,11 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
-            effnet=torch.cat([predicted_image_embeddings, torch.zeros_like(predicted_image_embeddings)]) if do_classifier_free_guidance else predicted_image_embeddings
+            effnet = (
+                torch.cat([predicted_image_embeddings, torch.zeros_like(predicted_image_embeddings)])
+                if do_classifier_free_guidance
+                else predicted_image_embeddings
+            )
             predicted_latents = self.generator(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
@@ -199,9 +203,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
             if do_classifier_free_guidance:
                 predicted_latents_text, predicted_latents_uncond = predicted_latents.chunk(2)
-                predicted_latents = torch.lerp(
-                    predicted_latents_uncond, predicted_latents_text, guidance_scale
-                )
+                predicted_latents = torch.lerp(predicted_latents_uncond, predicted_latents_text, guidance_scale)
 
             latents = self.scheduler.step(
                 model_output=predicted_latents,
