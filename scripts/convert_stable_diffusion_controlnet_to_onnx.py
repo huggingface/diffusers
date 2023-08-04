@@ -24,7 +24,7 @@ import torch
 from packaging import version
 from torch.onnx import export
 from polygraphy.backend.onnx.loader import fold_constants
-from diffusers.models.cross_attention import CrossAttnProcessor
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, StableDiffusionControlNetImg2ImgPipeline, ControlNetModel
 
 
@@ -192,14 +192,14 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
     for path in controlnet_path:
         controlnet = ControlNetModel.from_pretrained(path, torch_dtype=dtype).to(device)
         if is_torch_2_0_1:
-            controlnet.set_attn_processor(CrossAttnProcessor())
+            controlnet.set_attn_processor(AttnProcessor())
         controlnets.append(controlnet)
     
     pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(model_path, controlnet=controlnets, torch_dtype=dtype).to(device)
     output_path = Path(output_path)
     if is_torch_2_0_1:
-        pipeline.unet.set_attn_processor(CrossAttnProcessor())
-        pipeline.vae.set_attn_processor(CrossAttnProcessor())
+        pipeline.unet.set_attn_processor(AttnProcessor())
+        pipeline.vae.set_attn_processor(AttnProcessor())
 
     # TEXT ENCODER
     num_tokens = pipeline.text_encoder.config.max_position_embeddings
