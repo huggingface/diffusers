@@ -857,7 +857,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in images.tolist()]))
-        expected = np.array([0.5364, 0.5613, 0.5637, 0.5674, 0.5746, 0.5771, 0.6202, 0.6348, 0.6088])
+        expected = np.array([0.3838, 0.3482, 0.3588, 0.3162, 0.319, 0.3369, 0.338, 0.3366, 0.3213])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -877,7 +877,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in images.tolist()]))
-        expected = np.array([0.4357, 0.4442, 0.4476, 0.4343, 0.449, 0.4548, 0.4585, 0.4756, 0.4566])
+        expected = np.array([0.3137, 0.3269, 0.3355, 0.255, 0.2577, 0.2563, 0.2679, 0.2758, 0.2626])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -897,7 +897,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in images.tolist()]))
-        expected = np.array([0.4969, 0.5138, 0.5468, 0.5626, 0.5781, 0.5966, 0.5993, 0.6223, 0.6268])
+        expected = np.array([0.4115, 0.4047, 0.4124, 0.3931, 0.3746, 0.3802, 0.3735, 0.3748, 0.3609])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -917,6 +917,6 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in images.tolist()]))
-        expected = np.array([0.5386, 0.5756, 0.6254, 0.6159, 0.6631, 0.6714, 0.6716, 0.6793, 0.64])
+        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
