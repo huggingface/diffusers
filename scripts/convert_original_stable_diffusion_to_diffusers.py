@@ -15,11 +15,15 @@
 """ Conversion script for the LDM checkpoints. """
 
 import argparse
+import importlib
+import os
 
 import torch
 
 from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
+
+DIFFUSERS_PATH = "src/diffusers"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -133,7 +137,27 @@ if __name__ == "__main__":
         required=False,
         help="Set to a path, hub id to an already converted vae to not convert it again.",
     )
+    parser.add_argument(
+        "--pipeline_class_name",
+        type=str,
+        default=None,
+        required=False,
+        help="Specify the pipeline class name",
+    )
+
     args = parser.parse_args()
+
+    if args.pipeline_class_name is not None:
+        spec = importlib.util.spec_from_file_location(
+            "diffusers",
+            os.path.join(DIFFUSERS_PATH, "__init__.py"),
+            submodule_search_locations=[DIFFUSERS_PATH],
+        )
+
+        diffusers_module = spec.loader.load_module()
+        pipeline_class = getattr(diffusers_module, args.pipeline_class_name)
+    else:
+        pipeline_class = None
 
     pipe = download_from_original_stable_diffusion_ckpt(
         checkpoint_path=args.checkpoint_path,
@@ -152,6 +176,7 @@ if __name__ == "__main__":
         clip_stats_path=args.clip_stats_path,
         controlnet=args.controlnet,
         vae_path=args.vae_path,
+        pipeline_class=pipeline_class,
     )
 
     if args.half:
