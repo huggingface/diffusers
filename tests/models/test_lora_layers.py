@@ -845,8 +845,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
-        ).to(torch_device)
+            "stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
         lora_filename = "daiton-xl-lora-test.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -865,8 +865,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
-        ).to(torch_device)
+            "stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
         lora_filename = "saijo.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -885,8 +885,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
-        ).to(torch_device)
+            "stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
         lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -905,8 +905,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to(torch_device)
+            "stabilityai/stable-diffusion-xl-base-1.0")
+        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
