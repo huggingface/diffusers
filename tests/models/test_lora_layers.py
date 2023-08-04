@@ -839,3 +839,83 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_images_again = lora_images_again[0, -3:, -3:, -1].flatten()
 
         self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
+
+    def test_sdxl_0_9_lora_one(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
+        lora_filename = "daiton-xl-lora-test.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        print("test_sdxl_0_9_lora_one: " + ", ".join([str(round(x, 4)) for x in images]))
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_0_9_lora_two(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
+        lora_filename = "saijo.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        print("test_sdxl_0_9_lora_two: " + ", ".join([str(round(x, 4)) for x in images]))
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_0_9_lora_three(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
+        lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        print("test_sdxl_0_9_lora_three: " + ", ".join([str(round(x, 4)) for x in images]))
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_1_0_lora(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        print("test_sdxl_1_0_lora: " + ", ".join([str(round(x, 4)) for x in images]))
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
