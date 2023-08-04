@@ -19,8 +19,9 @@ import torch
 import torch.nn as nn
 
 from ..utils import BaseOutput, is_torch_version, randn_tensor
+from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
+from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block
 
 
 @dataclass
@@ -686,3 +687,107 @@ class DiagonalGaussianDistribution(object):
 
     def mode(self):
         return self.mean
+
+
+class EncoderTiny(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_blocks: int,
+        block_out_channels: int,
+        act_fn: str,
+    ):
+        super().__init__()
+
+        layers = []
+        for i, num_block in enumerate(num_blocks):
+            num_channels = block_out_channels[i]
+
+            if i == 0:
+                layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
+            else:
+                layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
+
+            for _ in range(num_block):
+                layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
+
+        layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
+
+        self.layers = nn.Sequential(*layers)
+        self.gradient_checkpointing = False
+
+    def forward(self, x):
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            if is_torch_version(">=", "1.11.0"):
+                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x, use_reentrant=False)
+            else:
+                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x)
+
+        else:
+            x = self.layers(x)
+
+        return x
+
+
+class DecoderTiny(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_blocks: int,
+        block_out_channels: int,
+        upsampling_scaling_factor: int,
+        act_fn: str,
+    ):
+        super().__init__()
+
+        layers = [
+            nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1),
+            get_activation(act_fn),
+        ]
+
+        for i, num_block in enumerate(num_blocks):
+            is_final_block = i == (len(num_blocks) - 1)
+            num_channels = block_out_channels[i]
+
+            for _ in range(num_block):
+                layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
+
+            if not is_final_block:
+                layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
+
+            conv_out_channel = num_channels if not is_final_block else out_channels
+            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
+
+        self.layers = nn.Sequential(*layers)
+        self.gradient_checkpointing = False
+
+    def forward(self, x):
+        # Clamp.
+        x = torch.tanh(x / 3) * 3
+
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            if is_torch_version(">=", "1.11.0"):
+                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x, use_reentrant=False)
+            else:
+                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x)
+
+        else:
+            x = self.layers(x)
+
+        return x
