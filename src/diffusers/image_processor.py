@@ -38,8 +38,12 @@ class VaeImageProcessor(ConfigMixin):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
+        do_binarize (`bool`, *optional*, defaults to `True`):
+            Whether to binarize the image to 0/1.
         do_convert_rgb (`bool`, *optional*, defaults to be `False`):
             Whether to convert the images to RGB format.
+        do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to grayscale format.
     """
 
     config_name = CONFIG_NAME
