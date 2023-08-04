@@ -94,11 +94,7 @@ The above command will also run inference as fine-tuning progresses and log the 
 
 The script also allows you to finetune the `text_encoder` along with the `unet`.
 
-<Tip warning={true}>
-
-Training the text encoder requires additional memory.
-
-</Tip>
+🚨 Training the text encoder requires additional memory.
 
 Pass the `--train_text_encoder` argument to the training script to enable finetuning the `text_encoder` and `unet`:
 
