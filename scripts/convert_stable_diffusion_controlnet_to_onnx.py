@@ -169,7 +169,6 @@ def onnx_export(
                 model,
                 model_args,
                 f=output_path.as_posix(),
-                # export_params=True,
                 input_names=ordered_input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
@@ -181,7 +180,6 @@ def onnx_export(
 @torch.no_grad()
 def convert_models(model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False):
     dtype = torch.float16 if fp16 else torch.float32
-    dtype = torch.float16
     if fp16 and torch.cuda.is_available():
         device = "cuda"
     elif fp16 and not torch.cuda.is_available():
@@ -231,8 +229,8 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
     controlnets = torch.nn.ModuleList(controlnets)
     unet_controlnet = UNet2DConditionControlNetModel(pipeline.unet, controlnets)
     unet_in_channels = pipeline.unet.config.in_channels
-    img_size = 512
-    unet_sample_size = img_size // 8
+    unet_sample_size = pipeline.unet.config.sample_size
+    img_size = 8 * unet_sample_size
     unet_path = output_path / "unet" / "model.onnx"
     onnx_export(
         unet_controlnet,
@@ -256,7 +254,6 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
             "sample": {0: "2B", 2: "H", 3: "W"},
             "encoder_hidden_states": {0: "2B"},
             "controlnet_conds": {1: "2B", 3: "8H", 4: "8W"},
-            # "noise_pred": {0: "2B", 2: "H", 3: "W"}
         },
         opset=opset,
         use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
