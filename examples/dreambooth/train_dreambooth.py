@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import importlib
 import copy
 import gc
 import hashlib
+import importlib
 import itertools
 import logging
 import math
@@ -48,7 +48,6 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DiffusionPipeline,
-    DPMSolverMultistepScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
