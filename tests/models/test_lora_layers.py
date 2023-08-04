@@ -26,6 +26,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
@@ -843,7 +844,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_one(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
         ).to(torch_device)
         lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
@@ -863,7 +864,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_two(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
         ).to(torch_device)
         lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
@@ -883,7 +884,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_three(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16
         ).to(torch_device)
         lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
@@ -903,7 +904,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
         ).to(torch_device)
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
