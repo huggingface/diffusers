@@ -133,7 +133,11 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
         tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
-
+    warnings.warn(
+        "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please"
+        " use VaeImageProcessor.preprocess instead",
+        FutureWarning,
+    )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
