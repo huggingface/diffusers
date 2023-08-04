@@ -1,0 +1,1 @@
+from .pipeline_blip_diffusion import BlipDiffusionPipeline

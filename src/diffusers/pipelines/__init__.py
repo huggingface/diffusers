@@ -18,7 +18,6 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
     from .consistency_models import ConsistencyModelPipeline
-    from .blip_diffusion import BlipDiffusionPipeline
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
@@ -52,6 +51,7 @@ else:
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
     )
+    from .blip_diffusion import BlipDiffusionPipeline
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,
