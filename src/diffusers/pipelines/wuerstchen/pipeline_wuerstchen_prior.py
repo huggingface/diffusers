@@ -145,9 +145,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
         text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
-
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
-
         text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
@@ -198,47 +196,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             text_encoder_hidden_states = torch.cat([text_encoder_hidden_states, uncond_text_encoder_hidden_states])
 
         return text_encoder_hidden_states
-
-    # @torch.no_grad()
-    # def inference_loop(
-    #     self, latents, steps, text_encoder_hidden_states, do_classifier_free_guidance, guidance_scale, generator
-    # ):
-    #     print(steps)
-    #     print(steps[:-1])
-    #     for i, t in enumerate(self.progress_bar(steps[:-1])):
-    #         # print(torch.cat([latents] * 2).shape, latents.dtype)
-    #         # print(t.expand(latents.size(0) * 2).shape, t.dtype)
-    #         # print(text_encoder_hidden_states.shape, text_encoder_hidden_states.dtype)
-    #         predicted_image_embedding = self.prior(
-    #             torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-    #             r=t.expand(latents.size(0) * 2) if do_classifier_free_guidance else t,
-    #             c=text_encoder_hidden_states,
-    #         )
-
-    #         # print(t.expand(latents.size(0) * 2))
-    #         # print(i, predicted_image_embedding[0, 0, :4, :4])
-    #         # print(text_encoder_hidden_states[0, 4, :4])
-
-    #         if do_classifier_free_guidance:
-    #             predicted_image_embedding_text, predicted_image_embedding_uncond = predicted_image_embedding.chunk(2)
-    #             predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
-    #                 predicted_image_embedding_text - predicted_image_embedding_uncond
-    #             )
-    #         # print(t)
-
-    #         # latents = self.diffuzz.undiffuse(latents, t[None], steps[i + 1][None], predicted_image_embedding).to(
-    #         #     dtype=t.dtype
-    #         # )
-    #         timestep = (t * 999).cpu().int()
-    #         # print(timestep)
-    #         latents = self.scheduler.step(
-    #             predicted_image_embedding,
-    #             timestep=timestep - 1,
-    #             sample=latents,
-    #             generator=generator,
-    #         ).prev_sample
-
-    #     return latents
 
     @torch.no_grad()
     def __call__(

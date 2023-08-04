@@ -197,7 +197,9 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
                 effnet=effnet,
-                clip=None,  # torch.cat([text_encoder_hidden_states] * 2) if do_classifier_free_guidance else text_encoder_hidden_states,
+                clip=torch.cat([text_encoder_hidden_states] * 2)
+                if do_classifier_free_guidance
+                else text_encoder_hidden_states,
             )
 
             if do_classifier_free_guidance:
