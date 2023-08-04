@@ -244,19 +244,15 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         opset=opset,
         use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
     )
-
     unet_model_path = str(unet_path.absolute().as_posix())
     unet_dir = os.path.dirname(unet_model_path)
-
     # optimize onnx
     shape_inference.infer_shapes_path(unet_model_path, unet_model_path)
     unet_opt_graph = optimize(onnx.load(unet_model_path), name="Unet", verbose=True)
-    
     # clean up existing tensor files
     shutil.rmtree(unet_dir)
     os.mkdir(unet_dir)
     # collate external tensor files into one
-
     onnx.save_model(
         unet_opt_graph,
         unet_model_path,
@@ -265,7 +261,6 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         location="weights.pb",
         convert_attribute=False,
     )
-
     del pipeline.unet
 
     # VAE ENCODER
