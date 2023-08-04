@@ -111,6 +111,29 @@ class FabricModel(nn.Module):
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
     )
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        if liked and len(liked) > 0:
+            pass
+        else:
+            pos_latents = torch.tensor([], device=self.device, dtype=self.dtype)
+
+        if disliked and len(disliked) > 0:
+            pass
+        else:
+            neg_latents = torch.Tensor([], device=self.device, dtype=self.dtype)
+
+        if isinstance(prompt, str):
+            prompt = [prompt] * n_images
+        else:
+            assert len(prompts) == n_images
+
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt] * n_images
+        else:
+            assert len(negative_prompts) == n_images
+
 
         with tqdm(total=denoising_steps) as pbar:
             for i, t in enumerate(timestamp):
