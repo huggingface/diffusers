@@ -5,18 +5,19 @@ from pathlib import Path
 
 import onnx
 import onnx_graphsurgeon as gs
-from onnx import shape_inference
 import torch
+from onnx import shape_inference
 from packaging import version
-from torch.onnx import export
 from polygraphy.backend.onnx.loader import fold_constants
-from diffusers.models.attention_processor import AttnProcessor
+from torch.onnx import export
+
 from diffusers import (
+    ControlNetModel,
     OnnxRuntimeModel,
     OnnxStableDiffusionPipeline,
     StableDiffusionControlNetImg2ImgPipeline,
-    ControlNetModel,
 )
+from diffusers.models.attention_processor import AttnProcessor
 
 
 is_torch_less_than_1_11 = version.parse(version.parse(torch.__version__).base_version) < version.parse("1.11")

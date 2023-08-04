@@ -1,10 +1,7 @@
 import argparse
-from packaging import version
 import sys
 
 import tensorrt as trt
-import pycuda.driver as cuda
-import pycuda.autoinit
 
 
 def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
@@ -46,7 +43,7 @@ def convert_models(onnx_path: str, output_path: str, fp16: bool = False):
         config.set_flag(trt.BuilderFlag.FP16)
 
     plan = TRT_BUILDER.build_serialized_network(network, config)
-    if plan == None:
+    if plan is None:
         sys.exit("Failed building engine")
     print("Succeeded building engine")
 
