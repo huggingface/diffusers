@@ -1162,12 +1162,8 @@ def main(args):
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one)
-                    if args.train_text_encoder
-                    else text_encoder_one,
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two)
-                    if args.train_text_encoder
-                    else text_encoder_two,
+                    text_encoder=accelerator.unwrap_model(text_encoder_one),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
