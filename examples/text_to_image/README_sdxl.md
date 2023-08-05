@@ -86,6 +86,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora-sdxl" \
   --validation_prompt="cute dragon creature" --report_to="wandb"
+  --push_to_hub
 ```
 
 The above command will also run inference as fine-tuning progresses and log the results to Weights and Biases.
@@ -110,6 +111,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --output_dir="sd-pokemon-model-lora-sdxl-txt" \
   --train_text_encoder \
   --validation_prompt="cute dragon creature" --report_to="wandb"
+  --push_to_hub
 ```
 
 ### Inference
