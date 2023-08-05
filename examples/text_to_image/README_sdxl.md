@@ -111,6 +111,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --output_dir="sd-pokemon-model-lora-sdxl-txt" \
   --train_text_encoder \
   --validation_prompt="cute dragon creature" --report_to="wandb"
+  --push_to_hub
 ```
 
 ### Inference
