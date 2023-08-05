@@ -157,9 +157,9 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             te_2_inputs, params=params["text_encoder_2"], output_hidden_states=True
         )
         prompt_embeds_2 = prompt_embeds_2_out["hidden_states"][-2]
-        pooled_embeds = prompt_embeds_2_out["pooler_output"]
+        text_embeds = prompt_embeds_2_out["text_embeds"]
         prompt_embeds = jnp.concatenate([prompt_embeds, prompt_embeds_2], axis=-1)
-        return prompt_embeds, pooled_embeds
+        return prompt_embeds, text_embeds
 
     def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, bs, dtype):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
