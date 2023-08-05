@@ -85,7 +85,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora-sdxl" \
-  --validation_prompt="cute dragon creature" --report_to="wandb"
+  --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub
 ```
 
@@ -110,7 +110,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora-sdxl-txt" \
   --train_text_encoder \
-  --validation_prompt="cute dragon creature" --report_to="wandb"
+  --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub
 ```
 
