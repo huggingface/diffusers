@@ -976,7 +976,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 10. Second denoising loop to generate the edited image.
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        
+
         latents = latents_init
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
