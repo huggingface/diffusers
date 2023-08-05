@@ -1104,7 +1104,9 @@ def main(args):
                         "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    if prompt_embeds.shape[0] < elems_to_repeat:
+                        prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                        
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
