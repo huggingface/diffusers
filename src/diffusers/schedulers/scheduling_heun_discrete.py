@@ -150,6 +150,24 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = None
 
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        indices = (schedule_timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(self._index_counter) == 0:
+            pos = 1 if len(indices) > 1 else 0
+        else:
+            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+            pos = self._index_counter[timestep_int]
+
+        return indices[pos].item()
+
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
