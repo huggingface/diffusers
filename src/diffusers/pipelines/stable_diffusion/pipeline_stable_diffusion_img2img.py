@@ -596,8 +596,11 @@ class StableDiffusionImg2ImgPipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. 
+                For both numpy array and pytorch tensor, the expected value range is between `[0, 1]`
+                If it's a tensor or a list or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`.
+                If it is a numpy array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
+                It can also accept image latents as `image`, but if passing latents directly it is not encoded again.
             strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
