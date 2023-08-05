@@ -196,8 +196,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
 
         if self.step_index is None:
             self._init_step_index(timestep)
@@ -254,6 +252,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
 
     def _init_step_index(self, timestep):
+        
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
         index_candidates = (self.timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
@@ -312,9 +314,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
-
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
 
         if self.step_index is None:
             self._init_step_index(timestep)
