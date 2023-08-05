@@ -197,7 +197,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`: scaled input sample
         """
         if self.step_index is None:
-            self._init_step_index(timestep)
+            self._step_index = self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -224,18 +224,18 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+            timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[::-1].copy()
         elif self.config.timestep_spacing == "leading":
             step_ratio = num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(num_train_timesteps, 0, -step_ratio)).round().copy().astype(float)
+            timesteps = (np.arange(num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
             timesteps -= 1
         else:
             raise ValueError(
@@ -257,11 +257,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = torch.from_numpy(timesteps)
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
 
-        if str(device).startswith("mps"):
-            # mps does not support float64
-            self.timesteps = timesteps.to(device, dtype=torch.float32)
-        else:
-            self.timesteps = timesteps.to(device=device)
+        self.timesteps = timesteps.to(device=device)
 
         # empty dt and derivative
         self.prev_derivative = None
@@ -326,7 +322,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0]
 
-        self._step_index = step_index.item()
+        return step_index.item()
 
     def step(
         self,
@@ -349,7 +345,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         if self.step_index is None:
-            self._init_step_index(timestep)
+            self._step_index = self._init_step_index(timestep)
 
         if self.state_in_first_order:
             sigma = self.sigmas[self.step_index]
@@ -429,15 +425,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
-            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
-            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
-        else:
-            schedule_timesteps = self.timesteps.to(original_samples.device)
-            timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        self.timesteps.to(original_samples.device)
+        step_indices = [self._init_step_index(t) for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
