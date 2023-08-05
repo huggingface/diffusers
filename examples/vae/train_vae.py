@@ -42,6 +42,7 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
+@torch.no_grad()
 def log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
@@ -531,8 +532,8 @@ def main():
 
         if accelerator.is_main_process:
             if epoch % args.validation_epochs == 0:
-         with torch.no_grad():
-                log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch)
+                with torch.no_grad():
+                    log_validation(test_dataloader, vae, accelerator, weight_dtype, epoch)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
