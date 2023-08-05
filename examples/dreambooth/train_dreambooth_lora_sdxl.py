@@ -652,7 +652,7 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size, shuffle=True, drop_last=True)
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
@@ -974,6 +974,7 @@ def main(args):
         shuffle=True,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
         num_workers=args.dataloader_num_workers,
+        drop_last=True,
     )
 
     # Scheduler and math around the number of training steps.
