@@ -97,6 +97,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         latents: jnp.array = None,
         neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
+        output_type: str = None,
         jit: bool = False,
     ):
         # 0. Default height and width to unet
@@ -107,6 +108,8 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             # Convert to a tensor so each device gets a copy.
             guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
             guidance_scale = guidance_scale[:, None]
+
+        return_latents = output_type == "latent"
 
         if jit:
             images = _p_generate(
@@ -120,6 +123,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 guidance_scale,
                 latents,
                 neg_prompt_ids,
+                return_latents,
             )
         else:
             images = self._generate(
@@ -132,6 +136,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 guidance_scale,
                 latents,
                 neg_prompt_ids,
+                return_latents,
             )
 
         if not return_dict:
@@ -172,14 +177,15 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         guidance_scale: float,
         latents: Optional[jnp.array] = None,
         neg_prompt_ids: Optional[jnp.array] = None,
+        return_latents = False,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        # 1. Encode input prompt
+        # Encode input prompt
         prompt_embeds, pooled_embeds = self.get_embeddings(prompt_ids, params)
 
-        # 2. Get unconditional embeddings
+        # Get unconditional embeddings
         batch_size = prompt_embeds.shape[0]
         if neg_prompt_ids is None:
             neg_prompt_ids = self.prepare_inputs([""] * batch_size)
@@ -197,7 +203,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         # Ensure model output will be `float32` before going into the scheduler
         guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
 
-        # 3. Create random latents
+        # Create random latents
         latents_shape = (
             batch_size,
             self.unet.config.in_channels,
@@ -212,14 +218,14 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * params["scheduler"].init_noise_sigma
 
-        # 4. Prepare scheduler state
+        # Prepare scheduler state
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
         )
 
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-        # 6. Denoising loop
+        # Denoising loop
         def loop_body(step, args):
             latents, scheduler_state = args
             # For classifier free guidance, we need to do two forward passes.
@@ -255,8 +261,10 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         else:
             latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
 
-        # 7. Decode latents
-        # scale and decode the image latents with vae
+        if return_latents:
+            return latents
+        
+        # Decode latents
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
 
@@ -264,12 +272,12 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         return image
 
 
-# Static argnums are pipe, num_inference_steps, height, width. A change would trigger recompilation.
+# Static argnums are pipe, num_inference_steps, height, width, return_latents. A change would trigger recompilation.
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
-    in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0),
-    static_broadcasted_argnums=(0, 4, 5, 6),
+    in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0, None),
+    static_broadcasted_argnums=(0, 4, 5, 6, 10),
 )
 def _p_generate(
     pipe,
@@ -282,6 +290,7 @@ def _p_generate(
     guidance_scale,
     latents,
     neg_prompt_ids,
+    return_latents,
 ):
     return pipe._generate(
         prompt_ids,
@@ -293,4 +302,5 @@ def _p_generate(
         guidance_scale,
         latents,
         neg_prompt_ids,
+        return_latents,
     )

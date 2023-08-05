@@ -264,7 +264,7 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
             dtype=prompt_embeds.dtype,
         )
 
-        prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
+        prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)
         add_text_embeds = jnp.concatenate([negative_pooled_embeds, pooled_embeds], axis=0)
         add_time_ids = jnp.concatenate([add_neg_time_ids, add_time_ids], axis=0)
 
@@ -280,10 +280,14 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
             if noise.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {noise.shape}, expected {latents_shape}")
 
-        # Create init_latents
-        init_latent_dist = self.vae.apply({"params": params["vae"]}, image, method=self.vae.encode).latent_dist
-        init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
-        init_latents = self.vae.config.scaling_factor * init_latents
+        if image.shape[1] == 4:
+            # Skip encoding if using latents as input
+            init_latents = image
+        else:
+            # Create init_latents
+            init_latent_dist = self.vae.apply({"params": params["vae"]}, image, method=self.vae.encode).latent_dist
+            init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
+            init_latents = self.vae.config.scaling_factor * init_latents
 
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
