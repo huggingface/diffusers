@@ -17,6 +17,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
