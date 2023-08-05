@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -148,7 +147,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         #  set all values
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self.use_karras_sigmas = use_karras_sigmas
-        
+
         self._step_index = None
 
     @property
@@ -293,9 +292,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @property
     def state_in_first_order(self):
         return self.dt is None
-    
-    def _init_step_index(self, timestep):
 
+    def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
 
@@ -396,7 +394,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.sample = None
 
         prev_sample = sample + derivative * dt
-        
+
         # upon completion increase step index by one
         self._step_index += 1
 

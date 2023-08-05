@@ -252,7 +252,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
 
     def _init_step_index(self, timestep):
-        
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
 
