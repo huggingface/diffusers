@@ -978,28 +978,29 @@ class StableDiffusionControlNetInpaintPipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, 
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
                     `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to be masked
-                out with `mask_image` and repainted according to `prompt`).
-                For both numpy array and pytorch tensor, the expected value range is between `[0, 1]`
-                If it's a tensor or a list or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`.
-                If it is a numpy array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
-                It can also accept image latents as `image`, but if passing latents directly it is not encoded again.
-            mask_image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, 
+                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
+                be masked out with `mask_image` and repainted according to `prompt`). For both numpy array and pytorch
+                tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the
+                expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays, the
+                expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image latents as `image`, but
+                if passing latents directly it is not encoded again.
+            mask_image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
                     `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask are repainted
-                while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a single channel
-                (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one color channel (L) instead of 3, 
-                so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B, H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array
-                would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W, 1)`, or `(H, W)`.
+                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
+                are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
+                single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
+                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
+                H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
+                1)`, or `(H, W)`.
             control_image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`,
                     `List[List[torch.FloatTensor]]`, or `List[List[PIL.Image.Image]]`):
-                The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. 
-                The dimensions of the output image defaults to `image`'s dimensions. If height and/or width are passed, 
-                `image` is resized according to them. If multiple ControlNets are specified in init, 
-                images must be passed as a list such that each element of the list can be correctly
-                batched for input to a single controlnet.
+                The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. The
+                dimensions of the output image defaults to `image`'s dimensions. If height and/or width are passed,
+                `image` is resized according to them. If multiple ControlNets are specified in init, images must be
+                passed as a list such that each element of the list can be correctly batched for input to a single
+                controlnet.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):

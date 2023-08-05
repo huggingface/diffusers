@@ -289,7 +289,7 @@ class VaeImageProcessor(ConfigMixin):
 
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.config.do_normalize
-        if image.min() < 0:
+        if image.min() < 0 and do_normalize:
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
                 f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
