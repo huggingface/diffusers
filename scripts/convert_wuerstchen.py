@@ -39,6 +39,8 @@ efficient_net = EfficientNetEncoder()
 efficient_net.load_state_dict(state_dict["effnet_state_dict"])
 
 # Generator
+gen_text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
+gen_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 generator = DiffNeXt()
 generator.load_state_dict(state_dict["state_dict"])
 
@@ -61,6 +63,8 @@ prior_pipeline = WuerstchenPriorPipeline(
 prior_pipeline.save_pretrained("warp-diffusion/WuerstchenPriorPipeline")
 
 generator_pipeline = WuerstchenGeneratorPipeline(
+    text_encoder=gen_text_encoder,
+    tokenizer=gen_tokenizer,
     vqgan=vqmodel,
     generator=generator,
     efficient_net=efficient_net,
