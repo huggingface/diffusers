@@ -172,9 +172,9 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
         prompt_embeds_2_out = self.text_encoder_2(
             te_inputs, params=params["text_encoder_2"], output_hidden_states=True
         )
+        text_embeds = prompt_embeds_2_out["text_embeds"]
         prompt_embeds = prompt_embeds_2_out["hidden_states"][-2]
-        pooled_embeds = prompt_embeds_2_out["pooler_output"]
-        return prompt_embeds, pooled_embeds
+        return prompt_embeds, text_embeds
     
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, bs, dtype
