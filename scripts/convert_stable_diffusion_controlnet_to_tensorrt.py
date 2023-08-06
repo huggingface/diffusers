@@ -4,14 +4,25 @@ import sys
 import tensorrt as trt
 
 
-def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: bool = False):
+def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: bool = False, sd_xl: bool = False):
     # UNET
-    unet_in_channels = 4
-    unet_sample_size = 64
-    num_tokens = 77
-    text_hidden_size = 768
-    img_size = 512
-    batch_size = 1
+    if sd_xl:
+        unet_in_channels = 4
+        unet_sample_size = 64
+        num_tokens = 77
+        text_hidden_size = 2048
+        img_size = 512
+
+        text_embeds_shape = (2 * batch_size, 1280)
+        time_ids_shape = (2 * batch_size, 6)
+    else:
+        batch_size = 1
+        unet_in_channels = 4
+        unet_sample_size = 64
+        num_tokens = 77
+        text_hidden_size = 768
+        img_size = 512
+        batch_size = 1
 
     latents_shape = (2 * batch_size, unet_in_channels, unet_sample_size, unet_sample_size)
     embed_shape = (2 * batch_size, num_tokens, text_hidden_size)
@@ -32,9 +43,13 @@ def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: 
     print("Load Onnx model done")
 
     profile = TRT_BUILDER.create_optimization_profile()
+
     profile.set_shape("sample", latents_shape, latents_shape, latents_shape)
     profile.set_shape("encoder_hidden_states", embed_shape, embed_shape, embed_shape)
     profile.set_shape("controlnet_conds", controlnet_conds_shape, controlnet_conds_shape, controlnet_conds_shape)
+    if sd_xl:
+        profile.set_shape("text_embeds", text_embeds_shape, text_embeds_shape, text_embeds_shape)
+        profile.set_shape("time_ids", time_ids_shape, time_ids_shape, time_ids_shape)
 
     config = TRT_BUILDER.create_builder_config()
     config.add_optimization_profile(profile)
@@ -57,6 +72,8 @@ def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--sd_xl", action="store_true", default=False, help="SD XL pipeline")
+
     parser.add_argument(
         "--onnx_path",
         type=str,
@@ -72,4 +89,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    convert_models(args.onnx_path, args.num_controlnet, args.output_path, args.fp16)
+    convert_models(args.onnx_path, args.num_controlnet, args.output_path, args.fp16, args.sd_xl)
