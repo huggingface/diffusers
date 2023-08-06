@@ -74,23 +74,25 @@ generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained(
 prior_pipeline = prior_pipeline.to("cuda")
 generator_pipeline = generator_pipeline.to("cuda")
 # generator_pipeline.vqgan.to(torch.float16)
-text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
-tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+# text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
+# tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
 # negative_prompt = "low resolution, low detail, bad quality, blurry"
 negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated, drawing, helmet"
 # negative_prompt = ""
-# caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
-# caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
-caption = "An armchair in the shape of an avocado"
-clip_tokens = tokenizer(
-    [caption] * batch_size,
-    truncation=True,
-    padding="max_length",
-    max_length=tokenizer.model_max_length,
-    return_tensors="pt",
+caption = (
+    "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
 )
-clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype).to(device)
+# caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
+# caption = "An armchair in the shape of an avocado"
+# clip_tokens = tokenizer(
+#     [caption] * batch_size,
+#     truncation=True,
+#     padding="max_length",
+#     max_length=tokenizer.model_max_length,
+#     return_tensors="pt",
+# )
+# clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype).to(device)
 # clip_tokens_uncond = tokenizer(
 #     [negative_prompt] * batch_size,
 #     truncation=True,
@@ -101,10 +103,17 @@ clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype).t
 # clip_text_embeddings_uncond = text_encoder(**clip_tokens_uncond).last_hidden_state.to(dtype).to(device)
 
 prior_output = prior_pipeline(
-    caption, guidance_scale=8.0, num_images_per_prompt=batch_size, negative_prompt=negative_prompt
+    caption,
+    guidance_scale=8.0,
+    num_images_per_prompt=batch_size,
+    negative_prompt=negative_prompt,
 )
 generator_output = generator_pipeline(
-    prior_output.image_embeds, clip_text_embeddings, guidance_scale=0.0, output_type="np"
+    predicted_image_embeddings=prior_output.image_embeds,
+    prompt=caption,
+    negative_prompt=negative_prompt,
+    guidance_scale=8.0,
+    output_type="np",
 ).images
 images = numpy_to_pil(generator_output)
 os.makedirs("samples", exist_ok=True)
