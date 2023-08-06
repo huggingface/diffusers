@@ -25,6 +25,7 @@ from ...utils import BaseOutput, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .modules import DiffNeXt, EfficientNetEncoder
 
+
 # from .diffuzz import Diffuzz
 
 

@@ -24,6 +24,7 @@ from ...utils import BaseOutput, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .prior import Prior
 
+
 # from .diffuzz import Diffuzz
 
 
@@ -235,7 +236,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        
+
         dtype = text_encoder_hidden_states.dtype
         latent_height = 128 * (height // 128) // (1024 // 24)
         latent_width = 128 * (width // 128) // (1024 // 24)

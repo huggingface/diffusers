@@ -7,10 +7,10 @@ from vqgan import VQModel
 from diffusers import (
     DDPMWuerstchenScheduler,
     VQModelPaella,
-    WuerstchenPriorPipeline,
     WuerstchenGeneratorPipeline,
+    WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import Prior, DiffNeXt, EfficientNetEncoder
+from diffusers.pipelines.wuerstchen import DiffNeXt, EfficientNetEncoder, Prior
 
 
 model_path = "models/"
