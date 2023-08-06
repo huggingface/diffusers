@@ -100,8 +100,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             vqgan=vqgan,
             efficient_net=efficient_net,
         )
-        # self.diffuzz = Diffuzz(device="cuda")
-
         self.register_to_config()
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):

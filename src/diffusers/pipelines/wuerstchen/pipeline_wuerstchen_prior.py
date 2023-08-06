@@ -101,7 +101,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prior=prior,
             scheduler=scheduler,
         )
-        # self.diffuzz = Diffuzz(device="cuda")
         self.register_to_config()
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
