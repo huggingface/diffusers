@@ -92,23 +92,40 @@ def embed_clip(clip_model, clip_tokenizer, caption, negative_caption="", batch_s
     return clip_text_embeddings, clip_text_embeddings_uncond
 
 # generator_pipeline.vqgan.to(torch.float16)
-# clip_model_G = CLIPTextModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k").to("cpu")
-# clip_tokenizer_G = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-clip_model_H = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
-clip_tokenizer_H = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
+tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
 # negative_prompt = "low resolution, low detail, bad quality, blurry"
 negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated, drawing, helmet"
 # negative_prompt = ""
-# caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
+caption = (
+    "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
+)
 # caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
-caption = "An astronaut riding a horse"
-# clip_text_embeddings, clip_text_embeddings_uncond = embed_clip(clip_model_G, clip_tokenizer_G, caption, negative_prompt, batch_size, "cpu")
-# embeds = torch.cat([clip_text_embeddings, clip_text_embeddings_uncond]).to(device).to(dtype)
+caption = "An armchair in the shape of an avocado"
+clip_tokens = tokenizer(
+    [caption] * batch_size,
+    truncation=True,
+    padding="max_length",
+    max_length=tokenizer.model_max_length,
+    return_tensors="pt",
+)
+clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype).to(device)
+# clip_tokens_uncond = tokenizer(
+#     [negative_prompt] * batch_size,
+#     truncation=True,
+#     padding="max_length",
+#     max_length=tokenizer.model_max_length,
+#     return_tensors="pt",
+# )
+# clip_text_embeddings_uncond = text_encoder(**clip_tokens_uncond).last_hidden_state.to(dtype).to(device)
 
-prior_output = prior_pipeline(caption, guidance_scale=8.0, num_images_per_prompt=batch_size, negative_prompt=negative_prompt)
-clip_text_embeddings, clip_text_embeddings_uncond = embed_clip(clip_model_H, clip_tokenizer_H, caption, negative_prompt, batch_size, "cpu")
-generator_output = generator_pipeline(prior_output.image_embeds, clip_text_embeddings.to(device).to(dtype), guidance_scale=0.0, output_type="np").images
+prior_output = prior_pipeline(
+    caption, guidance_scale=8.0, num_images_per_prompt=batch_size, negative_prompt=negative_prompt
+)
+generator_output = generator_pipeline(
+    prior_output.image_embeds, clip_text_embeddings, guidance_scale=0.0, output_type="np"
+).images
 images = numpy_to_pil(generator_output)
 os.makedirs("samples", exist_ok=True)
 for i, image in enumerate(images):

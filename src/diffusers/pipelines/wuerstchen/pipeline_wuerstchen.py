@@ -17,6 +17,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
@@ -81,6 +82,8 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
     def __init__(
         self,
+        tokenizer: CLIPTokenizer,
+        text_encoder: CLIPTextModel,
         generator: DiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
@@ -89,6 +92,8 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         super().__init__()
         self.multiple = 128
         self.register_modules(
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
             generator=generator,
             scheduler=scheduler,
             vqgan=vqgan,
@@ -107,6 +112,90 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             latents = latents.to(device)
 
         return latents
+
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+    ):
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
+        # get prompt text embeddings
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask
+
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+            attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
+
+        text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
+        text_encoder_hidden_states = text_encoder_output.last_hidden_state
+        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+
+        if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt]
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            negative_prompt_embeds_text_encoder_output = self.text_encoder(
+                uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
+            )
+
+            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
+
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+
+            seq_len = uncond_text_encoder_hidden_states.shape[1]
+            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
+            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
+            # done duplicates
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            text_encoder_hidden_states = torch.cat([text_encoder_hidden_states, uncond_text_encoder_hidden_states])
+
+        return text_encoder_hidden_states
 
     def check_inputs(
         self, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
@@ -145,7 +234,8 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
     def __call__(
         self,
         predicted_image_embeddings: torch.Tensor,
-        text_encoder_hidden_states: torch.Tensor = None,
+        prompt: Union[str, List[str]] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         inference_steps: dict = None,
         guidance_scale: float = 3.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -159,6 +249,21 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
         if inference_steps is None:
             inference_steps = default_inference_steps_b
+
+        if negative_prompt is None:
+            negative_prompt = ""
+
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        elif not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt]
+        elif not isinstance(negative_prompt, list) and negative_prompt is not None:
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+        text_encoder_hidden_states = self._encode_prompt(
+            prompt, device, predicted_image_embeddings.size(0), do_classifier_free_guidance, negative_prompt
+        )
 
         predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
             predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
@@ -197,9 +302,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
                 effnet=effnet,
-                clip=torch.cat([text_encoder_hidden_states] * 2)
-                if do_classifier_free_guidance
-                else text_encoder_hidden_states,
+                clip=text_encoder_hidden_states,
             )
 
             if do_classifier_free_guidance:
