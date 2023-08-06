@@ -42,7 +42,7 @@ def numpy_to_pil(images: np.ndarray) -> list[Image.Image]:
 # )
 device = "cuda"
 dtype = torch.float16
-batch_size = 4
+batch_size = 2
 
 # generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenGeneratorPipeline", torch_dtype=dtype)
 # generator_pipeline = generator_pipeline.to("cuda")
@@ -83,9 +83,9 @@ generator_pipeline = generator_pipeline.to("cuda")
 # negative_prompt = "low resolution, low detail, bad quality, blurry"
 negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated, drawing, helmet"
 # negative_prompt = ""
-caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
+# caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
 # caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
-# caption = "An armchair in the shape of an avocado"
+caption = "An armchair in the shape of an avocado"
 # clip_tokens = tokenizer(
 #     [caption] * batch_size,
 #     truncation=True,
@@ -105,6 +105,8 @@ caption = "Bee flying out of a glass jar in a green and red leafy basket, glass 
 
 prior_output = prior_pipeline(
     caption,
+    height=1024,
+    width=1536,
     guidance_scale=8.0,
     num_images_per_prompt=batch_size,
     negative_prompt=negative_prompt,
@@ -113,7 +115,7 @@ generator_output = generator_pipeline(
     predicted_image_embeddings=prior_output.image_embeds,
     prompt=caption,
     negative_prompt=negative_prompt,
-    guidance_scale=8.0,
+    guidance_scale=0.0,
     output_type="np",
 ).images
 images = numpy_to_pil(generator_output)
