@@ -34,6 +34,7 @@ if is_faiss_available():
     )
 torch.backends.cuda.matmul.allow_tf32 = False
 if is_faiss_available():
+
     @require_faiss
     class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipeline_class = RDMPipeline
@@ -81,7 +82,9 @@ if is_faiss_available():
             )
             tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
             feature_extractor = CLIPFeatureExtractor.from_pretrained(
-                "hf-internal-testing/tiny-random-clip", size={"shortest_edge": 30}, crop_size={"height": 30, "width": 30}
+                "hf-internal-testing/tiny-random-clip",
+                size={"shortest_edge": 30},
+                crop_size={"height": 30, "width": 30},
             )
 
             components = {
