@@ -1420,3 +1420,64 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
+
+    def test_text_to_image_lora_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+    def test_text_to_image_lora_sdxl_with_text_encoder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --train_text_encoder
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
+            keys = lora_state_dict.keys()
+            starts_with_unet = all(
+                k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
+            )
+            self.assertTrue(starts_with_unet)
