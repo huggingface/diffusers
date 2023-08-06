@@ -33,305 +33,304 @@ if is_faiss_available():
         Retriever,
     )
 torch.backends.cuda.matmul.allow_tf32 = False
-
-
-@require_faiss
-class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = RDMPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {
-        "negative_prompt",
-        "negative_prompt_embeds",
-        "cross_attention_kwargs",
-    }
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-
-    def get_dummy_components(self):
-        torch.manual_seed(0)
-        unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=4,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=64,
-        )
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
-        torch.manual_seed(0)
-        vae = AutoencoderKL(
-            block_out_channels=[32, 64],
-            in_channels=3,
-            out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=4,
-        )
-        torch.manual_seed(0)
-        clip_config = CLIPConfig.from_pretrained("hf-internal-testing/tiny-random-clip")
-        clip_config.text_config.vocab_size = 49408
-
-        clip = CLIPModel.from_pretrained(
-            "hf-internal-testing/tiny-random-clip", config=clip_config, ignore_mismatched_sizes=True
-        )
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(
-            "hf-internal-testing/tiny-random-clip", size={"shortest_edge": 30}, crop_size={"height": 30, "width": 30}
-        )
-
-        components = {
-            "unet": unet,
-            "scheduler": scheduler,
-            "vae": vae,
-            "clip": clip,
-            "tokenizer": tokenizer,
-            "feature_extractor": feature_extractor,
+if is_faiss_available():
+    @require_faiss
+    class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+        pipeline_class = RDMPipeline
+        params = TEXT_TO_IMAGE_PARAMS - {
+            "negative_prompt",
+            "negative_prompt_embeds",
+            "cross_attention_kwargs",
         }
-        return components
+        batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        # To work with tiny clip, the prompt tokens need to be in the range of 0 to 100 when tokenized
-        inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "retrieved_images": [Image.fromarray(np.zeros((30, 30, 3)).astype(np.uint8))],
-            "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "output_type": "numpy",
-            "height": 64,
-            "width": 64,
-        }
-        return inputs
+        def get_dummy_components(self):
+            torch.manual_seed(0)
+            unet = UNet2DConditionModel(
+                block_out_channels=(32, 64),
+                layers_per_block=2,
+                sample_size=32,
+                in_channels=4,
+                out_channels=4,
+                down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+                up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+                cross_attention_dim=64,
+            )
+            scheduler = DDIMScheduler(
+                beta_start=0.00085,
+                beta_end=0.012,
+                beta_schedule="scaled_linear",
+                clip_sample=False,
+                set_alpha_to_one=False,
+            )
+            torch.manual_seed(0)
+            vae = AutoencoderKL(
+                block_out_channels=[32, 64],
+                in_channels=3,
+                out_channels=3,
+                down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+                up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+                latent_channels=4,
+            )
+            torch.manual_seed(0)
+            clip_config = CLIPConfig.from_pretrained("hf-internal-testing/tiny-random-clip")
+            clip_config.text_config.vocab_size = 49408
 
-    def test_rdm_ddim(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            clip = CLIPModel.from_pretrained(
+                "hf-internal-testing/tiny-random-clip", config=clip_config, ignore_mismatched_sizes=True
+            )
+            tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+            feature_extractor = CLIPFeatureExtractor.from_pretrained(
+                "hf-internal-testing/tiny-random-clip", size={"shortest_edge": 30}, crop_size={"height": 30, "width": 30}
+            )
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+            components = {
+                "unet": unet,
+                "scheduler": scheduler,
+                "vae": vae,
+                "clip": clip,
+                "tokenizer": tokenizer,
+                "feature_extractor": feature_extractor,
+            }
+            return components
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
+        def get_dummy_inputs(self, device, seed=0):
+            if str(device).startswith("mps"):
+                generator = torch.manual_seed(seed)
+            else:
+                generator = torch.Generator(device=device).manual_seed(seed)
+            # To work with tiny clip, the prompt tokens need to be in the range of 0 to 100 when tokenized
+            inputs = {
+                "prompt": "A painting of a squirrel eating a burger",
+                "retrieved_images": [Image.fromarray(np.zeros((30, 30, 3)).astype(np.uint8))],
+                "generator": generator,
+                "num_inference_steps": 2,
+                "guidance_scale": 6.0,
+                "output_type": "numpy",
+                "height": 64,
+                "width": 64,
+            }
+            return inputs
 
-        image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        def test_rdm_ddim(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-    def test_rdm_ddim_factor_8(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            inputs = self.get_dummy_inputs(device)
+            output = pipe(**inputs)
+            image = output.images
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["height"] = 136
-        inputs["width"] = 136
-        output = pipe(**inputs)
-        image = output.images
+            image_slice = image[0, -3:, -3:, -1]
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 136, 136, 3)
-        expected_slice = np.array([0.554, 0.581, 0.577, 0.509, 0.455, 0.421, 0.485, 0.452, 0.434])
+        def test_rdm_ddim_factor_8(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-    def test_rdm_pndm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            inputs = self.get_dummy_inputs(device)
+            inputs["height"] = 136
+            inputs["width"] = 136
+            output = pipe(**inputs)
+            image = output.images
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+            image_slice = image[0, -3:, -3:, -1]
+            assert image.shape == (1, 136, 136, 3)
+            expected_slice = np.array([0.554, 0.581, 0.577, 0.509, 0.455, 0.421, 0.485, 0.452, 0.434])
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.445, 0.564, 0.476, 0.502, 0.605, 0.495, 0.559, 0.498, 0.499])
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        def test_rdm_pndm(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-    def test_rdm_k_lms(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            inputs = self.get_dummy_inputs(device)
+            output = pipe(**inputs)
+            image = output.images
+            image_slice = image[0, -3:, -3:, -1]
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.445, 0.564, 0.476, 0.502, 0.605, 0.495, 0.559, 0.498, 0.499])
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.571, 0.504, 0.502])
+        def test_rdm_k_lms(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-    def test_rdm_k_euler_ancestral(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            inputs = self.get_dummy_inputs(device)
+            output = pipe(**inputs)
+            image = output.images
+            image_slice = image[0, -3:, -3:, -1]
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.571, 0.504, 0.502])
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.570, 0.504, 0.502])
+        def test_rdm_k_euler_ancestral(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-    def test_rdm_k_euler(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            inputs = self.get_dummy_inputs(device)
+            output = pipe(**inputs)
+            image = output.images
+            image_slice = image[0, -3:, -3:, -1]
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.570, 0.504, 0.502])
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.571, 0.504, 0.502])
+        def test_rdm_k_euler(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-    def test_rdm_vae_slicing(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        pipe = RDMPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            inputs = self.get_dummy_inputs(device)
+            output = pipe(**inputs)
+            image = output.images
+            image_slice = image[0, -3:, -3:, -1]
 
-        image_count = 4
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.417, 0.549, 0.462, 0.498, 0.610, 0.502, 0.571, 0.504, 0.502])
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_1 = pipe(**inputs)
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        # make sure sliced vae decode yields the same result
-        pipe.enable_vae_slicing()
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_2 = pipe(**inputs)
+        def test_rdm_vae_slicing(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            components = self.get_dummy_components()
+            components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+            pipe = RDMPipeline(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-        # there is a small discrepancy at image borders vs. full batch decode
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+            image_count = 4
 
-    def test_rdm_vae_tiling(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
+            inputs = self.get_dummy_inputs(device)
+            inputs["prompt"] = [inputs["prompt"]] * image_count
+            output_1 = pipe(**inputs)
 
-        # make sure here that pndm scheduler skips prk
-        pipe = RDMPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+            # make sure sliced vae decode yields the same result
+            pipe.enable_vae_slicing()
+            inputs = self.get_dummy_inputs(device)
+            inputs["prompt"] = [inputs["prompt"]] * image_count
+            output_2 = pipe(**inputs)
 
-        prompt = "A painting of a squirrel eating a burger"
+            # there is a small discrepancy at image borders vs. full batch decode
+            assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
 
-        # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = pipe(
-            [prompt],
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            height=64,
-            width=64,
-            output_type="np",
-        )
+        def test_rdm_vae_tiling(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            components = self.get_dummy_components()
 
-        # make sure tiled vae decode yields the same result
-        pipe.enable_vae_tiling()
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = pipe(
-            [prompt],
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            height=64,
-            width=64,
-            output_type="np",
-        )
+            # make sure here that pndm scheduler skips prk
+            pipe = RDMPipeline(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
 
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
+            prompt = "A painting of a squirrel eating a burger"
 
-        # test that tiled decode works with various shapes
-        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
-        for shape in shapes:
-            zeros = torch.zeros(shape).to(device)
-            pipe.vae.decode(zeros)
+            # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
+            generator = torch.Generator(device=device).manual_seed(0)
+            output_1 = pipe(
+                [prompt],
+                generator=generator,
+                guidance_scale=6.0,
+                num_inference_steps=2,
+                height=64,
+                width=64,
+                output_type="np",
+            )
 
-    def test_rdm_with_retrieved_images(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            # make sure tiled vae decode yields the same result
+            pipe.enable_vae_tiling()
+            generator = torch.Generator(device=device).manual_seed(0)
+            output_2 = pipe(
+                [prompt],
+                generator=generator,
+                guidance_scale=6.0,
+                num_inference_steps=2,
+                height=64,
+                width=64,
+                output_type="np",
+            )
 
-        components = self.get_dummy_components()
-        pipe = RDMPipeline(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+            assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
-        output = pipe(**inputs)
-        image = output.images
+            # test that tiled decode works with various shapes
+            shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+            for shape in shapes:
+                zeros = torch.zeros(shape).to(device)
+                pipe.vae.decode(zeros)
 
-        image_slice = image[0, -3:, -3:, -1]
+        def test_rdm_with_retrieved_images(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
+            components = self.get_dummy_components()
+            pipe = RDMPipeline(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            inputs = self.get_dummy_inputs(device)
+            inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
+            output = pipe(**inputs)
+            image = output.images
 
-    def test_rdm_with_retriever(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+            image_slice = image[0, -3:, -3:, -1]
 
-        components = self.get_dummy_components()
-        config = IndexConfig(dataset_name="hf-internal-testing/dummy_image_text_data")
-        retriever = Retriever(config, model=components["clip"], feature_extractor=components["feature_extractor"])
-        pipe = RDMPipeline(**components, retriever=retriever)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
-        output = pipe(**inputs, knn=3)
-        image = output.images
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
+        def test_rdm_with_retriever(self):
+            device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+            components = self.get_dummy_components()
+            config = IndexConfig(dataset_name="hf-internal-testing/dummy_image_text_data")
+            retriever = Retriever(config, model=components["clip"], feature_extractor=components["feature_extractor"])
+            pipe = RDMPipeline(**components, retriever=retriever)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+
+            inputs = self.get_dummy_inputs(device)
+            inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
+            output = pipe(**inputs, knn=3)
+            image = output.images
+
+            image_slice = image[0, -3:, -3:, -1]
+            assert image.shape == (1, 64, 64, 3)
+            expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
+
+            assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
