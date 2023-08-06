@@ -17,7 +17,6 @@ from diffusers import (
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    RDMPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
@@ -30,11 +29,13 @@ from ..test_pipelines_common import PipelineTesterMixin
 if is_faiss_available():
     from diffusers import (
         IndexConfig,
+        RDMPipeline,
         Retriever,
     )
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+@require_faiss
 class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = RDMPipeline
     params = TEXT_TO_IMAGE_PARAMS - {
@@ -311,7 +312,6 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @require_faiss
     def test_rdm_with_retriever(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -336,6 +336,7 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
+@require_faiss
 class RDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -711,6 +712,7 @@ class RDMPipelineSlowTests(unittest.TestCase):
 
 @nightly
 @require_torch_gpu
+@require_faiss
 class RDMPipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

@@ -84,7 +84,6 @@ else:
     )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
-    from .rdm import RDMPipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (
@@ -158,7 +157,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_transformers_and_faiss_objects import *
 else:
-    from .rdm import Index, IndexConfig, Retriever
+    from .rdm import Index, IndexConfig, RDMPipeline, Retriever
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()
