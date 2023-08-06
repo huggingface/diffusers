@@ -21,6 +21,7 @@ from ...schedulers import (
 from ...utils import logging, randn_tensor
 from .retriever import Retriever, normalize_images, preprocess_images
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -63,7 +64,7 @@ class RDMPipeline(DiffusionPipeline):
             DPMSolverMultistepScheduler,
         ],
         feature_extractor: CLIPFeatureExtractor,
-        retriever: Optional[Retriever] = None
+        retriever: Optional[Retriever] = None,
     ):
         super().__init__()
         self.register_modules(
@@ -250,12 +251,14 @@ class RDMPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+
     def retrieve_images(self, retrieved_images, prompt_embeds, knn=10):
         if self.retriever is not None:
             additional_images = self.retriever.retrieve_imgs_batch(prompt_embeds[:, 0].cpu(), knn).total_examples
             for i in range(len(retrieved_images)):
                 retrieved_images[i] += additional_images[i][self.retriever.config.image_column]
         return retrieved_images
+
     @torch.no_grad()
     def __call__(
         self,

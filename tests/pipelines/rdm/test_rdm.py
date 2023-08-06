@@ -21,11 +21,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import is_faiss_available, require_faiss, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
-from diffusers.utils.testing_utils import is_faiss_available, require_faiss
+
 
 if is_faiss_available():
     from diffusers import (
@@ -310,13 +310,14 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     @require_faiss
     def test_rdm_with_retriever(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
         config = IndexConfig(dataset_name="hf-internal-testing/dummy_image_text_data")
-        retriever = Retriever(config, model=components['clip'], feature_extractor=components['feature_extractor'])
+        retriever = Retriever(config, model=components["clip"], feature_extractor=components["feature_extractor"])
         pipe = RDMPipeline(**components, retriever=retriever)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

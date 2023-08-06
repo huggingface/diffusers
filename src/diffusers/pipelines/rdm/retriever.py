@@ -1,17 +1,17 @@
 import os
+from typing import List
 
 import faiss
 import numpy as np
 import torch
 from datasets import Dataset, load_dataset
-from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
-from typing import List
 from PIL import Image
+from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
+
 from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 
 def normalize_images(images: List[Image.Image]):
@@ -35,6 +35,7 @@ def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtr
     images = [(image + 1.0) / 2.0 for image in images]
     images = feature_extractor(images, return_tensors="pt").pixel_values
     return images
+
 
 class IndexConfig(PretrainedConfig):
     def __init__(
@@ -114,12 +115,15 @@ class Index:
     def retrieve_imgs(self, vec, k: int = 20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples(self.index_name, vec, k=k)
+
     def retrieve_imgs_batch(self, vec, k: int = 20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples_batch(self.index_name, vec, k=k)
+
     def retrieve_indices(self, vec, k: int = 20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.search(self.index_name, vec, k=k)
+
     def retrieve_indices_batch(self, vec, k: int = 20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.search_batch(self.index_name, vec, k=k)
@@ -174,13 +178,16 @@ class Retriever:
 
     def retrieve_imgs(self, embeddings: np.ndarray, k: int):
         return self.index.retrieve_imgs(embeddings, k)
+
     def retrieve_imgs_batch(self, embeddings: np.ndarray, k: int):
         return self.index.retrieve_imgs_batch(embeddings, k)
 
     def retrieve_indices(self, embeddings: np.ndarray, k: int):
         return self.index.retrieve_indices(embeddings, k)
+
     def retrieve_indices_batch(self, embeddings: np.ndarray, k: int):
         return self.index.retrieve_indices_batch(embeddings, k)
+
     def __call__(
         self,
         embeddings,

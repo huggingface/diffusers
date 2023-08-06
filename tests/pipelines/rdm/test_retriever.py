@@ -54,6 +54,7 @@ class RetrieverFastTests(unittest.TestCase):
             "a picture of a pink and yellow pokemon figure",
             "a blue and black object with two eyes",
         ]
+
     def test_batch_retrieving_images_given_prompt(self):
         components = self.get_dummy_components()
         retriever, clip = components["retriever"], components["clip"]
@@ -98,6 +99,7 @@ class RetrieverFastTests(unittest.TestCase):
         retrieved_examples = retriever.retrieve_indices(clip_feature, 5)
         indices = retrieved_examples.indices
         assert (indices - np.array([2, 12, 1, 10, 17])).max() < 1e-8
+
     def test_batch_retrieve_indices(self):
         components = self.get_dummy_components()
         retriever, clip = components["retriever"], components["clip"]
@@ -107,6 +109,7 @@ class RetrieverFastTests(unittest.TestCase):
         retrieved_examples = retriever.retrieve_indices_batch(clip_feature[None], 5)
         indices = retrieved_examples.total_indices[0]
         assert (indices - np.array([2, 12, 1, 10, 17])).max() < 1e-8
+
     def test_indexing(self):
         components = self.get_dummy_components()
         retriever = components["retriever"]
