@@ -374,7 +374,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     @property
     def state_in_first_order(self):
         return self.sample is None
-    
+
     # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
@@ -392,7 +392,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             step_index = index_candidates[0]
 
         return step_index.item()
-    
+
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],

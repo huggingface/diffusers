@@ -315,7 +315,6 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             step_index = index_candidates[0]
 
         return step_index.item()
-    
 
     def step(
         self,
