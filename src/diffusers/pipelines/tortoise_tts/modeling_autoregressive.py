@@ -417,11 +417,9 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         start_text_token: Optional[int] = None,  # Not sure why this is optional...
         stop_text_token: int = 0,
         # GPT2Config args
-        vocab_size=50257,
-        n_positions=1024,
-        n_embd=768,
-        n_layer=12,
-        n_head=12,
+        n_embd=1024,
+        n_layer=30,
+        n_head=16,
         n_inner=None,
         activation_function="gelu_new",
         resid_pdrop=0.1,
@@ -429,11 +427,6 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         attn_pdrop=0.1,
         layer_norm_epsilon=1e-5,
         initializer_range=0.02,
-        summary_type="cls_index",
-        summary_use_proj=True,
-        summary_activation=None,
-        summary_proj_to_labels=True,
-        summary_first_dropout=0.1,
         scale_attn_weights=True,
         use_cache=True,
         bos_token_id=50256,
@@ -444,9 +437,11 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     ):
         super().__init__()
 
+        seq_length = max_mel_tokens + max_text_tokens + 2
+
         gpt2_config = GPT2Config(
-            vocab_size=vocab_size,
-            n_positions=n_positions,
+            vocab_size=self.max_mel_tokens,
+            n_positions=seq_length,
             n_embd=n_embd,
             n_layer=n_layer,
             n_head=n_head,
@@ -457,11 +452,6 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             attn_pdrop=attn_pdrop,
             layer_norm_epsilon=layer_norm_epsilon,
             initializer_range=initializer_range,
-            summary_type=summary_type,
-            summary_use_proj=summary_use_proj,
-            summary_activation=summary_activation,
-            summary_proj_to_labels=summary_proj_to_labels,
-            summary_first_dropout=summary_first_dropout,
             scale_attn_weights=scale_attn_weights,
             use_cache=use_cache,
             bos_token_id=bos_token_id,

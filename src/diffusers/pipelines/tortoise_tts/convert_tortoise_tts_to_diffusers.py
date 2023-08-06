@@ -54,6 +54,24 @@ RLG_DIFFUSION_CONFIG = {
     "lr_mul": 0.1,
 }
 
+AUTO_CONFIG = {
+    "num_mel_tokens": 8194,
+    "num_text_tokens" : 257,
+    "max_mel_tokens": 604,
+    "max_text_tokens": 402,
+    "max_conditioning_inputs": 2,
+    "mel_channels": 80,
+    "mel_encoder_resblocks": 1,
+    "start_mel_token": 8192,
+    "stop_mel_token": 8193,
+    "start_text_token": None,
+    "stop_text_token": 0,
+    # GPT2 args
+    "n_embd": 1024,
+    "n_layer": 30,
+    "n_heads": 16,
+}
+
 
 def prepare_prefixes(key_prefix, new_key_prefix):
     if key_prefix:
