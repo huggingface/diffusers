@@ -35,12 +35,9 @@ class DDPMWuerstchenSchedulerOutput(BaseOutput):
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
-            `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prediction: torch.FloatTensor
+    prev_sample: torch.FloatTensor
 
 
 def betas_for_alpha_bar(
@@ -165,7 +162,6 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
                 timesteps = torch.cat([timesteps, steps[1:]])
 
         self.timesteps = timesteps
-        # print(f"Timesteps: {self.timesteps}, Timesteps Shape: {timesteps.shape}")
 
     def step(
         self,
@@ -202,22 +198,18 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
         alpha_cumprod = self._alpha_cumprod(t, device).view(t.size(0), *[1 for _ in sample.shape[1:]])
         alpha_cumprod_prev = self._alpha_cumprod(prev_t, device).view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
-        alpha = (alpha_cumprod / alpha_cumprod_prev)
-        # print(f"scheduler: {alpha}")
+        alpha = alpha_cumprod / alpha_cumprod_prev
 
         mu = (1.0 / alpha).sqrt() * (sample - (1 - alpha) * model_output / (1 - alpha_cumprod).sqrt())
-        # print(f"scheduler: {mu.mean()}")
-        # torch.manual_seed(0)
+
         std_noise = randn_tensor(mu.shape, generator=generator, device=model_output.device, dtype=model_output.dtype)
-        # std_noise = torch.randn_like(mu)
-        std = ((1 - alpha) * (1. - alpha_cumprod_prev) / (1. - alpha_cumprod)).sqrt() * std_noise
-        # print(f"scheduler: {std.mean()}")
+        std = ((1 - alpha) * (1.0 - alpha_cumprod_prev) / (1.0 - alpha_cumprod)).sqrt() * std_noise
         pred = mu + std * (prev_t != 0).float().view(prev_t.size(0), *[1 for _ in sample.shape[1:]])
 
         if not return_dict:
             return (pred.to(dtype),)
 
-        return DDPMWuerstchenSchedulerOutput(prediction=pred.to(dtype))
+        return DDPMWuerstchenSchedulerOutput(prev_sample=pred.to(dtype))
 
     def add_noise(
         self,
@@ -246,16 +238,6 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         return self.config.num_train_timesteps
 
     def previous_timestep(self, timestep):
-        # print(f"Timestep Shape: {timestep.shape}")
-        # print(timestep)
-        # print((self.timesteps == timestep[0]).nonzero())
-        # index = (self.timesteps == timestep[0]).nonzero().item()
         index = (self.timesteps - timestep[0]).abs().argmin().item()
-        # print(f"Found index at {index}")
-        # print(self.timesteps[index + 1])
         prev_t = self.timesteps[index + 1][None].expand(timestep.shape[0])
-        # print(prev_t.shape, prev_t)
-        # print(timestep)
-        # print(prev_t)
-        # print("======== ===================================================================")
         return prev_t

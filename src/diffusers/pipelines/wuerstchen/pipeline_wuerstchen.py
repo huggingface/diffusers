@@ -315,7 +315,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 timestep=ratio,
                 sample=latents,
                 generator=generator,
-            ).prediction
+            ).prev_sample
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 

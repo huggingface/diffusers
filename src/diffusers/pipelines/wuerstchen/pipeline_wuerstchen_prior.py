@@ -277,7 +277,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 timestep=ratio,
                 sample=latents,
                 generator=generator,
-            ).prediction
+            ).prev_sample
 
         # t_start = 1.0
         # for t_end, steps in inference_steps.items():
