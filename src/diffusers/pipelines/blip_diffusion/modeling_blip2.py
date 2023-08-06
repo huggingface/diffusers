@@ -157,8 +157,9 @@ class Blip2VisionEmbeddings(nn.Module):
 
         self.class_embedding = nn.Parameter(torch.randn(1, 1, self.embed_dim))
 
+        # TO-DO Added bias = False here, not in OG HF code
         self.patch_embedding = nn.Conv2d(
-            in_channels=3, out_channels=self.embed_dim, kernel_size=self.patch_size, stride=self.patch_size
+            in_channels=3, out_channels=self.embed_dim, kernel_size=self.patch_size, stride=self.patch_size, bias=False
         )
 
         self.num_patches = (self.image_size // self.patch_size) ** 2
@@ -225,15 +226,12 @@ class Blip2Attention(nn.Module):
         bsz, tgt_len, embed_dim = hidden_states.size()
 
         mixed_qkv = self.qkv(hidden_states)
-
         mixed_qkv = mixed_qkv.reshape(bsz, tgt_len, 3, self.num_heads, embed_dim // self.num_heads).permute(
             2, 0, 3, 1, 4
         )
         query_states, key_states, value_states = mixed_qkv[0], mixed_qkv[1], mixed_qkv[2]
-
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2))
-
         attention_scores = attention_scores * self.scale
 
         # Normalize the attention scores to probabilities.
@@ -246,13 +244,16 @@ class Blip2Attention(nn.Module):
         # Mask heads if we want to
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
-
+        # print("attention_probs hf: ", torch.mean(attention_probs))
+        # print("value_states hf:", torch.mean(value_states))
         context_layer = torch.matmul(attention_probs, value_states).permute(0, 2, 1, 3)
+        # print("context_layer hf:", torch.mean(context_layer))
 
         new_context_layer_shape = context_layer.size()[:-2] + (self.embed_dim,)
         context_layer = context_layer.reshape(new_context_layer_shape)
 
         output = self.projection(context_layer)
+        # print("output hf:", torch.mean(output))
 
         outputs = (output, attention_probs) if output_attentions else (output, None)
 
@@ -313,7 +314,6 @@ class Blip2EncoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         hidden_states = self.mlp(hidden_states)
-
         hidden_states = hidden_states + residual
 
         outputs = (hidden_states,)
@@ -575,9 +575,10 @@ class Blip2VisionModel(Blip2PreTrainedModel):
     def __init__(self, config: Blip2VisionConfig):
         super().__init__(config)
         self.config = config
-        embed_dim = config.hidden_size
-
+        embed_dim = config.hidden_size  
+        # TO-DO Added pre_layernorm which is not present in OG HF Code
         self.embeddings = Blip2VisionEmbeddings(config)
+        self.pre_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
         self.encoder = Blip2Encoder(config)
         self.post_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
 
@@ -606,14 +607,13 @@ class Blip2VisionModel(Blip2PreTrainedModel):
             raise ValueError("You have to specify pixel_values")
 
         hidden_states = self.embeddings(pixel_values)
-
+        hidden_states = self.pre_layernorm(hidden_states)
         encoder_outputs = self.encoder(
             inputs_embeds=hidden_states,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
         last_hidden_state = encoder_outputs[0]
         last_hidden_state = self.post_layernorm(last_hidden_state)
 
