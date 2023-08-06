@@ -71,13 +71,17 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
+        tokenizer (`CLIPTokenizer`):
+            The CLIP tokenizer.
+        text_encoder (`CLIPTextModel`):
+            The CLIP text encoder.
         generator ([`DiffNeXt`]):
             The DiffNeXt unet generator.
         vqgan ([`VQModelPaella`]):
             The VQGAN model.
         efficient_net ([`EfficientNetEncoder`]):
             The EfficientNet encoder.
-        scheduler ([`DDPMScheduler`]):
+        scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
