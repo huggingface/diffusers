@@ -33,18 +33,18 @@ class IndexConfig(metaclass=DummyObject):
 
 
 class RDMPipeline(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
+    _backends = ["torch", "transformers", "faiss"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
+        requires_backends(self, ["torch", "transformers", "faiss"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
+        requires_backends(cls, ["torch", "transformers", "faiss"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
+        requires_backends(cls, ["torch", "transformers", "faiss"])
 
 
 class Retriever(metaclass=DummyObject):
