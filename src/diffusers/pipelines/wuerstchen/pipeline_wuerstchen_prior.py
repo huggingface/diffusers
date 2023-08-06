@@ -36,8 +36,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
-        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained("kashif/wuerstchen-prior", torch_dtype=torch.float16).to("cuda")
-        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain("kashif/wuerstchen-gen", torch_dtype=torch.float16).to("cuda")
+        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
+        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
+        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
@@ -82,7 +86,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        scheduler ([`DDPMScheduler`]):
+        scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
@@ -101,7 +105,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prior=prior,
             scheduler=scheduler,
         )
-        # self.diffuzz = Diffuzz(device="cuda")
         self.register_to_config()
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -277,7 +280,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 timestep=ratio,
                 sample=latents,
                 generator=generator,
-            ).prediction
+            ).prev_sample
 
         # t_start = 1.0
         # for t_end, steps in inference_steps.items():

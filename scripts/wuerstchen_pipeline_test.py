@@ -83,7 +83,9 @@ generator_pipeline = generator_pipeline.to("cuda")
 # negative_prompt = "low resolution, low detail, bad quality, blurry"
 negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated, drawing, helmet"
 # negative_prompt = ""
-# caption = "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
+caption = (
+    "Bee flying out of a glass jar in a green and red leafy basket, glass and lens flare, diffuse lighting elegant"
+)
 # caption = "princess | centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive cinematic| Carne Griffiths| Conrad Roset"
 caption = "An armchair in the shape of an avocado"
 # clip_tokens = tokenizer(

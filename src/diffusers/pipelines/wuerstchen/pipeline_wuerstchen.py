@@ -37,8 +37,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
-        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained("kashif/wuerstchen-prior", torch_dtype=torch.float16).to("cuda")
-        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain("kashif/wuerstchen-gen", torch_dtype=torch.float16).to("cuda")
+        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
+        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
+        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
@@ -65,19 +69,23 @@ class WuerstchenGeneratorPipelineOutput(BaseOutput):
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
     """
-    Pipeline for generating images from the  Wuerstchen model.
+    Pipeline for generating images from the Wuerstchen model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
+        tokenizer (`CLIPTokenizer`):
+            The CLIP tokenizer.
+        text_encoder (`CLIPTextModel`):
+            The CLIP text encoder.
         generator ([`DiffNeXt`]):
             The DiffNeXt unet generator.
         vqgan ([`VQModelPaella`]):
             The VQGAN model.
         efficient_net ([`EfficientNetEncoder`]):
             The EfficientNet encoder.
-        scheduler ([`DDPMScheduler`]):
+        scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
@@ -100,8 +108,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             vqgan=vqgan,
             efficient_net=efficient_net,
         )
-        # self.diffuzz = Diffuzz(device="cuda")
-
         self.register_to_config()
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -315,7 +321,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 timestep=ratio,
                 sample=latents,
                 generator=generator,
-            ).prediction
+            ).prev_sample
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 

@@ -34,6 +34,7 @@ else:
     from .scheduling_ddim_parallel import DDIMParallelScheduler
     from .scheduling_ddpm import DDPMScheduler
     from .scheduling_ddpm_parallel import DDPMParallelScheduler
+    from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
     from .scheduling_deis_multistep import DEISMultistepScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
     from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
@@ -53,7 +54,6 @@ else:
     from .scheduling_unipc_multistep import UniPCMultistepScheduler
     from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
-    from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
 
 try:
     if not is_flax_available():

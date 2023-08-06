@@ -41,7 +41,6 @@ else:
         AutoencoderTiny,
         ControlNetModel,
         ModelMixin,
-        VQModelPaella,
         MultiAdapter,
         PriorTransformer,
         T2IAdapter,
@@ -52,6 +51,7 @@ else:
         UNet2DModel,
         UNet3DConditionModel,
         VQModel,
+        VQModelPaella,
     )
     from .optimization import (
         get_constant_schedule,
@@ -87,8 +87,8 @@ else:
         DDIMParallelScheduler,
         DDIMScheduler,
         DDPMParallelScheduler,
-        DDPMWuerstchenScheduler,
         DDPMScheduler,
+        DDPMWuerstchenScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,
         DPMSolverMultistepScheduler,
