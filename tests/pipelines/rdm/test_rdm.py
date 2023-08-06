@@ -25,8 +25,13 @@ from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
+from diffusers.utils.testing_utils import is_faiss_available, require_faiss
 
-
+if is_faiss_available():
+    from diffusers import (
+        IndexConfig,
+        Retriever,
+    )
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -301,6 +306,27 @@ class RDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+    @require_faiss
+    def test_rdm_with_retriever(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        config = IndexConfig(dataset_name="hf-internal-testing/dummy_image_text_data")
+        retriever = Retriever(config, model=components['clip'], feature_extractor=components['feature_extractor'])
+        pipe = RDMPipeline(**components, retriever=retriever)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["retrieved_images"] = [Image.fromarray(np.zeros((64, 64, 3)).astype(np.uint8))]
+        output = pipe(**inputs, knn=3)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.489, 0.591, 0.478, 0.505, 0.587, 0.481, 0.536, 0.493, 0.478])
 

@@ -54,6 +54,20 @@ class RetrieverFastTests(unittest.TestCase):
             "a picture of a pink and yellow pokemon figure",
             "a blue and black object with two eyes",
         ]
+    def test_batch_retrieving_images_given_prompt(self):
+        components = self.get_dummy_components()
+        retriever, clip = components["retriever"], components["clip"]
+        prompt = "a pizza"
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        clip_feature = map_txt_to_clip_feature(clip, tokenizer, prompt)
+        retrieved_examples = retriever.retrieve_imgs_batch(clip_feature[None], 5)
+        assert retrieved_examples.total_examples[0]["text"] == [
+            "a red and white ball with an angry look on its face",
+            "a cartoon picture of a green vegetable with eyes",
+            "a green and yellow toy with a red nose",
+            "a picture of a pink and yellow pokemon figure",
+            "a blue and black object with two eyes",
+        ]
 
     def test_retrieving_images_given_image(self):
         components = self.get_dummy_components()
@@ -84,7 +98,15 @@ class RetrieverFastTests(unittest.TestCase):
         retrieved_examples = retriever.retrieve_indices(clip_feature, 5)
         indices = retrieved_examples.indices
         assert (indices - np.array([2, 12, 1, 10, 17])).max() < 1e-8
-
+    def test_batch_retrieve_indices(self):
+        components = self.get_dummy_components()
+        retriever, clip = components["retriever"], components["clip"]
+        prompt = "a pizza"
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        clip_feature = map_txt_to_clip_feature(clip, tokenizer, prompt)
+        retrieved_examples = retriever.retrieve_indices_batch(clip_feature[None], 5)
+        indices = retrieved_examples.total_indices[0]
+        assert (indices - np.array([2, 12, 1, 10, 17])).max() < 1e-8
     def test_indexing(self):
         components = self.get_dummy_components()
         retriever = components["retriever"]

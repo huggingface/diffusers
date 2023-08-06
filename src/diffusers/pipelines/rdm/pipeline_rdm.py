@@ -1,7 +1,6 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
@@ -20,32 +19,9 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import logging, randn_tensor
-
+from .retriever import Retriever, normalize_images, preprocess_images
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def normalize_images(images: List[Image.Image]):
-    images = [np.array(image) for image in images]
-    images = [image / 127.5 - 1 for image in images]
-    return images
-
-
-def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
-    """
-    Preprocesses a list of images into a batch of tensors.
-
-    Args:
-        images (:obj:`List[Image.Image]`):
-            A list of images to preprocess.
-
-    Returns:
-        :obj:`torch.FloatTensor`: A batch of tensors.
-    """
-    images = [np.array(image) for image in images]
-    images = [(image + 1.0) / 2.0 for image in images]
-    images = feature_extractor(images, return_tensors="pt").pixel_values
-    return images
 
 
 class RDMPipeline(DiffusionPipeline):
@@ -87,6 +63,7 @@ class RDMPipeline(DiffusionPipeline):
             DPMSolverMultistepScheduler,
         ],
         feature_extractor: CLIPFeatureExtractor,
+        retriever: Optional[Retriever] = None
     ):
         super().__init__()
         self.register_modules(
@@ -100,6 +77,7 @@ class RDMPipeline(DiffusionPipeline):
         # Copy from statement here and all the methods we take from stable_diffusion_pipeline
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.retriever = retriever
 
     def enable_xformers_memory_efficient_attention(self):
         r"""
@@ -240,14 +218,20 @@ class RDMPipeline(DiffusionPipeline):
         return prompt_embeds
 
     def _encode_image(self, retrieved_images, batch_size):
-        retrieved_images = normalize_images(retrieved_images)
-        retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(
-            self.clip.device, dtype=self.clip.dtype
-        )
+        if len(retrieved_images[0]) == 0:
+            return None
+        for i in range(len(retrieved_images)):
+            retrieved_images[i] = normalize_images(retrieved_images[i])
+            retrieved_images[i] = preprocess_images(retrieved_images[i], self.feature_extractor).to(
+                self.clip.device, dtype=self.clip.dtype
+            )
+        _, c, h, w = retrieved_images[0].shape
+
+        retrieved_images = torch.reshape(torch.cat(retrieved_images, dim=0), (-1, c, h, w))
         image_embeddings = self.clip.get_image_features(retrieved_images)
         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
-        image_embeddings = image_embeddings[None, ...]
-        image_embeddings = image_embeddings.repeat(batch_size, 1, 1)
+        _, d = image_embeddings.shape
+        image_embeddings = torch.reshape(image_embeddings, (batch_size, -1, d))
         return image_embeddings
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -266,7 +250,12 @@ class RDMPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
+    def retrieve_images(self, retrieved_images, prompt_embeds, knn=10):
+        if self.retriever is not None:
+            additional_images = self.retriever.retrieve_imgs_batch(prompt_embeds[:, 0].cpu(), knn).total_examples
+            for i in range(len(retrieved_images)):
+                retrieved_images[i] += additional_images[i][self.retriever.config.image_column]
+        return retrieved_images
     @torch.no_grad()
     def __call__(
         self,
@@ -285,6 +274,7 @@ class RDMPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        knn: Optional[int] = 10,
         **kwargs,
     ):
         r"""
@@ -346,6 +336,10 @@ class RDMPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if retrieved_images is not None:
+            retrieved_images = [retrieved_images for _ in range(batch_size)]
+        else:
+            retrieved_images = [[] for _ in range(batch_size)]
         device = self._execution_device
 
         if height % 8 != 0 or width % 8 != 0:
@@ -360,8 +354,9 @@ class RDMPipeline(DiffusionPipeline):
             )
         if prompt_embeds is None:
             prompt_embeds = self._encode_prompt(prompt)
-        if retrieved_images is not None:
-            image_embeddings = self._encode_image(retrieved_images, batch_size)
+        retrieved_images = self.retrieve_images(retrieved_images, prompt_embeds, knn=knn)
+        image_embeddings = self._encode_image(retrieved_images, batch_size)
+        if image_embeddings is not None:
             prompt_embeds = torch.cat([prompt_embeds, image_embeddings], dim=1)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
