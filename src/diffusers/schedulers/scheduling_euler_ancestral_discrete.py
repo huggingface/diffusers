@@ -198,7 +198,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
 
         if self.step_index is None:
-            self._init_step_index(timestep)
+            self._step_index = self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -251,6 +251,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = None
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -266,7 +267,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0]
 
-        self._step_index = step_index.item()
+        return step_index.item()
 
     def step(
         self,
@@ -315,7 +316,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.step_index is None:
-            self._init_step_index(timestep)
+            self._step_index = self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
 

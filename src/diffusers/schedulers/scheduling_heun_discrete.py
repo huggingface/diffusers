@@ -307,6 +307,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def state_in_first_order(self):
         return self.dt is None
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -417,6 +418,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
