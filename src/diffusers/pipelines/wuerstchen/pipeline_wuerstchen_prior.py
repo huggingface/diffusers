@@ -36,8 +36,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
-        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained("kashif/wuerstchen-prior", torch_dtype=torch.float16).to("cuda")
-        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain("kashif/wuerstchen-gen", torch_dtype=torch.float16).to("cuda")
+        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
+        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
+        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)

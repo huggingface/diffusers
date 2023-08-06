@@ -18,12 +18,11 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass

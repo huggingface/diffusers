@@ -37,8 +37,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
-        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained("kashif/wuerstchen-prior", torch_dtype=torch.float16).to("cuda")
-        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain("kashif/wuerstchen-gen", torch_dtype=torch.float16).to("cuda")
+        >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
+        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
+        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
@@ -65,7 +69,7 @@ class WuerstchenGeneratorPipelineOutput(BaseOutput):
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
     """
-    Pipeline for generating images from the  Wuerstchen model.
+    Pipeline for generating images from the Wuerstchen model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
