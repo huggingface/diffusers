@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -23,8 +23,6 @@ from transformers import (
 )
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -33,6 +31,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
@@ -333,6 +332,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -378,6 +379,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -414,9 +421,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
-            dtype=prompt_embeds.dtype, device=device
-        )
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=prompt_embeds.dtype, device=device
+            )
 
         # 3. pre-processing initial image
         if not isinstance(image, list):
@@ -472,9 +479,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             )[0]
 
             if do_classifier_free_guidance:
-                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
+                noise_pred, variance_pred = noise_pred.split(latents.shape[1], dim=1)
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                _, variance_pred_text = variance_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = torch.cat([noise_pred, variance_pred_text], dim=1)
+
+            if not (
+                hasattr(self.scheduler.config, "variance_type")
+                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+            ):
+                noise_pred, _ = noise_pred.split(latents.shape[1], dim=1)
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(
@@ -483,6 +498,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 latents,
                 generator=generator,
             ).prev_sample
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
 
         # 7. post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]

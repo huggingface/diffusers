@@ -5,7 +5,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_torch_available, is_transformers_available
+from ...utils import BaseOutput, OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
 
 
 @dataclass
@@ -16,18 +16,23 @@ class AltDiffusionPipelineOutput(BaseOutput):
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
-            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
         nsfw_content_detected (`List[bool]`)
-            List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, or `None` if safety checking could not be performed.
+            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            `None` if safety checking could not be performed.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import ShapEPipeline
+else:
     from .modeling_roberta_series import RobertaSeriesModelWithTransformation
     from .pipeline_alt_diffusion import AltDiffusionPipeline
     from .pipeline_alt_diffusion_img2img import AltDiffusionImg2ImgPipeline

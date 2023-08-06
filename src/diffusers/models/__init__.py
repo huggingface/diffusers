@@ -19,6 +19,7 @@ if is_torch_available():
     from .adapter import MultiAdapter, T2IAdapter
     from .autoencoder_asym_kl import AsymmetricAutoencoderKL
     from .autoencoder_kl import AutoencoderKL
+    from .autoencoder_tiny import AutoencoderTiny
     from .controlnet import ControlNetModel
     from .dual_transformer_2d import DualTransformer2DModel
     from .modeling_utils import ModelMixin

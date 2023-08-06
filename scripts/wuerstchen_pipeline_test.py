@@ -1,11 +1,11 @@
 import os
 import numpy as np
 import torch
-import torchvision
 import transformers
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel
 from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
+
 transformers.utils.logging.set_verbosity_error()
 
 
@@ -20,19 +20,24 @@ def numpy_to_pil(images: np.ndarray) -> list[Image.Image]:
 
     return pil_images
 
-effnet_preprocess = torchvision.transforms.Compose([
-    torchvision.transforms.Resize(768, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
-    torchvision.transforms.CenterCrop(768),
-    torchvision.transforms.Normalize(
-        mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
-    )
-])
 
-transforms = torchvision.transforms.Compose([
-    torchvision.transforms.ToTensor(),
-    torchvision.transforms.Resize(1024),
-    torchvision.transforms.RandomCrop(1024),
-])
+# effnet_preprocess = torchvision.transforms.Compose(
+#     [
+#         torchvision.transforms.Resize(
+#             768, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True
+#         ),
+#         torchvision.transforms.CenterCrop(768),
+#         torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#     ]
+# )
+
+# transforms = torchvision.transforms.Compose(
+#     [
+#         torchvision.transforms.ToTensor(),
+#         torchvision.transforms.Resize(1024),
+#         torchvision.transforms.RandomCrop(1024),
+#     ]
+# )
 device = "cuda"
 dtype = torch.float16
 batch_size = 4
@@ -71,6 +76,10 @@ prior_pipeline = WuerstchenPriorPipeline.from_pretrained("warp-diffusion/Wuerstc
 
 generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=dtype)
 
+prior_pipeline = WuerstchenPriorPipeline.from_pretrained("warp-diffusion/WuerstchenPriorPipeline", torch_dtype=dtype)
+generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained(
+    "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=dtype
+)
 prior_pipeline = prior_pipeline.to("cuda")
 generator_pipeline = generator_pipeline.to("cuda")
 
@@ -106,8 +115,6 @@ for i, image in enumerate(images):
     image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
 
 
-
-
 # caption = input("Prompt please: ")
 # while caption != "q":
 #     prior_output = prior_pipeline(caption, num_images_per_prompt=4, negative_prompt=negative_prompt)
@@ -119,4 +126,3 @@ for i, image in enumerate(images):
 #         image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
 
 #     caption = input("Prompt please: ")
-

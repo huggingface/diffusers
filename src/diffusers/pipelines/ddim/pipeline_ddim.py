@@ -23,11 +23,14 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 class DDIMPipeline(DiffusionPipeline):
     r"""
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    Pipeline for image generation.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Parameters:
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
@@ -53,29 +56,56 @@ class DDIMPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
             generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             eta (`float`, *optional*, defaults to 0.0):
-                The eta parameter which controls the scale of the variance (0 is DDIM and 1 is one type of DDPM).
+                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers. A value of `0` corresponds to
+                DDIM and `1` corresponds to DDPM.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             use_clipped_model_output (`bool`, *optional*, defaults to `None`):
-                if `True` or `False`, see documentation for `DDIMScheduler.step`. If `None`, nothing is passed
-                downstream to the scheduler. So use `None` for schedulers which don't support this argument.
+                If `True` or `False`, see documentation for [`DDIMScheduler.step`]. If `None`, nothing is passed
+                downstream to the scheduler (use `None` for schedulers which don't support this argument).
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
+        Example:
+
+        ```py
+        >>> from diffusers import DDIMPipeline
+        >>> import PIL.Image
+        >>> import numpy as np
+
+        >>> # load model and scheduler
+        >>> pipe = DDIMPipeline.from_pretrained("fusing/ddim-lsun-bedroom")
+
+        >>> # run pipeline in inference (sample random noise and denoise)
+        >>> image = pipe(eta=0.0, num_inference_steps=50)
+
+        >>> # process image to PIL
+        >>> image_processed = image.cpu().permute(0, 2, 3, 1)
+        >>> image_processed = (image_processed + 1.0) * 127.5
+        >>> image_processed = image_processed.numpy().astype(np.uint8)
+        >>> image_pil = PIL.Image.fromarray(image_processed[0])
+
+        >>> # save image
+        >>> image_pil.save("test.png")
+        ```
+
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images
         """
 
         # Sample gaussian noise to begin loop

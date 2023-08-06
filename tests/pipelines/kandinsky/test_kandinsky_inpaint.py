@@ -33,33 +33,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyInpaintPipeline
-    params = ["prompt", "image_embeds", "negative_image_embeds", "image", "mask_image"]
-    batch_params = [
-        "prompt",
-        "negative_prompt",
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-        "mask_image",
-    ]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "latents",
-        "guidance_scale",
-        "negative_prompt",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -78,7 +52,7 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_tokenizer(self):
@@ -189,8 +163,8 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
         # create mask
-        mask = np.ones((64, 64), dtype=np.float32)
-        mask[:32, :32] = 0
+        mask = np.zeros((64, 64), dtype=np.float32)
+        mask[:32, :32] = 1
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -210,6 +184,42 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "np",
         }
         return inputs
+
+
+class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyInpaintPipeline
+    params = ["prompt", "image_embeds", "negative_image_embeds", "image", "mask_image"]
+    batch_params = [
+        "prompt",
+        "negative_prompt",
+        "image_embeds",
+        "negative_image_embeds",
+        "image",
+        "mask_image",
+    ]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "latents",
+        "guidance_scale",
+        "negative_prompt",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
 
     def test_kandinsky_inpaint(self):
         device = "cpu"
@@ -232,13 +242,9 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        print(f"image.shape {image.shape}")
-
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.8326919, 0.73790467, 0.20918581, 0.9309612, 0.5511791, 0.43713328, 0.5513321, 0.49922934, 0.59497786]
-        )
+        expected_slice = np.array([0.8222, 0.8896, 0.4373, 0.8088, 0.4905, 0.2609, 0.6816, 0.4291, 0.5129])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -296,8 +302,8 @@ class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
         )
-        mask = np.ones((768, 768), dtype=np.float32)
-        mask[:250, 250:-250] = 0
+        mask = np.zeros((768, 768), dtype=np.float32)
+        mask[:250, 250:-250] = 1
 
         prompt = "a hat"
 
