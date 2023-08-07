@@ -107,13 +107,13 @@ One cheeseburger monster coming up! Enjoy!
 
 <Tip>
 
-We also provide an end-to-end Kandinsky pipeline [`KandinskyCombinedPipeline`], which combines both the prior pipeline and text-to-image pipeline, and lets you perform inference in a single step. You can create the combined pipeline with the [`~AutoPipelineForTextToImage.from_pretrained`] method
+We also provide an end-to-end Kandinsky pipeline [`KandinskyCombinedPipeline`], which combines both the prior pipeline and text-to-image pipeline, and lets you perform inference in a single step. You can create the combined pipeline with the [`~AutoPipelineForText2Image.from_pretrained`] method
 
 ```python
-from diffusers import AutoPipelineForTextToImage
+from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForTextToImage.from_pretrained(
+pipe = AutoPipelineForText2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()

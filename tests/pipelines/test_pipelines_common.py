@@ -528,6 +528,7 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        components = self.get_dummy_components()
         pipe_fp16 = self.pipeline_class(**components)
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)

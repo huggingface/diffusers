@@ -41,11 +41,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
+        ```python
+        >>> from diffusers import StableDiffusionLDM3DPipeline
 
-        >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d")
+        >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
@@ -63,7 +62,10 @@ class LDM3DPipelineOutput(BaseOutput):
     Output class for Stable Diffusion pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
+        rgb (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
+        depth (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
         nsfw_content_detected (`List[bool]`)
@@ -303,7 +305,14 @@ class StableDiffusionLDM3DPipeline(
             )
             prompt_embeds = prompt_embeds[0]
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        if self.text_encoder is not None:
+            prompt_embeds_dtype = self.text_encoder.dtype
+        elif self.unet is not None:
+            prompt_embeds_dtype = self.unet.dtype
+        else:
+            prompt_embeds_dtype = prompt_embeds.dtype
+
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -359,7 +368,7 @@ class StableDiffusionLDM3DPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
