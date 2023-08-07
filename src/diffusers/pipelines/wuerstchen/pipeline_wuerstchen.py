@@ -245,9 +245,10 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         inference_steps: dict = None,
         guidance_scale: float = 3.0,
+        num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
         device = self._execution_device
@@ -257,21 +258,14 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         if inference_steps is None:
             inference_steps = default_inference_steps_b
 
-        if negative_prompt is None:
-            negative_prompt = ""
-
         if isinstance(prompt, str):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
-        elif not isinstance(negative_prompt, list) and negative_prompt is not None:
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-        text_encoder_hidden_states = self._encode_prompt(
-            prompt, device, predicted_image_embeddings.size(0), do_classifier_free_guidance, negative_prompt
-        )
 
+        text_encoder_hidden_states = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
         predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
             predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
@@ -325,11 +319,14 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 
-        if output_type not in ["pt", "np"]:
-            raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 
         if output_type == "np":
             images = images.permute(0, 2, 3, 1).cpu().numpy()
+        elif output_type == "pil":
+            images = images.permute(0, 2, 3, 1).cpu().numpy()
+            images = self.numpy_to_pil(images)
 
         if not return_dict:
             return images

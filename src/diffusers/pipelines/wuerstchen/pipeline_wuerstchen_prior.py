@@ -223,19 +223,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         if inference_steps is None:
             inference_steps = default_inference_steps_c
 
-        if negative_prompt is None:
-            negative_prompt = ""
-
         if isinstance(prompt, str):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
-        elif not isinstance(negative_prompt, list) and negative_prompt is not None:
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
@@ -244,7 +237,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         latent_height = 128 * (height // 128) // (1024 // 24)
         latent_width = 128 * (width // 128) // (1024 // 24)
         num_channels = self.prior.config.c_in
-        effnet_features_shape = (num_images_per_prompt, num_channels, latent_height, latent_width)
+        effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
 
         self.scheduler.set_timesteps(inference_steps, device=device)
         timesteps = self.scheduler.timesteps
