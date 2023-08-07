@@ -50,7 +50,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_accelerate_available, is_omegaconf_available, is_safetensors_available, logging
+from ...utils import is_accelerate_available, is_omegaconf_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
@@ -1225,9 +1225,6 @@ def download_from_original_stable_diffusion_ckpt(
     from omegaconf import OmegaConf
 
     if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
-
         from safetensors.torch import load_file as safe_load
 
         checkpoint = safe_load(checkpoint_path, device="cpu")
@@ -1650,9 +1647,6 @@ def download_controlnet_from_original_ckpt(
     from omegaconf import OmegaConf
 
     if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
-
         from safetensors import safe_open
 
         checkpoint = {}

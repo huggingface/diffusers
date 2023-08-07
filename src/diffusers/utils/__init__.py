@@ -64,7 +64,6 @@ from .import_utils import (
     is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
-    is_safetensors_available,
     is_scipy_available,
     is_tensorboard_available,
     is_tf_available,
