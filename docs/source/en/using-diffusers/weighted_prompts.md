@@ -90,7 +90,7 @@ image
   <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/forest_1.png"/>
 </div>
 
-To downweight parts of the prompt, use the `--` suffix:
+To downweight parts of the prompt, use the `-` suffix:
 
 ```py
 prompt = "a red------- cat playing with a ball"
@@ -103,7 +103,7 @@ image
 ```
 
 <div class="flex justify-center">
-  <img class="rounded-xl" src=""/>
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-neg.png"/>
 </div>
 
 You can even up or downweight multiple concepts in the same prompt:
@@ -115,31 +115,49 @@ prompt_embeds = compel_proc(prompt)
 generator = torch.Generator(device="cpu").manual_seed(33)
 
 image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
-imageblen
+image
 ```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-pos-neg.png
+"/>
+</div>
 
 ## Blending
 
 You can also create a weighted *blend* of prompts by adding `.blend()` to a list of prompts and passing it some weights. Your blend may not always produce the result you expect because it breaks some assumptions about how the text encoder functions, so just have fun and experiment with it!
 
 ```py
-prompt = ["a red cat playing with a ball", "elden ring"].blend(1, 0.8)
+prompt_embeds = compel_proc('("a red cat playing with a ball", "jungle").blend(0.7, 0.8)')
+generator = torch.Generator(device="cuda").manual_seed(33)
+
+image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
+image
 ```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-blend.png"/>
+</div>
 
 ## Conjunction
 
 A conjunction diffuses each prompt independently and concatenates their results by their weighted sum. Add `.and()` to the end of a list of prompts to create a conjunction:
   
 ```py
-prompt = ["a red cat", "playing with a ball"].and()
+prompt_embeds = compel_proc('("a red cat, playing with a, ball").and()')
+generator = torch.Generator(device="cuda").manual_seed(33)
+
+image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
+image
 ```
 
-## StableDiffusionXLPipeline
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-conj.png"/>
+</div>
 
-For StableDiffusionXL we need to not only pass `prompt_embeds` (and optionally `negative_prompt_embeds`), but also [`pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.pooled_prompt_embeds) and optionally [`negative_pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.negative_pooled_prompt_embeds). 
-In addition, [`StableDiffusionXLPipeline`] has two tokenizers and two text encoders which both need to be used to weight the prompt.
-Luckily, [`compel`](https://github.com/damian0815/compel) takes care of SDXL's special needs - all we have to do is to pass both tokenizers and text encoders to the `Compel` class.
+## Stable Diffusion XL
 
+Stable Diffusion XL (SDXL) has two tokenizers and text encoders so it's usage is a bit different. To address this, you should pass both tokenizers and encoders to the `Compel` class:
 
 ```py
 from compel import Compel, ReturnedEmbeddingsType
@@ -160,21 +178,17 @@ compel = Compel(
 )
 ```
 
-Let's try our example from above again. We use the same seed for both prompts and upweight ball by a factor of 1.5 for the first 
-prompt and downweight ball by 40% for the second prompt.
+This time, let's upweight "ball" by a factor of 1.5 for the first prompt, and downweight "ball" by 0.6 for the second prompt. The [`StableDiffusionXLPipeline`] also requires [`pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.pooled_prompt_embeds) (and optionally [`negative_pooled_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLInpaintPipeline.__call__.negative_pooled_prompt_embeds)) so you should pass those to the pipeline along with the conditioning tensors:
 
 ```py
-# upweight "ball"
+# apply weights
 prompt = ["a red cat playing with a (ball)1.5", "a red cat playing with a (ball)0.6"]
 conditioning, pooled = compel(prompt)
-
 
 # generate image
 generator = [torch.Generator().manual_seed(33) for _ in range(len(prompt))]
 images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, generator=generator, num_inference_steps=30).images
 ```
-
-Let's have a look at the result.
 
 <div class="flex gap-4">
   <div>
@@ -183,16 +197,15 @@ Let's have a look at the result.
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball2.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">a red cat playing with a (ball)0.6</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"a red cat playing with a (ball)0.6"</figcaption>
   </div>
 </div>
 
-We can see that the ball is almost completely gone on the right image while it's clearly visible on the left image.
-For more information and more tricks you can use `compel` with, please have a look at the [compel docs](https://github.com/damian0815/compel/blob/main/doc/syntax.md) as well.
+## Textual inversion
 
-Compel 1.1.6 adds a utility class to simplify using textual inversions.  Instantiate a `DiffusersTextualInversionManager` and pass it to Compel init:
+Compel provides a `DiffusersTextualInversionManager` class to simplify prompt weighting with textual inversion. Instantiate `DiffusersTextualInversionManager` and pass it to the `Compel` class:
 
-```
+```py
 textual_inversion_manager = DiffusersTextualInversionManager(pipe)
 compel = Compel(
     tokenizer=pipe.tokenizer,
