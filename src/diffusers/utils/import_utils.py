@@ -570,6 +570,8 @@ class DummyObject(type):
     `requires_backend` each time a user tries to access any method of that class.
     """
 
+    _is_onnx = False
+
     def __getattr__(cls, key):
         if key.startswith("_") and key != "_load_connected_pipes":
             return super().__getattr__(cls, key)
