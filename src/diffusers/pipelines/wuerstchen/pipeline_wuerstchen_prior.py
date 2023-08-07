@@ -43,9 +43,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-default_inference_steps_c = {2 / 3: 20, 0.0: 10}
-
-
 @dataclass
 class WuerstchenPriorPipelineOutput(BaseOutput):
     """
@@ -197,7 +194,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        inference_steps: dict = None,
+        inference_steps: dict[float, int] = {2 / 3: 20, 0.0: 10},
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -207,11 +204,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         device = self._execution_device
-
         do_classifier_free_guidance = guidance_scale > 1.0
-
-        if inference_steps is None:
-            inference_steps = default_inference_steps_c
 
         if isinstance(prompt, str):
             prompt = [prompt]

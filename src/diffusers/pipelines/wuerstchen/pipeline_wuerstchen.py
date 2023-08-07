@@ -46,8 +46,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-default_inference_steps_b = {0.0: 12}
-
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
     """
@@ -224,7 +222,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         predicted_image_embeddings: torch.Tensor,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        inference_steps: dict = None,
+        inference_steps: dict[float, int] = {0.0: 12},
         guidance_scale: float = 3.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -235,9 +233,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         device = self._execution_device
 
         do_classifier_free_guidance = guidance_scale > 1.0
-
-        if inference_steps is None:
-            inference_steps = default_inference_steps_b
 
         if isinstance(prompt, str):
             prompt = [prompt]
