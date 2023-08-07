@@ -2,14 +2,15 @@
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from PIL import Image
 import numpy as np
+import PIL.Image
 import torch
 
+from diffusers import StableDiffusionXLPipeline
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput, StableDiffusionXLPipeline
-from diffusers.utils import logging, randn_tensor, PIL_INTERPOLATION
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
+from diffusers.utils import PIL_INTERPOLATION, logging, randn_tensor
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -69,7 +70,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             image = image[0]
 
         if height is None:
-            if isinstance(image, Image.Image):
+            if isinstance(image, PIL.Image.Image):
                 height = image.height
             elif isinstance(image, torch.Tensor):
                 height = image.shape[2]
@@ -77,7 +78,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             height = (height // 8) * 8  # round down to nearest multiple of 8
 
         if width is None:
-            if isinstance(image, Image.Image):
+            if isinstance(image, PIL.Image.Image):
                 width = image.width
             elif isinstance(image, torch.Tensor):
                 width = image.shape[3]
@@ -99,10 +100,10 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         guess_mode=False,
     ):
         if not isinstance(image, torch.Tensor):
-            if isinstance(image, Image.Image):
+            if isinstance(image, PIL.Image.Image):
                 image = [image]
 
-            if isinstance(image[0], Image.Image):
+            if isinstance(image[0], PIL.Image.Image):
                 images = []
 
                 for image_ in image:
@@ -178,7 +179,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        ref_image: Union[torch.FloatTensor, Image.Image] = None,
+        ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
