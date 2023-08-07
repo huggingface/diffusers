@@ -307,7 +307,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def state_in_first_order(self):
         return self.dt is None
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -428,7 +428,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
 
-        self.timesteps.to(original_samples.device)
         step_indices = [self._init_step_index(t) for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
