@@ -31,7 +31,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = StableDiffusionXLReferencePipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",torch_dtype=torch.float16,use_safetensors=True, variant="fp16")
 
-
+        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         >>> result_img = pipe(ref_image=input_image,
                         prompt="1girl",
                         num_inference_steps=20,
@@ -212,15 +212,15 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         gn_auto_machine_weight: float = 1.0,
         style_fidelity: float = 0.5,
         reference_attn: bool = True,
-        reference_adain: bool = False,
+        reference_adain: bool = True,
     ):
         assert reference_attn or reference_adain, "`reference_attn` or `reference_adain` must be True."
         
         # 0. Default height and width to unet
-        height, width = self._default_height_width(height, width, ref_image)
+        # height, width = self._default_height_width(height, width, ref_image)
         
-        # height = height or self.default_sample_size * self.vae_scale_factor
-        # width = width or self.default_sample_size * self.vae_scale_factor
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
