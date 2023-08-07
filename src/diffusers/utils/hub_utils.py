@@ -477,6 +477,7 @@ class PushToHubMixin:
         use_auth_token: Optional[Union[bool, str]] = None,
         create_pr: bool = False,
         safe_serialization: bool = True,
+        variant: Optional[str] = None,
     ) -> str:
         """
         Upload the {object_files} to the 🤗 Model Hub while synchronizing a local clone of the repo in
@@ -501,6 +502,8 @@ class PushToHubMixin:
                 Whether or not to create a PR with the uploaded files or directly commit.
             safe_serialization (`bool`, *optional*, defaults to `False`):
                 Whether or not to convert the model weights in safetensors format for safer serialization.
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
 
         Examples:
 
@@ -535,7 +538,10 @@ class PushToHubMixin:
             files_timestamps = self._get_files_timestamps(working_dir)
 
         # Save all files.
-        self.save_pretrained(working_dir, safe_serialization=safe_serialization)
+        save_kwargs = {"safe_serialization": safe_serialization}
+        if "Scheduler" not in self.__class__.__name__:
+            save_kwargs.update({"variant": variant})
+        self.save_pretrained(working_dir, **save_kwargs)
 
         return self._upload_modified_files(
             working_dir,

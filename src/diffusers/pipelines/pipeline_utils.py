@@ -67,7 +67,7 @@ if is_transformers_available():
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
-from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, PushToHubMixin
 
 
 if is_accelerate_available():
@@ -473,7 +473,7 @@ def load_sub_model(
     return loaded_sub_model
 
 
-class DiffusionPipeline(ConfigMixin):
+class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
 
@@ -559,6 +559,8 @@ class DiffusionPipeline(ConfigMixin):
         save_directory: Union[str, os.PathLike],
         safe_serialization: bool = False,
         variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save all saveable variables of the pipeline to a directory. A pipeline variable can be saved and loaded if its
@@ -572,12 +574,24 @@ class DiffusionPipeline(ConfigMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name", None)
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
         model_index_dict.pop("_name_or_path", None)
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = self._create_repo(repo_id, **kwargs)
+            files_timestamps = self._get_files_timestamps(save_directory)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -641,6 +655,15 @@ class DiffusionPipeline(ConfigMixin):
 
         # finally save the config
         self.save_config(save_directory)
+
+        if push_to_hub:
+            self._upload_modified_files(
+                save_directory,
+                repo_id,
+                files_timestamps,
+                commit_message=commit_message,
+                token=kwargs.get("use_auth_token"),
+            )
 
     def to(
         self,
