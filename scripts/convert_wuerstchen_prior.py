@@ -34,4 +34,3 @@ prior_pipeline = WuerstchenPriorPipeline(
 )
 
 prior_pipeline.save_pretrained("warp-diffusion/WuerstchenPriorPipeline")
-
