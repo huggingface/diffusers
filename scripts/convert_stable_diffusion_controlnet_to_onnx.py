@@ -128,7 +128,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
             return_dict=False,
         )[0]
         return noise_pred
-    
+
 
 class UNet2DConditionXLControlNetModel(torch.nn.Module):
     def __init__(
@@ -227,7 +227,9 @@ def onnx_export(
 
 
 @torch.no_grad()
-def convert_models(model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False, sd_xl: bool = False):
+def convert_models(
+    model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False, sd_xl: bool = False
+):
     dtype = torch.float16 if fp16 else torch.float32
     if fp16 and torch.cuda.is_available():
         device = "cuda"
@@ -250,7 +252,7 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
         else:
             raise ValueError("MultiControlNet is not yet supported.")
         pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
-        model_path, controlnet=controlnet, torch_dtype=dtype, variant="fp16", use_safetensors=True
+            model_path, controlnet=controlnet, torch_dtype=dtype, variant="fp16", use_safetensors=True
         ).to(device)
     else:
         pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
