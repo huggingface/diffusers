@@ -1076,7 +1076,7 @@ def main(args):
 
                 with torch.cuda.amp.autocast():
                     images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
+                        pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
                     ]
 
