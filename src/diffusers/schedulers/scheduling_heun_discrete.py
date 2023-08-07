@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -265,6 +266,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = None
 
+        # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
+        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
+        # we need an index counter
+        self._index_counter = defaultdict(int)
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
@@ -347,6 +353,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if self.step_index is None:
             self._init_step_index(timestep)
+
+        # (YiYi notes: keep this for now since we are keeping the add_noise method)
+        # advance index counter by 1
+        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
+        self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[self.step_index]
