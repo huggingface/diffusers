@@ -530,8 +530,9 @@ class PushToHubMixin:
         if use_temp_dir:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 working_dir = tmp_dir
-
-        files_timestamps = self._get_files_timestamps(working_dir)
+                files_timestamps = self._get_files_timestamps(working_dir)
+        else:
+            files_timestamps = self._get_files_timestamps(working_dir)
 
         # Save all files.
         self.save_pretrained(working_dir, safe_serialization=safe_serialization)
