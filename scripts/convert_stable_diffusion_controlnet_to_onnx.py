@@ -18,6 +18,7 @@ from diffusers import (
     StableDiffusionControlNetImg2ImgPipeline,
 )
 from diffusers.models.attention_processor import AttnProcessor
+from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
 
 
 is_torch_less_than_1_11 = version.parse(version.parse(torch.__version__).base_version) < version.parse("1.11")
@@ -129,6 +130,62 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
         return noise_pred
 
 
+class UNet2DConditionXLControlNetModel(torch.nn.Module):
+    def __init__(
+        self,
+        unet,
+        controlnets: ControlNetModel,
+    ):
+        super().__init__()
+        self.unet = unet
+        self.controlnets = controlnets
+
+    def forward(
+        self,
+        sample,
+        timestep,
+        encoder_hidden_states,
+        controlnet_conds,
+        controlnet_scales,
+        text_embeds,
+        time_ids,
+    ):
+        added_cond_kwargs = {"text_embeds": text_embeds, "time_ids": time_ids}
+        for i, (controlnet_cond, conditioning_scale, controlnet) in enumerate(
+            zip(controlnet_conds, controlnet_scales, self.controlnets)
+        ):
+            down_samples, mid_sample = controlnet(
+                sample,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                controlnet_cond=controlnet_cond,
+                conditioning_scale=conditioning_scale,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False,
+            )
+
+            # merge samples
+            if i == 0:
+                down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+            else:
+                down_block_res_samples = [
+                    samples_prev + samples_curr
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                ]
+                mid_block_res_sample += mid_sample
+
+        noise_pred = self.unet(
+            sample,
+            timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            down_block_additional_residuals=down_block_res_samples,
+            mid_block_additional_residual=mid_block_res_sample,
+            added_cond_kwargs=added_cond_kwargs,
+            return_dict=False,
+        )[0]
+        return noise_pred
+
+
 def onnx_export(
     model,
     model_args: tuple,
@@ -170,7 +227,9 @@ def onnx_export(
 
 
 @torch.no_grad()
-def convert_models(model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False):
+def convert_models(
+    model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False, sd_xl: bool = False
+):
     dtype = torch.float16 if fp16 else torch.float32
     if fp16 and torch.cuda.is_available():
         device = "cuda"
@@ -187,15 +246,25 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
             controlnet.set_attn_processor(AttnProcessor())
         controlnets.append(controlnet)
 
-    pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-        model_path, controlnet=controlnets, torch_dtype=dtype
-    ).to(device)
+    if sd_xl:
+        if len(controlnets) == 1:
+            controlnet = controlnets[0]
+        else:
+            raise ValueError("MultiControlNet is not yet supported.")
+        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+            model_path, controlnet=controlnet, torch_dtype=dtype, variant="fp16", use_safetensors=True
+        ).to(device)
+    else:
+        pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+            model_path, controlnet=controlnets, torch_dtype=dtype
+        ).to(device)
+
     output_path = Path(output_path)
     if is_torch_2_0_1:
         pipeline.unet.set_attn_processor(AttnProcessor())
         pipeline.vae.set_attn_processor(AttnProcessor())
 
-    # TEXT ENCODER
+    # # TEXT ENCODER
     num_tokens = pipeline.text_encoder.config.max_position_embeddings
     text_hidden_size = pipeline.text_encoder.config.hidden_size
     text_input = pipeline.tokenizer(
@@ -219,57 +288,118 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
     )
     del pipeline.text_encoder
 
-    # UNET
-    controlnets = torch.nn.ModuleList(controlnets)
-    unet_controlnet = UNet2DConditionControlNetModel(pipeline.unet, controlnets)
-    unet_in_channels = pipeline.unet.config.in_channels
-    unet_sample_size = pipeline.unet.config.sample_size
-    img_size = 8 * unet_sample_size
-    unet_path = output_path / "unet" / "model.onnx"
-    onnx_export(
-        unet_controlnet,
-        model_args=(
-            torch.randn(2, unet_in_channels, unet_sample_size, unet_sample_size).to(device=device, dtype=dtype),
-            torch.tensor([1.0]).to(device=device, dtype=dtype),
-            torch.randn(2, num_tokens, text_hidden_size).to(device=device, dtype=dtype),
-            torch.randn(len(controlnets), 2, 3, img_size, img_size).to(device=device, dtype=dtype),
-            torch.randn(len(controlnets), 1).to(device=device, dtype=dtype),
-        ),
-        output_path=unet_path,
-        ordered_input_names=[
-            "sample",
-            "timestep",
-            "encoder_hidden_states",
-            "controlnet_conds",
-            "conditioning_scales",
-        ],
-        output_names=["noise_pred"],  # has to be different from "sample" for correct tracing
-        dynamic_axes={
-            "sample": {0: "2B", 2: "H", 3: "W"},
-            "encoder_hidden_states": {0: "2B"},
-            "controlnet_conds": {1: "2B", 3: "8H", 4: "8W"},
-        },
-        opset=opset,
-        use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
-    )
-    unet_model_path = str(unet_path.absolute().as_posix())
-    unet_dir = os.path.dirname(unet_model_path)
-    # optimize onnx
-    shape_inference.infer_shapes_path(unet_model_path, unet_model_path)
-    unet_opt_graph = optimize(onnx.load(unet_model_path), name="Unet", verbose=True)
-    # clean up existing tensor files
-    shutil.rmtree(unet_dir)
-    os.mkdir(unet_dir)
-    # collate external tensor files into one
-    onnx.save_model(
-        unet_opt_graph,
-        unet_model_path,
-        save_as_external_data=True,
-        all_tensors_to_one_file=True,
-        location="weights.pb",
-        convert_attribute=False,
-    )
-    del pipeline.unet
+    # # UNET
+    if sd_xl:
+        controlnets = torch.nn.ModuleList(controlnets)
+        unet_controlnet = UNet2DConditionXLControlNetModel(pipeline.unet, controlnets)
+        unet_in_channels = pipeline.unet.config.in_channels
+        unet_sample_size = pipeline.unet.config.sample_size
+        text_hidden_size = 2048
+        img_size = 8 * unet_sample_size
+        unet_path = output_path / "unet" / "model.onnx"
+
+        onnx_export(
+            unet_controlnet,
+            model_args=(
+                torch.randn(2, unet_in_channels, unet_sample_size, unet_sample_size).to(device=device, dtype=dtype),
+                torch.tensor([1.0]).to(device=device, dtype=dtype),
+                torch.randn(2, num_tokens, text_hidden_size).to(device=device, dtype=dtype),
+                torch.randn(len(controlnets), 2, 3, img_size, img_size).to(device=device, dtype=dtype),
+                torch.randn(len(controlnets), 1).to(device=device, dtype=dtype),
+                torch.randn(2, 1280).to(device=device, dtype=dtype),
+                torch.rand(2, 6).to(device=device, dtype=dtype),
+            ),
+            output_path=unet_path,
+            ordered_input_names=[
+                "sample",
+                "timestep",
+                "encoder_hidden_states",
+                "controlnet_conds",
+                "conditioning_scales",
+                "text_embeds",
+                "time_ids",
+            ],
+            output_names=["noise_pred"],  # has to be different from "sample" for correct tracing
+            dynamic_axes={
+                "sample": {0: "2B", 2: "H", 3: "W"},
+                "encoder_hidden_states": {0: "2B"},
+                "controlnet_conds": {1: "2B", 3: "8H", 4: "8W"},
+                "text_embeds": {0: "2B"},
+                "time_ids": {0: "2B"},
+            },
+            opset=opset,
+            use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
+        )
+        unet_model_path = str(unet_path.absolute().as_posix())
+        unet_dir = os.path.dirname(unet_model_path)
+        # optimize onnx
+        shape_inference.infer_shapes_path(unet_model_path, unet_model_path)
+        unet_opt_graph = optimize(onnx.load(unet_model_path), name="Unet", verbose=True)
+        # clean up existing tensor files
+        shutil.rmtree(unet_dir)
+        os.mkdir(unet_dir)
+        # collate external tensor files into one
+        onnx.save_model(
+            unet_opt_graph,
+            unet_model_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location="weights.pb",
+            convert_attribute=False,
+        )
+        del pipeline.unet
+    else:
+        controlnets = torch.nn.ModuleList(controlnets)
+        unet_controlnet = UNet2DConditionControlNetModel(pipeline.unet, controlnets)
+        unet_in_channels = pipeline.unet.config.in_channels
+        unet_sample_size = pipeline.unet.config.sample_size
+        img_size = 8 * unet_sample_size
+        unet_path = output_path / "unet" / "model.onnx"
+
+        onnx_export(
+            unet_controlnet,
+            model_args=(
+                torch.randn(2, unet_in_channels, unet_sample_size, unet_sample_size).to(device=device, dtype=dtype),
+                torch.tensor([1.0]).to(device=device, dtype=dtype),
+                torch.randn(2, num_tokens, text_hidden_size).to(device=device, dtype=dtype),
+                torch.randn(len(controlnets), 2, 3, img_size, img_size).to(device=device, dtype=dtype),
+                torch.randn(len(controlnets), 1).to(device=device, dtype=dtype),
+            ),
+            output_path=unet_path,
+            ordered_input_names=[
+                "sample",
+                "timestep",
+                "encoder_hidden_states",
+                "controlnet_conds",
+                "conditioning_scales",
+            ],
+            output_names=["noise_pred"],  # has to be different from "sample" for correct tracing
+            dynamic_axes={
+                "sample": {0: "2B", 2: "H", 3: "W"},
+                "encoder_hidden_states": {0: "2B"},
+                "controlnet_conds": {1: "2B", 3: "8H", 4: "8W"},
+            },
+            opset=opset,
+            use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
+        )
+        unet_model_path = str(unet_path.absolute().as_posix())
+        unet_dir = os.path.dirname(unet_model_path)
+        # optimize onnx
+        shape_inference.infer_shapes_path(unet_model_path, unet_model_path)
+        unet_opt_graph = optimize(onnx.load(unet_model_path), name="Unet", verbose=True)
+        # clean up existing tensor files
+        shutil.rmtree(unet_dir)
+        os.mkdir(unet_dir)
+        # collate external tensor files into one
+        onnx.save_model(
+            unet_opt_graph,
+            unet_model_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location="weights.pb",
+            convert_attribute=False,
+        )
+        del pipeline.unet
 
     # VAE ENCODER
     vae_encoder = pipeline.vae
@@ -315,6 +445,9 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
     del pipeline.vae
 
     # SAFETY CHECKER
+    if sd_xl:
+        return
+
     if pipeline.safety_checker is not None:
         safety_checker = pipeline.safety_checker
         clip_num_channels = safety_checker.config.vision_config.num_channels
@@ -371,6 +504,8 @@ def convert_models(model_path: str, controlnet_path: list, output_path: str, ops
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--sd_xl", action="store_true", default=False, help="SD XL pipeline")
+
     parser.add_argument(
         "--model_path",
         type=str,
@@ -397,4 +532,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    convert_models(args.model_path, args.controlnet_path, args.output_path, args.opset, args.fp16)
+    convert_models(args.model_path, args.controlnet_path, args.output_path, args.opset, args.fp16, args.sd_xl)
