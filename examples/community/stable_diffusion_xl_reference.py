@@ -1,15 +1,15 @@
 # Based on stable_diffusion_reference.py
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 from PIL import Image
 import numpy as np
 import torch
-from diffusers.utils import logging, randn_tensor, PIL_INTERPOLATION
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput, StableDiffusionXLPipeline
 
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput, StableDiffusionXLPipeline
+from diffusers.utils import logging, randn_tensor, PIL_INTERPOLATION
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
