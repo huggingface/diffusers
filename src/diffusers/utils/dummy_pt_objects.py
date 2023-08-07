@@ -77,21 +77,6 @@ class ModelMixin(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class VQModelPaella(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-
 class MultiAdapter(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -228,6 +213,21 @@ class UNet3DConditionModel(metaclass=DummyObject):
 
 
 class VQModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class VQModelPaella(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -600,7 +600,7 @@ class DDPMParallelScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DDPMWuerstchenScheduler(metaclass=DummyObject):
+class DDPMScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -615,7 +615,7 @@ class DDPMWuerstchenScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DDPMScheduler(metaclass=DummyObject):
+class DDPMWuerstchenScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

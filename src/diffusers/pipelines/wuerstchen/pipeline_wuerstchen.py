@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import numpy as np
@@ -21,12 +20,9 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ...utils import logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modules import DiffNeXt, EfficientNetEncoder
-
-
-# from .diffuzz import Diffuzz
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,33 +34,19 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
         >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
-        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ...     "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
-        >>> images = gen_pipe(prior_output.image_embeds, prior_output.text_embeds)
+        >>> images = gen_pipe(prior_output.image_embeds, prompt=prompt)
         ```
 """
 
-
 default_inference_steps_b = {0.0: 12}
-
-
-@dataclass
-class WuerstchenGeneratorPipelineOutput(BaseOutput):
-    """
-    Output class for WuerstchenPriorPipeline.
-
-    Args:
-        images (`torch.FloatTensor` or `np.ndarray`)
-            Generated images for text prompt.
-    """
-
-    images: Union[torch.FloatTensor, np.ndarray]
 
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
@@ -189,7 +171,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-
             seq_len = uncond_text_encoder_hidden_states.shape[1]
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
@@ -286,11 +267,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-        # from transformers import AutoTokenizer, CLIPTextModel
-        # text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to(device)
-        # tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        # clip_tokens = tokenizer([""] * latents.size(0), truncation=True, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt").to(device)
-        # clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype)
 
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
@@ -318,6 +294,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             ).prev_sample
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
+        images = images.permute(0, 2, 3, 1).cpu().numpy()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
@@ -331,4 +308,4 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         if not return_dict:
             return images
 
-        return WuerstchenGeneratorPipelineOutput(images)
+        return ImagePipelineOutput(images)

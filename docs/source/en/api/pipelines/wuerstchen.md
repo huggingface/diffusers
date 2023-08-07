@@ -8,18 +8,15 @@ The abstract from the paper is:
 
 The original codebase can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
 
-## VQDiffusionPipeline
-[[autodoc]] VQDiffusionPipeline
+## WuerstchenPriorPipeline
+[[autodoc]] WuerstchenGeneratorPipeline
 	- all
 	- __call__
 
-## ImagePipelineOutput
-[[autodoc]] pipelines.ImagePipelineOutput
+## WuerstchenPriorPipelineOutput
+[[autodoc]] WuerstchenPriorPipelineOutput
 
 ## WuerstchenGeneratorPipeline
 [[autodoc]] WuerstchenGeneratorPipeline
 	- all
 	- __call__
-
-## WuerstchenGeneratorPipelineOutput
-[[autodoc]] pipelines.WuerstchenGeneratorPipelineOutput
