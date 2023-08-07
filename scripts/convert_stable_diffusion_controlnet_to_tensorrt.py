@@ -7,6 +7,7 @@ import tensorrt as trt
 def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: bool = False, sd_xl: bool = False):
     # UNET
     if sd_xl:
+        batch_size = 1
         unet_in_channels = 4
         unet_sample_size = 64
         num_tokens = 77
