@@ -287,7 +287,6 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def state_in_first_order(self):
         return self.sample is None
 
-
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
