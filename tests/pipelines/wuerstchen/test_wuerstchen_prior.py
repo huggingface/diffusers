@@ -23,7 +23,7 @@ from transformers import (
     CLIPTokenizer,
 )
 
-from diffusers import WuerstchenPriorPipeline, DDPMScheduler
+from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
 from diffusers.pipelines.wuerstchen import Prior
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
@@ -95,7 +95,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "c_in": 2,
             "c": 8,
             "depth": 2,
-            "c_cond": 37,
+            "c_cond": 32,
             "c_r": 8,
             "nhead": 2,
             "latent_size": (2, 2),
@@ -109,7 +109,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = self.dummy_text_encoder
         tokenizer = self.dummy_tokenizer
 
-        scheduler = DDPMScheduler()
+        scheduler = DDPMWuerstchenScheduler()
 
         components = {
             "prior": prior,
@@ -129,12 +129,12 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 4.0,
-            "num_inference_steps": 2,
+            "num_inference_steps": {0.0: 2},
             "output_type": "np",
         }
         return inputs
 
-    def test_kandinsky_prior(self):
+    def test_wuerstchen_prior(self):
         device = "cpu"
 
         components = self.get_dummy_components()

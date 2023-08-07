@@ -221,7 +221,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         predicted_image_embeddings: torch.Tensor,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        inference_steps: dict[float, int] = {0.0: 12},
+        num_inference_steps: dict[float, int] = {0.0: 12},
         guidance_scale: float = 3.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -250,7 +250,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         latent_width = int(predicted_image_embeddings.size(3) * (256 / 24))
         effnet_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
 
-        self.scheduler.set_timesteps(inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         latents = self.prepare_latents(

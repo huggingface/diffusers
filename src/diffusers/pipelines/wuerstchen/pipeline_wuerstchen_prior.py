@@ -194,7 +194,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        inference_steps: dict[float, int] = {2 / 3: 20, 0.0: 10},
+        num_inference_steps: dict[float, int] = {2 / 3: 20, 0.0: 10},
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -222,7 +222,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
 
-        self.scheduler.set_timesteps(inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         latents = self.prepare_latents(
