@@ -23,15 +23,7 @@ from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
-from .resnet import (
-    Downsample2D,
-    FirDownsample2D,
-    FirUpsample2D,
-    KDownsample2D,
-    KUpsample2D,
-    ResnetBlock2D,
-    Upsample2D,
-)
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
 
 
