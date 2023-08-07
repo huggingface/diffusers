@@ -17,7 +17,6 @@
 import os
 import re
 import sys
-import tempfile
 import traceback
 import warnings
 from pathlib import Path
@@ -25,13 +24,12 @@ from typing import Dict, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
-    CommitOperationAdd,
     HfFolder,
     ModelCard,
     ModelCardData,
-    create_commit,
     create_repo,
     hf_hub_download,
+    upload_folder,
     whoami,
 )
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
@@ -371,61 +369,22 @@ def _get_model_file(
             )
 
 
-# Taken from
+# Adapted from
 # https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/hub.py#L628
 class PushToHubMixin:
     """
-    A Mixin containing the functionality to push a model to the hub.
+    A Mixin containing the functionality to push a model/scheduler to the Hugging Face Hub.
     """
-
-    def _create_repo(
-        self,
-        repo_id: str,
-        private: Optional[bool] = None,
-        use_auth_token: Optional[Union[bool, str]] = None,
-        repo_url: Optional[str] = None,
-        organization: Optional[str] = None,
-    ) -> str:
-        """
-        Create the repo if needed, cleans up repo_id with deprecated kwargs `repo_url` and `organization`, retrieves
-        the token.
-        """
-        if repo_url is not None:
-            repo_id = repo_url.replace(f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/", "")
-        if organization is not None:
-            warnings.warn(
-                "The `organization` argument is deprecated and will be removed in v5 of Transformers. Set your "
-                "organization directly in the `repo_id` passed instead (`repo_id={organization}/{model_id}`)."
-            )
-            if not repo_id.startswith(organization):
-                if "/" in repo_id:
-                    repo_id = repo_id.split("/")[-1]
-                repo_id = f"{organization}/{repo_id}"
-
-        url = create_repo(repo_id=repo_id, token=use_auth_token, private=private, exist_ok=True)
-
-        # If the namespace is not there, add it or `upload_file` will complain
-        if "/" not in repo_id and url != f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/{repo_id}":
-            repo_id = get_full_repo_name(repo_id, token=use_auth_token)
-        return repo_id
-
-    def _get_files_timestamps(self, working_dir: Union[str, os.PathLike]):
-        """
-        Returns the list of files with their last modification timestamp.
-        """
-        return {f: os.path.getmtime(os.path.join(working_dir, f)) for f in os.listdir(working_dir)}
 
     def _upload_modified_files(
         self,
         working_dir: Union[str, os.PathLike],
         repo_id: str,
-        files_timestamps: Dict[str, float],
         commit_message: Optional[str] = None,
-        token: Optional[Union[bool, str]] = None,
         create_pr: bool = False,
     ):
         """
-        Uploads all modified files in `working_dir` to `repo_id`, based on `files_timestamps`.
+        Uploads all modified files in `working_dir` to `repo_id`.
         """
         if commit_message is None:
             if "Model" in self.__class__.__name__:
@@ -434,70 +393,36 @@ class PushToHubMixin:
                 commit_message = "Upload scheduler"
             else:
                 commit_message = f"Upload {self.__class__.__name__}"
-        modified_files = [
-            f
-            for f in os.listdir(working_dir)
-            if f not in files_timestamps or os.path.getmtime(os.path.join(working_dir, f)) > files_timestamps[f]
-        ]
 
-        # filter for actual files + folders at the root level
-        modified_files = [
-            f
-            for f in modified_files
-            if os.path.isfile(os.path.join(working_dir, f)) or os.path.isdir(os.path.join(working_dir, f))
-        ]
-
-        operations = []
-        # upload standalone files
-        for file in modified_files:
-            if os.path.isdir(os.path.join(working_dir, file)):
-                # go over individual files of folder
-                for f in os.listdir(os.path.join(working_dir, file)):
-                    operations.append(
-                        CommitOperationAdd(
-                            path_or_fileobj=os.path.join(working_dir, file, f), path_in_repo=os.path.join(file, f)
-                        )
-                    )
-            else:
-                operations.append(
-                    CommitOperationAdd(path_or_fileobj=os.path.join(working_dir, file), path_in_repo=file)
-                )
-
-        logger.info(f"Uploading the following files to {repo_id}: {','.join(modified_files)}")
-        return create_commit(
-            repo_id=repo_id, operations=operations, commit_message=commit_message, token=token, create_pr=create_pr
+        logger.info(f"Uploading the files of {working_dir} to {repo_id}.")
+        return upload_folder(
+            repo_id=repo_id, folder_path=working_dir, commit_message=commit_message, create_pr=create_pr
         )
 
     def push_to_hub(
         self,
         repo_id: str,
-        use_temp_dir: Optional[bool] = None,
         commit_message: Optional[str] = None,
         private: Optional[bool] = None,
-        use_auth_token: Optional[Union[bool, str]] = None,
+        token: Optional[str] = None,
         create_pr: bool = False,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
     ) -> str:
         """
-        Upload the {object_files} to the 🤗 Model Hub while synchronizing a local clone of the repo in
-        `repo_path_or_name`.
+        Upload the {object_files} to the 🤗 Hugging Face Hub.
 
         Parameters:
             repo_id (`str`):
                 The name of the repository you want to push your {object} to. It should contain your organization name
-                when pushing to a given organization.
-            use_temp_dir (`bool`, *optional*):
-                Whether or not to use a temporary directory to store the files saved before they are pushed to the Hub.
-                Will default to `True` if there is no directory named like `repo_id`, `False` otherwise.
+                when pushing to a given organization. `repo_id` can also be a path to a local directory.
             commit_message (`str`, *optional*):
                 Message to commit while pushing. Will default to `"Upload {object}"`.
             private (`bool`, *optional*):
                 Whether or not the repository created should be private.
-            token (`bool` or `str`, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-                when running `huggingface-cli login` (stored in `~/.huggingface`). Will default to `True` if `repo_url`
-                is not specified.
+            token (`str`, *optional*):
+                The token to use as HTTP bearer authorization for remote files. The token generated when running
+                `huggingface-cli login` (stored in `~/.huggingface`).
             create_pr (`bool`, *optional*, defaults to `False`):
                 Whether or not to create a PR with the uploaded files or directly commit.
             safe_serialization (`bool`, *optional*, defaults to `False`):
@@ -519,23 +444,8 @@ class PushToHubMixin:
         unet.push_to_hub("your-org/my-finetuned-unet")
         ```
         """
-        if os.path.isdir(repo_id):
-            working_dir = repo_id
-            repo_id = repo_id.split(os.path.sep)[-1]
-        else:
-            working_dir = repo_id.split("/")[-1]
-
-        repo_id = self._create_repo(repo_id, private=private, use_auth_token=use_auth_token)
-
-        if use_temp_dir is None:
-            use_temp_dir = not os.path.isdir(working_dir)
-
-        if use_temp_dir:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                working_dir = tmp_dir
-                files_timestamps = self._get_files_timestamps(working_dir)
-        else:
-            files_timestamps = self._get_files_timestamps(working_dir)
+        repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
+        working_dir = repo_id
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
@@ -546,8 +456,6 @@ class PushToHubMixin:
         return self._upload_modified_files(
             working_dir,
             repo_id,
-            files_timestamps,
             commit_message=commit_message,
-            token=use_auth_token,
             create_pr=create_pr,
         )

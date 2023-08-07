@@ -22,6 +22,7 @@ from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
+from huggingface_hub import create_repo
 from torch import Tensor, device, nn
 
 from .. import __version__
@@ -317,8 +318,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = self._create_repo(repo_id, **kwargs)
-            files_timestamps = self._get_files_timestamps(save_directory)
+            repo_id = create_repo(repo_id, exist_ok=True, **kwargs).repo_id
 
         # Only save the model itself if we are using distributed training
         model_to_save = self
@@ -348,9 +348,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             self._upload_modified_files(
                 save_directory,
                 repo_id,
-                files_timestamps,
                 commit_message=commit_message,
-                token=kwargs.get("use_auth_token"),
+                create_pr=kwargs.get("create_pr"),
             )
 
     @classmethod

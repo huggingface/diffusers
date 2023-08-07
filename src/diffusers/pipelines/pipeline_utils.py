@@ -28,7 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import ModelCard, hf_hub_download, model_info, snapshot_download
+from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
@@ -590,8 +590,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = self._create_repo(repo_id, **kwargs)
-            files_timestamps = self._get_files_timestamps(save_directory)
+            repo_id = create_repo(repo_id, exist_ok=True, **kwargs)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
@@ -660,9 +659,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             self._upload_modified_files(
                 save_directory,
                 repo_id,
-                files_timestamps,
                 commit_message=commit_message,
-                token=kwargs.get("use_auth_token"),
+                create_pr=kwargs.get("create_pr"),
             )
 
     def to(

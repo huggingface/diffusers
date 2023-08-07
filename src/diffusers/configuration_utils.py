@@ -26,7 +26,7 @@ from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
-from huggingface_hub import hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
@@ -165,15 +165,13 @@ class ConfigMixin:
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = self._create_repo(repo_id, **kwargs)
-            files_timestamps = self._get_files_timestamps(save_directory)
+            repo_id = create_repo(repo_id, exist_ok=True, **kwargs).repo_id
 
             self._upload_modified_files(
                 save_directory,
                 repo_id,
-                files_timestamps,
                 commit_message=commit_message,
-                token=kwargs.get("use_auth_token"),
+                create_pr=kwargs.get("create_pr"),
             )
 
     @classmethod
