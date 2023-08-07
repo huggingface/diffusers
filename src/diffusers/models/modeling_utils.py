@@ -299,7 +299,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
             push_to_hub (`bool`, *optional*, defaults to `False`):
-                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
             kwargs (`Dict[str, Any]`, *optional*):

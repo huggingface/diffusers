@@ -145,7 +145,7 @@ class ConfigMixin:
             save_directory (`str` or `os.PathLike`):
                 Directory where the configuration JSON file is saved (will be created if it does not exist).
             push_to_hub (`bool`, *optional*, defaults to `False`):
-                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
             kwargs (`Dict[str, Any]`, *optional*):
