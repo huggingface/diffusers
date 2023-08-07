@@ -265,8 +265,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             
         self._step_index = step_index.item()
 
-        return self.step_index
-
     def step(
         self,
         model_output: torch.FloatTensor,

@@ -208,7 +208,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`: scaled input sample
         """
         if self.step_index is None:
-            self._step_index = self._init_step_index(timestep)
+            self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -325,7 +325,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0]
 
-        return step_index.item()
+        self._step_index = step_index.item()
 
     def step(
         self,
@@ -382,7 +382,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.step_index is None:
-            self._step_index = self._init_step_index(timestep)
+            self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
 
@@ -436,8 +436,15 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            schedule_timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [self._init_step_index(t) for t in timesteps]
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
