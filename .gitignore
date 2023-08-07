@@ -174,9 +174,3 @@ tags
 .ruff_cache
 
 wandb
-scripts/models/
-scripts/warp-diffusion/
-scripts/warp-diffusion-test/
-scripts/samples/
-scripts/text_encoding_colab.pt
-scripts/text_encoding.pt
