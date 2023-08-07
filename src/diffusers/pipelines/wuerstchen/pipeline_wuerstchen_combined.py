@@ -35,7 +35,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_wuerstchen import WuerstchenGeneratorPipeline
+from .pipeline_wuerstchen import WuerstchenDecoderPipeline
 from .pipeline_wuerstchen_prior import  WuerstchenPriorPipeline
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
@@ -89,7 +89,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             tokenizer=prior_tokenizer,
             scheduler=prior_scheduler,
         )
-        self.decoder_pipe = WuerstchenGeneratorPipeline(
+        self.decoder_pipe = WuerstchenDecoderPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             generator=generator,

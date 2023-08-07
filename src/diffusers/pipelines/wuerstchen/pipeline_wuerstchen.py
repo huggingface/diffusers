@@ -31,13 +31,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
+        >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
         ...     "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
-        ...     "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=torch.float16
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain(
+        ...     "warp-diffusion/WuerstchenDecoderPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenGeneratorPipeline(DiffusionPipeline):
+class WuerstchenDecoderPipeline(DiffusionPipeline):
     """
     Pipeline for generating images from the Wuerstchen model.
 

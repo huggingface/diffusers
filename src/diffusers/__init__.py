@@ -208,7 +208,7 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
-        WuerstchenGeneratorPipeline,
+        WuerstchenDecoderPipeline,
         WuerstchenPriorPipeline,
         WuerstchenPipeline,
     )

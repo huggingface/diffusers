@@ -16,7 +16,7 @@ After the initial paper release, we have improved numerous things in the archite
 ## Text-to-Image Generation
 ```python
 import torch
-from diffusers import WuerstchenGeneratorPipeline, WuerstchenPriorPipeline
+from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
 
 device = "cuda"
 dtype = torch.float16
@@ -25,8 +25,8 @@ num_images_per_prompt = 2
 prior_pipeline = WuerstchenPriorPipeline.from_pretrained(
 	"warp-diffusion/WuerstchenPriorPipeline", torch_dtype=dtype
 ).to(device)
-generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained(
-    "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=dtype
+generator_pipeline = WuerstchenDecoderPipeline.from_pretrained(
+    "warp-diffusion/WuerstchenDecoderPipeline", torch_dtype=dtype
 ).to(device)
 
 caption = "A captivating artwork of a mysterious stone golem"
@@ -58,14 +58,14 @@ Würstchen consists out of 3 stages: Stage C, Stage B, Stage A. They all have di
 The original codebase, as well as experimental ideas, can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
 
 ## WuerstchenPriorPipeline
-[[autodoc]] WuerstchenGeneratorPipeline
+[[autodoc]] WuerstchenDecoderPipeline
 	- all
 	- __call__
 
 ## WuerstchenPriorPipelineOutput
 [[autodoc]] WuerstchenPriorPipelineOutput
 
-## WuerstchenGeneratorPipeline
-[[autodoc]] WuerstchenGeneratorPipeline
+## WuerstchenDecoderPipeline
+[[autodoc]] WuerstchenDecoderPipeline
 	- all
 	- __call__
