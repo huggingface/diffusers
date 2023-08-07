@@ -168,7 +168,6 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
-        # prev_t=None,
         return_dict: bool = True,
     ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
         """
