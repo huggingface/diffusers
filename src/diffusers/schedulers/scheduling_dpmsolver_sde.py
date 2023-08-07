@@ -507,7 +507,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
 
-        self.timesteps.to(original_samples.device)
         step_indices = [self._init_step_index(t) for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
