@@ -1429,16 +1429,13 @@ class CrossAttnDownBlockFlat(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
+                hidden_states = attn(
                     hidden_states,
-                    encoder_hidden_states,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask,
-                    **ckpt_kwargs,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
@@ -1668,16 +1665,13 @@ class CrossAttnUpBlockFlat(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
+                hidden_states = attn(
                     hidden_states,
-                    encoder_hidden_states,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask,
-                    **ckpt_kwargs,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
@@ -1809,16 +1803,13 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
+                hidden_states = attn(
                     hidden_states,
-                    encoder_hidden_states,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask,
-                    **ckpt_kwargs,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
                 )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
