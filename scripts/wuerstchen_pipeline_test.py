@@ -42,7 +42,7 @@ def numpy_to_pil(images: np.ndarray) -> list[Image.Image]:
 # )
 device = "cuda"
 dtype = torch.float16
-batch_size = 1
+batch_size = 2
 
 # generator_pipeline = WuerstchenGeneratorPipeline.from_pretrained("C:\\Users\\d6582\\Documents\\ml\\diffusers\\scripts\\warp-diffusion\\WuerstchenGeneratorPipeline", torch_dtype=dtype)
 # generator_pipeline = generator_pipeline.to("cuda")
@@ -108,7 +108,7 @@ while caption != "q":
     prior_output = prior_pipeline(
         caption,
         height=1024,
-        width=4096,
+        width=2048,
         guidance_scale=8.0,
         num_images_per_prompt=batch_size,
         negative_prompt=negative_prompt,
@@ -117,14 +117,15 @@ while caption != "q":
         predicted_image_embeddings=prior_output.image_embeds,
         prompt=caption,
         negative_prompt=negative_prompt,
+        num_images_per_prompt=batch_size,
         guidance_scale=0.0,
-        output_type="np",
+        output_type="pil",
     ).images
     print("Done Sampling")
-    images = numpy_to_pil(generator_output)
+    # images = numpy_to_pil(generator_output)
 
     os.makedirs("samples", exist_ok=True)
-    for i, image in enumerate(images):
+    for i, image in enumerate(generator_output):
         image.save(os.path.join("samples", caption.replace(" ", "_").replace("|", "") + f"_{i}.png"))
 
     caption = input("Prompt please: ")
