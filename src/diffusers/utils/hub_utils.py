@@ -497,10 +497,6 @@ class PushToHubMixin:
                 The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
                 when running `huggingface-cli login` (stored in `~/.huggingface`). Will default to `True` if `repo_url`
                 is not specified.
-            max_shard_size (`int` or `str`, *optional*, defaults to `"10GB"`):
-                Only applicable for models. The maximum size for a checkpoint before being sharded. Checkpoints shard
-                will then be each of size lower than this size. If expressed as a string, needs to be digits followed
-                by a unit (like `"5MB"`).
             create_pr (`bool`, *optional*, defaults to `False`):
                 Whether or not to create a PR with the uploaded files or directly commit.
             safe_serialization (`bool`, *optional*, defaults to `False`):
@@ -538,7 +534,7 @@ class PushToHubMixin:
         files_timestamps = self._get_files_timestamps(working_dir)
 
         # Save all files.
-        self.save_pretrained(working_dir, max_shard_size=max_shard_size, safe_serialization=safe_serialization)
+        self.save_pretrained(working_dir, safe_serialization=safe_serialization)
 
         return self._upload_modified_files(
             working_dir,
