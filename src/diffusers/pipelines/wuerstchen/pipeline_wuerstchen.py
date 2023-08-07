@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import numpy as np
@@ -21,12 +20,9 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ...utils import is_accelerate_available, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modules import DiffNeXt, EfficientNetEncoder
-
-
-# from .diffuzz import Diffuzz
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,33 +34,17 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenGeneratorPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "kashif/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
         >>> gen_pipe = WuerstchenGeneratorPipeline.from_pretrain(
-        ...     "kashif/wuerstchen-gen", torch_dtype=torch.float16
+        ...     "warp-diffusion/WuerstchenGeneratorPipeline", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
-        >>> images = gen_pipe(prior_output.image_embeds, prior_output.text_embeds)
+        >>> images = gen_pipe(prior_output.image_embeds, prompt=prompt)
         ```
 """
-
-
-default_inference_steps_b = {0.0: 12}
-
-
-@dataclass
-class WuerstchenGeneratorPipelineOutput(BaseOutput):
-    """
-    Output class for WuerstchenPriorPipeline.
-
-    Args:
-        images (`torch.FloatTensor` or `np.ndarray`)
-            Generated images for text prompt.
-    """
-
-    images: Union[torch.FloatTensor, np.ndarray]
 
 
 class WuerstchenGeneratorPipeline(DiffusionPipeline):
@@ -99,7 +79,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         efficient_net: EfficientNetEncoder,
     ) -> None:
         super().__init__()
-        self.multiple = 128
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
@@ -110,7 +89,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         )
         self.register_to_config()
 
-    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+    def prepare_latents(self, shape, dtype, device, generator, latents):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -119,6 +98,23 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             latents = latents.to(device)
 
         return latents
+
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, text_encoder,
+        vqgan and efficient_net have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
+        loaded to GPU only when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        for cpu_offloaded_model in [self.text_encoder, self.vqgan, self.efficient_net]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     def _encode_prompt(
         self,
@@ -189,7 +185,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-
             seq_len = uncond_text_encoder_hidden_states.shape[1]
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
@@ -243,35 +238,26 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         predicted_image_embeddings: torch.Tensor,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        inference_steps: dict = None,
+        num_inference_steps: dict[float, int] = {0.0: 12},
         guidance_scale: float = 3.0,
+        num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
         device = self._execution_device
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if inference_steps is None:
-            inference_steps = default_inference_steps_b
-
-        if negative_prompt is None:
-            negative_prompt = ""
-
         if isinstance(prompt, str):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
-        elif not isinstance(negative_prompt, list) and negative_prompt is not None:
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-        text_encoder_hidden_states = self._encode_prompt(
-            prompt, device, predicted_image_embeddings.size(0), do_classifier_free_guidance, negative_prompt
-        )
 
+        text_encoder_hidden_states = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
         predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
             predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
@@ -281,22 +267,10 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         latent_width = int(predicted_image_embeddings.size(3) * (256 / 24))
         effnet_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
 
-        self.scheduler.set_timesteps(inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        latents = self.prepare_latents(
-            effnet_features_shape,
-            dtype,
-            device,
-            generator,
-            latents,
-            self.scheduler,
-        )
-        # from transformers import AutoTokenizer, CLIPTextModel
-        # text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to(device)
-        # tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-        # clip_tokens = tokenizer([""] * latents.size(0), truncation=True, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt").to(device)
-        # clip_text_embeddings = text_encoder(**clip_tokens).last_hidden_state.to(dtype)
+        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents)
 
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
@@ -325,13 +299,16 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 
-        if output_type not in ["pt", "np"]:
-            raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 
         if output_type == "np":
             images = images.permute(0, 2, 3, 1).cpu().numpy()
+        elif output_type == "pil":
+            images = images.permute(0, 2, 3, 1).cpu().numpy()
+            images = self.numpy_to_pil(images)
 
         if not return_dict:
             return images
 
-        return WuerstchenGeneratorPipelineOutput(images)
+        return ImagePipelineOutput(images)

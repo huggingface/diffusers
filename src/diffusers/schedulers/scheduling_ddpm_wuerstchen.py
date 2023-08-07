@@ -168,7 +168,6 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
-        # prev_t=None,
         return_dict: bool = True,
     ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
         """
@@ -181,12 +180,11 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than DDPMWuerstchenSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`DDPMWuerstchenSchedulerOutput`] or `tuple`: [`DDPMWuerstchenSchedulerOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         dtype = model_output.dtype
