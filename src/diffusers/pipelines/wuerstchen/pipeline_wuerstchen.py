@@ -239,7 +239,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: dict[float, int] = {0.0: 12},
-        guidance_scale: float = 3.0,
+        guidance_scale: float = 0.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -247,8 +247,10 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         device = self._execution_device
-
         do_classifier_free_guidance = guidance_scale > 1.0
+
+        if isinstance(num_inference_steps, int):
+            num_inference_steps = {0.0: num_inference_steps}
 
         if isinstance(prompt, str):
             prompt = [prompt]
@@ -302,22 +304,20 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-        print("1")
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
-        print("2")
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 
         if output_type == "np":
-            print("3")
             images = images.permute(0, 2, 3, 1).cpu().numpy()
-            print("4")
         elif output_type == "pil":
+            print(1)
+            images.permute(0, 2, 3, 1)
+            print(2)
             images = images.permute(0, 2, 3, 1).cpu().numpy()
             images = self.numpy_to_pil(images)
 
         if not return_dict:
             return images
-        print("5")
         return ImagePipelineOutput(images)

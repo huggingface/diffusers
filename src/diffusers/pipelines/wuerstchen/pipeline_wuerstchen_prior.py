@@ -223,6 +223,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
 
+        if isinstance(num_inference_steps, int):
+            num_inference_steps = {0.0: num_inference_steps}
+
         if isinstance(prompt, str):
             prompt = [prompt]
         elif not isinstance(prompt, list):
