@@ -230,11 +230,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
-        elif not isinstance(negative_prompt, list):
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         text_encoder_hidden_states = self._encode_prompt(

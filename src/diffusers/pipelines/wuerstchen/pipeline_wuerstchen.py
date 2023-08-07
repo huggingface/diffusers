@@ -235,7 +235,7 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        predicted_image_embeddings: torch.Tensor,
+        image_embeds: torch.Tensor,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: dict[float, int] = {0.0: 12},
@@ -257,16 +257,12 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
-        elif not isinstance(negative_prompt, list):
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
         predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
-            predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
+            image_embeds, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
 
         dtype = predicted_image_embeddings.dtype
@@ -312,9 +308,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         if output_type == "np":
             images = images.permute(0, 2, 3, 1).cpu().numpy()
         elif output_type == "pil":
-            print(1)
-            images.permute(0, 2, 3, 1)
-            print(2)
             images = images.permute(0, 2, 3, 1).cpu().numpy()
             images = self.numpy_to_pil(images)
 

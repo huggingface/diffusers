@@ -210,6 +210,7 @@ else:
         VQDiffusionPipeline,
         WuerstchenGeneratorPipeline,
         WuerstchenPriorPipeline,
+        WuerstchenPipeline,
     )
 
 try:
