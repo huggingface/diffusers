@@ -31,7 +31,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -343,6 +343,16 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (768, 768, 3)
 
         assert_mean_pixel_difference(image, expected_image)
+
+
+@nightly
+@require_torch_gpu
+class KandinskyImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def test_kandinsky_img2img_ddpm(self):
         expected_image = load_numpy(
