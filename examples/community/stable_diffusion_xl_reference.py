@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+
 from diffusers import StableDiffusionXLPipeline
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import (
@@ -15,6 +16,7 @@ from diffusers.models.unet_2d_blocks import (
 )
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION, logging, randn_tensor
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
