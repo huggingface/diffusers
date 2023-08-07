@@ -136,15 +136,14 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        inference_steps: Optional[dict] = None,
+        num_inference_steps: dict[float, int],
         device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            num_inference_steps (`Optional[int]`):
+            num_inference_steps (`dict[float, int]`):
                 the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, optional):
@@ -152,7 +151,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         """
         timesteps = None
         t_start = 1.0
-        for t_end, steps in inference_steps.items():
+        for t_end, steps in num_inference_steps.items():
             steps = torch.linspace(t_start, t_end, steps + 1, device=device)
             t_start = t_end
             if timesteps is None:

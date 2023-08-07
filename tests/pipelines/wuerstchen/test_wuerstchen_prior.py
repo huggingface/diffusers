@@ -152,10 +152,10 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             return_dict=False,
         )[0]
 
-        image_slice = image[0, -10:]
-        image_from_tuple_slice = image_from_tuple[0, -10:]
+        image_slice = image[0, 0, 0, -10:]
+        image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
 
-        assert image.shape == (1, 32)
+        assert image.shape == (1, 2, 24, 24)
 
         expected_slice = np.array(
             [-0.0532, 1.7120, 0.3656, -1.0852, -0.8946, -1.1756, 0.4348, 0.2482, 0.5146, -0.1156]
