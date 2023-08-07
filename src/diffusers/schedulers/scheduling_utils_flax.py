@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import flax
 import jax.numpy as jnp
 
-from ..utils import BaseOutput
+from ..utils import BaseOutput, PushToHubMixin
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
@@ -53,7 +53,7 @@ class FlaxSchedulerOutput(BaseOutput):
     prev_sample: jnp.ndarray
 
 
-class FlaxSchedulerMixin:
+class FlaxSchedulerMixin(PushToHubMixin):
     """
     Mixin containing common functions for the schedulers.
 
