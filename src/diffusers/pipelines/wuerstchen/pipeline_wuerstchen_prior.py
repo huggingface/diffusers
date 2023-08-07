@@ -20,9 +20,9 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, logging, randn_tensor
+from ...utils import BaseOutput, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .prior import Prior
+from .modules import Prior
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -94,6 +94,23 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.register_to_config()
+
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, prior and
+        text_encoder have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to
+        GPU only when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        for cpu_offloaded_model in [self.text_encoder, self.prior]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     def prepare_latents(self, shape, dtype, device, generator, latents):
         if latents is None:
