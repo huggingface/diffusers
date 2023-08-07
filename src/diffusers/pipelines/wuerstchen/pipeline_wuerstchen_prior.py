@@ -95,7 +95,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         )
         self.register_to_config()
 
-    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+    def prepare_latents(self, shape, dtype, device, generator, latents):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -225,14 +225,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        latents = self.prepare_latents(
-            effnet_features_shape,
-            dtype,
-            device,
-            generator,
-            latents,
-            self.scheduler,
-        )
+        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents)
 
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
