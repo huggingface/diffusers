@@ -241,8 +241,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         )
 
         dtype = text_encoder_hidden_states.dtype
-        latent_height = 128 * (height // 128) // (1024 // 24)
-        latent_width = 128 * (width // 128) // (1024 // 24)
+        latent_height = int(128 * (height / 128) / (1024 / 24))
+        latent_width = int(128 * (width / 128) / (1024 / 24))
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt, num_channels, latent_height, latent_width)
 
