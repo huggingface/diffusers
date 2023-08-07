@@ -46,6 +46,8 @@ def preprocess(image):
 
 
 class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
+    _is_onnx = True
+
     def __init__(
         self,
         vae: OnnxRuntimeModel,
