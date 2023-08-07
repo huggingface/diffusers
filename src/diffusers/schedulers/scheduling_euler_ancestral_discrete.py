@@ -219,20 +219,20 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[
+            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
                 ::-1
             ].copy()
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(float)
+            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
             timesteps -= 1
         else:
             raise ValueError(
@@ -243,12 +243,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        if str(device).startswith("mps"):
-            # mps does not support float64
-            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
-        else:
-            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
+        self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
