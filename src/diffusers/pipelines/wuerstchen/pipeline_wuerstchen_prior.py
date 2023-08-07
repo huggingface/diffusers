@@ -17,6 +17,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
+from math import ceil
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
@@ -86,7 +87,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         scheduler: DDPMWuerstchenScheduler,
     ) -> None:
         super().__init__()
-        self.multiple = 128
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
@@ -227,6 +227,11 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt]
+        elif not isinstance(negative_prompt, list):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         text_encoder_hidden_states = self._encode_prompt(
@@ -234,8 +239,10 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         )
 
         dtype = text_encoder_hidden_states.dtype
-        latent_height = int(128 * (height / 128) / (1024 / 24))
-        latent_width = int(128 * (width / 128) / (1024 / 24))
+        # latent_height = int(self.multiple * (height / self.multiple) / (1024 / 24))
+        latent_height = ceil(height / 42.67)
+        # latent_width = int(self.multiple * (width / self.multiple) / (1024 / 24))
+        latent_width = ceil(width / 42.67)
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
 

@@ -254,6 +254,11 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt]
+        elif not isinstance(negative_prompt, list):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
@@ -263,14 +268,14 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         )
 
         dtype = predicted_image_embeddings.dtype
-        latent_height = int(predicted_image_embeddings.size(2) * (256 / 24))
-        latent_width = int(predicted_image_embeddings.size(3) * (256 / 24))
-        effnet_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
+        latent_height = int(predicted_image_embeddings.size(2) * 10.67)
+        latent_width = int(predicted_image_embeddings.size(3) * 10.67)
+        latent_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents)
+        latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents)
 
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
@@ -297,18 +302,22 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
+        print("1")
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
+        print("2")
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 
         if output_type == "np":
+            print("3")
             images = images.permute(0, 2, 3, 1).cpu().numpy()
+            print("4")
         elif output_type == "pil":
             images = images.permute(0, 2, 3, 1).cpu().numpy()
             images = self.numpy_to_pil(images)
 
         if not return_dict:
             return images
-
+        print("5")
         return ImagePipelineOutput(images)
