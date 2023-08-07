@@ -798,7 +798,7 @@ def main(args):
         text_encoders=text_encoders,
         tokenizers=tokenizers,
         proportion_empty_prompts=args.proportion_empty_prompts,
-        caption_column=args.caption_column
+        caption_column=args.caption_column,
     )
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
