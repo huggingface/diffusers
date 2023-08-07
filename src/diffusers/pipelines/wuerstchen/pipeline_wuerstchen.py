@@ -79,7 +79,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
         efficient_net: EfficientNetEncoder,
     ) -> None:
         super().__init__()
-        self.multiple = 128
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
@@ -289,7 +288,6 @@ class WuerstchenGeneratorPipeline(DiffusionPipeline):
             ).prev_sample
 
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
-        images = images.permute(0, 2, 3, 1).cpu().numpy()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
