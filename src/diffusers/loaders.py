@@ -1054,6 +1054,7 @@ class LoraLoaderMixin:
                     if not allow_pickle:
                         raise e
                     # try loading non-safetensors weights
+                    model_file = None
                     pass
             if model_file is None:
                 model_file = _get_model_file(
