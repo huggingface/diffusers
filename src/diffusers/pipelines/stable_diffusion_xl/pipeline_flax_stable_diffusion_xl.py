@@ -177,7 +177,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         guidance_scale: float,
         latents: Optional[jnp.array] = None,
         neg_prompt_ids: Optional[jnp.array] = None,
-        return_latents = False,
+        return_latents=False,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -263,7 +263,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 
         if return_latents:
             return latents
-        
+
         # Decode latents
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample

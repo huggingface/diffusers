@@ -175,7 +175,7 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
         text_embeds = prompt_embeds_2_out["text_embeds"]
         prompt_embeds = prompt_embeds_2_out["hidden_states"][-2]
         return prompt_embeds, text_embeds
-    
+
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, bs, dtype
     ):
@@ -215,7 +215,7 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
         add_neg_time_ids = jnp.array([add_neg_time_ids] * bs, dtype=dtype)
 
         return add_time_ids, add_neg_time_ids
-    
+
     def get_timestep_start(self, num_inference_steps, strength):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -223,7 +223,6 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep, 0)
 
         return t_start
-
 
     def _generate(
         self,
@@ -388,6 +387,7 @@ def _p_generate(
         aesthetic_score,
         negative_aesthetic_score,
     )
+
 
 def preprocess(image, dtype):
     w, h = image.size
