@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 Prompt weighting provides a way to emphasize or de-emphasize certain parts of a prompt, allowing for more control over the generated image. A prompt can include several concepts, which gets turned into contextualized text embeddings. The embeddings are used by the model to condition its cross-attention layers to generate an image (read the Stable Diffusion [blog post](https://huggingface.co/blog/stable_diffusion) to learn more about how it works).
 
-Prompt weighting works by increasing or decreasing the scale of the text embedding vector that corresponds to its concept in the prompt because you may not necessarily want the model to focus on all concepts equally. With 🤗 Diffusers, the [`prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) (and optionally [`negative_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.negative_prompt_embeds)) parameters makes it possible to pass the prompt-weighted embeddings to many pipelines such as [`StableDiffusionPipeline`], [`StableDiffusionControlNetPipeline`], and [`StableDiffusionXLPipeline`].
+Prompt weighting works by increasing or decreasing the scale of the text embedding vector that corresponds to its concept in the prompt because you may not necessarily want the model to focus on all concepts equally. The easiest way to prepare the prompt-weighted embeddings is to use [Compel](https://github.com/damian0815/compel), a text prompt-weighting and blending library. Once you have the prompt-weighted embeddings, you can pass them to any pipeline that has a [`prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) (and optionally [`negative_prompt_embeds`](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.negative_prompt_embeds)) parameter, such as [`StableDiffusionPipeline`], [`StableDiffusionControlNetPipeline`], and [`StableDiffusionXLPipeline`].
 
 <Tip>
 
@@ -24,9 +24,9 @@ If your favorite pipeline doesn't have a `prompt_embeds` parameter, please open 
 
 </Tip>
 
-The easiest way to prepare the prompt-weighted embeddings is to use [compel](https://github.com/damian0815/compel), a text prompt-weighting and blending library. This guide will show you how to weight and blend your prompts with compel.
+This guide will show you how to weight and blend your prompts with Compel in 🤗 Diffusers.
 
-Before you begin, make sure you have the latest version of compel installed:
+Before you begin, make sure you have the latest version of Compel installed:
 
 ```py
 # uncomment to install in Colab
@@ -80,7 +80,7 @@ Pass the prompt to `compel_proc` to create the new prompt embeddings which are p
 
 ```py
 prompt_embeds = compel_proc(prompt)
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.manual_seed(33)
 
 image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
 image
@@ -96,7 +96,7 @@ To downweight parts of the prompt, use the `-` suffix:
 prompt = "a red------- cat playing with a ball"
 prompt_embeds = compel_proc(prompt)
 
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.manual_seed(33)
 
 image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
 image
@@ -112,15 +112,14 @@ You can even up or downweight multiple concepts in the same prompt:
 prompt = "a red cat++ playing with a ball----"
 prompt_embeds = compel_proc(prompt)
 
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.manual_seed(33)
 
 image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
 image
 ```
 
 <div class="flex justify-center">
-  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-pos-neg.png
-"/>
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-pos-neg.png"/>
 </div>
 
 ## Blending
@@ -203,6 +202,19 @@ images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, gener
 
 ## Textual inversion
 
+[Textual inversion](../training/text_inversion) is a technique for learning a specific concept from some images which you can use to generate new images conditioned on that concept.
+
+Create a pipeline and use the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] function to load the textual inversion embeddings (feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer) for 100+ trained concepts):
+
+```py
+import torch
+from diffusers import StableDiffusionPipeline
+from compel import Compel, DiffusersTextualInversionManager
+
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, variant="fp16").to("cuda")
+pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
+```
+
 Compel provides a `DiffusersTextualInversionManager` class to simplify prompt weighting with textual inversion. Instantiate `DiffusersTextualInversionManager` and pass it to the `Compel` class:
 
 ```py
@@ -212,3 +224,16 @@ compel = Compel(
     text_encoder=pipe.text_encoder,
     textual_inversion_manager=textual_inversion_manager)
 ```
+
+Incorporate the concept to condition a prompt with using the `<concept>` syntax:
+
+```py
+prompt_embeds = compel_proc('("A red cat playing with a ball <midjourney-style>")')
+
+image = pipe(prompt_embeds=prompt_embeds).images[0]
+image
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-text-inversion.png"/>
+</div>
