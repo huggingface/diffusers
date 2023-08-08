@@ -234,14 +234,14 @@ def convert_models(
     Function to convert models in stable diffusion controlnet pipeline into ONNX format
 
     Example:
-    python convert_stable_diffusion_controlnet_to_onnx.py 
+    python convert_stable_diffusion_controlnet_to_onnx.py
     --model_path danbrown/RevAnimated-v1-2-2
     --controlnet_path lllyasviel/control_v11f1e_sd15_tile ioclab/brightness-controlnet
     --output_path  path-to-models-stable_diffusion/RevAnimated-v1-2-2
     --fp16
 
     Example for SD XL:
-    python convert_stable_diffusion_controlnet_to_onnx.py 
+    python convert_stable_diffusion_controlnet_to_onnx.py
     --model_path stabilityai/stable-diffusion-xl-base-1.0
     --controlnet_path SargeZT/sdxl-controlnet-seg
     --output_path  path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0
