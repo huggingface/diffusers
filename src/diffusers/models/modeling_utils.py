@@ -317,8 +317,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", None)
+            create_pr = kwargs.pop("create_pr", None)
+            token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = create_repo(repo_id, exist_ok=True, **kwargs).repo_id
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         # Only save the model itself if we are using distributed training
         model_to_save = self
@@ -348,8 +351,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             self._upload_folder(
                 save_directory,
                 repo_id,
+                token=token,
                 commit_message=commit_message,
-                create_pr=kwargs.get("create_pr"),
+                create_pr=create_pr,
             )
 
     @classmethod

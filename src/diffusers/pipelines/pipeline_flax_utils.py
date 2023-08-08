@@ -179,8 +179,11 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", None)
+            create_pr = kwargs.pop("create_pr", None)
+            token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = create_repo(repo_id, exist_ok=True, **kwargs)
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
@@ -217,8 +220,9 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 self._upload_folder(
                     save_directory,
                     repo_id,
+                    token=token,
                     commit_message=commit_message,
-                    create_pr=kwargs.get("create_pr"),
+                    create_pr=create_pr,
                 )
 
     @classmethod
