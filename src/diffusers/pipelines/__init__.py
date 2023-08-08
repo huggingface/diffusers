@@ -46,6 +46,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .audioldm import AudioLDMPipeline
+    from .audioldm2 import AudioLDM2Pipeline
     from .controlnet import (
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
