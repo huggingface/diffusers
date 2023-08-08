@@ -19,30 +19,25 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from .modules import Prior
-
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .modules import DiffNeXt, EfficientNetEncoder
-
-
-
 from ...models import PriorTransformer, UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler, DDPMScheduler, UnCLIPScheduler
-from ...utils import (
-    replace_example_docstring,
-)
+from ...utils import replace_example_docstring
+
+from .modules import DiffNeXt, Prior
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_wuerstchen import WuerstchenDecoderPipeline
-from .pipeline_wuerstchen_prior import  WuerstchenPriorPipeline
+from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         ```
 """
+
 
 class WuerstchenPipeline(DiffusionPipeline):
     """
@@ -54,6 +49,7 @@ class WuerstchenPipeline(DiffusionPipeline):
     Args:
         TODO
     """
+
     _load_connected_pipes = True
 
     def __init__(
@@ -63,7 +59,6 @@ class WuerstchenPipeline(DiffusionPipeline):
         generator: DiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
-        efficient_net: EfficientNetEncoder,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
         prior_prior: Prior,
@@ -77,7 +72,6 @@ class WuerstchenPipeline(DiffusionPipeline):
             generator=generator,
             scheduler=scheduler,
             vqgan=vqgan,
-            efficient_net=efficient_net,
             prior_prior=prior_prior,
             prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
@@ -95,7 +89,6 @@ class WuerstchenPipeline(DiffusionPipeline):
             generator=generator,
             scheduler=scheduler,
             vqgan=vqgan,
-            efficient_net=efficient_net,
         )
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):

@@ -22,7 +22,7 @@ from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .modules import DiffNeXt, EfficientNetEncoder
+from .modules import DiffNeXt
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -63,8 +63,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             The DiffNeXt unet generator.
         vqgan ([`VQModelPaella`]):
             The VQGAN model.
-        efficient_net ([`EfficientNetEncoder`]):
-            The EfficientNet encoder.
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
@@ -76,7 +74,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         generator: DiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
-        efficient_net: EfficientNetEncoder,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -85,7 +82,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             generator=generator,
             scheduler=scheduler,
             vqgan=vqgan,
-            efficient_net=efficient_net,
         )
         self.register_to_config()
 
@@ -102,7 +98,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, text_encoder,
-        vqgan and efficient_net have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
+        and vqgan have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
         loaded to GPU only when their specific submodule has its `forward` method called.
         """
         if is_accelerate_available():
@@ -112,7 +108,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.text_encoder, self.vqgan, self.efficient_net]:
+        for cpu_offloaded_model in [self.text_encoder, self.vqgan]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
@@ -229,10 +225,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         return predicted_image_embeddings, text_encoder_hidden_states
 
     @torch.no_grad()
-    def encode_image(self, image):
-        return self.efficient_net(image)
-
-    @torch.no_grad()
     def __call__(
         self,
         image_embeds: torch.Tensor,
@@ -256,7 +248,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             prompt = [prompt]
         elif not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        
 
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt

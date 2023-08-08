@@ -10,7 +10,7 @@ from diffusers import (
     WuerstchenDecoderPipeline,
     WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import DiffNeXt, EfficientNetEncoder, Prior
+from diffusers.pipelines.wuerstchen import DiffNeXt, Prior
 
 
 model_path = "models/"
@@ -33,16 +33,17 @@ vqmodel.load_state_dict(state_dict)
 text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
-# EfficientNet
-state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)
-efficient_net = EfficientNetEncoder()
-efficient_net.load_state_dict(state_dict["effnet_state_dict"])
 
 # Generator
+state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)
 gen_text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to("cpu")
 gen_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 generator = DiffNeXt()
 generator.load_state_dict(state_dict["state_dict"])
+
+# EfficientNet
+# efficient_net = EfficientNetEncoder()
+# efficient_net.load_state_dict(state_dict["effnet_state_dict"])
 
 # Prior
 state_dict = torch.load(os.path.join(model_path, "model_v3_stage_c.pt"), map_location=device)
@@ -62,12 +63,11 @@ prior_pipeline = WuerstchenPriorPipeline(
 
 prior_pipeline.save_pretrained("warp-diffusion/WuerstchenPriorPipeline")
 
-generator_pipeline = WuerstchenDecoderPipeline(
+decoder_pipeline = WuerstchenDecoderPipeline(
     text_encoder=gen_text_encoder,
     tokenizer=gen_tokenizer,
     vqgan=vqmodel,
     generator=generator,
-    efficient_net=efficient_net,
     scheduler=scheduler,
 )
-generator_pipeline.save_pretrained("warp-diffusion/WuerstchenDecoderPipeline")
+decoder_pipeline.save_pretrained("warp-diffusion/WuerstchenDecoderPipeline")

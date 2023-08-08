@@ -112,26 +112,6 @@ class AttnBlock(nn.Module):
         return x
 
 
-class EfficientNetEncoder(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(self, c_latent=16, effnet="efficientnet_v2_s"):
-        super().__init__()
-        from torchvision.models import efficientnet_v2_l, efficientnet_v2_s  # can't use `torchvision`
-
-        if effnet == "efficientnet_v2_s":
-            self.backbone = efficientnet_v2_s(weights="DEFAULT").features.eval()
-        else:
-            print("Using EffNet L.")
-            self.backbone = efficientnet_v2_l(weights="DEFAULT").features.eval()
-        self.mapper = nn.Sequential(
-            nn.Conv2d(1280, c_latent, kernel_size=1, bias=False),
-            nn.BatchNorm2d(c_latent),  # then normalize them to have mean 0 and std 1
-        )
-
-    def forward(self, x):
-        return self.mapper(self.backbone(x))
-
-
 class DiffNeXt(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
