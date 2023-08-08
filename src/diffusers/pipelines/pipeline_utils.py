@@ -656,7 +656,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         if push_to_hub:
-            self._upload_modified_files(
+            self._upload_folder(
                 save_directory,
                 repo_id,
                 commit_message=commit_message,

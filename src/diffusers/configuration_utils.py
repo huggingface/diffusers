@@ -167,7 +167,7 @@ class ConfigMixin:
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, **kwargs).repo_id
 
-            self._upload_modified_files(
+            self._upload_folder(
                 save_directory,
                 repo_id,
                 commit_message=commit_message,

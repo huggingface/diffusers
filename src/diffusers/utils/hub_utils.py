@@ -17,6 +17,7 @@
 import os
 import re
 import sys
+import tempfile
 import traceback
 import warnings
 from pathlib import Path
@@ -369,22 +370,21 @@ def _get_model_file(
             )
 
 
-# Adapted from
-# https://github.com/huggingface/transformers/blob/5bb4430edc7df9f9950d412d98bbe505cc4d328b/src/transformers/utils/hub.py#L628
 class PushToHubMixin:
     """
     A Mixin containing the functionality to push a model/scheduler to the Hugging Face Hub.
     """
 
-    def _upload_modified_files(
+    def _upload_folder(
         self,
         working_dir: Union[str, os.PathLike],
         repo_id: str,
+        token: Optional[str] = None,
         commit_message: Optional[str] = None,
         create_pr: bool = False,
     ):
         """
-        Uploads all modified files in `working_dir` to `repo_id`.
+        Uploads all files in `working_dir` to `repo_id`.
         """
         if commit_message is None:
             if "Model" in self.__class__.__name__:
@@ -396,7 +396,7 @@ class PushToHubMixin:
 
         logger.info(f"Uploading the files of {working_dir} to {repo_id}.")
         return upload_folder(
-            repo_id=repo_id, folder_path=working_dir, commit_message=commit_message, create_pr=create_pr
+            repo_id=repo_id, folder_path=working_dir, token=token, commit_message=commit_message, create_pr=create_pr
         )
 
     def push_to_hub(
@@ -445,17 +445,19 @@ class PushToHubMixin:
         ```
         """
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
-        working_dir = repo_id
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
         if "Scheduler" not in self.__class__.__name__:
             save_kwargs.update({"variant": variant})
-        self.save_pretrained(working_dir, **save_kwargs)
 
-        return self._upload_modified_files(
-            working_dir,
-            repo_id,
-            commit_message=commit_message,
-            create_pr=create_pr,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.save_pretrained(tmpdir, **save_kwargs)
+
+            return self._upload_folder(
+                tmpdir,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )

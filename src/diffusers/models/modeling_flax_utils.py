@@ -548,7 +548,7 @@ class FlaxModelMixin(PushToHubMixin):
         logger.info(f"Model weights saved in {output_model_file}")
 
         if push_to_hub:
-            self._upload_modified_files(
+            self._upload_folder(
                 save_directory,
                 repo_id,
                 commit_message=commit_message,
