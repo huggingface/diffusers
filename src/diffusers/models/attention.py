@@ -94,7 +94,7 @@ class BasicTransformerBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
-        use_gated_attention: bool = False,
+        attention_type: str = "default",
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -154,7 +154,7 @@ class BasicTransformerBlock(nn.Module):
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # 4. Fuser
-        if use_gated_attention:
+        if attention_type == "gated":
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # let chunk size default to None
