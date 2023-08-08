@@ -1,6 +1,6 @@
-# DreamBooth training example for Stable Diffusion XL (SDXL)
+# ControlNet training example for Stable Diffusion XL (SDXL)
 
-The `train_controlnet_sdxl.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
+The `train_controlnet_sdxl.py` script shows how to implement the ControlNet training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
 ## Running locally with PyTorch
 
@@ -61,7 +61,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
 
 ```bash
-export MODEL_DIR="stabilityai/stable-diffusion-xl-base-0.9"
+export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet_sdxl.py \
@@ -98,7 +98,7 @@ from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, UniP
 from diffusers.utils import load_image
 import torch
 
-base_model_path = "stabilityai/stable-diffusion-xl-base-0.9"
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 controlnet_path = "path to controlnet"
 
 controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)

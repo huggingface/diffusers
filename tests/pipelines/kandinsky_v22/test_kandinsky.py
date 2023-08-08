@@ -30,28 +30,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyV22Pipeline
-    params = [
-        "image_embeds",
-        "negative_image_embeds",
-    ]
-    batch_params = ["image_embeds", "negative_image_embeds"]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "latents",
-        "guidance_scale",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -70,7 +49,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_unet(self):
@@ -166,6 +145,37 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+
+class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyV22Pipeline
+    params = [
+        "image_embeds",
+        "negative_image_embeds",
+    ]
+    batch_params = ["image_embeds", "negative_image_embeds"]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "latents",
+        "guidance_scale",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
     def test_kandinsky(self):
         device = "cpu"
 
@@ -189,9 +199,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.6237976, 1.0, 0.36441332, 1.0, 0.70639634, 0.29877186, 0.85652125, 0.5216843, 0.54454046]
-        )
+        expected_slice = np.array([0.3420, 0.9505, 0.3919, 1.0000, 0.5188, 0.3109, 0.6139, 0.5624, 0.6811])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -327,3 +327,7 @@ image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_
 
 image.save("./output.png")
 ```
+
+## Stable Diffusion XL
+
+Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md). 

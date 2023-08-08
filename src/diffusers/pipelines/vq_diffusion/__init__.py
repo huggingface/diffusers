@@ -1,5 +1,10 @@
-from ...utils import is_torch_available, is_transformers_available
+from ...utils import OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *
+else:
     from .pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings, VQDiffusionPipeline

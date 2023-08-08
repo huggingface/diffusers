@@ -26,6 +26,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
@@ -563,10 +564,10 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip", local_files_only=True)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
         text_encoder_one_lora_layers = create_text_encoder_lora_layers(text_encoder)
@@ -737,8 +738,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-
-        expected = np.array([0.3743, 0.3893, 0.3835, 0.3891, 0.3949, 0.3649, 0.3858, 0.3802, 0.3245])
+        expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -761,7 +761,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
-    def test_unload_lora(self):
+    def test_unload_kohya_lora(self):
         generator = torch.manual_seed(0)
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
@@ -778,6 +778,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_filename = "Colored_Icons_by_vizsumit.safetensors"
 
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
         lora_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -792,3 +793,122 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertFalse(np.allclose(initial_images, lora_images))
         self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+
+    def test_load_unload_load_kohya_lora(self):
+        # This test ensures that a Kohya-style LoRA can be safely unloaded and then loaded
+        # without introducing any side-effects. Even though the test uses a Kohya-style
+        # LoRA, the underlying adapter handling mechanism is format-agnostic.
+        generator = torch.manual_seed(0)
+        prompt = "masterpiece, best quality, mountain"
+        num_inference_steps = 2
+
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
+            torch_device
+        )
+        initial_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        initial_images = initial_images[0, -3:, -3:, -1].flatten()
+
+        lora_model_id = "hf-internal-testing/civitai-colored-icons-lora"
+        lora_filename = "Colored_Icons_by_vizsumit.safetensors"
+
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
+        lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images = lora_images[0, -3:, -3:, -1].flatten()
+
+        pipe.unload_lora_weights()
+        generator = torch.manual_seed(0)
+        unloaded_lora_images = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        unloaded_lora_images = unloaded_lora_images[0, -3:, -3:, -1].flatten()
+
+        self.assertFalse(np.allclose(initial_images, lora_images))
+        self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+
+        # make sure we can load a LoRA again after unloading and they don't have
+        # any undesired effects.
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        generator = torch.manual_seed(0)
+        lora_images_again = pipe(
+            prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
+        ).images
+        lora_images_again = lora_images_again[0, -3:, -3:, -1].flatten()
+
+        self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
+
+    def test_sdxl_0_9_lora_one(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
+        lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
+        lora_filename = "daiton-xl-lora-test.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.3838, 0.3482, 0.3588, 0.3162, 0.319, 0.3369, 0.338, 0.3366, 0.3213])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_0_9_lora_two(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
+        lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
+        lora_filename = "saijo.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.3137, 0.3269, 0.3355, 0.255, 0.2577, 0.2563, 0.2679, 0.2758, 0.2626])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_0_9_lora_three(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
+        pipe.enable_model_cpu_offload()
+        lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
+        lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.4115, 0.4047, 0.4124, 0.3931, 0.3746, 0.3802, 0.3735, 0.3748, 0.3609])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_1_0_lora(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe.enable_model_cpu_offload()
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))

@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import nightly, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
 
@@ -175,7 +175,7 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
 
-@slow
+@nightly
 @require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

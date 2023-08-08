@@ -14,8 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`]. We also 
-support fine-tuning the text encoder for DreamBooth with LoRA in a limited capacity. Fine-tuning the text encoder for DreamBooth generally yields better results, but it can increase compute usage.
+This is an experimental feature. Its APIs can change in future.
 
 </Tip>
 
@@ -286,6 +285,8 @@ You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pip
 
 ## Supporting A1111 themed LoRA checkpoints from Diffusers
 
+This support was made possible because of our amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
+
 To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted
 LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] in a limited capacity.
 In this section, we explain how to load an A1111 formatted LoRA checkpoint from [CivitAI](https://civitai.com/)
@@ -354,3 +355,58 @@ lora_model_id = "sayakpaul/civitai-light-shadow-lora"
 lora_filename = "light_and_shadow.safetensors"
 pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 ```
+
+### Supporting Stable Diffusion XL LoRAs trained using the Kohya-trainer
+
+With this [PR](https://github.com/huggingface/diffusers/pull/4287), there should now be better support for loading Kohya-style LoRAs trained on Stable Diffusion XL (SDXL).
+
+Here are some example checkpoints we tried out:
+
+* SDXL 0.9:
+  * https://civitai.com/models/22279?modelVersionId=118556 
+  * https://civitai.com/models/104515/sdxlor30costumesrevue-starlight-saijoclaudine-lora 
+  * https://civitai.com/models/108448/daiton-sdxl-test 
+  * https://filebin.net/2ntfqqnapiu9q3zx/pixelbuildings128-v1.safetensors
+* SDXL 1.0:
+  * https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors
+
+Here is an example of how to perform inference with these checkpoints in `diffusers`:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+base_model_id = "stabilityai/stable-diffusion-xl-base-0.9"
+pipeline = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipeline.load_lora_weights(".", weight_name="Kamepan.safetensors")
+
+prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, offical wallpaper, glint <lora:kame_sdxl_v2:1>"
+negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad propotions"
+generator = torch.manual_seed(2947883060)
+num_inference_steps = 30
+guidance_scale = 7
+
+image = pipeline(
+    prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps,
+    generator=generator, guidance_scale=guidance_scale
+).images[0]
+image.save("Kamepan.png")
+```
+
+`Kamepan.safetensors` comes from https://civitai.com/models/22279?modelVersionId=118556 . 
+
+If you notice carefully, the inference UX is exactly identical to what we presented in the sections above. 
+
+Thanks to [@isidentical](https://github.com/isidentical) for helping us on integrating this feature.
+
+### Known limitations specific to the Kohya-styled LoRAs
+
+* When images don't looks similar to other UIs, such as ComfyUI, it can be because of multiple reasons, as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736).
+* We don't fully support [LyCORIS checkpoints](https://github.com/KohakuBlueleaf/LyCORIS). To the best of our knowledge, our current `load_lora_weights()` should support LyCORIS checkpoints that have LoRA and LoCon modules but not the other ones, such as Hada, LoKR, etc. 
+
+## Stable Diffusion XL
+
+We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+
+* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
+* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)

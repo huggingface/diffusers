@@ -6,8 +6,8 @@ import PIL
 
 from ...utils import (
     BaseOutput,
+    OptionalDependencyNotAvailable,
     is_flax_available,
-    is_invisible_watermark_available,
     is_torch_available,
     is_transformers_available,
 )
@@ -27,7 +27,12 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-if is_transformers_available() and is_torch_available() and is_invisible_watermark_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
     from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
