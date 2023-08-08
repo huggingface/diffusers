@@ -1669,8 +1669,8 @@ class DiffusionPipeline(ConfigMixin):
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
-        in slices to compute attention in several steps. This is useful to save some memory in exchange for a small
-        speed decrease.
+        in slices to compute attention in several steps. For more than one attention head, the computation is performed
+        sequentially over each head. This is useful to save some memory in exchange for a small speed decrease.
 
         <Tip warning={true}>
 
@@ -1686,6 +1686,23 @@ class DiffusionPipeline(ConfigMixin):
                 `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
+
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> from diffusers import StableDiffusionPipeline
+
+        >>> pipe = StableDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5",
+        ...     torch_dtype=torch.float16,
+        ...     use_safetensors=True,
+        ... )
+
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> pipe.enable_attention_slicing()
+        >>> image = pipe(prompt).images[0]
+        ```
         """
         self.set_attention_slice(slice_size)
 
