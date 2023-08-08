@@ -178,7 +178,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         # For backwards compatibility
-        if type(self.unet.config.sample_size) == int:
+        if isinstance(self.unet.config.sample_size, int):
             self.unet.config.sample_size = (self.unet.config.sample_size, self.unet.config.sample_size)
         if noise is None:
             noise = randn_tensor(
