@@ -33,7 +33,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils import floats_tensor, load_numpy, slow, nightly, torch_device
+from diffusers.utils import floats_tensor, load_numpy, nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, load_pt, require_torch_gpu, skip_mps
 
 from ..pipeline_params import (

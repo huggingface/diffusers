@@ -26,7 +26,7 @@ from diffusers import (
     TextToVideoSDPipeline,
     UNet3DConditionModel,
 )
-from diffusers.utils import is_xformers_available, load_numpy, skip_mps, slow, nightly, torch_device, require_torch_gpu
+from diffusers.utils import is_xformers_available, load_numpy, nightly, require_torch_gpu, skip_mps, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
