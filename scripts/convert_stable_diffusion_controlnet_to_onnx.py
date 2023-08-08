@@ -230,6 +230,30 @@ def onnx_export(
 def convert_models(
     model_path: str, controlnet_path: list, output_path: str, opset: int, fp16: bool = False, sd_xl: bool = False
 ):
+    """
+    Function to convert models in stable diffusion controlnet pipeline into ONNX format
+
+    Example:
+    python convert_stable_diffusion_controlnet_to_onnx.py 
+    --model_path danbrown/RevAnimated-v1-2-2
+    --controlnet_path lllyasviel/control_v11f1e_sd15_tile ioclab/brightness-controlnet
+    --output_path  path-to-models-stable_diffusion/RevAnimated-v1-2-2
+    --fp16
+
+    Example for SD XL:
+    python convert_stable_diffusion_controlnet_to_onnx.py 
+    --model_path stabilityai/stable-diffusion-xl-base-1.0
+    --controlnet_path SargeZT/sdxl-controlnet-seg
+    --output_path  path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0
+    --fp16
+    --sd_xl
+
+    Returns:
+        text_encoder/model.onnx
+        unet/model.onnx + unet/weights.pb
+        vae_encoder/model.onnx
+        vae_decoder/model.onnx
+    """
     dtype = torch.float16 if fp16 else torch.float32
     if fp16 and torch.cuda.is_available():
         device = "cuda"

@@ -5,6 +5,27 @@ import tensorrt as trt
 
 
 def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: bool = False, sd_xl: bool = False):
+    """
+    Function to convert models in stable diffusion controlnet pipeline into TensorRT format
+
+    Example:
+    python convert_stable_diffusion_controlnet_to_tensorrt.py
+    --onnx_path path-to-models-stable_diffusion/RevAnimated-v1-2-2/unet/model.onnx
+    --output_path path-to-models-stable_diffusion/RevAnimated-v1-2-2/unet/model.engine
+    --fp16
+    --num_controlnet 2
+
+    Example for SD XL:
+    python convert_stable_diffusion_controlnet_to_tensorrt.py
+    --onnx_path path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0/unet/model.onnx
+    --output_path path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0/unet/model.engine
+    --fp16
+    --num_controlnet 1
+    --sd_xl
+
+    Returns:
+        unet/model.engine
+    """
     # UNET
     if sd_xl:
         batch_size = 1
