@@ -23,13 +23,22 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
+from huggingface_hub import HfFolder, delete_repo
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import logging, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_2, require_torch_gpu, run_test_in_subprocess
+from diffusers.utils.testing_utils import (
+    TOKEN,
+    USER,
+    CaptureLogger,
+    is_staging_test,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
 
 
 # Will be run via run_test_in_subprocess
@@ -565,3 +574,81 @@ class ModelTesterMixin:
                 f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
+
+
+@is_staging_test
+class ModelPushToHubTester(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._token = TOKEN
+        HfFolder.save_token(TOKEN)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            delete_repo(token=cls._token, repo_id="test-model")
+        except HTTPError:
+            pass
+
+        try:
+            delete_repo(token=cls._token, repo_id="valid_org/test-model-org")
+        except HTTPError:
+            pass
+
+    def test_push_to_hub(self):
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        model.push_to_hub("test-model", token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-model")
+        for p1, p2 in zip(model.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="test-model")
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(tmp_dir, repo_id="test-model", push_to_hub=True, token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-model")
+        for p1, p2 in zip(model.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+    def test_push_to_hub_in_organization(self):
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        model.push_to_hub("valid_org/test-model-org", use_auth_token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-model-org")
+        for p1, p2 in zip(model.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="valid_org/test-model-org")
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(
+                tmp_dir, push_to_hub=True, use_auth_token=self._token, repo_id="valid_org/test-model-org"
+            )
+
+        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-model-org")
+        for p1, p2 in zip(model.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))

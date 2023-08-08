@@ -21,6 +21,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from huggingface_hub import HfFolder, delete_repo
+from requests.exceptions import HTTPError
 
 import diffusers
 from diffusers import (
@@ -39,7 +41,7 @@ from diffusers import (
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import CaptureLogger
+from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger, is_staging_test
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -720,3 +722,71 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.does_not_exist
 
             assert str(error.exception) == f"'{type(scheduler).__name__}' object has no attribute 'does_not_exist'"
+
+
+@is_staging_test
+class SchedulerPushToHubTester(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._token = TOKEN
+        HfFolder.save_token(TOKEN)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            delete_repo(token=cls._token, repo_id="test-scheduler")
+        except HTTPError:
+            pass
+
+        try:
+            delete_repo(token=cls._token, repo_id="valid_org/test-scheduler-org")
+        except HTTPError:
+            pass
+
+    def test_push_to_hub(self):
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        scheduler.push_to_hub("test-scheduler")
+        scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/test-scheduler")
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="test-scheduler")
+
+        # Push to hub via save_config
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scheduler.save_config(tmp_dir, repo_id="test-scheduler", push_to_hub=True, token=self._token)
+
+        scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/test-scheduler")
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+    def test_push_to_hub_in_organization(self):
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        scheduler.push_to_hub("valid_org/test-scheduler-org")
+        scheduler_loaded = DDIMScheduler.from_pretrained("valid_org/test-scheduler-org")
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="valid_org/test-scheduler-org")
+
+        # Push to hub via save_config
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scheduler.save_config(tmp_dir, repo_id="valid_org/test-scheduler-org", push_to_hub=True, token=self._token)
+
+        scheduler_loaded = DDIMScheduler.from_pretrained("valid_org/test-scheduler-org")
+
+        assert type(scheduler) == type(scheduler_loaded)

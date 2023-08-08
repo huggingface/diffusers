@@ -17,6 +17,7 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
+  HUGGINGFACE_CO_STAGING: True
 
 jobs:
   run_fast_tests:

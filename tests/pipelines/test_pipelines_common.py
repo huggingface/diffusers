@@ -10,14 +10,17 @@ from typing import Callable, Union
 import numpy as np
 import PIL
 import torch
+from huggingface_hub import HfFolder, delete_repo
+from requests.exceptions import HTTPError
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import DiffusionPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger, is_staging_test, require_torch, torch_device
 
 
 def to_np(tensor):
@@ -793,6 +796,124 @@ class PipelineTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+
+@is_staging_test
+class PipelinePushToHubTester(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._token = TOKEN
+        HfFolder.save_token(TOKEN)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            delete_repo(token=cls._token, repo_id="test-pipeline")
+        except HTTPError:
+            pass
+
+        try:
+            delete_repo(token=cls._token, repo_id="valid_org/test-pipeline-org")
+        except HTTPError:
+            pass
+
+    def get_pipeline_components(self):
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def test_push_to_hub(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub("test-pipeline", token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="test-pipeline")
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, repo_id="test-pipeline", push_to_hub=True, token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+    def test_push_to_hub_in_organization(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub("valid_org/test-pipeline-org", use_auth_token=self._token)
+
+        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=self._token, repo_id="valid_org/test-pipeline-org")
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(
+                tmp_dir, push_to_hub=True, use_auth_token=self._token, repo_id="valid_org/test-pipeline-org"
+            )
+
+        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
