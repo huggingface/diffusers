@@ -9,6 +9,7 @@ from diffusers import (
     VQModelPaella,
     WuerstchenDecoderPipeline,
     WuerstchenPriorPipeline,
+    WuerstchenPipeline,
 )
 from diffusers.pipelines.wuerstchen import DiffNeXt, Prior
 
@@ -71,3 +72,20 @@ decoder_pipeline = WuerstchenDecoderPipeline(
     scheduler=scheduler,
 )
 decoder_pipeline.save_pretrained("warp-diffusion/WuerstchenDecoderPipeline")
+
+
+# Wuerstchen pipeline
+wuerstchen_pipeline = WuerstchenPipeline(
+    # Decoder
+    text_encoder=gen_text_encoder,
+    tokenizer=gen_tokenizer,
+    generator=generator,
+    scheduler=scheduler,
+    vqgan=vqmodel,
+    # Prior
+    prior_tokenizer=tokenizer,
+    prior_text_encoder=text_encoder,
+    prior_prior=prior_model,
+    prior_scheduler=scheduler,
+)
+wuerstchen_pipeline.save_pretrained("warp-diffusion/Wuerstchen")
