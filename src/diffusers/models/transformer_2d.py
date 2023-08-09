@@ -204,6 +204,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -289,15 +291,28 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                timestep=timestep,
-                cross_attention_kwargs=cross_attention_kwargs,
-                class_labels=class_labels,
-            )
+            if self.training and self.gradient_checkpointing:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    block,
+                    hidden_states,
+                    attention_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    timestep,
+                    cross_attention_kwargs,
+                    class_labels,
+                    use_reentrant=False,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    timestep=timestep,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=class_labels,
+                )
 
         # 3. Output
         if self.is_input_continuous:
