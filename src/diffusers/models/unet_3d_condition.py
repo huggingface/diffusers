@@ -72,7 +72,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
-        center_input_sample (`bool`, *optional*, defaults to False): #TODO
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "DownBlock3D")`):
@@ -101,7 +100,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample_size: Optional[int] = None,
         in_channels: int = 4,
         out_channels: int = 4,
-        center_input_sample: bool = False,
         down_block_types: Tuple[str] = (
             "CrossAttnDownBlock3D",
             "CrossAttnDownBlock3D",
@@ -545,10 +543,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
-
-        # center input if necessary
-        if self.config.center_input_sample:
-            sample = 2 * sample - 1.0
 
         # 1. time
         timesteps = timestep
