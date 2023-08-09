@@ -13,8 +13,6 @@ from torch.onnx import export
 
 from diffusers import (
     ControlNetModel,
-    OnnxRuntimeModel,
-    OnnxStableDiffusionPipeline,
     StableDiffusionControlNetImg2ImgPipeline,
 )
 from diffusers.models.attention_processor import AttnProcessor
@@ -237,22 +235,29 @@ def convert_models(
     python convert_stable_diffusion_controlnet_to_onnx.py
     --model_path danbrown/RevAnimated-v1-2-2
     --controlnet_path lllyasviel/control_v11f1e_sd15_tile ioclab/brightness-controlnet
-    --output_path  path-to-models-stable_diffusion/RevAnimated-v1-2-2
+    --output_path path-to-models-stable_diffusion/RevAnimated-v1-2-2
     --fp16
 
     Example for SD XL:
     python convert_stable_diffusion_controlnet_to_onnx.py
     --model_path stabilityai/stable-diffusion-xl-base-1.0
     --controlnet_path SargeZT/sdxl-controlnet-seg
-    --output_path  path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0
+    --output_path path-to-models-stable_diffusion/stable-diffusion-xl-base-1.0
     --fp16
     --sd_xl
 
     Returns:
+        create 4 onnx models in output path
         text_encoder/model.onnx
         unet/model.onnx + unet/weights.pb
         vae_encoder/model.onnx
         vae_decoder/model.onnx
+
+        run test script in diffusers/test/pipelines/controlnet
+        python test_onnx_controlnet.py
+        --sd_model danbrown/RevAnimated-v1-2-2
+        --onnx_model_dir path-to-models-stable_diffusion/RevAnimated-v1-2-2
+        --qr_img_path path-to-qr-code-image
     """
     dtype = torch.float16 if fp16 else torch.float32
     if fp16 and torch.cuda.is_available():
@@ -430,15 +435,12 @@ def convert_models(
     vae_in_channels = vae_encoder.config.in_channels
     vae_sample_size = vae_encoder.config.sample_size
     # need to get the raw tensor output (sample) from the encoder
-    vae_encoder.forward = lambda sample, return_dict: vae_encoder.encode(sample, return_dict)[0].sample()
+    vae_encoder.forward = lambda sample: vae_encoder.encode(sample).latent_dist.sample()
     onnx_export(
         vae_encoder,
-        model_args=(
-            torch.randn(1, vae_in_channels, vae_sample_size, vae_sample_size).to(device=device, dtype=dtype),
-            False,
-        ),
+        model_args=(torch.randn(1, vae_in_channels, vae_sample_size, vae_sample_size).to(device=device, dtype=dtype),),
         output_path=output_path / "vae_encoder" / "model.onnx",
-        ordered_input_names=["sample", "return_dict"],
+        ordered_input_names=["sample"],
         output_names=["latent_sample"],
         dynamic_axes={
             "sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
@@ -449,17 +451,15 @@ def convert_models(
     # VAE DECODER
     vae_decoder = pipeline.vae
     vae_latent_channels = vae_decoder.config.latent_channels
-    vae_out_channels = vae_decoder.config.out_channels
     # forward only through the decoder part
     vae_decoder.forward = vae_encoder.decode
     onnx_export(
         vae_decoder,
         model_args=(
             torch.randn(1, vae_latent_channels, unet_sample_size, unet_sample_size).to(device=device, dtype=dtype),
-            False,
         ),
         output_path=output_path / "vae_decoder" / "model.onnx",
-        ordered_input_names=["latent_sample", "return_dict"],
+        ordered_input_names=["latent_sample"],
         output_names=["sample"],
         dynamic_axes={
             "latent_sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
@@ -468,61 +468,7 @@ def convert_models(
     )
     del pipeline.vae
 
-    # SAFETY CHECKER
-    if sd_xl:
-        return
-
-    if pipeline.safety_checker is not None:
-        safety_checker = pipeline.safety_checker
-        clip_num_channels = safety_checker.config.vision_config.num_channels
-        clip_image_size = safety_checker.config.vision_config.image_size
-        safety_checker.forward = safety_checker.forward_onnx
-        onnx_export(
-            pipeline.safety_checker,
-            model_args=(
-                torch.randn(
-                    1,
-                    clip_num_channels,
-                    clip_image_size,
-                    clip_image_size,
-                ).to(device=device, dtype=dtype),
-                torch.randn(1, vae_sample_size, vae_sample_size, vae_out_channels).to(device=device, dtype=dtype),
-            ),
-            output_path=output_path / "safety_checker" / "model.onnx",
-            ordered_input_names=["clip_input", "images"],
-            output_names=["out_images", "has_nsfw_concepts"],
-            dynamic_axes={
-                "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-                "images": {0: "batch", 1: "height", 2: "width", 3: "channels"},
-            },
-            opset=opset,
-        )
-        del pipeline.safety_checker
-        safety_checker = OnnxRuntimeModel.from_pretrained(output_path / "safety_checker")
-        feature_extractor = pipeline.feature_extractor
-    else:
-        safety_checker = None
-        feature_extractor = None
-
-    onnx_pipeline = OnnxStableDiffusionPipeline(
-        vae_encoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_encoder"),
-        vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
-        text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
-        tokenizer=pipeline.tokenizer,
-        unet=OnnxRuntimeModel.from_pretrained(output_path / "unet"),
-        scheduler=pipeline.scheduler,
-        safety_checker=safety_checker,
-        feature_extractor=feature_extractor,
-        requires_safety_checker=safety_checker is not None,
-    )
-
-    onnx_pipeline.save_pretrained(output_path)
-    print("ONNX pipeline saved to", output_path)
-
     del pipeline
-    del onnx_pipeline
-    _ = OnnxStableDiffusionPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
-    print("ONNX pipeline is loadable")
 
 
 if __name__ == "__main__":
