@@ -2,6 +2,8 @@ import contextlib
 import gc
 import inspect
 import io
+import json
+import os
 import re
 import tempfile
 import unittest
@@ -858,7 +860,17 @@ class PipelinePushToHubTester(unittest.TestCase):
             vocab_size=1000,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
+            vocab_path = os.path.join(tmpdir, "vocab.json")
+            json.dump(dummy_vocab, vocab_path)
+
+            merges = "Ġ t\nĠt h"
+            merges_path = os.path.join(tmpdir, "merges.txt")
+            with open(merges_path, "w") as f:
+                f.writelines(merges)
+            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
 
         components = {
             "unet": unet,
@@ -895,7 +907,7 @@ class PipelinePushToHubTester(unittest.TestCase):
     def test_push_to_hub_in_organization(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub("valid_org/test-pipeline-org", use_auth_token=self._token)
+        pipeline.push_to_hub("valid_org/test-pipeline-org", token=self._token)
 
         new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
         unet = components["unet"]
@@ -908,7 +920,7 @@ class PipelinePushToHubTester(unittest.TestCase):
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
             pipeline.save_pretrained(
-                tmp_dir, push_to_hub=True, use_auth_token=self._token, repo_id="valid_org/test-pipeline-org"
+                tmp_dir, push_to_hub=True, token=self._token, repo_id="valid_org/test-pipeline-org"
             )
 
         new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
