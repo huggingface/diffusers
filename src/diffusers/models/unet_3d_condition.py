@@ -121,7 +121,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         use_linear_projection: bool = True,
         use_temporal_transformer: bool = True,
         upcast_attention: bool = False,
-        resnet_time_scale_shift: str = "default",
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
         super().__init__()
@@ -221,7 +220,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
-                resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.down_blocks.append(down_block)
 
@@ -233,7 +231,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift=resnet_time_scale_shift,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
@@ -277,11 +274,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                # attn_num_head_channels=reversed_attention_head_dim[i],
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
-                resnet_time_scale_shift=resnet_time_scale_shift,
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
             )
