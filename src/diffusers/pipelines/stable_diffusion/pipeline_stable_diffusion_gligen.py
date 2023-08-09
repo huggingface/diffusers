@@ -50,16 +50,16 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
-        ...     "masterful/gligen-1-4-inpainting-text-box",
-        ...     variant="fp16",
-        ...     torch_dtype=torch.float16
+        ...     "masterful/gligen-1-4-inpainting-text-box", variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/livingroom_modern.png")
+        >>> input_image = load_image(
+        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/livingroom_modern.png"
+        ... )
         >>> prompt = "a birthday cake"
-        >>> boxes = [[0.2676,0.6088,0.4773,0.7183]]
-        >>> phrases=["a birthday cake"]
+        >>> boxes = [[0.2676, 0.6088, 0.4773, 0.7183]]
+        >>> phrases = ["a birthday cake"]
 
         >>> images = pipe(
         ...     prompt=prompt,
@@ -213,7 +213,8 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow processing larger images.
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
         """
         self.vae.enable_tiling()
 
@@ -567,8 +568,8 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 content described by the corresponding gligen_phrases. Each rectangular box is defined as `List[float]`
                 of 4 elements [xmin,ymin,xmax,ymax] where each value is between [0,1]
             gligen_inpaint_image (`PIL.Image.Image`, *optional*):
-                The input image, if provided, it will be inpainted with objects described by the
-                gligen_boxes and gligen_phrases. Otherwise, treated as a generation task on a blank input image.
+                The input image, if provided, it will be inpainted with objects described by the gligen_boxes and
+                gligen_phrases. Otherwise, treated as a generation task on a blank input image.
             gligen_scheduled_sampling_beta (`float`, defaults to 0.3):
                 Scheduled Sampling factor from [GLIGEN: Open-Set Grounded Text-to-Image
                 Generation](https://arxiv.org/pdf/2301.07093.pdf). Scheduled Sampling factor is only varied for
