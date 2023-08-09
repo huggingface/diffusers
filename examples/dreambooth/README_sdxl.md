@@ -201,3 +201,7 @@ You can explore the results from a couple of our internal experiments by checkin
 * [Starbucks logo](https://huggingface.co/datasets/diffusers/starbucks-example)
 * [Mr. Potato Head](https://huggingface.co/datasets/diffusers/potato-head-example)
 * [Keramer face](https://huggingface.co/datasets/diffusers/keramer-face-example)
+
+## Running on a free-tier Colab Notebook
+
+Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb). 
