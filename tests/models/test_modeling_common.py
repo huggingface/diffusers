@@ -610,6 +610,9 @@ class ModelPushToHubTester(unittest.TestCase):
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
+
     def test_push_to_hub_in_organization(self):
         model = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -637,3 +640,6 @@ class ModelPushToHubTester(unittest.TestCase):
         new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id)
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.org_repo_id, token=TOKEN)

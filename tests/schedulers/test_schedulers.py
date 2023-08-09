@@ -756,6 +756,9 @@ class SchedulerPushToHubTester(unittest.TestCase):
 
         assert type(scheduler) == type(scheduler_loaded)
 
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+
     def test_push_to_hub_in_organization(self):
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -779,3 +782,6 @@ class SchedulerPushToHubTester(unittest.TestCase):
         scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
 
         assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)

@@ -894,6 +894,9 @@ class PipelinePushToHubTester(unittest.TestCase):
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
+
     def test_push_to_hub_in_organization(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
@@ -914,6 +917,9 @@ class PipelinePushToHubTester(unittest.TestCase):
         new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.org_repo_id, token=TOKEN)
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
