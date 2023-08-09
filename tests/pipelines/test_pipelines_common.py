@@ -12,8 +12,7 @@ from typing import Callable, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import HfFolder, delete_repo
-from requests.exceptions import HTTPError
+from huggingface_hub import delete_repo
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -804,23 +803,6 @@ class PipelineTesterMixin:
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._token = TOKEN
-        HfFolder.save_token(TOKEN)
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            delete_repo(token=cls._token, repo_id="test-pipeline")
-        except HTTPError:
-            pass
-
-        try:
-            delete_repo(token=cls._token, repo_id="valid_org/test-pipeline-org")
-        except HTTPError:
-            pass
-
     def get_pipeline_components(self):
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -889,7 +871,7 @@ class PipelinePushToHubTester(unittest.TestCase):
     def test_push_to_hub(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub("test-pipeline", token=self._token)
+        pipeline.push_to_hub("test-pipeline", token=TOKEN)
 
         new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
         unet = components["unet"]
@@ -897,11 +879,11 @@ class PipelinePushToHubTester(unittest.TestCase):
             self.assertTrue(torch.equal(p1, p2))
 
         # Reset repo
-        delete_repo(token=self._token, repo_id="test-pipeline")
+        delete_repo(token=TOKEN, repo_id="test-pipeline")
 
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, repo_id="test-pipeline", push_to_hub=True, token=self._token)
+            pipeline.save_pretrained(tmp_dir, repo_id="test-pipeline", push_to_hub=True, token=TOKEN)
 
         new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
@@ -910,7 +892,7 @@ class PipelinePushToHubTester(unittest.TestCase):
     def test_push_to_hub_in_organization(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub("valid_org/test-pipeline-org", token=self._token)
+        pipeline.push_to_hub("valid_org/test-pipeline-org", token=TOKEN)
 
         new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
         unet = components["unet"]
@@ -918,13 +900,11 @@ class PipelinePushToHubTester(unittest.TestCase):
             self.assertTrue(torch.equal(p1, p2))
 
         # Reset repo
-        delete_repo(token=self._token, repo_id="valid_org/test-pipeline-org")
+        delete_repo(token=TOKEN, repo_id="valid_org/test-pipeline-org")
 
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(
-                tmp_dir, push_to_hub=True, token=self._token, repo_id="valid_org/test-pipeline-org"
-            )
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id="valid_org/test-pipeline-org")
 
         new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):

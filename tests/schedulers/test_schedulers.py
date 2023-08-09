@@ -21,8 +21,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
-from huggingface_hub import HfFolder, delete_repo
-from requests.exceptions import HTTPError
+from huggingface_hub import delete_repo
 
 import diffusers
 from diffusers import (
@@ -728,23 +727,6 @@ class SchedulerCommonTest(unittest.TestCase):
 
 @is_staging_test
 class SchedulerPushToHubTester(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._token = TOKEN
-        HfFolder.save_token(TOKEN)
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            delete_repo(token=cls._token, repo_id="test-scheduler")
-        except HTTPError:
-            pass
-
-        try:
-            delete_repo(token=cls._token, repo_id="valid_org/test-scheduler-org")
-        except HTTPError:
-            pass
-
     def test_push_to_hub(self):
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -759,11 +741,11 @@ class SchedulerPushToHubTester(unittest.TestCase):
         assert type(scheduler) == type(scheduler_loaded)
 
         # Reset repo
-        delete_repo(token=self._token, repo_id="test-scheduler")
+        delete_repo(token=TOKEN, repo_id="test-scheduler")
 
         # Push to hub via save_config
         with tempfile.TemporaryDirectory() as tmp_dir:
-            scheduler.save_config(tmp_dir, repo_id="test-scheduler", push_to_hub=True, token=self._token)
+            scheduler.save_config(tmp_dir, repo_id="test-scheduler", push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/test-scheduler")
 
@@ -783,11 +765,11 @@ class SchedulerPushToHubTester(unittest.TestCase):
         assert type(scheduler) == type(scheduler_loaded)
 
         # Reset repo
-        delete_repo(token=self._token, repo_id="valid_org/test-scheduler-org")
+        delete_repo(token=TOKEN, repo_id="valid_org/test-scheduler-org")
 
         # Push to hub via save_config
         with tempfile.TemporaryDirectory() as tmp_dir:
-            scheduler.save_config(tmp_dir, repo_id="valid_org/test-scheduler-org", push_to_hub=True, token=self._token)
+            scheduler.save_config(tmp_dir, repo_id="valid_org/test-scheduler-org", push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained("valid_org/test-scheduler-org")
 
