@@ -899,6 +899,7 @@ def main(args):
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
+        unet.enable_gradient_checkpointing()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
