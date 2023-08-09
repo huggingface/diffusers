@@ -332,6 +332,7 @@ def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_i
     # TODO: default values
     local_blend_words = edit_kwargs.pop("local_blend_words", None)
     equalizer_words = edit_kwargs.pop("equalizer_words", None) 
+    equalizer_strengths = edit_kwargs.pop("equalizer_strengths", None)
     n_cross_replace = edit_kwargs.pop("n_cross_replace", 0.4)
     n_self_replace = edit_kwargs.pop("n_self_replace", 0.4)
 
@@ -351,13 +352,14 @@ def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_i
     # refine + localblend
     if edit_type == "refine" and local_blend_words is not None:
         lb = LocalBlend(prompts, local_blend_words, tokenizer=tokenizer, device=device)
-        return AttentionRefine(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
+        return AttentionRefine(prompts, num_inference_steps, n_cross_replace, n_self_replace, lb, tokenizer=tokenizer, device=device)
 
     # reweight
     if edit_type == 'reweight':
-        # todo: equalizer strenght into var (currently fixed at 5)
-        equalizer = get_equalizer(prompts[1], equalizer_words, (5,), tokenizer=tokenizer)
-        AttentionReweight(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device, equalizer=equalizer)	
+        # todo: assertion failure message
+        assert equalizer_words is not None and equalizer_strengths is not None and len(equalizer_words)==len(equalizer_strengths)
+        equalizer = get_equalizer(prompts[1], equalizer_words, equalizer_strengths, tokenizer=tokenizer)
+        return AttentionReweight(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device, equalizer=equalizer)	
 
     # TODO: Better error message
     raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight, save.")
