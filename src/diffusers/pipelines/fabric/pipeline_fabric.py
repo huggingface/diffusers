@@ -20,6 +20,7 @@ from torch.nn import functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
+from ...pipelines import DissusionPipeline
 from ...models.cross_attention import LoRACrossAttnProcessor
 from ...models.attention import BasicTransformerBlock
 from ..stable_diffusion import StableDiffusionPipeline
@@ -137,12 +138,12 @@ def attn_with_weights(
     return hidden_states
 
 
-class Fabric(nn.Module):
+class Fabric(DiffusionPipeline):
     def __init__(
         self,
         model_name: Optional[str] = None,
-        model_ckpt: Optional[str] = None,
         stable_diffusion_version: str = "1.5",
+        scheduler: EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
         torch_dtype=torch.float32
     ):
@@ -163,21 +164,12 @@ class Fabric(nn.Module):
 
         scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
 
-        if model_ckpt is not None:
-            pipe = StableDiffusionPipeline.from_ckpt(
-                model_ckpt,
-                scheduler=scheduler,
-                torch_dtype=torch_dtype,
-                safety_checker=None,
-            )
-            pipe.scheduler = scheduler
-        else:
-            pipe = StableDiffusionPipeline.from_pretrained(
-                model_name,
-                scheduler=scheduler,
-                torch_dtype=torch_dtype,
-                safety_checker=None,
-            )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_name,
+            scheduler=scheduler,
+            torch_dtype=torch_dtype,
+            safety_checker=None,
+        )
 
         if lora_weights:
             print(f"Applying LoRA weights from {lora_weights}")
@@ -347,18 +339,29 @@ class Fabric(nn.Module):
 
         return out
 
-    def forward(
+    def preprocess_feedback_images(images, vae) -> torch.tensor:
+        images_t = [self.image_to_tensor(img) for img in images]
+        images_t = torch.stack(images_t).to(self.device, dtype=self.dtype)
+        latents = (
+            vae.config.scaling_factor
+            * vae.encode(iamges_t).latent_dist.sample()
+        )
+        return latents
+
+    @torch.no_grad()
+
+    def __call__(
         self,
-        prompt: Union[str, List[str]] = "a photo of an astronaut riding a horse on mars",
-        negative_prompt: Union[str, List[str]] = "",
-        liked: List[Image.Image] = [],
-        disliked: List[Image.Image] = [],
-        seed: int = 42,
+        prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        liked: Optional[List[Image.Image]] = None,
+        disliked: Optional[List[Image.Image]] = None,
+        random_seed: int = 42,
         n_images: int = 1,
         guidance_scale: float = 8.0,
         denoising_steps: int = 20,
-        feedback_start: float = 0.33,
-        feedback_end: float = 0.66,
+        feedback_start_ratio: float = 0.33,
+        feedback_end_ratio: float = 0.66,
         min_weight: float = 0.1,
         max_weight: float = 1.0,
         neg_scale: float = 0.5,
@@ -369,30 +372,15 @@ class Fabric(nn.Module):
         Generate a trajectory of images with binary feedback.
         The feedback can be given as a list of liked and disliked images.
         """
-        if seed is not None:
+
+        if random_seed is not None:
             torch.manual_seed(seed)
 
-        z = torch.randn(n_images, 4, 64, 64, device=self.device, dtype=self.dtype)
+        latent_noise = torch.randn(n_images, 4, 64, 64, device=self.device, dtype=self.dtype)
 
-        if liked and len(liked) > 0:
-            pos_images = [self.image_to_tensor(img) for img in liked]
-            pos_images = torch.stack(pos_images).to(self.device, dtype=self.dtype)
-            pos_latents = (
-                self.vae.config.scaling_factor
-                * self.vae.encode(pos_images).latent_dist.sample()
-            )
-        else:
-            pos_latents = torch.tensor([], device=self.device, dtype=self.dtype)
+        positive_letents = self.preprocess_feedback_images(liked,self.vae) if liked and len(liked)>0 else torch.tensor([], device=self.device, dtype=self.dtype)
 
-        if disliked and len(disliked) > 0:
-            neg_images = [self.image_to_tensor(img) for img in disliked]
-            neg_images = torch.stack(neg_images).to(self.device, dtype=self.dtype)
-            neg_latents = (
-                self.vae.config.scaling_factor
-                * self.vae.encode(neg_images).latent_dist.sample()
-            )
-        else:
-            neg_latents = torch.tensor([], device=self.device, dtype=self.dtype)
+        negative_letents =  self.preprocess_feedback_images(disliked,self.vae) if disliked and len(disliked)>0 else torch.tensor([], device=self.device, dtype=self.dtype)
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
@@ -403,43 +391,42 @@ class Fabric(nn.Module):
         else:
             assert len(negative_prompt) == n_images
 
-        (
-            cond_prompt_embs,
-            uncond_prompt_embs,
-            null_prompt_emb,
-        ) = self.initialize_prompts(prompt + negative_prompt + [""]).split([n_images, n_images, 1])
+        
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""]).split([n_images, n_images, 1])
+
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
         self.scheduler.set_timesteps(denoising_steps, device=self.device)
         timesteps = self.scheduler.timesteps
 
-        z = z * self.scheduler.init_noise_sigma
+        latent_noise = latent_noise * self.scheduler.init_noise_sigma
 
         num_warmup_steps = len(timesteps) - denoising_steps * self.scheduler.order
 
-        ref_start_idx = round(len(timesteps) * feedback_start)
-        ref_end_idx = round(len(timesteps) * feedback_end)
+        ref_start_idx = round(len(timesteps) * feedback_start_ratio)
+        ref_end_idx = round(len(timesteps) * feedback_end_ratio)
 
         with tqdm(total=denoising_steps) as pbar:
             for i, t in enumerate(timesteps):
-                if hasattr(self.scheduler, "sigma_t"):
-                    sigma = self.scheduler.sigma_t[t]
-                elif hasattr(self.scheduler, "sigmas"):
+                sigma = self.scheduler.sigma_t[t] if hasattr(self.scheduler, 'sigma_t') else 0
+                if hasattr(self.scheduler, "sigmas"):
                     sigma = self.scheduler.sigmas[i]
-                else:
-                    sigma = 0
+
                 alpha_hat = 1 / (sigma**2 + 1)
 
-                z_single = self.scheduler.scale_model_input(z, t)
+                z_single = self.scheduler.scale_model_input(latent_noise, t)
                 z_all = torch.cat([z_single] * 2, dim=0)
                 z_ref = torch.cat([pos_latents, neg_latents], dim=0)
 
+                weight_factor = self.get_current_weight_factor(i, denoising_step, ref_start_idx,
+                                                            ref_end_idx, min_weight, max_weight)
                 if i >= ref_start_idx and i <= ref_end_idx:
                     weight = max_weight
                 else:
                     weight = min_weight
-                pos_ws = (weight, weight * pos_bottleneck_scale)
-                neg_ws = (weight * neg_scale, weight * neg_scale * neg_bottleneck_scale)
+
+                pos_ws = (weight_factor, weight_factor * pos_bottleneck_scale)
+                neg_ws = (weight_factor * neg_scale, weight_factor * neg_scale * neg_bottleneck_scale)
 
                 if z_ref.size(0) > 0 and weight > 0:
                     noise = torch.randn_like(z_ref)
