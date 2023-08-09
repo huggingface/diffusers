@@ -924,6 +924,7 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
+                print(batch.keys())
                 # Sample noise that we'll add to the latents
                 model_input = batch["model_input"]
                 noise = torch.randn_like(model_input)
