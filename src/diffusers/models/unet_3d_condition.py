@@ -107,7 +107,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "DownBlock3D",
         ),
         up_block_types: Tuple[str] = ("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -189,11 +188,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
-        if isinstance(only_cross_attention, bool):
-            only_cross_attention = [only_cross_attention] * len(down_block_types)
-
-        # if isinstance(attention_head_dim, int):
-        #     attention_head_dim = (attention_head_dim,) * len(down_block_types)
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
@@ -218,7 +212,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 num_attention_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
-                only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
             )
             self.down_blocks.append(down_block)
@@ -243,8 +236,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
-        # reversed_attention_head_dim = list(reversed(attention_head_dim))
-        only_cross_attention = list(reversed(only_cross_attention))
+
         reversed_num_attention_heads = list(reversed(num_attention_heads))
 
         output_channel = reversed_block_out_channels[0]
@@ -275,7 +267,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 use_linear_projection=use_linear_projection,
-                only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
