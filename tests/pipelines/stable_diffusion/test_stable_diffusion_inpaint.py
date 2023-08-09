@@ -251,6 +251,36 @@ class StableDiffusionInpaintPipelineFastTests(
         inputs["strength"] = 0.01
         with self.assertRaises(ValueError):
             sd_pipe(**inputs).images
+    
+    def test_stable_diffusion_inpaint_force_unmasked_unchanged(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # Get 32 x 32 image manually
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        original_image_slice = image[-3:, -3:, :].numpy()
+        init_image = Image.fromarray(np.uint8(255 * image)).convert("RGB")
+
+        # mask_array = image + 4
+        mask_array = image + 250
+        # # Make some pixels unmasked
+        # mask_array[-3:, -3:, :] = 255
+        mask_array[-3:, -3:, :] = 4
+        mask_image = Image.fromarray(np.uint8(mask_array)).convert("RGB")
+        
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = init_image
+        inputs["mask_image"] = mask_image
+        inputs["force_unmasked_unchanged"] = True
+
+        image = sd_pipe(**inputs).images
+
+        output_image_slice = image[0, -3:, -3:, :]
+        assert np.abs(original_image_slice.flatten() - output_image_slice.flatten()).max() < 1e-3
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
@@ -323,6 +353,20 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         expected_slice = np.array([0.4925, 0.4967, 0.4100, 0.5234, 0.5322, 0.4532, 0.5805, 0.5877, 0.4151])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+    
+    def test_stable_diffusion_inpaint_force_unmasked_unchanged_false(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        # check that the pipeline raises value error when num_unet_channels == 4 and force_masked_unchanged == False
+        inputs["force_unmasked_unchanged"] = False
+        with self.assertRaises(ValueError):
+            sd_pipe(**inputs).images
 
     @unittest.skip("skipped here because area stays unchanged due to mask")
     def test_stable_diffusion_inpaint_lora(self):

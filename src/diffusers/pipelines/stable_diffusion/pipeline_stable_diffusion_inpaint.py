@@ -585,13 +585,14 @@ class StableDiffusionInpaintPipeline(
                 "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
                 "However, either the image or the noise timestep has not been provided."
             )
+        
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
             image_latents = self._encode_vae_image(image=image, generator=generator)
 
         if latents is None:
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             # if strength is 1. then initialise the latents to noise, else initial to image + noise
             latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
             # if pure noise then scale the initial latents by the  Scheduler's init sigma
@@ -698,6 +699,7 @@ class StableDiffusionInpaintPipeline(
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        force_unmasked_unchanged: Optional[bool] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -764,6 +766,12 @@ class StableDiffusionInpaintPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            force_unmasked_unchanged (`bool`, *optional*):
+                Whether to force the unmasked areas of `image` to remain exactly the same after inpainting for a model
+                with 9 UNet channels. If the UNet has only 4 channels, then the unmasked areas will always be forced
+                to remain unchanged, and setting `force_unmasked_unchanged` to `False` in this case will raise an
+                error.
+
 
         Examples:
 
@@ -873,7 +881,21 @@ class StableDiffusionInpaintPipeline(
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
-        return_image_latents = num_channels_unet == 4
+
+        # return_image_latents = num_channels_unet == 4 or force_unmasked_unchanged
+        if num_channels_unet == 4 and force_unmasked_unchanged is False:
+            raise ValueError(
+                "Cannot set `force_unmasked_unchanged=False` for inpainting if the UNet has only 4 input channels."
+                " Either set `force_unmasked_unchanged` to `True` or use a UNet checkpoint that has been trained"
+                " specifically for inpainting."
+            )
+        elif num_channels_unet == 4 and force_unmasked_unchanged is None:
+            # For checkpoints not trained for inpainting the unmasked area should by default not be changed
+            force_unmasked_unchanged = True
+        elif num_channels_unet > 4 and force_unmasked_unchanged is None:
+            # For checkpoints trained for inpainting the unmasked area should by default be allowed to change so that
+            # the model can make the transition between the inpainted and non-inpainted area more natural
+            force_unmasked_unchanged = False
 
         latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -888,10 +910,10 @@ class StableDiffusionInpaintPipeline(
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
             return_noise=True,
-            return_image_latents=return_image_latents,
+            return_image_latents=force_unmasked_unchanged,
         )
 
-        if return_image_latents:
+        if force_unmasked_unchanged:
             latents, noise, image_latents = latents_outputs
         else:
             latents, noise = latents_outputs
@@ -960,17 +982,18 @@ class StableDiffusionInpaintPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if num_channels_unet == 4:
-                    init_latents_proper = image_latents[:1]
-                    init_mask = mask[:1]
+                if num_channels_unet == 4 and i < len(timesteps) - 1:
+                    # add noise for next timestep
+                    noise_timestep = timesteps[i + 1]
 
-                    if i < len(timesteps) - 1:
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.add_noise(
-                            init_latents_proper, noise, torch.tensor([noise_timestep])
-                        )
+                    init_latents_proper = self.scheduler.add_noise(
+                        image_latents[:1], noise, torch.tensor([noise_timestep])
+                    )
 
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    latents = (1 - mask[:1]) * init_latents_proper + mask[:1] * latents
+                
+                if force_unmasked_unchanged and i == (len(timesteps) - 1):
+                    latents = (1 - mask[:1]) * image_latents[:1] + mask[:1] * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
