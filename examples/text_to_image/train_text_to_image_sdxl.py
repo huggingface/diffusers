@@ -465,12 +465,14 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
     return {"prompt_embeds": prompt_embeds.cpu(), "pooled_prompt_embeds": pooled_prompt_embeds.cpu()}
 
+
 def compute_vae_encodings(batch, vae):
     pixel_values = batch.pop["pixel_values"]
     pixel_values = pixel_values.to(dtype=vae.dtype)
     model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
     return {"model_input": model_input}
+
 
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -808,7 +810,7 @@ def main(args):
         new_fingerprint = Hasher.hash(args)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
         train_dataset = train_dataset.map(compute_vae_encodings_fn, batched=True, new_fingerprint=new_fingerprint)
-    
+
     del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()
@@ -923,7 +925,8 @@ def main(args):
 
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
-                noise = torch.randn_like(batch["model_input"])
+                model_input = batch["model_input"]
+                noise = torch.randn_like(model_input)
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
                     noise += args.noise_offset * torch.randn(
