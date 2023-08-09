@@ -739,7 +739,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
             clip_sample=False,
             set_alpha_to_one=False,
         )
-        scheduler.push_to_hub(self.repo_id)
+        scheduler.push_to_hub(self.repo_id, token=TOKEN)
         scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
 
         assert type(scheduler) == type(scheduler_loaded)
@@ -763,7 +763,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
             clip_sample=False,
             set_alpha_to_one=False,
         )
-        scheduler.push_to_hub(f"valid_org/{self.repo_id}-org")
+        scheduler.push_to_hub(f"valid_org/{self.repo_id}-org", token=TOKEN)
         scheduler_loaded = DDIMScheduler.from_pretrained(f"valid_org/{self.repo_id}-org")
 
         assert type(scheduler) == type(scheduler_loaded)
