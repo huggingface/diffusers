@@ -119,7 +119,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         attention_head_dim: Union[int, Tuple[int]] = 64,
         use_linear_projection: bool = True,
         use_temporal_transformer: bool = True,
-        upcast_attention: bool = False,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
         super().__init__()
@@ -212,7 +211,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 num_attention_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
-                upcast_attention=upcast_attention,
             )
             self.down_blocks.append(down_block)
 
@@ -228,7 +226,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
             use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
         )
 
         # count how many layers upsample the videos
@@ -267,7 +264,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 use_linear_projection=use_linear_projection,
-                upcast_attention=upcast_attention,
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
             )
@@ -704,7 +700,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "CrossAttnUpBlockInflated3D",
             "CrossAttnUpBlockInflated3D",
         ]
-        config["upcast_attention"] = False
         config["use_linear_projection"] = False
         config["use_temporal_transformer"] = False
 
