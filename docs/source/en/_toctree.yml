@@ -170,6 +170,8 @@
       title: Tiny AutoEncoder
     - local: api/models/transformer2d
       title: Transformer2D
+    - local: api/models/transformer3d
+      title: Transformer3D
     - local: api/models/transformer_temporal
       title: Transformer Temporal
     - local: api/models/prior_transformer
