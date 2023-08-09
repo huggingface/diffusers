@@ -816,6 +816,8 @@ def main(args):
     torch.cuda.empty_cache()
 
     def collate_fn(examples):
+        for example in examples:
+            print(example.keys())
         model_input = torch.stack([example["model_input"] for example in examples])
         model_input = model_input.to(memory_format=torch.contiguous_format).float()
         original_sizes = [example["original_sizes"] for example in examples]
