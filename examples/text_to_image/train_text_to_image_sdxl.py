@@ -808,23 +808,22 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
+        new_fingerprint_for_vae = Hasher.hash(vae)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(compute_vae_encodings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset = train_dataset.map(compute_vae_encodings_fn, batched=True, new_fingerprint=new_fingerprint_for_vae)
 
     del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()
 
     def collate_fn(examples):
-        for example in examples:
-            print(example.keys())
         model_input = torch.stack([example["model_input"] for example in examples])
         model_input = model_input.to(memory_format=torch.contiguous_format).float()
         original_sizes = [example["original_sizes"] for example in examples]
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
         pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
-
+    
         return {
             "model_input": model_input,
             "prompt_embeds": prompt_embeds,
