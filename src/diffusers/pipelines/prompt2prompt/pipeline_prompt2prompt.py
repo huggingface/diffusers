@@ -17,16 +17,15 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import abc
 import numpy as np
 import torch
-import torch.nn.functional as nnf
-from PIL import Image
+import torch.nn.functional as F
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionPipeline
 from ...models.attention import Attention
 
 
 class Prompt2PromptPipeline(StableDiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    Prompt-to-Prompt-Pipeline for text-to-image generation using Stable Diffusion.
+    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Args:
         vae ([`AutoencoderKL`]):
@@ -79,6 +78,15 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
+            edit_type (`str`, *optional*, defaults to `save`):
+                The edit type to apply. Can be either of `replace`, `refine`, `reweight`, or `save`.
+            edit_kwargs (`Dict`, *optional*, defaults to `{}`):
+                The keyword arguments to configure the edit:
+                - n_cross_replace (`int`): Number of diffusion steps in which cross attention should be replaced
+                - n_self_replace (`int`): Number of diffusion steps in which self attention should be replaced
+                - local_blend_words(`List[str]`, *optional*, default to `None`): Determines which area should be changed. If None, then the whole image can be changed.
+                - equalizer_words(`List[str]`, *optional*, default to `None`): Required for edit type `reweight`. Determines which words should be enhanced.
+                - equalizer_strengths (`List[float]`, *optional*, default to `None`) Required for edit type `reweight`. Determines which how much the words in `equalizer_words` should be enhanced.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -253,39 +261,6 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         return out.cpu()
 
 
-    # TODO: only return attention maps, not images of them
-    def show_cross_attention(self, prompts, attention_store: AttentionStore, res: int, from_where: List[str], select: int = 0):
-        tokens = self.tokenizer.encode(prompts[select])
-        decoder = self.tokenizer.decode
-        attention_maps = self.aggregate_attention(prompts, attention_store, res, from_where, True, select)
-        images = []
-        for i in range(len(tokens)):
-            image = attention_maps[:, :, i]
-            image = 255 * image / image.max()
-            image = image.unsqueeze(-1).expand(*image.shape, 3)
-            image = image.numpy().astype(np.uint8)
-            image = np.array(Image.fromarray(image).resize((256, 256)))
-            image = text_under_image(image, decoder(int(tokens[i])))
-            images.append(image)
-        view_images(np.stack(images, axis=0))
-        
-
-    def show_self_attention_comp(self, prompts, attention_store: AttentionStore, res: int, from_where: List[str],
-                            max_com=10, select: int = 0):
-        attention_maps = self.aggregate_attention(prompts, attention_store, res, from_where, False, select).numpy().reshape((res ** 2, res ** 2))
-        u, s, vh = np.linalg.svd(attention_maps - np.mean(attention_maps, axis=1, keepdims=True))
-        images = []
-        for i in range(max_com):
-            image = vh[i].reshape(res, res)
-            image = image - image.min()
-            image = 255 * image / image.max()
-            image = np.repeat(np.expand_dims(image, axis=2), 3, axis=2).astype(np.uint8)
-            image = Image.fromarray(image).resize((256, 256))
-            image = np.array(image)
-            images.append(image)
-        ptp_utils.view_images(np.concatenate(images, axis=1))
-
-
 class P2PCrossAttnProcessor:
 
     def __init__(self, controller, place_in_unet):
@@ -329,7 +304,6 @@ def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_i
     if edit_type == "save":
         return AttentionStore()
 
-    # TODO: default values
     local_blend_words = edit_kwargs.pop("local_blend_words", None)
     equalizer_words = edit_kwargs.pop("equalizer_words", None) 
     equalizer_strengths = edit_kwargs.pop("equalizer_strengths", None)
@@ -356,12 +330,11 @@ def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_i
 
     # reweight
     if edit_type == 'reweight':
-        # todo: assertion failure message
-        assert equalizer_words is not None and equalizer_strengths is not None and len(equalizer_words)==len(equalizer_strengths)
+        assert equalizer_words is not None and equalizer_strengths is not None, "To use reweight edit, please specify equalizer_words and equalizer_strengths."
+        assert len(equalizer_words)==len(equalizer_strengths), "equalizer_words and equalizer_strengths must be of same length."
         equalizer = get_equalizer(prompts[1], equalizer_words, equalizer_strengths, tokenizer=tokenizer)
         return AttentionReweight(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device, equalizer=equalizer)	
 
-    # TODO: Better error message
     raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight, save.")
 
 
@@ -403,7 +376,6 @@ class AttentionControl(abc.ABC):
 
 
 class EmptyControl(AttentionControl):
-
     def forward(self, attn, is_cross: bool, place_in_unet: str):
         return attn
 
@@ -447,15 +419,14 @@ class AttentionStore(AttentionControl):
 
 
 class LocalBlend:
-
     def __call__(self, x_t, attention_store):
         k = 1
         maps = attention_store["down_cross"][2:4] + attention_store["up_cross"][:3]
         maps = [item.reshape(self.alpha_layers.shape[0], -1, 1, 16, 16, self.max_num_words) for item in maps]
         maps = torch.cat(maps, dim=1)
         maps = (maps * self.alpha_layers).sum(-1).mean(1)
-        mask = nnf.max_pool2d(maps, (k * 2 + 1, k * 2 +1), (1, 1), padding=(k, k))
-        mask = nnf.interpolate(mask, size=(x_t.shape[2:]))
+        mask = F.max_pool2d(maps, (k * 2 + 1, k * 2 +1), (1, 1), padding=(k, k))
+        mask = F.interpolate(mask, size=(x_t.shape[2:]))
         mask = mask / mask.max(2, keepdims=True)[0].max(3, keepdims=True)[0]
         mask = mask.gt(self.threshold)
         mask = (mask[:1] + mask[1:]).float()
@@ -605,7 +576,7 @@ def get_time_words_attention_alpha(prompts, num_steps,
     return alpha_time_words
 
 
-### util functions for ReplacementEdit
+### util functions for LocalBlend and ReplacementEdit
 def get_word_inds(text: str, word_place: int, tokenizer):
     split_text = text.split(" ")
     if type(word_place) is str:
@@ -627,6 +598,7 @@ def get_word_inds(text: str, word_place: int, tokenizer):
     return np.array(out)
 
 
+### util functions for ReplacementEdit
 def get_replacement_mapper_(x: str, y: str, tokenizer, max_len=77):
     words_x = x.split(' ')
     words_y = y.split(' ')
