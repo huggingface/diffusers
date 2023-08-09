@@ -293,49 +293,49 @@
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
-      title: Consistency Model Multistep Scheduler
-    - local: api/schedulers/ddim
-      title: DDIM
+      title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_inverse
-      title: DDIMInverse
+      title: DDIMInverseScheduler
+    - local: api/schedulers/ddim
+      title: DDIMScheduler
     - local: api/schedulers/ddpm
-      title: DDPM
+      title: DDPMScheduler
     - local: api/schedulers/deis
-      title: DEIS
-    - local: api/schedulers/dpm_discrete
-      title: DPM Discrete Scheduler
-    - local: api/schedulers/dpm_discrete_ancestral
-      title: DPM Discrete Scheduler with ancestral sampling
+      title: DEISMultistepScheduler
+    - local: api/schedulers/multistep_dpm_solver_inverse
+      title: DPMSolverMultistepInverse
+    - local: api/schedulers/multistep_dpm_solver
+      title: DPMSolverMultistepScheduler
     - local: api/schedulers/dpm_sde
       title: DPMSolverSDEScheduler
-    - local: api/schedulers/euler_ancestral
-      title: Euler Ancestral Scheduler
-    - local: api/schedulers/euler
-      title: Euler scheduler
-    - local: api/schedulers/heun
-      title: Heun Scheduler
-    - local: api/schedulers/multistep_dpm_solver_inverse
-      title: Inverse Multistep DPM-Solver
-    - local: api/schedulers/ipndm
-      title: IPNDM
-    - local: api/schedulers/lms_discrete
-      title: Linear Multistep
-    - local: api/schedulers/multistep_dpm_solver
-      title: Multistep DPM-Solver
-    - local: api/schedulers/pndm
-      title: PNDM
-    - local: api/schedulers/repaint
-      title: RePaint Scheduler
     - local: api/schedulers/singlestep_dpm_solver
-      title: Singlestep DPM-Solver
+      title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/euler_ancestral
+      title: EulerAncestralDiscreteScheduler
+    - local: api/schedulers/euler
+      title: EulerDiscreteScheduler
+    - local: api/schedulers/heun
+      title: HeunDiscreteScheduler
+    - local: api/schedulers/ipndm
+      title: IPNDMScheduler
     - local: api/schedulers/stochastic_karras_ve
-      title: Stochastic Kerras VE
+      title: KarrasVeScheduler
+    - local: api/schedulers/dpm_discrete_ancestral
+      title: KDPM2AncestralDiscreteScheduler
+    - local: api/schedulers/dpm_discrete
+      title: KDPM2DiscreteScheduler
+    - local: api/schedulers/lms_discrete
+      title: LMSDiscreteScheduler
+    - local: api/schedulers/pndm
+      title: PNDMScheduler
+    - local: api/schedulers/repaint
+      title: RePaintScheduler
+    - local: api/schedulers/score_sde_ve
+      title: ScoreSdeVeScheduler
+    - local: api/schedulers/score_sde_vp
+      title: ScoreSdeVpScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
-    - local: api/schedulers/score_sde_ve
-      title: VE-SDE
-    - local: api/schedulers/score_sde_vp
-      title: VP-SDE
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers

@@ -47,34 +47,32 @@ class KarrasVeOutput(BaseOutput):
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     """
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
-    the VE column of Table 1 from [1] for reference.
+    A stochastic scheduler tailored to variance-expanding models.
 
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
-    differential equations." https://arxiv.org/abs/2011.13456
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    <Tip>
 
-    For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-    Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
-    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
+    For more details on the parameters, see [Appendix E](https://arxiv.org/abs/2206.00364). The grid search values used
+    to find the optimal `{s_noise, s_churn, s_min, s_max}` for a specific model are described in Table 5 of the paper.
+
+    </Tip>
 
     Args:
-        sigma_min (`float`): minimum noise magnitude
-        sigma_max (`float`): maximum noise magnitude
-        s_noise (`float`): the amount of additional noise to counteract loss of detail during sampling.
-            A reasonable range is [1.000, 1.011].
-        s_churn (`float`): the parameter controlling the overall amount of stochasticity.
-            A reasonable range is [0, 100].
-        s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
-            A reasonable range is [0, 10].
-        s_max (`float`): the end value of the sigma range where we add noise.
-            A reasonable range is [0.2, 80].
-
+        sigma_min (`float`, defaults to 0.02):
+            The minimum noise magnitude.
+        sigma_max (`float`, defaults to 100):
+            The maximum noise magnitude.
+        s_noise (`float`, defaults to 1.007):
+            The amount of additional noise to counteract loss of detail during sampling. A reasonable range is [1.000,
+            1.011].
+        s_churn (`float`, defaults to 80):
+            The parameter controlling the overall amount of stochasticity. A reasonable range is [0, 100].
+        s_min (`float`, defaults to 0.05):
+            The start value of the sigma range to add noise (enable stochasticity). A reasonable range is [0, 10].
+        s_max (`float`, defaults to 50):
+            The end value of the sigma range to add noise. A reasonable range is [0.2, 80].
     """
 
     order = 2
@@ -103,22 +101,26 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
-
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
         timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
@@ -136,10 +138,15 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None
     ) -> Tuple[torch.FloatTensor, float]:
         """
-        Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
-        higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
+        Explicit Langevin-like "churn" step of adding noise to the sample according to a `gamma_i ≥ 0` to reach a
+        higher noise level `sigma_hat = sigma_i + gamma_i*sigma_i`.
 
-        TODO Args:
+        Args:
+            sample (`torch.FloatTensor`):
+                The input sample.
+            sigma (`float`):
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
         """
         if self.config.s_min <= sigma <= self.config.s_max:
             gamma = min(self.config.s_churn / self.num_inference_steps, 2**0.5 - 1)
@@ -162,21 +169,22 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            sigma_hat (`float`): TODO
-            sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor`): TODO
-            return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
+            sigma_hat (`float`):
+            sigma_prev (`float`):
+            sample_hat (`torch.FloatTensor`):
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] or `tuple`.
 
-            KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
         Returns:
-            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] or `tuple`:
-            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
 
         """
 
@@ -202,16 +210,18 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
-        Correct the predicted sample based on the output model_output of the network. TODO complete description
+        Corrects the predicted sample based on the `model_output` of the network.
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
             sample_hat (`torch.FloatTensor`): TODO
             sample_prev (`torch.FloatTensor`): TODO
             derivative (`torch.FloatTensor`): TODO
-            return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_ddpm.DDPMSchedulerOutput`] or `tuple`.
 
         Returns:
             prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
