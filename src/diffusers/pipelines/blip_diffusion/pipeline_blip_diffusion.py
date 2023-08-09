@@ -18,6 +18,7 @@ from ...utils import (
 )
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
+from .modeling_blip2 import Blip2VisionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -46,10 +47,10 @@ class ProjLayer(nn.Module):
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, proj_layer: ProjLayer, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: DDPMScheduler):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: DDPMScheduler, vision_encoder: Blip2VisionModel):
         super().__init__()
         
-        self.register_modules(tokenizer=tokenizer, text_encoder=CtxCLIPTextModel, proj_layer=proj_layer, vae=vae, unet=unet, scheduler=scheduler)
+        self.register_modules(tokenizer=tokenizer, text_encoder=CtxCLIPTextModel,  vae=vae, unet=unet, scheduler=scheduler, vision_encoder=vision_encoder)
 
     def prepare_latents():
         pass
