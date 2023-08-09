@@ -10,14 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# DPM Stochastic Scheduler inspired by Karras et. al paper
+# DPMSolverSDEScheduler
 
-## Overview
-
-Inspired by Stochastic Sampler from [Karras et. al](https://arxiv.org/abs/2206.00364).
-Scheduler ported from @crowsonkb's https://github.com/crowsonkb/k-diffusion library:
-
-All credit for making this scheduler work goes to [Katherine Crowson](https://github.com/crowsonkb/)
+The `DPMSolverSDEScheduler` is inspired by the stochastic sampler from the [Elucidating the Design Space of Diffusion-Based Generative Models](https://huggingface.co/papers/2206.00364) paper, and the scheduler is ported from and created by [Katherine Crowson](https://github.com/crowsonkb/).
 
 ## DPMSolverSDEScheduler
 [[autodoc]] DPMSolverSDEScheduler
+
+## SchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.SchedulerOutput
