@@ -154,9 +154,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
-        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         # input
