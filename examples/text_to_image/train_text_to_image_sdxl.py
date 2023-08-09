@@ -465,6 +465,12 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
     return {"prompt_embeds": prompt_embeds.cpu(), "pooled_prompt_embeds": pooled_prompt_embeds.cpu()}
 
+def compute_vae_encodings(batch, vae):
+    pixel_values = batch.pop["pixel_values"]
+    pixel_values = pixel_values.to(dtype=vae.dtype)
+    model_input = vae.encode(pixel_values).latent_dist.sample()
+    model_input = model_input * vae.config.scaling_factor
+    return {"model_input": model_input}
 
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -783,7 +789,7 @@ def main(args):
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
     # Let's first compute all the embeddings so that we can free up the text encoders
-    # from memory.
+    # from memory. We will pre-compute the VAE encodings too.
     text_encoders = [text_encoder_one, text_encoder_two]
     tokenizers = [tokenizer_one, tokenizer_two]
     compute_embeddings_fn = functools.partial(
@@ -793,6 +799,7 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
         caption_column=args.caption_column,
     )
+    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
 
@@ -800,8 +807,9 @@ def main(args):
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-
-    del text_encoders, tokenizers
+        train_dataset = train_dataset.map(compute_vae_encodings_fn, batched=True, new_fingerprint=new_fingerprint)
+    
+    del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -914,13 +922,8 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
-                # Convert images to latent space
-                pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
-                model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = model_input * vae.config.scaling_factor
-
                 # Sample noise that we'll add to the latents
-                noise = torch.randn_like(model_input)
+                noise = torch.randn_like(batch["model_input"])
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
                     noise += args.noise_offset * torch.randn(
@@ -1055,7 +1058,6 @@ def main(args):
                 # create pipeline
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    vae=vae,
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
