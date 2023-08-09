@@ -258,7 +258,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
+                process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
