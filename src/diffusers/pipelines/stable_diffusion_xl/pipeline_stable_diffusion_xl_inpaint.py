@@ -1080,7 +1080,7 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
 
         # 4. set timesteps
         def denoising_value_valid(dnv):
-            return isinstance(denoising_end, float) and 0 < dnv < 1
+            return type(denoising_end) == float and 0 < dnv < 1
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(
