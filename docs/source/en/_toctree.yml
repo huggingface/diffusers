@@ -40,6 +40,10 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
+    - local: using-diffusers/kandinsky
+      title: Kandinsky
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
