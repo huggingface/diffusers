@@ -580,6 +580,7 @@ class ModelTesterMixin:
 class ModelPushToHubTester(unittest.TestCase):
     identifier = uuid.uuid4()
     repo_id = f"test-model-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
 
     def test_push_to_hub(self):
         model = UNet2DConditionModel(
@@ -620,19 +621,19 @@ class ModelPushToHubTester(unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        model.push_to_hub(f"valid_org/{self.repo_id}-org", token=TOKEN)
+        model.push_to_hub(self.org_repo_id, token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"valid_org/{self.repo_id}-org")
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id)
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
         # Reset repo
-        delete_repo(token=TOKEN, repo_id=f"valid_org/{self.repo_id}-org")
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
-            model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=f"valid_org/{self.repo_id}-org")
+            model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"valid_org/{self.repo_id}-org")
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id)
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))

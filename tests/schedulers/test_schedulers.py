@@ -730,6 +730,7 @@ class SchedulerCommonTest(unittest.TestCase):
 class SchedulerPushToHubTester(unittest.TestCase):
     identifier = uuid.uuid4()
     repo_id = f"test-scheduler-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
 
     def test_push_to_hub(self):
         scheduler = DDIMScheduler(
@@ -763,18 +764,18 @@ class SchedulerPushToHubTester(unittest.TestCase):
             clip_sample=False,
             set_alpha_to_one=False,
         )
-        scheduler.push_to_hub(f"valid_org/{self.repo_id}-org", token=TOKEN)
-        scheduler_loaded = DDIMScheduler.from_pretrained(f"valid_org/{self.repo_id}-org")
+        scheduler.push_to_hub(self.org_repo_id, token=TOKEN)
+        scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
 
         assert type(scheduler) == type(scheduler_loaded)
 
         # Reset repo
-        delete_repo(token=TOKEN, repo_id=f"valid_org/{self.repo_id}-org")
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_config
         with tempfile.TemporaryDirectory() as tmp_dir:
-            scheduler.save_config(tmp_dir, repo_id=f"valid_org/{self.repo_id}-org", push_to_hub=True, token=TOKEN)
+            scheduler.save_config(tmp_dir, repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
 
-        scheduler_loaded = DDIMScheduler.from_pretrained(f"valid_org/{self.repo_id}-org")
+        scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
 
         assert type(scheduler) == type(scheduler_loaded)
