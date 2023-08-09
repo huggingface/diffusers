@@ -5,4 +5,4 @@
 
 ## Transformer3DModelOutput
 
-[[autodoc]] models.transformer_2d.Transformer3DModelOutput
+[[autodoc]] models.transformer_3d.Transformer3DModelOutput
