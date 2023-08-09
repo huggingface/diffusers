@@ -22,7 +22,7 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger, require_torch, torch_device
-
+import uuid
 from ..others.test_utils import is_staging_test
 
 
@@ -803,6 +803,9 @@ class PipelineTesterMixin:
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):
+    identifier = uuid.uuid4()
+    repo_id = f"test-pipeline-{identifier}"
+
     def get_pipeline_components(self):
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -871,42 +874,42 @@ class PipelinePushToHubTester(unittest.TestCase):
     def test_push_to_hub(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub("test-pipeline", token=TOKEN)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
         unet = components["unet"]
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
         # Reset repo
-        delete_repo(token=TOKEN, repo_id="test-pipeline")
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, repo_id="test-pipeline", push_to_hub=True, token=TOKEN)
+            pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/test-pipeline", subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
     def test_push_to_hub_in_organization(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub("valid_org/test-pipeline-org", token=TOKEN)
+        pipeline.push_to_hub(f"valid_org/{self.repo_id}-org", token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(f"valid_org/{self.repo_id}-org", subfolder="unet")
         unet = components["unet"]
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
         # Reset repo
-        delete_repo(token=TOKEN, repo_id="valid_org/test-pipeline-org")
+        delete_repo(token=TOKEN, repo_id=f"valid_org/{self.repo_id}-org")
 
         # Push to hub via save_pretrained
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id="valid_org/test-pipeline-org")
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=f"valid_org/{self.repo_id}-org")
 
-        new_model = UNet2DConditionModel.from_pretrained("valid_org/test-pipeline-org", subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(f"valid_org/{self.repo_id}-org", subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
