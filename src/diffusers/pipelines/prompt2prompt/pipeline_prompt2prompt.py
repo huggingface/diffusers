@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as nnf
 from PIL import Image
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionPipeline
-from ...models.cross_attention import CrossAttention
+from ...models.attention import Attention
 
 
 class Prompt2PromptPipeline(StableDiffusionPipeline):
@@ -57,7 +57,8 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         prompt: Union[str, List[str]],
         height: Optional[int] = None,
         width: Optional[int] = None,
-        controller: AttentionStore = None, # 传入attention_store作为p2p的控制。
+        edit_type: str = 'save',
+        edit_kwargs: Dict = {},
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -125,6 +126,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
+        controller = create_controller(edit_type, prompt, edit_kwargs, num_inference_steps, tokenizer=self.tokenizer, device=self.device)
         self.register_attention_control(controller) # add attention controller
 
         # 0. Default height and width to unet
@@ -291,7 +293,7 @@ class P2PCrossAttnProcessor:
         self.controller = controller
         self.place_in_unet = place_in_unet
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
@@ -322,42 +324,40 @@ class P2PCrossAttnProcessor:
         return hidden_states
 
 
-
-def create_controller(edit_type:str, prompts:List[str], tokenizer, device, edit_kwargs: Dict) -> AttentionControl:
+def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_inference_steps:int, tokenizer, device) -> AttentionControl:
     # only save
     if edit_type == "save":
         return AttentionStore()
 
     # TODO: default values
     local_blend_words = edit_kwargs.pop("local_blend_words", None)
-    equalizer_words = edit_kwargs.pop("equalizer_words", None)
-    n_dif = edit_kwargs.pop("n_dif", None)  
+    equalizer_words = edit_kwargs.pop("equalizer_words", None) 
     n_cross_replace = edit_kwargs.pop("n_cross_replace", 0.4)
     n_self_replace = edit_kwargs.pop("n_self_replace", 0.4)
 
     # only replace
     if edit_type == "replace" and local_blend_words is None:
-        return AttentionReplace(prompts, n_dif, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
+        return AttentionReplace(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
 
     # replace + localblend
     if edit_type == "replace"and local_blend_words is not None:
         lb = LocalBlend(prompts, local_blend_words, tokenizer=tokenizer, device=device)
-        return AttentionReplace(prompts, n_dif, n_cross_replace, n_self_replace, lb, tokenizer=tokenizer, device=device)
+        return AttentionReplace(prompts, num_inference_steps, n_cross_replace, n_self_replace, lb, tokenizer=tokenizer, device=device)
 
     # only refine
     if edit_type == "refine" and local_blend_words is None:
-        return AttentionRefine(prompts, n_dif, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
+        return AttentionRefine(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
 
     # refine + localblend
     if edit_type == "refine" and local_blend_words is not None:
         lb = LocalBlend(prompts, local_blend_words, tokenizer=tokenizer, device=device)
-        return AttentionRefine(prompts, n_dif, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
+        return AttentionRefine(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device)
 
     # reweight
     if edit_type == 'reweight':
         # todo: equalizer strenght into var (currently fixed at 5)
         equalizer = get_equalizer(prompts[1], equalizer_words, (5,), tokenizer=tokenizer)
-        AttentionReweight(prompts, n_dif, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device, equalizer=equalizer)	
+        AttentionReweight(prompts, num_inference_steps, n_cross_replace, n_self_replace, tokenizer=tokenizer, device=device, equalizer=equalizer)	
 
     # TODO: Better error message
     raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight, save.")
