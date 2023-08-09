@@ -202,6 +202,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads=64,
+        preserve_cross_attention_dim: bool = False,
+        extra_self_attn_layer: bool = False,
     ):
         super().__init__()
 
@@ -219,6 +221,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
         # which is why we correct for the naming here.
         num_attention_heads = num_attention_heads or attention_head_dim
+
+        if isinstance(cross_attention_dim, int) or (isinstance(cross_attention_dim, list) and preserve_cross_attention_dim):
+            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -403,9 +408,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
-        if isinstance(cross_attention_dim, int):
-            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
-
         if isinstance(layers_per_block, int):
             layers_per_block = [layers_per_block] * len(down_block_types)
 
@@ -450,6 +452,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.down_blocks.append(down_block)
 
@@ -469,6 +472,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                extra_self_attn_layer=extra_self_attn_layer,
             )
         elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
             self.mid_block = UNetMidBlock2DSimpleCrossAttn(
@@ -539,6 +543,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
