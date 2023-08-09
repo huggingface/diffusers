@@ -147,6 +147,7 @@ if __name__ == "__main__":
     if args.pipeline_class_name is not None:
         library = importlib.import_module("diffusers")
         class_obj = getattr(library, args.pipeline_class_name)
+        pipeline_class = class_obj
     else:
         pipeline_class = None
 
