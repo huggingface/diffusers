@@ -411,7 +411,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         max_conditioning_inputs: int = 2,
         mel_length_compression: int = 1024,
         mel_channels: int = 80,
-        mel_encoder_resblocks: int = 1,
+        mel_encoder_resblocks: Optional[int] = 1,
         start_mel_token: int = 8192,
         stop_mel_token: int = 8193,
         start_text_token: Optional[int] = None,  # Not sure why this is optional...
@@ -471,10 +471,13 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             max_conditioning_inputs,
         )
 
-        # MEL encoder for use when use_mel_codes_as_input=True
-        self.mel_encoder = MelEncoder(
-            n_embd, mel_channels=mel_channels, resblocks_per_reduction=mel_encoder_resblocks
-        )
+        # Optional MEL encoder for use when use_mel_codes_as_input=True
+        if mel_encoder_resblocks is not None:
+            self.mel_encoder = MelEncoder(
+                n_embd, mel_channels=mel_channels, resblocks_per_reduction=mel_encoder_resblocks
+            )
+        else:
+            self.mel_encoder = None
     
     # From tortoise.models.autoregressive.UnifiedVoice.set_mel_padding
     # https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/autoregressive.py#L280
@@ -535,18 +538,23 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
 
         # 3. Call the autoregressive model
         if use_mel_codes_as_input:
-            # Use self.mel_encoder to get mel_inputs_embeds
-            # Note: mel inputs are expected in this case
-            mel_inputs_embeds = self.mel_encoder(mel_inputs)
-            autoregressive_output = self.autoregressive(
-                audio_conditioning_embed=audio_conditioning_latent,
-                text_input_ids=text_inputs,
-                mel_inputs_embeds=mel_inputs_embeds,
-                text_labels=text_labels,
-                mel_labels=mel_labels,
-                text_first=text_first,
-                return_dict=return_dict,
-            )
+            if self.mel_encoder is not None:
+                # Use self.mel_encoder to get mel_inputs_embeds
+                mel_inputs_embeds = self.mel_encoder(mel_inputs)
+                autoregressive_output = self.autoregressive(
+                    audio_conditioning_embed=audio_conditioning_latent,
+                    text_input_ids=text_inputs,
+                    mel_inputs_embeds=mel_inputs_embeds,
+                    text_labels=text_labels,
+                    mel_labels=mel_labels,
+                    text_first=text_first,
+                    return_dict=return_dict,
+                )
+            else:
+                raise ValueError(
+                    f"`use_mel_codes_as_input` was set to `True` but the {self.__class__} model does not have a"
+                    " `mel_encoder`. If you want to input mel codes, please use a checkpoint with a `mel_encoder`."
+                )
         else:
             autoregressive_output = self.autoregressive(
                 audio_conditioning_embed=audio_conditioning_latent,

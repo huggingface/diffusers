@@ -42,6 +42,21 @@ CONDITIONING_ENC_DIFF_CONFIG = {
     "output_type": "none",  # TODO: confirm
 }
 
+# tortoise.models.diffusion_decoder.DiffusionTts.latent_conditioner
+CONDITIONING_ENC_DIFF_LATENT_CONFIG = {
+    "in_channels": 512,
+    "out_channels": 512,
+    "num_layers": 4,
+    "attention_head_dim": 32,  # TODO: 512 / 16 (=num_heads) = 32? confirm
+    "relative_pos_embeddings": True,
+    "input_transform": "conv",
+    "input_conv_kernel_size": 3,
+    "input_conv_stride": 1,
+    "input_conv_padding": 1,
+    "output_transform": None,
+    "output_type": "none",  # TODO: confirm
+}
+
 RLG_AUTO_CONFIG = {
     "channels": 1024,
     "num_equallinear_layers": 5,
@@ -61,7 +76,7 @@ AUTO_CONFIG = {
     "max_text_tokens": 402,
     "max_conditioning_inputs": 2,
     "mel_channels": 80,
-    "mel_encoder_resblocks": 1,
+    "mel_encoder_resblocks": None,
     "start_mel_token": 8192,
     "stop_mel_token": 8193,
     "start_text_token": None,
@@ -133,15 +148,15 @@ def convert_conditioning_encoder(
             attn_name = "attn."
         else:
             # part of nn.Sequential
-            new_checkpoint[f"{new_prefix}input_transform.weight"] = checkpoint[f"{prefix}.0.weight"]
-            new_checkpoint[f"{new_prefix}input_transform.bias"] = checkpoint[f"{prefix}.0.bias"]
+            new_checkpoint[f"{new_prefix}input_transform.weight"] = checkpoint[f"{prefix}0.weight"]
+            new_checkpoint[f"{new_prefix}input_transform.bias"] = checkpoint[f"{prefix}0.bias"]
             start_idx = 1
     elif input_transform == "conv2":
         # part of nn.Sequential
-        new_checkpoint[f"{new_prefix}input_transform.0.weight"] = checkpoint[f"{prefix}.0.weight"]
-        new_checkpoint[f"{new_prefix}input_transform.0.bias"] = checkpoint[f"{prefix}.0.bias"]
-        new_checkpoint[f"{new_prefix}input_transform.1.weight"] = checkpoint[f"{prefix}.1.weight"]
-        new_checkpoint[f"{new_prefix}input_transform.1.bias"] = checkpoint[f"{prefix}.1.bias"]
+        new_checkpoint[f"{new_prefix}input_transform.0.weight"] = checkpoint[f"{prefix}0.weight"]
+        new_checkpoint[f"{new_prefix}input_transform.0.bias"] = checkpoint[f"{prefix}0.bias"]
+        new_checkpoint[f"{new_prefix}input_transform.1.weight"] = checkpoint[f"{prefix}1.weight"]
+        new_checkpoint[f"{new_prefix}input_transform.1.bias"] = checkpoint[f"{prefix}1.bias"]
         start_idx = 2
     
     # Handle attention layers
@@ -149,7 +164,7 @@ def convert_conditioning_encoder(
     for i in range(config["num_layers"]):
         attn_prefix = prefix + attn_name + str(start_idx + i)
         new_attn_prefix = new_prefix + "attention." + str(i)
-        convert_attention_block(checkpoint, config, new_checkpoint, attn_prefix, new_attn_prefix)
+        new_checkpoint = convert_attention_block(checkpoint, config, new_checkpoint, attn_prefix, new_attn_prefix)
     
     # Handle output transform
     if config["output_transform"] == "groupnorm":
@@ -157,6 +172,43 @@ def convert_conditioning_encoder(
         new_checkpoint[f"{new_prefix}output_transform.weight"] = checkpoint[f"{output_transform_key}.weight"]
         new_checkpoint[f"{new_prefix}output_transform.bias"] = checkpoint[f"{output_transform_key}.bias"]
     
+    return new_checkpoint
+
+
+def convert_autoregressive_model(
+    checkpoint,
+    config,
+    new_checkpoint,
+):
+    # 1. Convert token and learned positional embeddings
+    new_checkpoint["autoregressive.text_embedding.weight"] = checkpoint["text_embedding.weight"]
+    # mel_embedding can either be simple nn.Embedding or a MELEncoder
+    if config["mel_encoder_resblocks"] is not None:
+        for key in config:
+            if key.startswith("mel_embedding."):
+                param_name = key[len("mel_embedding."):]
+                new_checkpoint[f"mel_encoder.{param_name}"] = checkpoint[key]
+    else:
+        new_checkpoint["autoregressive.wte.weight"] = checkpoint["mel_embedding.weight"]
+
+    new_checkpoint["autoregressive.mel_pos_embedding.emb.weight"] = checkpoint["mel_pos_embedding.emb.weight"]
+    new_checkpoint["autoregressive.text_pos_embedding.emb.weight"] = checkpoint["text_pos_embedding.emb.weight"]
+    # 2. Convert transformer parameters
+    for key in checkpoint:
+        if key.startswith("gpt."):
+            if "ln_f" not in key:
+                param_name = key[len("gpt."):]
+                new_checkpoint[f"autoregressive.{param_name}"] = checkpoint[key]
+            else:
+                # Final layer norm params handled separately
+                param_type = key[len("gpt.ln_f."):]
+                new_checkpoint[f"autoregressive.final_norm.{param_type}"] = checkpoint[key]
+    # 3. Convert heads
+    new_checkpoint["autoregressive.text_head.weight"] = checkpoint["text_head.weight"]
+    new_checkpoint["autoregressive.text_head.bias"] = checkpoint["text_head.bias"]
+    new_checkpoint["autoregressive.mel_head.weight"] = checkpoint["mel_head.weight"]
+    new_checkpoint["autoregressive.mel_head.bias"] = checkpoint["mel_head.bias"]
+
     return new_checkpoint
 
 
