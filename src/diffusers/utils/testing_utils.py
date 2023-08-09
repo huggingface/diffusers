@@ -39,13 +39,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-# Used to test the hub
-USER = "__DUMMY_TRANSFORMERS_USER__"
-ENDPOINT_STAGING = "https://hub-ci.huggingface.co"
-
-# Not critical, only usable on the sandboxed CI instance.
-TOKEN = "hf_94wBhPGp6KrrTH3KDchhKpRxZwd6dmHWLL"
-
 if is_torch_available():
     import torch
 

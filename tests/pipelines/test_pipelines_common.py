@@ -22,9 +22,9 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
-from ..others.test_utils import is_staging_test
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 def to_np(tensor):

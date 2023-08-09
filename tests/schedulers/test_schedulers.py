@@ -41,9 +41,9 @@ from diffusers import (
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger
+from diffusers.utils.testing_utils import CaptureLogger
 
-from ..others.test_utils import is_staging_test
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

@@ -32,15 +32,13 @@ from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.training_utils import EMAModel
 from diffusers.utils import logging, torch_device
 from diffusers.utils.testing_utils import (
-    TOKEN,
-    USER,
     CaptureLogger,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
 )
 
-from ..others.test_utils import is_staging_test
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 # Will be run via run_test_in_subprocess
