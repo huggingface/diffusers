@@ -133,7 +133,6 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
-_run_staging = parse_flag_from_env("HUGGINGFACE_CO_STAGING", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -150,23 +149,6 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
         values.append(rng.random() * scale)
 
     return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
-
-
-def is_staging_test(test_case):
-    """
-    Decorator marking a test as a staging test.
-
-    Those tests will run using the staging environment of huggingface.co instead of the real model hub.
-    """
-    if not _run_staging:
-        return unittest.skip("test is staging test")(test_case)
-    else:
-        try:
-            import pytest  # We don't need a hard dependency on pytest in the main library
-        except ImportError:
-            return test_case
-        else:
-            return pytest.mark.is_staging_test()(test_case)
 
 
 def slow(test_case):

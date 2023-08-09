@@ -34,11 +34,12 @@ from diffusers.utils.testing_utils import (
     TOKEN,
     USER,
     CaptureLogger,
-    is_staging_test,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
 )
+
+from ..others.test_utils import is_staging_test
 
 
 # Will be run via run_test_in_subprocess
