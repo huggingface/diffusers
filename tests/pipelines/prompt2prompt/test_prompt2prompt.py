@@ -35,6 +35,7 @@ replace_steps = {
 class Prompt2PrompteFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
+        # TODO: Use conditional model
         torch.manual_seed(0)
         model = UNet2DModel(
             block_out_channels=(32, 64),
@@ -94,15 +95,15 @@ class Prompt2PrompteFastTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = pipe(prompts, height=512, width=512, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
+        image = pipe(prompts, height=64, width=64, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = pipe(prompts, height=512, width=512, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy", return_dict=False)[0]
+        image_from_tuple = pipe(prompts, height=64, width=64, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy", return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (2, 64, 64, 3)
         expected_slice = np.array(expected_slice)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -149,13 +150,10 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
     ]
 
     @parameterized.expand(test_matrix)
-    def test_inference_cifar10(self, prompts, edit_type, edit_kwargs, expected_slice):
+    def test_inference(self, prompts, edit_type, edit_kwargs, expected_slice):
         model_id = "CompVis/stable-diffusion-v1-4"  # TODO: Q: Use smaller model?
 
-        unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = DDIMScheduler.from_pretrained(model_id)
-
-        pipe = Prompt2PromptPipeline(unet=unet, scheduler=scheduler)
+        pipe = Prompt2PromptPipeline.from_pretrained(model_id)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -164,6 +162,6 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.4200, 0.3588, 0.1939, 0.3847, 0.3382, 0.2647, 0.4155, 0.3582, 0.3385])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
