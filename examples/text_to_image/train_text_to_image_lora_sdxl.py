@@ -1262,8 +1262,8 @@ def main(args):
                 repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
+                dataset_name=args.dataset_name,
                 train_text_encoder=args.train_text_encoder,
-                prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
                 vae_path=args.pretrained_vae_model_name_or_path,
             )

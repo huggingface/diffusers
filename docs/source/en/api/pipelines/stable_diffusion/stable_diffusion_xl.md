@@ -425,3 +425,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 prompt_2 = "monet painting"
 image = pipe(prompt=prompt, prompt_2=prompt_2).images[0]
 ```
+
+## Single-file Implementation of SDXL Unet Model
+
+If you are curious about how SDXL Unet is implemented and would like to make quick modifications / experimentations, you can alternatively head to [`minSDXL`](https://github.com/cloneofsimo/minSDXL) that is very `diffusers` friendly. It is a single-file implementation of SDXL Unet model that is written in PyTorch with exact same model naming and structure as in `diffusers`.
