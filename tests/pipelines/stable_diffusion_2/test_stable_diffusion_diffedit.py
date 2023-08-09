@@ -32,7 +32,7 @@ from diffusers import (
     StableDiffusionDiffEditPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_image, slow
+from diffusers.utils import load_image, nightly, slow
 from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
@@ -250,7 +250,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         self.assertEqual(image.shape, (2, 32, 32, 3))
         expected_slice = np.array(
-            [0.5150, 0.5134, 0.5043, 0.5376, 0.4694, 0.51050, 0.5015, 0.4407, 0.4799],
+            [0.5150, 0.5134, 0.5043, 0.5376, 0.4694, 0.5105, 0.5015, 0.4407, 0.4799],
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -277,7 +277,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         self.assertEqual(image.shape, (2, 32, 32, 3))
         expected_slice = np.array(
-            [0.5150, 0.5134, 0.5043, 0.5376, 0.4694, 0.51050, 0.5015, 0.4407, 0.4799],
+            [0.5305, 0.4673, 0.5314, 0.5308, 0.4886, 0.5279, 0.5142, 0.4724, 0.4892],
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -346,6 +346,25 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             / 255
         )
         assert np.abs((expected_image - image).max()) < 5e-1
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    @classmethod
+    def setUpClass(cls):
+        raw_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/diffedit/fruit.png"
+        )
+
+        raw_image = raw_image.convert("RGB").resize((768, 768))
+
+        cls.raw_image = raw_image
 
     def test_stable_diffusion_diffedit_dpm(self):
         generator = torch.manual_seed(0)

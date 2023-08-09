@@ -100,6 +100,7 @@ Once you have trained a model using above command, the inference can be done sim
 
 ```python
 from diffusers import StableDiffusionPipeline
+import torch
 
 model_id = "path-to-your-trained-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")

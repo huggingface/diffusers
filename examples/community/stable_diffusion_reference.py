@@ -153,8 +153,6 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                 )
             ref_image_latents = ref_image_latents.repeat(batch_size // ref_image_latents.shape[0], 1, 1, 1)
 
-        ref_image_latents = torch.cat([ref_image_latents] * 2) if do_classifier_free_guidance else ref_image_latents
-
         # aligning device to prevent device errors when concating it with the latent model input
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
         return ref_image_latents
@@ -249,7 +247,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
@@ -733,6 +731,7 @@ class StableDiffusionReferencePipeline(StableDiffusionPipeline):
                         1,
                     ),
                 )
+                ref_xt = torch.cat([ref_xt] * 2) if do_classifier_free_guidance else ref_xt
                 ref_xt = self.scheduler.scale_model_input(ref_xt, t)
 
                 MODE = "write"

@@ -20,17 +20,21 @@ import unittest
 
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
+    AsymmetricAutoencoderKL,
     AutoencoderKL,
+    DDIMScheduler,
     DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInpaintPipeline,
     UNet2DConditionModel,
 )
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
@@ -60,6 +64,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -71,8 +76,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0425, 0.0273, 0.0344, 0.1694, 0.1727, 0.1812, 0.3256, 0.3311, 0.3272])
-
+        expected_slice = np.array([0.0689, 0.0699, 0.0790, 0.0536, 0.0470, 0.0488, 0.041, 0.0508, 0.04179])
         assert np.abs(expected_slice - image_slice).max() < 3e-3
     except Exception:
         error = f"{traceback.format_exc()}"
@@ -378,6 +382,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -387,8 +392,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.1350, 0.1123, 0.1350, 0.1641, 0.1328, 0.1230, 0.1289, 0.1531, 0.1687])
-
+        expected_slice = np.array([0.1509, 0.1245, 0.1672, 0.1655, 0.1519, 0.1226, 0.1462, 0.1567, 0.2451])
         assert np.abs(expected_slice - image_slice).max() < 5e-2
 
     def test_stable_diffusion_inpaint_pndm(self):
@@ -481,6 +485,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
             "runwayml/stable-diffusion-inpainting", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -493,11 +498,12 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, 253:256, 253:256, -1].flatten()
-        expected_slice = np.array([0.0021, 0.2350, 0.3712, 0.0575, 0.2485, 0.3451, 0.1857, 0.3156, 0.3943])
-        assert np.abs(expected_slice - image_slice).max() < 3e-3
+        expected_slice = np.array([0.2728, 0.2803, 0.2665, 0.2511, 0.2774, 0.2586, 0.2391, 0.2392, 0.2582])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_simple_inpaint_ddim(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -508,9 +514,271 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.5157, 0.6858, 0.6873, 0.4619, 0.6416, 0.6898, 0.3702, 0.5960, 0.6935])
+        expected_slice = np.array([0.3757, 0.3875, 0.4445, 0.4353, 0.3780, 0.4513, 0.3965, 0.3984, 0.4362])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-        assert np.abs(expected_slice - image_slice).max() < 6e-4
+    def test_download_local(self):
+        filename = hf_hub_download("runwayml/stable-diffusion-inpainting", filename="sd-v1-5-inpainting.ckpt")
+
+        pipe = StableDiffusionInpaintPipeline.from_single_file(filename, torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to("cuda")
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 1
+        image_out = pipe(**inputs).images[0]
+
+        assert image_out.shape == (512, 512, 3)
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+
+        pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.to("cuda")
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        image_ckpt = pipe(**inputs).images[0]
+
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.to("cuda")
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 5
+        image = pipe(**inputs).images[0]
+
+        assert np.max(np.abs(image - image_ckpt)) < 1e-4
+
+
+@slow
+@require_torch_gpu
+class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_image.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_mask.png"
+        )
+        inputs = {
+            "prompt": "Face of a yellow cat, high resolution, sitting on a park bench",
+            "image": init_image,
+            "mask_image": mask_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_stable_diffusion_inpaint_ddim(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.vae = vae
+        pipe.unet.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0522, 0.0604, 0.0596, 0.0449, 0.0493, 0.0427, 0.1186, 0.1289, 0.1442])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
+
+    def test_stable_diffusion_inpaint_fp16(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained(
+            "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
+        )
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
+        )
+        pipe.unet.set_default_attn_processor()
+        pipe.vae = vae
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.1343, 0.1406, 0.1440, 0.1504, 0.1729, 0.0989, 0.1807, 0.2822, 0.1179])
+
+        assert np.abs(expected_slice - image_slice).max() < 5e-2
+
+    def test_stable_diffusion_inpaint_pndm(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.unet.set_default_attn_processor()
+        pipe.vae = vae
+        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0966, 0.1083, 0.1148, 0.1422, 0.1318, 0.1197, 0.3702, 0.3537, 0.3288])
+
+        assert np.abs(expected_slice - image_slice).max() < 5e-3
+
+    def test_stable_diffusion_inpaint_k_lms(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.unet.set_default_attn_processor()
+        pipe.vae = vae
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.8931, 0.8683, 0.8965, 0.8501, 0.8592, 0.9118, 0.8734, 0.7463, 0.8990])
+        assert np.abs(expected_slice - image_slice).max() < 6e-3
+
+    def test_stable_diffusion_inpaint_with_sequential_cpu_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        vae = AsymmetricAutoencoderKL.from_pretrained(
+            "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
+        )
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.vae = vae
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
+
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        _ = pipe(**inputs)
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 2.45 GB is allocated
+        assert mem_bytes < 2.45 * 10**9
+
+    @require_torch_2
+    def test_inpaint_compile(self):
+        pass
+
+    def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained(
+            "cross-attention/asymmetric-autoencoder-kl-x-1-5",
+        )
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.vae = vae
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        # change input image to a random size (one that would cause a tensor mismatch error)
+        inputs["image"] = inputs["image"].resize((127, 127))
+        inputs["mask_image"] = inputs["mask_image"].resize((127, 127))
+        inputs["height"] = 128
+        inputs["width"] = 128
+        image = pipe(**inputs).images
+        # verify that the returned image has the same height and width as the input height and width
+        assert image.shape == (1, inputs["height"], inputs["width"], 3)
+
+    def test_stable_diffusion_inpaint_strength_test(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", safety_checker=None
+        )
+        pipe.unet.set_default_attn_processor()
+        pipe.vae = vae
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        # change input strength
+        inputs["strength"] = 0.75
+        image = pipe(**inputs).images
+        # verify that the returned image has the same height and width as the input height and width
+        assert image.shape == (1, 512, 512, 3)
+
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+        expected_slice = np.array([0.2458, 0.2576, 0.3124, 0.2679, 0.2669, 0.2796, 0.2872, 0.2975, 0.2661])
+        assert np.abs(expected_slice - image_slice).max() < 3e-3
+
+    def test_stable_diffusion_simple_inpaint_ddim(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        pipe.vae = vae
+        pipe.unet.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.3296, 0.4041, 0.4097, 0.4145, 0.4342, 0.4152, 0.4927, 0.4931, 0.4430])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
+
+    def test_download_local(self):
+        vae = AsymmetricAutoencoderKL.from_pretrained(
+            "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
+        )
+        filename = hf_hub_download("runwayml/stable-diffusion-inpainting", filename="sd-v1-5-inpainting.ckpt")
+
+        pipe = StableDiffusionInpaintPipeline.from_single_file(filename, torch_dtype=torch.float16)
+        pipe.vae = vae
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to("cuda")
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 1
+        image_out = pipe(**inputs).images[0]
+
+        assert image_out.shape == (512, 512, 3)
+
+    def test_download_ckpt_diff_format_is_same(self):
+        pass
 
 
 @nightly

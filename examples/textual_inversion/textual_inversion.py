@@ -78,7 +78,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -708,7 +708,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=args.placeholder_token,
+        placeholder_token=(" ".join(tokenizer.convert_ids_to_tokens(placeholder_token_ids))),
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -737,9 +737,9 @@ def main():
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-        num_cycles=args.lr_num_cycles * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_cycles=args.lr_num_cycles,
     )
 
     # Prepare everything with our `accelerator`.

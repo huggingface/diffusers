@@ -36,12 +36,8 @@ from .embeddings import (
 )
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    CrossAttnUpBlock2D,
-    DownBlock2D,
     UNetMidBlock2DCrossAttn,
     UNetMidBlock2DSimpleCrossAttn,
-    UpBlock2D,
     get_down_block,
     get_up_block,
 )
@@ -694,7 +690,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
+        if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
     def forward(
@@ -836,6 +832,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
             aug_emb = self.add_embedding(text_embs, image_embs)
         elif self.config.addition_embed_type == "text_time":
+            # SDXL - style
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
@@ -899,9 +896,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_in(sample)
 
         # 3. down
+
+        is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
+        is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
+
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                # For t2i-adapter CrossAttnDownBlock2D
+                additional_residuals = {}
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
+
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -909,13 +915,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
+                    **additional_residuals,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    sample += down_block_additional_residuals.pop(0)
+
             down_block_res_samples += res_samples
 
-        if down_block_additional_residuals is not None:
+        if is_controlnet:
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
@@ -937,7 +947,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 encoder_attention_mask=encoder_attention_mask,
             )
 
-        if mid_block_additional_residual is not None:
+        if is_controlnet:
             sample = sample + mid_block_additional_residual
 
         # 5. up

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import glob
 import json
 import os
 import random
@@ -56,6 +57,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
+from diffusers.pipelines.pipeline_utils import variant_compatible_siblings
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
@@ -308,6 +310,49 @@ class DownloadTests(unittest.TestCase):
                 assert len([f for f in files if ".bin" in f]) == 8
                 assert not any(".safetensors" in f for f in files)
 
+    def test_download_no_openvino_by_default(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-open-vino",
+                cache_dir=tmpdirname,
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # make sure that by default no openvino weights are downloaded
+            assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
+            assert not any("openvino_" in f for f in files)
+
+    def test_download_no_onnx_by_default(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
+                cache_dir=tmpdirname,
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # make sure that by default no onnx weights are downloaded
+            assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
+            assert not any((f.endswith(".onnx") or f.endswith(".pb")) for f in files)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
+                cache_dir=tmpdirname,
+                use_onnx=True,
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # if `use_onnx` is specified make sure weights are downloaded
+            assert any((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
+            assert any((f.endswith(".onnx")) for f in files)
+            assert any((f.endswith(".pb")) for f in files)
+
     def test_download_no_safety_checker(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -372,7 +417,7 @@ class DownloadTests(unittest.TestCase):
         response_mock.json.return_value = {}
 
         # Download this model to make sure it's in the cache.
-        orig_pipe = StableDiffusionPipeline.from_pretrained(
+        orig_pipe = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         orig_comps = {k: v for k, v in orig_pipe.components.items() if hasattr(v, "parameters")}
@@ -380,9 +425,45 @@ class DownloadTests(unittest.TestCase):
         # Under the mock environment we get a 500 error when trying to reach the model.
         with mock.patch("requests.request", return_value=response_mock):
             # Download this model to make sure it's in the cache.
-            pipe = StableDiffusionPipeline.from_pretrained(
+            pipe = DiffusionPipeline.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
+            comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
+
+        for m1, m2 in zip(orig_comps.values(), comps.values()):
+            for p1, p2 in zip(m1.parameters(), m2.parameters()):
+                if p1.data.ne(p2.data).sum() > 0:
+                    assert False, "Parameters not the same!"
+
+    def test_local_files_only_are_used_when_no_internet(self):
+        # A mock response for an HTTP head request to emulate server down
+        response_mock = mock.Mock()
+        response_mock.status_code = 500
+        response_mock.headers = {}
+        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.json.return_value = {}
+
+        # first check that with local files only the pipeline can only be used if cached
+        with self.assertRaises(FileNotFoundError):
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                orig_pipe = DiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_dir=tmpdirname
+                )
+
+        # now download
+        orig_pipe = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-torch")
+
+        # make sure it can be loaded with local_files_only
+        orig_pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True
+        )
+        orig_comps = {k: v for k, v in orig_pipe.components.items() if hasattr(v, "parameters")}
+
+        # Under the mock environment we get a 500 error when trying to connect to the internet.
+        # Make sure it works local_files_only only works here!
+        with mock.patch("requests.request", return_value=response_mock):
+            # Download this model to make sure it's in the cache.
+            pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
             comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
 
         for m1, m2 in zip(orig_comps.values(), comps.values()):
@@ -819,7 +900,12 @@ class CustomPipelineTests(unittest.TestCase):
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
 
-        assert dict(pipe_new.config) == dict(pipe.config)
+        conf_1 = dict(pipe.config)
+        conf_2 = dict(pipe_new.config)
+
+        del conf_2["_name_or_path"]
+
+        assert conf_1 == conf_2
 
     @slow
     @require_torch_gpu
@@ -1360,6 +1446,41 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.requires_safety_checker == [True, True]
             assert sd.config.safety_checker != (None, None)
             assert sd.config.feature_extractor != (None, None)
+
+    def test_name_or_path(self):
+        model_path = "hf-internal-testing/tiny-stable-diffusion-torch"
+        sd = DiffusionPipeline.from_pretrained(model_path)
+
+        assert sd.name_or_path == model_path
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            sd = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.name_or_path == tmpdirname
+
+    def test_warning_no_variant_available(self):
+        variant = "fp16"
+        with self.assertWarns(FutureWarning) as warning_context:
+            cached_folder = StableDiffusionPipeline.download(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
+            )
+
+        assert "but no such modeling files are available" in str(warning_context.warning)
+        assert variant in str(warning_context.warning)
+
+        def get_all_filenames(directory):
+            filenames = glob.glob(directory + "/**", recursive=True)
+            filenames = [f for f in filenames if os.path.isfile(f)]
+            return filenames
+
+        filenames = get_all_filenames(str(cached_folder))
+
+        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
+
+        # make sure that none of the model names are variant model names
+        assert len(variant_model_files) == 0
+        assert len(all_model_files) > 0
 
 
 @slow
