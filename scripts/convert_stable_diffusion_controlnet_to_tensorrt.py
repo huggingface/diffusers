@@ -26,7 +26,7 @@ def convert_models(onnx_path: str, num_controlnet: int, output_path: str, fp16: 
     Returns:
         unet/model.engine
 
-        run test script in diffusers/test/pipelines/controlnet
+        run test script in diffusers/examples/community
         python test_onnx_controlnet.py
         --sd_model danbrown/RevAnimated-v1-2-2
         --onnx_model_dir path-to-models-stable_diffusion/RevAnimated-v1-2-2
