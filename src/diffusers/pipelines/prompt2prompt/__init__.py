@@ -1,0 +1,1 @@
+from .pipeline_prompt2prompt import Prompt2PromptPipeline
