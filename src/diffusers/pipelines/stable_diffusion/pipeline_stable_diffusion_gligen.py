@@ -83,7 +83,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
     Pipeline for text-to-image generation using Stable Diffusion with Grounded-Language-to-Image Generation (GLIGEN).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.).
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -561,15 +561,15 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             gligen_phrases (`List[str]`):
-                The phrases to guide what to include in each of the regions defined by the correspoinding gligen_boxes
-                (i.e., one phrase per bounding box).
+                The phrases to guide what to include in each of the regions defined by the corresponding
+                `gligen_boxes`. There should only be one phrase per bounding box.
             gligen_boxes (`List[List[float]]`):
                 The bounding boxes that identify rectangular regions of the image that are going to be filled with the
-                content described by the corresponding gligen_phrases. Each rectangular box is defined as `List[float]`
-                of 4 elements [xmin,ymin,xmax,ymax] where each value is between [0,1]
+                content described by the corresponding `gligen_phrases`. Each rectangular box is defined as a
+                `List[float]` of 4 elements `[xmin, ymin, xmax, ymax]` where each value is between [0,1].
             gligen_inpaint_image (`PIL.Image.Image`, *optional*):
-                The input image, if provided, it will be inpainted with objects described by the gligen_boxes and
-                gligen_phrases. Otherwise, treated as a generation task on a blank input image.
+                The input image, if provided, is inpainted with objects described by the `gligen_boxes` and
+                `gligen_phrases`. Otherwise, it is treated as a generation task on a blank input image.
             gligen_scheduled_sampling_beta (`float`, defaults to 0.3):
                 Scheduled Sampling factor from [GLIGEN: Open-Set Grounded Text-to-Image
                 Generation](https://arxiv.org/pdf/2301.07093.pdf). Scheduled Sampling factor is only varied for
