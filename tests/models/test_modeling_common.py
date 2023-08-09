@@ -18,6 +18,7 @@ import tempfile
 import traceback
 import unittest
 import unittest.mock as mock
+import uuid
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -38,7 +39,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     run_test_in_subprocess,
 )
-import uuid
+
 from ..others.test_utils import is_staging_test
 
 

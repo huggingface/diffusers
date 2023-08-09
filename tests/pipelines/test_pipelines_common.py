@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import unittest
+import uuid
 from typing import Callable, Union
 
 import numpy as np
@@ -22,7 +23,7 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import TOKEN, USER, CaptureLogger, require_torch, torch_device
-import uuid
+
 from ..others.test_utils import is_staging_test
 
 
