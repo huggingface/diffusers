@@ -864,7 +864,8 @@ class PipelinePushToHubTester(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
             vocab_path = os.path.join(tmpdir, "vocab.json")
-            json.dump(dummy_vocab, vocab_path)
+            with open(vocab_path, "w") as f:
+                json.dump(dummy_vocab, f)
 
             merges = "Ġ t\nĠt h"
             merges_path = os.path.join(tmpdir, "merges.txt")
