@@ -25,7 +25,7 @@ In this guide, you'll use [`DiffusionPipeline`] for text-to-image generation wit
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> generator = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
