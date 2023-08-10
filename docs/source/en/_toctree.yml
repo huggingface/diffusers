@@ -228,6 +228,8 @@
       title: Pix2Pix Zero
     - local: api/pipelines/pndm
       title: PNDM
+    - local: api/pipelines/prompt2prompt
+      title: Prompt-to-Prompt
     - local: api/pipelines/repaint
       title: RePaint
     - local: api/pipelines/score_sde_ve
