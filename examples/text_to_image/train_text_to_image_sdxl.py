@@ -469,8 +469,9 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
 def compute_vae_encodings(batch, vae):
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
-    pixel_values = pixel_values.to(memory_format=torch.contiguous_format, dtype=vae.dtype).float()
-    print(f"pixel_values: {pixel_values.dtype}, vae: {vae.dtype}")
+    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+    pixel_values = pixel_values.to(dtype=vae.dtype)
+    print(f"pixel_values: {pixel_values.shape}, pixel_values: {pixel_values.dtype} vae: {vae.dtype}")
     model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
     return {"model_input": model_input.cpu()}
