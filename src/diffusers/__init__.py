@@ -135,6 +135,7 @@ else:
         AltDiffusionPipeline,
         AudioLDMPipeline,
         AudioLDM2Pipeline,
+        Sequence2AudioMAE,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,

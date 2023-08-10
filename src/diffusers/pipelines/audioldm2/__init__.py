@@ -12,6 +12,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         AudioLDMPipeline,
+        Sequence2AudioMAE,
     )
 else:
     from .pipeline_audioldm2 import AudioLDM2Pipeline
+    from .modeling_gpt2 import Sequence2AudioMAE
