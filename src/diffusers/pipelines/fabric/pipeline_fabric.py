@@ -366,7 +366,7 @@ class FabricPipeline(DiffusionPipeline):
         """
 
         if random_seed is not None:
-            torch.manual_seed(seed)
+            torch.manual_seed(random_seed)
 
         latent_noise = torch.randn(n_images, 4, 64, 64, device=self.device, dtype=self.dtype)
 
