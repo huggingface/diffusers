@@ -98,7 +98,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 ```
 
@@ -137,7 +137,7 @@ lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 ...
 ```
 
@@ -211,7 +211,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 ```
 
 Load the LoRA weights from your finetuned DreamBooth model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -251,7 +251,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -307,7 +307,7 @@ import torch
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
+    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None, use_safetensors=True
 ).to("cuda")
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
     pipeline.scheduler.config, use_karras_sigmas=True
@@ -355,3 +355,58 @@ lora_model_id = "sayakpaul/civitai-light-shadow-lora"
 lora_filename = "light_and_shadow.safetensors"
 pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 ```
+
+### Supporting Stable Diffusion XL LoRAs trained using the Kohya-trainer
+
+With this [PR](https://github.com/huggingface/diffusers/pull/4287), there should now be better support for loading Kohya-style LoRAs trained on Stable Diffusion XL (SDXL).
+
+Here are some example checkpoints we tried out:
+
+* SDXL 0.9:
+  * https://civitai.com/models/22279?modelVersionId=118556 
+  * https://civitai.com/models/104515/sdxlor30costumesrevue-starlight-saijoclaudine-lora 
+  * https://civitai.com/models/108448/daiton-sdxl-test 
+  * https://filebin.net/2ntfqqnapiu9q3zx/pixelbuildings128-v1.safetensors
+* SDXL 1.0:
+  * https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors
+
+Here is an example of how to perform inference with these checkpoints in `diffusers`:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+base_model_id = "stabilityai/stable-diffusion-xl-base-0.9"
+pipeline = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipeline.load_lora_weights(".", weight_name="Kamepan.safetensors")
+
+prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, offical wallpaper, glint <lora:kame_sdxl_v2:1>"
+negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad propotions"
+generator = torch.manual_seed(2947883060)
+num_inference_steps = 30
+guidance_scale = 7
+
+image = pipeline(
+    prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps,
+    generator=generator, guidance_scale=guidance_scale
+).images[0]
+image.save("Kamepan.png")
+```
+
+`Kamepan.safetensors` comes from https://civitai.com/models/22279?modelVersionId=118556 . 
+
+If you notice carefully, the inference UX is exactly identical to what we presented in the sections above. 
+
+Thanks to [@isidentical](https://github.com/isidentical) for helping us on integrating this feature.
+
+### Known limitations specific to the Kohya-styled LoRAs
+
+* When images don't looks similar to other UIs, such as ComfyUI, it can be because of multiple reasons, as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736).
+* We don't fully support [LyCORIS checkpoints](https://github.com/KohakuBlueleaf/LyCORIS). To the best of our knowledge, our current `load_lora_weights()` should support LyCORIS checkpoints that have LoRA and LoCon modules but not the other ones, such as Hada, LoKR, etc. 
+
+## Stable Diffusion XL
+
+We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+
+* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
+* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)

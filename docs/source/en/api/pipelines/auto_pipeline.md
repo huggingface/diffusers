@@ -12,35 +12,41 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-In many cases, one checkpoint can be used for multiple tasks. For example, you may be able to use the same checkpoint for Text-to-Image, Image-to-Image, and Inpainting. However, you'll need to know the pipeline class names linked to your checkpoint. 
+`AutoPipeline` is designed to:
 
-AutoPipeline is designed to make it easy for you to use multiple pipelines in your workflow. We currently provide 3 AutoPipeline classes to perform three different tasks, i.e. [`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`], and [`AutoPipelineForInpainting`]. You'll need to choose the AutoPipeline class based on the task you want to perform and use it to automatically retrieve the relevant pipeline given the name/path to the pre-trained weights. 
+1. make it easy for you to load a checkpoint for a task without knowing the specific pipeline class to use
+2. use multiple pipelines in your workflow
 
-For example, to perform Image-to-Image with the SD1.5 checkpoint, you can do
+Based on the task, the `AutoPipeline` class automatically retrieves the relevant pipeline given the name or path to the pretrained weights with the `from_pretrained()` method.
 
-```python
-from diffusers import PipelineForImageToImage
+To seamlessly switch between tasks with the same checkpoint without reallocating additional memory, use the `from_pipe()` method to transfer the components from the original pipeline to the new one.
 
-pipe_i2i = PipelineForImageoImage.from_pretrained("runwayml/stable-diffusion-v1-5")
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+
+image = pipeline(prompt, num_inference_steps=25).images[0]
 ```
 
-It will also help you switch between tasks seamlessly using the same checkpoint without reallocating additional memory. For example, to re-use the Image-to-Image pipeline we just created for inpainting, you can do 
+<Tip>
 
-```python
-from diffusers import PipelineForInpainting
+Check out the [AutoPipeline](/tutorials/autopipeline) tutorial to learn how to use this API!
 
-pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_i2i)
-```
-All the components will be transferred to the inpainting pipeline with zero cost.
+</Tip>
 
+`AutoPipeline` supports text-to-image, image-to-image, and inpainting for the following diffusion models:
 
-Currently AutoPipeline support the Text-to-Image, Image-to-Image, and Inpainting tasks for below diffusion models:
-- [stable Diffusion](./stable_diffusion)
-- [Stable Diffusion Controlnet](./api/pipelines/controlnet)
-- [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl)
-- [IF](./if) 
+- [Stable Diffusion](./stable_diffusion)
+- [ControlNet](./api/pipelines/controlnet)
+- [Stable Diffusion XL (SDXL)](./stable_diffusion/stable_diffusion_xl)
+- [DeepFloyd IF](./if) 
 - [Kandinsky](./kandinsky)
-- [Kandinsky 2.2](./kandinsky)
+- [Kandinsky 2.2](./kandinsky#kandinsky-22)
 
 
 ## AutoPipelineForText2Image

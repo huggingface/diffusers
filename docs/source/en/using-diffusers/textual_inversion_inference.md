@@ -49,7 +49,9 @@ repo_id_embeds = "sd-concepts-library/cat-toy"
 Now you can load a pipeline, and pass the pre-learned concept to it:
 
 ```py
-pipeline = StableDiffusionPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.float16).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained(
+    pretrained_model_name_or_path, torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
 
 pipeline.load_textual_inversion(repo_id_embeds)
 ```
