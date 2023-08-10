@@ -204,8 +204,8 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
-        image = pipe(prompts, height=512, width=512, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
+        generator = torch.Generator().manual_seed(0)
+        image = pipe(prompts, height=512, width=512, num_inference_steps=50, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
