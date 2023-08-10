@@ -13,8 +13,25 @@ from transformers import (
 )
 
 
+def add_special_tokens(hidden_states, attention_mask, sos_token, eos_token):
+    batch_size = hidden_states.shape[0]
+
+    if attention_mask is not None:
+        # Add two more steps to attn mask
+        new_attn_mask_step = attention_mask.new_ones((batch_size, 1))
+        attention_mask = torch.cat([new_attn_mask_step, attention_mask, new_attn_mask_step], dim=-1)
+
+    # Add the SOS / EOS tokens at the start / end of the sequence respectively
+    sos_token = sos_token.expand(batch_size, 1, -1)
+    eos_token = eos_token.expand(batch_size, 1, -1)
+    hidden_states = torch.cat([sos_token, hidden_states, eos_token], dim=1)
+    return hidden_states, attention_mask
+
+
 class AudioLDM2TextEncoder(GPT2PreTrainedModel):
-    def __init__(self, clap_config: ClapTextConfig, t5_config: T5Config, gpt2_config: GPT2Config):
+    def __init__(
+        self, clap_config: ClapTextConfig, t5_config: T5Config, gpt2_config: GPT2Config, max_new_tokens: int = 8
+    ):
         super().__init__(gpt2_config)
         # base models
         self.clap_encoder = ClapTextModelWithProjection(clap_config)
@@ -32,6 +49,8 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
 
         self.t5_sos_embed = nn.Parameter(torch.ones(hidden_size))
         self.t5_eos_embed = nn.Parameter(torch.ones(hidden_size))
+
+        self.max_new_tokens = max_new_tokens
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -58,14 +77,14 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
             clap_hidden_states = nn.functional.normalize(clap_hidden_states, dim=-1)
             clap_hidden_states = self.clap_projection(clap_hidden_states)
 
-            clap_hidden_states, clap_attention_mask = self.add_sos_eos_tokens(
+            clap_hidden_states, clap_attention_mask = add_special_tokens(
                 clap_hidden_states, clap_attention_mask, sos_token=self.clap_sos_embed, eos_token=self.clap_eos_embed
             )
 
             t5_hidden_states = self.t5_encoder(t5_input_ids, attention_mask=t5_attention_mask).text_embeds
             t5_hidden_states = self.t5_projection(t5_hidden_states).last_hidden_states
 
-            t5_hidden_states, t5_attention_mask = self.add_t5_sos_bos_tokens(
+            t5_hidden_states, t5_attention_mask = self.add_special_tokens(
                 t5_hidden_states, t5_attention_mask, sos_token=self.t5_sos_embed, eos_token=self.t5_eos_embed
             )
 
@@ -90,22 +109,13 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
         )
         return transformer_outputs
 
-    def add_sos_eos_tokens(self, hidden_states, attention_mask, sos_token, eos_token):
-        batch_size = hidden_states.shape[0]
-
-        if attention_mask is not None:
-            # Add two more steps to attn mask
-            new_attn_mask_step = attention_mask.new_ones((batch_size, 1))
-            attention_mask = torch.cat([new_attn_mask_step, attention_mask, new_attn_mask_step], dim=-1)
-
-        # Add the SOS / EOS tokens at the start / end of the sequence respectively
-        sos_token = sos_token.expand(batch_size, 1, -1)
-        eos_token = eos_token.expand(batch_size, 1, -1)
-        hidden_states = torch.cat([sos_token, hidden_states, eos_token], dim=1)
-        return hidden_states, attention_mask
-
     @torch.no_grad()
-    def generate(self, inputs_embeds, **model_kwargs):
+    def generate(
+        self,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        max_new_tokens: Optional[int] = None,
+        **model_kwargs,
+    ):
         """
 
         Generates a sequence of hidden-states for the GPT2 model.
@@ -113,6 +123,9 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
         Parameters:
             inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence used as a prompt for the generation.
+            max_new_tokens (`int`, *optional*):
+                Number of new tokens to generate. If un-specified, defaults to the model attribute
+                `max_new_tokens`.
             model_kwargs (`Dict[str, Any]`, *optional*):
                 Ad hoc parametrization of additional model-specific kwargs that will be forwarded to the
                 `forward` function of the model.
@@ -121,9 +134,10 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
             `inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
-        steps = self.mae_token_num
+        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.max_new_tokens
+        steps = 3 * max_new_tokens // 4
 
-        for _ in range(3 * steps // 4):
+        for _ in range(steps):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
 
@@ -142,11 +156,11 @@ class AudioLDM2TextEncoder(GPT2PreTrainedModel):
 
     def prepare_inputs_for_generation(
         self,
-        clap_input_ids,
-        t5_input_ids,
+        inputs_embeds,
+        clap_input_ids=None,
+        t5_input_ids=None,
         clap_attention_mask=None,
         t5_attention_mask=None,
-        inputs_embeds=None,
         attention_mask=None,
         past_key_values=None,
         **kwargs,
