@@ -10,11 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# improved pseudo numerical methods for diffusion models (iPNDM)
+# IPNDMScheduler
 
-## Overview
-
-Original implementation can be found [here](https://github.com/crowsonkb/v-diffusion-pytorch/blob/987f8985e38208345c1959b0ea767a625831cc9b/diffusion/sampling.py#L296).
+`IPNDMScheduler` is a fourth-order Improved Pseudo Linear Multistep scheduler. The original implementation can be found at [crowsonkb/v-diffusion-pytorch](https://github.com/crowsonkb/v-diffusion-pytorch/blob/987f8985e38208345c1959b0ea767a625831cc9b/diffusion/sampling.py#L296).
 
 ## IPNDMScheduler
 [[autodoc]] IPNDMScheduler
+
+## SchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.SchedulerOutput
