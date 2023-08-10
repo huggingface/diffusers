@@ -24,6 +24,8 @@ from transformers import (
     ClapTextModelWithProjection,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
+    T5Config,
+    T5EncoderModel, GPT2Config, GPT2Model,
 )
 
 from diffusers import (
@@ -115,7 +117,6 @@ def renew_attention_paths(old_list):
     return mapping
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.renew_vae_attention_paths
 def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
@@ -127,17 +128,17 @@ def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
         new_item = new_item.replace("norm.weight", "group_norm.weight")
         new_item = new_item.replace("norm.bias", "group_norm.bias")
 
-        new_item = new_item.replace("q.weight", "query.weight")
-        new_item = new_item.replace("q.bias", "query.bias")
+        new_item = new_item.replace("q.weight", "to_q.weight")
+        new_item = new_item.replace("q.bias", "to_q.bias")
 
-        new_item = new_item.replace("k.weight", "key.weight")
-        new_item = new_item.replace("k.bias", "key.bias")
+        new_item = new_item.replace("k.weight", "to_k.weight")
+        new_item = new_item.replace("k.bias", "to_k.bias")
 
-        new_item = new_item.replace("v.weight", "value.weight")
-        new_item = new_item.replace("v.bias", "value.bias")
+        new_item = new_item.replace("v.weight", "to_v.weight")
+        new_item = new_item.replace("v.bias", "to_v.bias")
 
-        new_item = new_item.replace("proj_out.weight", "proj_attn.weight")
-        new_item = new_item.replace("proj_out.bias", "proj_attn.bias")
+        new_item = new_item.replace("proj_out.weight", "to_out.0.weight")
+        new_item = new_item.replace("proj_out.bias", "to_out.0.bias")
 
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
 
@@ -192,17 +193,14 @@ def assign_to_checkpoint(
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
 def conv_attn_to_linear(checkpoint):
     keys = list(checkpoint.keys())
-    attn_keys = ["query.weight", "key.weight", "value.weight"]
+    attn_keys = ["to_q.weight", "to_k.weight", "to_v.weight"]
+    proj_key = "to_out.0.weight"
     for key in keys:
-        if ".".join(key.split(".")[-2:]) in attn_keys:
+        if ".".join(key.split(".")[-2:]) in attn_keys or ".".join(key.split(".")[-3:]) == proj_key:
             if checkpoint[key].ndim > 2:
-                checkpoint[key] = checkpoint[key][:, :, 0, 0]
-        elif "proj_attn.weight" in key:
-            if checkpoint[key].ndim > 2:
-                checkpoint[key] = checkpoint[key][:, :, 0]
+                checkpoint[key] = checkpoint[key].squeeze()
 
 
 def create_unet_diffusers_config(original_config, image_size: int):
@@ -452,6 +450,10 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                     f"output_blocks.{i}.{index}.conv.bias"
                 ]
 
+                # TODO(SG): is this safe?
+                attentions.remove(f"output_blocks.{i}.{index}.conv.bias")
+                attentions.remove(f"output_blocks.{i}.{index}.conv.weight")
+
                 # Clear attentions as they have been attributed above.
                 if len(attentions) == 2:
                     attentions = []
@@ -470,10 +472,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
-    return new_checkpoint, unet_state_dict
+    return new_checkpoint
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
@@ -604,7 +605,7 @@ def convert_open_clap_checkpoint(checkpoint):
     """
     # extract state dict for CLAP text embedding model, discarding the audio component
     model_state_dict = {}
-    model_key = "cond_stage_model.model.text_"
+    model_key = "clap.model.text_"
     keys = list(checkpoint.keys())
     for key in keys:
         if key.startswith(model_key):
@@ -703,6 +704,21 @@ def convert_hifigan_checkpoint(checkpoint, config):
     return vocoder_state_dict
 
 
+def extract_submodel(checkpoint, key_prefix):
+    """
+    Takes a state dict and returns the state dict for a particular sub-model.
+    Useful for extracting a sub-model already in Transformers format from part of a larger model.
+    """
+
+    submodel_state_dict = {}
+    keys = list(checkpoint.keys())
+    for key in keys:
+        if key.startswith(key_prefix):
+            submodel_state_dict[key.replace(key_prefix, "")] = checkpoint.get(key)
+
+    return submodel_state_dict
+
+
 # Adapted from https://github.com/haoheliu/AudioLDM2/blob/81ad2c6ce015c1310387695e2dae975a7d2ed6fd/audioldm2/utils.py#L143
 DEFAULT_CONFIG = {
     "model": {
@@ -739,6 +755,15 @@ DEFAULT_CONFIG = {
                         "num_res_blocks": 2,
                     },
                 },
+            },
+            "cond_stage_config": {
+                "crossattn_audiomae_generated": {
+                    "target": "audioldm2.latent_diffusion.modules.encoders.modules.SequenceGenAudioMAECond",
+                    "params": {
+                        "sequence_gen_length": 8,
+                        "sequence_input_embed_dim": [512, 1024],
+                    }
+                }
             },
             "vocoder_config": {
                 "target": "audioldm2.first_stage_model.vocoder",
@@ -902,12 +927,11 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet = UNet2DConditionModel(**unet_config)
 
-    converted_unet_checkpoint, unet_state_dict = convert_ldm_unet_checkpoint(
+    converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
     )
 
-    missing, unexpected = unet.load_state_dict(converted_unet_checkpoint, strict=False)
-    # unet.load_state_dict(converted_unet_checkpoint)
+    unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model
     vae_config = create_vae_diffusers_config(original_config, checkpoint=checkpoint, image_size=image_size)
@@ -916,10 +940,10 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
 
-    # Convert the text model
-    # AudioLDM2 uses the same configuration and tokenizer as the original CLAP model
+    # Convert the joint audio-text encoding model: AudioLDM2 uses the same configuration and
+    # tokenizer as the original CLAP model
     config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
-    tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
+    clap_tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
     converted_text_model = convert_open_clap_checkpoint(checkpoint)
     text_model = ClapTextModelWithProjection(config)
@@ -942,11 +966,26 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     vocoder = SpeechT5HifiGan(vocoder_config)
     vocoder.load_state_dict(converted_vocoder_checkpoint)
 
+    # Convert the Flan-T5 encoder model: AudioLDM2 uses the same configuration and tokenizer as the original Flan-T5 large model
+    flan_t5_config = T5Config.from_pretrained("google/flan-t5-large")
+    flan_t5 = T5EncoderModel(flan_t5_config)
+
+    converted_t5_checkpoint = extract_submodel(checkpoint, key_prefix="cond_stage_models.1.model.")
+    flan_t5.load_state_dict(converted_t5_checkpoint)
+
+    # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
+    gpt2_config = GPT2Config.from_pretrained("gpt2")
+    gpt2 = GPT2Model(gpt2_config)
+
+    converted_gpt2_checkpoint = extract_submodel(checkpoint, key_prefix="")
+    gpt2.load_state_dict(converted_gpt2_checkpoint)
+
     # Instantiate the diffusers pipeline
     pipe = AudioLDM2Pipeline(
         vae=vae,
         text_encoder=text_model,
-        tokenizer=tokenizer,
+        clap_tokenizer=clap_tokenizer,
+        t5_tokenizer=t5_tokenizer,
         unet=unet,
         scheduler=scheduler,
         vocoder=vocoder,
