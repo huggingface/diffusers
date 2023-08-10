@@ -40,8 +40,8 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2Config, Blip2VisionConfig
-# from transformers.models.blip_2.modeling_blip_2 import Blip2VisionModel
 from transformers import BertTokenizer
+from transformers.activations import QuickGELUActivation as QuickGELU
 
 
 logger = logging.get_logger(__name__)
@@ -993,6 +993,27 @@ class Blip2QFormerEncoder(nn.Module):
             cross_attentions=all_cross_attentions,
         )
     
+class ProjLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_dim, drop_p=0.1, eps=1e-12):
+        super().__init__()
+
+        # Dense1 -> Act -> Dense2 -> Drop -> Res -> Norm
+        self.dense1 = nn.Linear(in_dim, hidden_dim)
+        self.act_fn = QuickGELU()
+        self.dense2 = nn.Linear(hidden_dim, out_dim)
+        self.dropout = nn.Dropout(drop_p)
+
+        self.LayerNorm = nn.LayerNorm(out_dim, eps=eps)
+
+    def forward(self, x):
+        x_in = x
+
+        x = self.LayerNorm(x)
+        x = self.dropout(self.dense2(self.act_fn(self.dense1(x)))) + x_in
+
+        return x
+
+
 # Copied from transformers.models.blip.modeling_blip.BlipVisionModel with Blip->Blip2, BLIP->BLIP_2
 class Blip2VisionModel(Blip2PreTrainedModel):
     main_input_name = "pixel_values"
@@ -1075,6 +1096,10 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side="right")
         self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+        self.proj_layer =  ProjLayer(
+            in_dim=768, out_dim=768, hidden_dim=3072, drop_p=0.1, eps=1e-12
+        )
+
 
         self.encoder = Blip2QFormerEncoder(config.qformer_config)
 
@@ -1261,7 +1286,7 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         pooled_output = sequence_output[:, 0, :]
 
         if not return_dict:
-            return (sequence_output, pooled_output) + encoder_outputs[1:]
+            return self.proj_layer(sequence_output[:, :query_length, :])
 
         return BaseModelOutputWithPoolingAndCrossAttentions(
             last_hidden_state=sequence_output,
