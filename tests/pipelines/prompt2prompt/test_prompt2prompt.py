@@ -162,6 +162,6 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (2, 32, 32, 3)
+        assert image.shape == (2, 512, 512, 3)
         expected_slice = np.array([0.4200, 0.3588, 0.1939, 0.3847, 0.3382, 0.2647, 0.4155, 0.3582, 0.3385])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
