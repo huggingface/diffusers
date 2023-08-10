@@ -348,3 +348,7 @@ SDXL is a large model, and you may need to optimize your memory to get it to run
 + base.enable_xformers_memory_efficient_attention()
 + refiner.enable_xformers_memory_efficient_attention()
 ```
+
+## Other resources
+
+If you're interested in experimenting with a minimal version of the [`UNet2DConditionModel`] used in SDXL, take a look at the [minSDXL](https://github.com/cloneofsimo/minSDXL) implementation which is written in PyTorch and directly compatible with 🤗 Diffusers.
