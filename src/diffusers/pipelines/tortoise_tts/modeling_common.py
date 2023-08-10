@@ -50,24 +50,36 @@ class AttentionBlock(nn.Module):
 
 
 class TortoiseTTSAttention(nn.Module):
-    def __init__(self, config: T5Config, has_relative_attention_bias=False):
+    def __init__(self,
+                 query_dim: int,
+                 n_heads: int = 8,
+                 dim_head: int = 64,
+                 dropout: float = 0.0,
+                 bias=True,
+                 out_bias: bool = True,
+                 scale_qk: bool = True,
+                 has_relative_attention_bias: bool = True,
+                 relative_attention_num_buckets: int = 32,
+                 relative_attention_max_distance: int = 128,
+        ):
+
         super().__init__()
-        self.is_decoder = config.is_decoder
         self.has_relative_attention_bias = has_relative_attention_bias
-        self.relative_attention_num_buckets = config.relative_attention_num_buckets
-        self.relative_attention_max_distance = config.relative_attention_max_distance
-        self.d_model = config.d_model
-        self.key_value_proj_dim = config.d_kv
-        self.n_heads = config.num_heads
-        self.dropout = config.dropout_rate
+        self.relative_attention_num_buckets = relative_attention_num_buckets
+        self.relative_attention_max_distance = relative_attention_max_distance
+        self.query_dim = query_dim
+        self.key_value_proj_dim = dim_head
+        self.n_heads = n_heads
+        self.dropout = dropout
+        self.scale_qk = scale_qk
         self.inner_dim = self.n_heads * self.key_value_proj_dim
 
         # Mesh TensorFlow initialization to avoid scaling before softmax
         # bias set to True for
-        self.q = nn.Linear(self.d_model, self.inner_dim, bias=True)
-        self.k = nn.Linear(self.d_model, self.inner_dim, bias=True)
-        self.v = nn.Linear(self.d_model, self.inner_dim, bias=True)
-        self.o = nn.Linear(self.inner_dim, self.d_model, bias=True)
+        self.q = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
+        self.k = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
+        self.v = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
+        self.o = nn.Linear(self.inner_dim, self.query_dim, bias=out_bias)
 
         if self.has_relative_attention_bias:
             self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
@@ -147,7 +159,7 @@ class TortoiseTTSAttention(nn.Module):
         relative_position = memory_position - context_position  # shape (query_length, key_length)
         relative_position_bucket = self._relative_position_bucket(
             relative_position,  # shape (query_length, key_length)
-            bidirectional=(not self.is_decoder),
+            bidirectional=True,
             num_buckets=self.relative_attention_num_buckets,
             max_distance=self.relative_attention_max_distance,
         )
@@ -221,7 +233,7 @@ class TortoiseTTSAttention(nn.Module):
                     hidden_states = past_key_value
             return hidden_states
 
-        scale = 1 / math.sqrt(self.d_model // self.n_heads)
+        scale = 1 / math.sqrt(self.query_dim // self.n_heads) if self.scale_qk else 1.
 
         # get query states
         query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
@@ -281,7 +293,7 @@ class TortoiseTTSAttention(nn.Module):
         attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
         attn_output = self.o(attn_output)
 
-        present_key_value_state = (key_states, value_states) if (self.is_decoder and use_cache) else None
+        present_key_value_state = None
         outputs = (attn_output,) + (present_key_value_state,) + (position_bias,)
 
         if output_attentions:
@@ -290,12 +302,35 @@ class TortoiseTTSAttention(nn.Module):
         return outputs
 
 
-class TortoiseTTSDiffusionModelSelfAttention(nn.Module):
-    def __init__(self, config, has_relative_attention_bias=False):
-        super().__init__()
-        self.SelfAttention = TortoiseTTSDiffusionModelAttention(config, has_relative_attention_bias=has_relative_attention_bias)
-        self.layer_norm = nn.GroupNorm(num_groups=32, num_channels=config.d_model)
-        self.dropout = nn.Dropout(config.dropout_rate)
+class TortoiseTTSSelfAttention(nn.Module):
+    def __init__(self,
+                 query_dim: int,
+                 n_heads: int = 8,
+                 dim_head: int = 64,
+                 dropout: float = 0.0,
+                 bias=True,
+                 out_bias: bool = True,
+                 scale_qk: bool = True,
+                 norm_num_groups: int = 32,
+                 has_relative_attention_bias: bool = True,
+                 relative_attention_num_buckets: int = 32,
+                 relative_attention_max_distance: int = 128,
+                 **kwargs
+                 ):
+        super().__init__(**kwargs)
+        self.SelfAttention = TortoiseTTSAttention(query_dim=query_dim,
+                                                                n_heads=n_heads,
+                                                                dim_head=dim_head,
+                                                                dropout=dropout,
+                                                                bias=bias,
+                                                                out_bias=out_bias,
+                                                                scale_qk=scale_qk,
+                                                                has_relative_attention_bias=has_relative_attention_bias,
+                                                                relative_attention_num_buckets=relative_attention_num_buckets,
+                                                                relative_attention_max_distance=relative_attention_max_distance,
+                                                                )
+        self.layer_norm = nn.GroupNorm(num_groups=norm_num_groups, num_channels=query_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(
         self,

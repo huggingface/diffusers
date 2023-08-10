@@ -1,19 +1,40 @@
+import torch
 from tortoise.models.arch_util import AttentionBlock
+from diffusers.pipelines.tortoise_tts.modeling_common import TortoiseTTSSelfAttention
 
-cfg = T5Config()
-cfg.d_model = 1024
-cfg.num_heads = 16
-cfg.dropout_rate = 0.0
-cfg.is_encoder_decoder = False
-cfg.use_cache = False
-attn_hf = TortoiseTTSAttention(cfg, has_relative_attention_bias=True)
+# input
+ipt = torch.rand([5, 1024, 10])
+print(ipt)
 
+attn = AttentionBlock(channels=1024,
+                      num_heads=16,
+                      num_head_channels=-1,
+                      relative_pos_embeddings=True
+                      )
+weights = torch.load("./tmp_weights/attn_block.bin")
+attn.load_state_dict(weights, strict=True)
+print(f"Tortoise-tts attn params - {sum([param.numel() for param in attn.parameters()])}")
+attn.eval()
+
+
+attn_hf = TortoiseTTSSelfAttention(query_dim=1024,
+                                   n_heads=16,
+                                   dim_head=64,
+                                   dropout=0.0,
+                                   bias=True,
+                                   out_bias=True,
+                                   scale_qk=True,
+                                   norm_num_groups=32,
+                                   has_relative_attention_bias=True,
+                                   relative_attention_num_buckets=32,
+                                   relative_attention_max_distance=128,
+                                   )
 
 # WEIGHTS
 w1, w2, w3 = dict(attn.named_parameters())["qkv.weight"].squeeze(-1).split(split_size=1024, dim=0)
 b1, b2, b3 = dict(attn.named_parameters())["qkv.bias"].split(split_size=1024, dim=0)
-dim = cfg.d_model
-n_heads = cfg.num_heads
+dim = 1024
+n_heads = 16
 
 # init weights
 attn_hf.state_dict()["SelfAttention.q.weight"].copy_(torch.concatenate([w1[0*(dim//n_heads):1*(dim//n_heads), :],
@@ -138,29 +159,11 @@ attn_hf.state_dict()["layer_norm.bias"].copy_(dict(attn.named_parameters())["nor
 
 attn_hf.state_dict()["SelfAttention.relative_attention_bias.weight"].copy_(dict(attn.named_parameters())["relative_pos_embeddings.relative_attention_bias.weight"])
 
+attn_hf.eval()
 
 print(f"Tortoise-tts attn params - {sum([param.numel() for param in attn_hf.parameters()])}")
-ipt = torch.load("./tmp_files/ipt_attn.bin")
 
-attn_hf.eval()
-# print(attn_hf(ipt))
-
-
-
-
-
-import torch
-from tortoise.models.arch_util import AttentionBlock
-attn = AttentionBlock(channels=1024,
-                      num_heads=16,
-                      num_head_channels=-1,
-                      relative_pos_embeddings=True
-                      )
-weights = torch.load("./tmp_weights/attn_block.bin")
-attn.load_state_dict(weights, strict=True)
-print(f"Tortoise-tts attn params - {sum([param.numel() for param in attn.parameters()])}")
-ipt = torch.load("./tmp_files/ipt_attn.bin")
-attn.eval()
-# print(attn(ipt))
+print("TORTOISE TTS Attn OPTS:\n", attn(ipt).permute(0, 2, 1))
+print("\n\nHF Attn OPTS:\n", attn_hf(ipt)[0])
 
 print(f"\n\nOutputs same or not : {torch.allclose(attn(ipt).permute(0, 2, 1), attn_hf(ipt)[0], atol=1e-4, rtol=1e-4)}")
