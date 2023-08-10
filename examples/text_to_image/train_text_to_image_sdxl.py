@@ -576,10 +576,7 @@ def main(args):
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
-    if args.pretrained_vae_model_name_or_path is None:
-        vae.to(accelerator.device, dtype=torch.float32)
-    else:
-        vae.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=torch.float32)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
