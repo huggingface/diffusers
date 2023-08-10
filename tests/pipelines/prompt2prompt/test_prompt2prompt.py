@@ -15,26 +15,22 @@
 
 
 import unittest
-from parameterized import parameterized
 
 import numpy as np
 import torch
+from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import Prompt2PromptPipeline, DDIMScheduler, UNet2DConditionModel, AutoencoderKL
+from diffusers import AutoencoderKL, DDIMScheduler, Prompt2PromptPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
 
 
 enable_full_determinism()
 
-replace_steps = {
-    "cross_replace_steps": 0.4,
-    "self_replace_steps": 0.4
-}
+replace_steps = {"cross_replace_steps": 0.4, "self_replace_steps": 0.4}
 
 
 class Prompt2PrompteFastTests(unittest.TestCase):
-
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -96,7 +92,6 @@ class Prompt2PrompteFastTests(unittest.TestCase):
         }
         return components
 
-
     test_matrix = [
         # fmt: off
         (
@@ -104,13 +99,13 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             "replace",
             {**replace_steps},
             [0.582, 0.610, 0.503, 0.507, 0.542, 0.471, 0.498, 0.490, 0.487]
-        ), 
+        ),
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
             "replace",
             {**replace_steps, "local_blend_words": ["turtle", "monkey"]},
             [0.582, 0.610, 0.503, 0.507, 0.542, 0.471, 0.498, 0.490, 0.487]
-        ), 
+        ),
         (
             ["A turtle", "A turtle in a forest"],
             "refine",
@@ -122,13 +117,13 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             "refine",
             {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [0.571, 0.605, 0.499, 0.502, 0.541, 0.468, 0.500, 0.484, 0.483]
-        ), 
+        ),
         (
             ["A smiling turtle"] * 2,
             "reweight",
             {**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.573, 0.607, 0.502, 0.504, 0.540, 0.469, 0.500, 0.486, 0.483]
-        ), 
+        ),
         # todo: include save edit?
         # fmt: on
     ]
@@ -142,10 +137,29 @@ class Prompt2PrompteFastTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = pipe(prompts, height=64, width=64, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
+        image = pipe(
+            prompts,
+            height=64,
+            width=64,
+            num_inference_steps=2,
+            generator=generator,
+            edit_type=edit_type,
+            edit_kwargs=edit_kwargs,
+            output_type="numpy",
+        ).images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = pipe(prompts, height=64, width=64, num_inference_steps=2, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy", return_dict=False)[0]
+        image_from_tuple = pipe(
+            prompts,
+            height=64,
+            width=64,
+            num_inference_steps=2,
+            generator=generator,
+            edit_type=edit_type,
+            edit_kwargs=edit_kwargs,
+            output_type="numpy",
+            return_dict=False,
+        )[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -167,13 +181,13 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
             "replace",
             {**replace_steps},
             [0.243, 0.233, 0.227, 0.253, 0.242, 0.237, 0.293, 0.292, 0.283]
-        ), 
+        ),
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
             "replace",
             {**replace_steps, "local_blend_words": ["turtle", "monkey"]},
             [0.243, 0.233, 0.227, 0.253, 0.242, 0.237, 0.293, 0.292, 0.283]
-        ), 
+        ),
         (
             ["A turtle", "A turtle in a forest"],
             "refine",
@@ -185,13 +199,13 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
             "refine",
             {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [0.256, 0.232, 0.209, 0.259, 0.254, 0.229, 0.285, 0.307, 0.295]
-        ), 
+        ),
         (
             ["A smiling turtle"] * 2,
             "reweight",
             {**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.006, 0.010, 0.009, 0.003, 0.011, 0.008, 0.014, 0.009, 0.000]
-        ), 
+        ),
         # todo: include save edit?
         # fmt: on
     ]
@@ -205,7 +219,16 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator().manual_seed(0)
-        image = pipe(prompts, height=512, width=512, num_inference_steps=50, generator=generator, edit_type=edit_type, edit_kwargs=edit_kwargs, output_type="numpy").images
+        image = pipe(
+            prompts,
+            height=512,
+            width=512,
+            num_inference_steps=50,
+            generator=generator,
+            edit_type=edit_type,
+            edit_kwargs=edit_kwargs,
+            output_type="numpy",
+        ).images
 
         image_slice = image[0, -3:, -3:, -1]
 
