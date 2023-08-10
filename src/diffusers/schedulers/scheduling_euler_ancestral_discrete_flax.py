@@ -233,8 +233,11 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
-        split_key = jax.random.split(key, num=1)
-        noise = jax.random.normal(split_key, shape=model_output.shape, dtype=self.dtype)
+        if key is None:
+            key = jax.random.PRNGKey(0)
+        else:
+            key = jax.random.split(key, num=1)
+        noise = jax.random.normal(key, shape=model_output.shape, dtype=self.dtype)
 
         prev_sample = prev_sample + noise * sigma_up
 
