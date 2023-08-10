@@ -1066,6 +1066,9 @@ def main(args):
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
+                if args.prediction_type is not None:
+                    scheduler_args = {"prediction_type": args.prediction_type}
+                    pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
@@ -1114,6 +1117,9 @@ def main(args):
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path, unet=unet, vae=vae, revision=args.revision, torch_dtype=weight_dtype
         )
+        if args.prediction_type is not None:
+            scheduler_args = {"prediction_type": args.prediction_type}
+            pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
         pipeline = pipeline.to(accelerator.device)
 
         # run inference
