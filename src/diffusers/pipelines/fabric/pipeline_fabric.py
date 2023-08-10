@@ -17,23 +17,18 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import functional as F
+from PIL import Image
+import numpy as np
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
-from ...pipelines import DissusionPipeline
 from ...models.cross_attention import LoRACrossAttnProcessor
 from ...models.attention import BasicTransformerBlock
 from ..stable_diffusion import StableDiffusionPipeline
-from ...schedulers import EulerAncestralDiscreateScheduler
-from .embeddings import TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    DownBlock2D,
-    UNetMidBlock2DCrossAttn,
-    get_down_block,
-)
+from ...schedulers import EulerAncestralDiscreteScheduler
 from . import FabricPipelineOutput
+
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -139,7 +134,7 @@ def attn_with_weights(
     return hidden_states
 
 
-class Fabric(DiffusionPipeline):
+class FabricPipeline(DiffusionPipeline):
     def __init__(
         self,
         model_name: Optional[str] = None,
