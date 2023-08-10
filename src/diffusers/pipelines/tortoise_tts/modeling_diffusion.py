@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.embeddings import TimestepEmbedding, Timesteps
-from ...models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
+from ...models.resnet import AdaGroupNorm, Downsample2D, Upsample2D, downsample_2d, partial, upsample_2d
 from ...utils import BaseOutput, logging
-from .modeling_common import TortoiseTTSAttention, ConditioningEncoder
+from .modeling_common import ConditioningEncoder, TortoiseTTSAttention
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -20,11 +20,16 @@ class Mish(torch.nn.Module):
     def forward(self, hidden_states):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
+
 class TortoiseTTSDiffusionLayer(nn.Module):
     def __init__(self, config, has_relative_attention_bias=True):
         super().__init__()
-        self.resblk = ResBlock(model_channels, model_channels, dropout, model_channels, dims=1, use_scale_shift_norm=True)
-        self.attn = TortoiseTTSDiffusionModelSelfAttention(config, has_relative_attention_bias=has_relative_attention_bias)
+        self.resblk = ResBlock(
+            model_channels, model_channels, dropout, model_channels, dims=1, use_scale_shift_norm=True
+        )
+        self.attn = TortoiseTTSDiffusionModelSelfAttention(
+            config, has_relative_attention_bias=has_relative_attention_bias
+        )
 
     def forward(self, x, time_emb):
         x = self.resblk(input_tensor=x, temb=time_emb)
@@ -175,7 +180,6 @@ class ResnetBlock1D(nn.Module):
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = hidden_states * (1 + scale) + shift
 
-
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
@@ -195,6 +199,7 @@ class AttnEncoderBlock1D(nn.Module):
 
     ResnetBlock1d => TortoiseTTSAttention
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -207,7 +212,7 @@ class AttnEncoderBlock1D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim = 1,
+        attention_head_dim=1,
         relative_pos_embeddings: bool = False,
         output_scale_factor: float = 1.0,
     ):
@@ -252,7 +257,7 @@ class AttnEncoderBlock1D(nn.Module):
                     relative_pos_embeddings=relative_pos_embeddings,
                 )
             )
-        
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -263,7 +268,7 @@ class AttnEncoderBlock1D(nn.Module):
             hidden_states = resnet(hidden_states, temb)
             hidden_states = attn(hidden_states)
             output_states = output_states + (hidden_states,)
-        
+
         return hidden_states, output_states
 
 
@@ -285,6 +290,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
     """
     The denoising model used in the diffusion portion of the Tortoise TTS model.
     """
+
     @register_to_config
     def __init__(
         self,
@@ -366,7 +372,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         # 7. Define the output layers
         self.norm_out = nn.GroupNorm(32, hidden_channels)  # TODO: get right number of groups
         self.conv_out = nn.Conv1d(hidden_channels, out_channels, 3, padding=1)
-    
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -374,7 +380,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         autoregressive_latents: torch.FloatTensor,
         conditioning_audio_latents: torch.FloatTensor,
         unconditional: bool = False,
-        return_dict: bool = True
+        return_dict: bool = True,
     ):
         """
         TODO
@@ -388,7 +394,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
             cond_embedding = cond_embedding * (1 + cond_scale.unsqueeze(-1)) + cond_shift.unsqueeze(-1)
             # Interpolate conditional embeddings...?
             cond_embedding = F.interpolate(cond_embedding, size=sample.shape[-1], mode="nearest")
-        
+
         # 2. Handle timestep embedding
         timesteps = timestep
         if not torch.is_tensor(timesteps):
@@ -427,5 +433,5 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (sample,)
-        
+
         return TortoiseTTSDenoisingModelOutput(sample=sample)

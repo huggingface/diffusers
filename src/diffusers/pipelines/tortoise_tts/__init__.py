@@ -1,1 +1,1 @@
-from .pipeline_tortoise_tts import TortoiseTTSPipeline 
+from .pipeline_tortoise_tts import TortoiseTTSPipeline

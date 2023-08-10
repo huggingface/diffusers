@@ -7,19 +7,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torchaudio
-from transformers import GPT2LMHeadModel
 
-from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-
 from .modeling_autoregressive import TortoiseTTSAutoregressiveModel
 from .modeling_common import ConditioningEncoder, RandomLatentConverter
 from .modeling_diffusion import TortoiseTTSDenoisingModel
@@ -51,6 +47,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     Args:
         TODO
     """
+
     # TODO: get appropriate type annotations for __init__ args
     def __init__(
         self,
@@ -303,7 +300,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         return prompt_embeds
-    
+
     def prepare_audio_waveforms(
         self,
         audio: List[Tuple[torch.FloatTensor, int]],
@@ -323,7 +320,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     def mel_spectrogram_to_waveform(self, mel_spectrogram, noise=None):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
-        
+
         if noise:
             waveform = self.vocoder(mel_spectrogram, noise)
         else:
@@ -331,7 +328,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
         return waveform
-    
+
     def prepare_latents(
         self,
         batch_size,
@@ -345,11 +342,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         """
         Prepares latents for the diffusion model.
         """
-        shape = (
-            batch_size,
-            self.denoising_model.config.in_channels,
-            seq_length
-        )
+        shape = (batch_size, self.denoising_model.config.in_channels, seq_length)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -360,13 +353,13 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-        
+
         # scale the latents by the temperature
         latents = latents * temperature
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     def prepare_vocoder_latents(
         self,
         batch_size,
@@ -394,10 +387,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-        
+
         # Don't need to scale latents for scheduler
         return latents
-    
+
     def prepare_spectrogram_latents(
         self,
         batch_size,
@@ -425,14 +418,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-        
+
         if latent_conversion_type == "autoregressive":
             latents = self.autoregressive_random_latent_converter(latents).latents
         elif latent_conversion_type == "diffusion":
             latents = self.diffusion_random_latent_converter(latents).latents
-        
+
         return latents
-    
+
     def prepare_autoregressive_conditioning_embedding(
         self,
         audio,
@@ -520,7 +513,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 raise ValueError(
                     f"`latent_averaging_mode` is {latent_averaging_mode} but is expected to be an int in [0, 1, 2]."
                 )
-        
+
             diffusion_cond_emb = self.diffusion_conditioning_encoder(audio_conds).embedding
         else:
             # Neither raw audio or embeddings supplied, randomly generate a conditioning embedding.
@@ -618,7 +611,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         audio: List[Tuple[torch.FloatTensor, int]] = None,
-        # Diffusion generation parameters 
+        # Diffusion generation parameters
         audio_length_in_s: Optional[float] = 5.12,
         num_inference_steps: int = 100,
         guidance_scale: float = 2.0,
@@ -675,7 +668,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             diffusion_temperature (`float`, *optional*, defaults to 1.0):
                 The variance used when generating the initial noisy latents for diffusion sampling. This is expected
                 to be in [0, 1]; values closer to 0 will be close to the mean prediction of the denoising model and
-                will sound bland and smeared. 
+                will sound bland and smeared.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -791,7 +784,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         autoregressive_batch_size = autoregressive_batch_size or autoregressive_num_samples
 
         device = self._execution_device
@@ -934,7 +927,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         if output_type == "np":
             audio = audio.numpy()
-        
+
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()

@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from transformers import (
     GPT2Config,
     GPT2Model,
@@ -65,6 +64,7 @@ class ResBlock(nn.Module):
     def forward(self, x):
         return F.relu(self.net(x) + x)
 
+
 # From tortoise.models.autoregressive.MelEncoder
 # https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/autoregressive.py#L250
 class MelEncoder(nn.Module):
@@ -73,21 +73,15 @@ class MelEncoder(nn.Module):
         self.channels = channels
         self.encoder = nn.Sequential(
             nn.Conv1d(mel_channels, channels // 4, kernel_size=3, padding=1),
-            nn.Sequential(
-                *[ResBlock(channels // 4) for _ in range(resblocks_per_reduction)]
-            ),
+            nn.Sequential(*[ResBlock(channels // 4) for _ in range(resblocks_per_reduction)]),
             nn.Conv1d(channels // 4, channels // 2, kernel_size=3, stride=2, padding=1),
             nn.GroupNorm(channels // 16, channels // 2),
             nn.ReLU(),
-            nn.Sequential(
-                *[ResBlock(channels // 2) for _ in range(resblocks_per_reduction)]
-            ),
+            nn.Sequential(*[ResBlock(channels // 2) for _ in range(resblocks_per_reduction)]),
             nn.Conv1d(channels // 2, channels, kernel_size=3, stride=2, padding=1),
             nn.GroupNorm(channels // 8, channels),
             nn.ReLU(),
-            nn.Sequential(
-                *[ResBlock(channels) for _ in range(resblocks_per_reduction)]
-            ),
+            nn.Sequential(*[ResBlock(channels) for _ in range(resblocks_per_reduction)]),
         )
         self.reduction = 4
 
@@ -139,7 +133,7 @@ class TortoiseTTSAROutput(ModelOutput):
     """
 
     mel_loss: Optional[torch.FloatTensor] = None
-    text_loss: Optional[torch.FloatTensor] = None,
+    text_loss: Optional[torch.FloatTensor] = None
     mel_logits: Optional[torch.FloatTensor] = None
     text_logits: Optional[torch.FloatTensor] = None
     past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
@@ -190,7 +184,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
         # Heads of the model
         self.mel_head = nn.Linear(config.n_embd, num_mel_tokens)
         self.text_head = nn.Linear(config.n_embd, num_text_tokens)
-    
+
     # TODO: add/rename input args? only requirement is that first non-keyword argument is some sort of input_ids
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
         # TODO: implement kv_cache stuff? can we just use past_key_values instead?
@@ -229,7 +223,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
             }
         )
         return model_inputs
-    
+
     def forward(
         self,
         audio_conditioning_embed: Optional[torch.FloatTensor] = None,
@@ -265,7 +259,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
             # text_batch_size = text_inputs_embeds.shape[0]
         else:
             received_text_input = False
-        
+
         received_mel_input = True
         if mel_input_ids is not None and mel_inputs_embeds is not None:
             raise ValueError("You cannot specify both mel_input_ids and mel_inputs_embeds at the same time")
@@ -278,13 +272,13 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
             # mel_batch_size = mel_inputs_embeds.shape[0]
         else:
             received_mel_input = False
-        
-        if (audio_conditioning_embed is None) and (not received_text_input) (not received_mel_input):
+
+        if (audio_conditioning_embed is None) and (not received_text_input) and (not received_mel_input):
             raise ValueError(
                 "At least one of `audio_conditioning_embed`, a text input (`text_input_ids`/`text_inputs_embeds`), or"
                 " an audio input (`mel_input_ids`/`mel_inputs_embeds`) must be supplied."
             )
-        
+
         # 2. Prepare text and audio hidden states
         if received_text_input:
             if text_inputs_embeds is None:
@@ -299,32 +293,29 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
             mel_position_embeds = self.mel_pos_embedding(mel_input_ids)
             mel_hidden_states = mel_inputs_embeds + mel_position_embeds
             mel_seq_len = mel_hidden_states.shape[1]
-        
+
         # 3. Combine input tensors into overall hidden states for the transformer trunk
         # If present, the audio_conditioning_embed is always first
         hidden_states_list = []
         if received_audio_cond_emb:
             hidden_states_list.append(audio_conditioning_embed)
-        
+
         # Second element (if present)
         if text_first and received_text_input:
             hidden_states_list.append(text_hidden_states)
         elif not text_first and received_mel_input:
             hidden_states_list.append(mel_hidden_states)
-        
+
         # Third element (if present)
         if not text_first and received_text_input:
             hidden_states_list.append(text_hidden_states)
         elif text_first and received_mel_input:
             hidden_states_list.append(mel_hidden_states)
-        
+
         hidden_states = torch.cat(hidden_states_list, dim=1)
 
         # 4. Forward pass of transformer trunk
-        forward_kwargs = {
-            "return_dict": return_dict,
-            **transformer_forward_kwargs
-        }
+        forward_kwargs = {"return_dict": return_dict, **transformer_forward_kwargs}
 
         transformer_outputs = self.transformer(
             inputs_embeds=hidden_states,
@@ -337,7 +328,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
         if received_audio_cond_emb:
             # Remove the audio_conditioning_emb token so that it's not used by the lm heads.
             last_hidden_state = last_hidden_state[:, 1:]
-        
+
         last_hidden_state = self.final_norm(last_hidden_state)
 
         text_logits = None
@@ -359,7 +350,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
                 text_loss = text_loss_fct(
                     shift_text_logits.view(-1, shift_text_logits.size(-1)), shift_text_labels.view(-1)
                 )
-        
+
         mel_logits = None
         mel_loss = None
         if received_mel_input:
@@ -379,7 +370,7 @@ class TortoiseTTSGPT2Model(GPT2PreTrainedModel):
                 mel_loss = mel_loss_fct(
                     shift_mel_logits.view(-1, shift_mel_logits.size(-1)), shift_mel_labels.view(-1)
                 )
-        
+
         if return_dict:
             loss_available = (text_loss is not None) or (mel_loss is not None)
             output = (mel_logits, text_logits) + transformer_outputs[1:]
@@ -401,6 +392,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     Intended to correspond to the UnifiedVoise module in the tortoise-tts-fast implementation.
     https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/autoregressive.py#L280
     """
+
     @register_to_config
     def __init__(
         self,
@@ -478,7 +470,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             )
         else:
             self.mel_encoder = None
-    
+
     # From tortoise.models.autoregressive.UnifiedVoice.set_mel_padding
     # https://github.com/152334H/tortoise-tts-fast/blob/main/tortoise/models/autoregressive.py#L280
     def set_mel_padding(self, mel_input_tokens, wav_lengths):
@@ -488,9 +480,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         preformatting to create a working TTS model.
         """
         # Set padding areas within MEL (currently it is coded with the MEL code for <zero>).
-        mel_lengths = torch.div(
-            wav_lengths, self.config.mel_length_compression, rounding_mode="trunc"
-        )
+        mel_lengths = torch.div(wav_lengths, self.config.mel_length_compression, rounding_mode="trunc")
         for b in range(len(mel_lengths)):
             actual_end = (
                 mel_lengths[b] + 1
@@ -498,7 +488,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             if actual_end < mel_input_tokens.shape[-1]:
                 mel_input_tokens[b, actual_end:] = self.config.stop_mel_token
         return mel_input_tokens
-    
+
     def forward(
         self,
         audio_conditioning_latent,
@@ -515,7 +505,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         # 0. If types is specified, exapnd the text embedding space.
         if types is not None:
             text_inputs = text_inputs * (1 + types).unsqueeze(-1)
-        
+
         # TODO: implement clip_inputs...? don't really understand why this is necessary yet
 
         # 1. Pad text and audio (mel) inputs
@@ -559,15 +549,15 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             autoregressive_output = self.autoregressive(
                 audio_conditioning_embed=audio_conditioning_latent,
                 text_input_ids=text_inputs,
-                mel_input_ids = mel_inputs,
+                mel_input_ids=mel_inputs,
                 text_labels=text_labels,
                 mel_labels=mel_labels,
                 text_first=text_first,
                 return_dict=return_dict,
             )
-        
+
         return autoregressive_output
-    
+
     def generate_samples(
         self,
         audio_conditioning_latent,
@@ -585,7 +575,7 @@ class TortoiseTTSAutoregressiveModel(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             max_length = trunc_index + self.config.max_mel_tokens - 1
         else:
             max_length = trunc_index + max_sample_length
-        
+
         samples = self.autoregressive.generate(
             text_inputs,
             bos_token_id=self.config.start_mel_token,

@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio
-
 from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -50,19 +49,19 @@ class AttentionBlock(nn.Module):
 
 
 class TortoiseTTSAttention(nn.Module):
-    def __init__(self,
-                 query_dim: int,
-                 n_heads: int = 8,
-                 dim_head: int = 64,
-                 dropout: float = 0.0,
-                 bias=True,
-                 out_bias: bool = True,
-                 scale_qk: bool = True,
-                 has_relative_attention_bias: bool = True,
-                 relative_attention_num_buckets: int = 32,
-                 relative_attention_max_distance: int = 128,
-        ):
-
+    def __init__(
+        self,
+        query_dim: int,
+        n_heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias=True,
+        out_bias: bool = True,
+        scale_qk: bool = True,
+        has_relative_attention_bias: bool = True,
+        relative_attention_num_buckets: int = 32,
+        relative_attention_max_distance: int = 128,
+    ):
         super().__init__()
         self.has_relative_attention_bias = has_relative_attention_bias
         self.relative_attention_num_buckets = relative_attention_num_buckets
@@ -233,7 +232,7 @@ class TortoiseTTSAttention(nn.Module):
                     hidden_states = past_key_value
             return hidden_states
 
-        scale = 1 / math.sqrt(self.query_dim // self.n_heads) if self.scale_qk else 1.
+        scale = 1 / math.sqrt(self.query_dim // self.n_heads) if self.scale_qk else 1.0
 
         # get query states
         query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
@@ -277,7 +276,9 @@ class TortoiseTTSAttention(nn.Module):
             position_bias_masked = position_bias
 
         # scores += position_bias_masked
-        scores += (position_bias_masked * 8) # its actually root under the dimension of each attn head will be updated in the final version
+        scores += (
+            position_bias_masked * 8
+        )  # its actually root under the dimension of each attn head will be updated in the final version
 
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
             scores
@@ -303,32 +304,34 @@ class TortoiseTTSAttention(nn.Module):
 
 
 class TortoiseTTSSelfAttention(nn.Module):
-    def __init__(self,
-                 query_dim: int,
-                 n_heads: int = 8,
-                 dim_head: int = 64,
-                 dropout: float = 0.0,
-                 bias=True,
-                 out_bias: bool = True,
-                 scale_qk: bool = True,
-                 norm_num_groups: int = 32,
-                 has_relative_attention_bias: bool = True,
-                 relative_attention_num_buckets: int = 32,
-                 relative_attention_max_distance: int = 128,
-                 **kwargs
-                 ):
+    def __init__(
+        self,
+        query_dim: int,
+        n_heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = True,
+        out_bias: bool = True,
+        scale_qk: bool = True,
+        norm_num_groups: int = 32,
+        has_relative_attention_bias: bool = True,
+        relative_attention_num_buckets: int = 32,
+        relative_attention_max_distance: int = 128,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
-        self.SelfAttention = TortoiseTTSAttention(query_dim=query_dim,
-                                                                n_heads=n_heads,
-                                                                dim_head=dim_head,
-                                                                dropout=dropout,
-                                                                bias=bias,
-                                                                out_bias=out_bias,
-                                                                scale_qk=scale_qk,
-                                                                has_relative_attention_bias=has_relative_attention_bias,
-                                                                relative_attention_num_buckets=relative_attention_num_buckets,
-                                                                relative_attention_max_distance=relative_attention_max_distance,
-                                                                )
+        self.SelfAttention = TortoiseTTSAttention(
+            query_dim=query_dim,
+            n_heads=n_heads,
+            dim_head=dim_head,
+            dropout=dropout,
+            bias=bias,
+            out_bias=out_bias,
+            scale_qk=scale_qk,
+            has_relative_attention_bias=has_relative_attention_bias,
+            relative_attention_num_buckets=relative_attention_num_buckets,
+            relative_attention_max_distance=relative_attention_max_distance,
+        )
         self.layer_norm = nn.GroupNorm(num_groups=norm_num_groups, num_channels=query_dim)
         self.dropout = nn.Dropout(dropout)
 
@@ -381,6 +384,7 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
 
     (input transform) => [AttentionBlock] x num_layers => (output transform)
     """
+
     @register_to_config
     def __init__(
         self,
@@ -450,10 +454,8 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
                 ),
             )
         else:
-            raise ValueError(
-                f"`input_transform` {input_transform} is not currently supported."
-            )
-        
+            raise ValueError(f"`input_transform` {input_transform} is not currently supported.")
+
         self.attention = nn.ModuleList(
             [
                 AttentionBlock(
@@ -465,16 +467,14 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
                 for _ in range(num_layers)
             ]
         )
-        
+
         if output_transform is None:
             self.output_transform = nn.Identity()
         elif output_transform == "groupnorm":
             self.output_transform = nn.GroupNorm(output_num_groups, out_channels)
         else:
-            raise ValueError(
-                f"`output_transform` {output_transform} is not currently supported."
-            )
-    
+            raise ValueError(f"`output_transform` {output_transform} is not currently supported.")
+
     def forward(self, x: torch.FloatTensor, return_dict: bool = True):
         """
         Converts either a waveform or MEL spectrogram a conditioning embedding.
@@ -485,7 +485,7 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
                 an input MEL spectrogram of shape `(batch_size, n_mels, time)` otherwise.
             return_dict: (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a `ConditioningEncoderOutput` instead of a plain tuple.
-        
+
         Returns:
             `ConditioningEncoderOutput` or `tuple`:
             `ConditioningEncoderOutput` if `return_dict` is True, otherwise a `tuple`. When returning a tuple, the
@@ -494,7 +494,7 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
         if self.config.input_convert_to_mel_spectrogram:
             x = self.mel_stft(x)  # ()
             # TODO: Original code uses dynamic range compression with mel norms, currently not implemented
-        
+
         # x should have shape (batch_size, n_mels, time) ???
         if self.config.expand_prefixes:
             # Get the prefixes of each sample in x with respect to the mel channels and stack them together.
@@ -524,7 +524,7 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (x,)
-        
+
         return ConditioningEncoderOutput(embedding=x)
 
 
@@ -592,18 +592,16 @@ class RandomLatentConverter(ModelMixin, ConfigMixin):
         lr_mul (`float`, *optional*, defaults to 0.1):
             TODO
     """
+
     @register_to_config
     def __init__(self, channels: int, num_equallinear_layers: int = 5, lr_mul: float = 0.1):
         super().__init__()
 
         self.equallinear = nn.ModuleList(
-            [
-                EqualLinear(channels, channels, lr_mul=lr_mul)
-                for _ in range(num_equallinear_layers)
-            ]
+            [EqualLinear(channels, channels, lr_mul=lr_mul) for _ in range(num_equallinear_layers)]
         )
         self.linear = nn.Linear(channels, channels)
-    
+
     def forward(self, noise: torch.FloatTensor, return_dict: bool = True):
         """
         Converts standard Gaussian noise into latents.
@@ -620,12 +618,12 @@ class RandomLatentConverter(ModelMixin, ConfigMixin):
             When returning a tuple the first element is the rnadom latents.
         """
         assert noise.shape[-1] == self.config.channels, "The last dim of `noise` must match `self.config.channels`."
-        
+
         for equallinear_layer in self.equallinear:
             noise = equallinear_layer(noise)
         latents = self.linear(noise)
-        
+
         if not return_dict:
             return (latents,)
-        
+
         return RandomLatentConverterOutput(latents=latents)

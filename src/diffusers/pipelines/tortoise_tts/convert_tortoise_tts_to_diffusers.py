@@ -6,9 +6,7 @@ import os
 import numpy as np
 import torch
 
-from diffusers.pipelines.tortoise_tts.modeling_autoregressive import TortoiseTTSAutoregressiveModel
-from diffusers.pipelines.tortoise_tts.modeling_common import ConditioningEncoder, RandomLatentConverter
-from diffusers.pipelines.tortoise_tts.modeling_diffusion import TortoiseTTSDenoisingModel
+from diffusers.pipelines.tortoise_tts.modeling_common import RandomLatentConverter
 
 
 # Hardcode Tortoise TTS default model configs.
@@ -71,7 +69,7 @@ RLG_DIFFUSION_CONFIG = {
 
 AUTO_CONFIG = {
     "num_mel_tokens": 8194,
-    "num_text_tokens" : 257,
+    "num_text_tokens": 257,
     "max_mel_tokens": 604,
     "max_text_tokens": 402,
     "max_conditioning_inputs": 2,
@@ -91,10 +89,10 @@ AUTO_CONFIG = {
 def prepare_prefixes(key_prefix, new_key_prefix):
     if key_prefix:
         prefix = key_prefix + "."
-    
+
     if new_key_prefix:
         new_prefix = new_key_prefix + "."
-    
+
     return prefix, new_prefix
 
 
@@ -105,8 +103,8 @@ def convert_random_latent_converter(checkpoint, config):
         new_checkpoint[f"equallinear.{i}.weight"] = checkpoint[f"layers.{i}.weight"]
         new_checkpoint[f"equallinear.{i}.bias"] = checkpoint[f"layers.{i}.bias"]
     # Convert the final Linear layer
-    new_checkpoint[f"linear.weight"] = checkpoint[f"layers.{i + 1}.weight"]
-    new_checkpoint[f"linear.bias"] = checkpoint[f"layers.{i + 1}.bias"]
+    new_checkpoint["linear.weight"] = checkpoint[f"layers.{i + 1}.weight"]
+    new_checkpoint["linear.bias"] = checkpoint[f"layers.{i + 1}.bias"]
 
     return new_checkpoint
 
@@ -158,20 +156,20 @@ def convert_conditioning_encoder(
         new_checkpoint[f"{new_prefix}input_transform.1.weight"] = checkpoint[f"{prefix}1.weight"]
         new_checkpoint[f"{new_prefix}input_transform.1.bias"] = checkpoint[f"{prefix}1.bias"]
         start_idx = 2
-    
+
     # Handle attention layers
     # These are always within a nn.Sequential container
     for i in range(config["num_layers"]):
         attn_prefix = prefix + attn_name + str(start_idx + i)
         new_attn_prefix = new_prefix + "attention." + str(i)
         new_checkpoint = convert_attention_block(checkpoint, config, new_checkpoint, attn_prefix, new_attn_prefix)
-    
+
     # Handle output transform
     if config["output_transform"] == "groupnorm":
         # requires full key for output transform
         new_checkpoint[f"{new_prefix}output_transform.weight"] = checkpoint[f"{output_transform_key}.weight"]
         new_checkpoint[f"{new_prefix}output_transform.bias"] = checkpoint[f"{output_transform_key}.bias"]
-    
+
     return new_checkpoint
 
 
@@ -186,7 +184,7 @@ def convert_autoregressive_model(
     if config["mel_encoder_resblocks"] is not None:
         for key in config:
             if key.startswith("mel_embedding."):
-                param_name = key[len("mel_embedding."):]
+                param_name = key[len("mel_embedding.") :]
                 new_checkpoint[f"mel_encoder.{param_name}"] = checkpoint[key]
     else:
         new_checkpoint["autoregressive.wte.weight"] = checkpoint["mel_embedding.weight"]
@@ -197,11 +195,11 @@ def convert_autoregressive_model(
     for key in checkpoint:
         if key.startswith("gpt."):
             if "ln_f" not in key:
-                param_name = key[len("gpt."):]
+                param_name = key[len("gpt.") :]
                 new_checkpoint[f"autoregressive.{param_name}"] = checkpoint[key]
             else:
                 # Final layer norm params handled separately
-                param_type = key[len("gpt.ln_f."):]
+                param_type = key[len("gpt.ln_f.") :]
                 new_checkpoint[f"autoregressive.final_norm.{param_type}"] = checkpoint[key]
     # 3. Convert heads
     new_checkpoint["autoregressive.text_head.weight"] = checkpoint["text_head.weight"]
@@ -223,7 +221,7 @@ def test_rlg(rlg_model, expected_output):
     assert np.abs(random_latents[0, -9:] - expected_output).max() < 1e-3, "RLG outputs are different"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Use separate arguments for each modeling component for now
@@ -278,7 +276,7 @@ if __name__ == '__main__':
 
         rlg_auto_output_path = os.path.join(args.dump_path, "autoregressive_random_latent_converter")
         autoregressive_random_latent_converter.save_pretrained(rlg_auto_output_path)
-    
+
     if args.rlg_diffuser_checkpoint_path is not None:
         rlg_config = RLG_DIFFUSION_CONFIG
         rlg_ckpt = torch.load(args.rlg_diffuser_checkpoint_path)
