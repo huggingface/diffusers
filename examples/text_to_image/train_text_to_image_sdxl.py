@@ -471,7 +471,7 @@ def compute_vae_encodings(batch, vae):
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
     pixel_values = pixel_values.to(vae.device, dtype=vae.dtype)
-    
+
     with torch.no_grad():
         model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
@@ -818,9 +818,7 @@ def main(args):
     torch.cuda.empty_cache()
 
     def collate_fn(examples):
-        for k in examples:
-            print(k, type(examples[k]))
-        model_input = torch.stack([example["model_input"] for example in examples])
+        model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
         original_sizes = [example["original_sizes"] for example in examples]
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
