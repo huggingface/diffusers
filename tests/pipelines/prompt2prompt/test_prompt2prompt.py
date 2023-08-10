@@ -71,7 +71,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
         (
             ["A turtle", "A turtle in a forest"],
             "refine",
-            {**replace_steps, "local_blend_words": ["with", "a" , "ball"]},
+            {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [9.956e-01, 5.785e-01, 4.675e-01, 9.930e-01, 0.0, 1.000, 1.199e-03, 2.648e-04, 5.101e-04] # todo: adapt
         ), 
         (
@@ -136,7 +136,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         (
             ["A turtle", "A turtle in a forest"],
             "refine",
-            {**replace_steps, "local_blend_words": ["with", "a" , "ball"]},
+            {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [0.4200, 0.3588, 0.1939, 0.3847, 0.3382, 0.2647, 0.4155, 0.3582, 0.3385] # todo: adapt
         ), 
         (
