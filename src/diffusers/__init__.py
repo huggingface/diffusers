@@ -133,9 +133,9 @@ else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
-        AudioLDMPipeline,
         AudioLDM2Pipeline,
-        Sequence2AudioMAE,
+        AudioLDM2TextEncoder,
+        AudioLDMPipeline,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,

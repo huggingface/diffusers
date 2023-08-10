@@ -222,7 +222,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # which is why we correct for the naming here.
         num_attention_heads = num_attention_heads or attention_head_dim
 
-        if isinstance(cross_attention_dim, int) or (isinstance(cross_attention_dim, list) and preserve_cross_attention_dim):
+        if isinstance(cross_attention_dim, int) or (
+            isinstance(cross_attention_dim, list) and preserve_cross_attention_dim
+        ):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
 
         # Check inputs

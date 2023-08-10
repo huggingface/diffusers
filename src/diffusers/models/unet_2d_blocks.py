@@ -2127,7 +2127,7 @@ class CrossAttnUpBlock2D(nn.Module):
         self.num_attention_heads = num_attention_heads
 
         if isinstance(cross_attention_dim, int):
-            cross_attention_dim = (cross_attention_dim, )
+            cross_attention_dim = (cross_attention_dim,)
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels

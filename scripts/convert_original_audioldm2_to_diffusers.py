@@ -22,10 +22,12 @@ from transformers import (
     AutoTokenizer,
     ClapTextConfig,
     ClapTextModelWithProjection,
+    GPT2Config,
+    GPT2Model,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
     T5Config,
-    T5EncoderModel, GPT2Config, GPT2Model,
+    T5EncoderModel,
 )
 
 from diffusers import (
@@ -228,9 +230,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
-    cross_attention_dim = (
-        list(unet_params.context_dim) if "context_dim" in unet_params else block_out_channels
-    )
+    cross_attention_dim = list(unet_params.context_dim) if "context_dim" in unet_params else block_out_channels
     preserve_cross_attention_dim = len(cross_attention_dim) > 1
 
     config = {
@@ -392,7 +392,13 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
         if len(attentions):
             paths = renew_attention_paths(attentions)
-            meta_path = [{"old": f"input_blocks.{i}.{1 + layer_id}", "new": f"down_blocks.{block_id}.attentions.{layer_in_block_id * num_attention_layers + layer_id}"} for layer_id in range(num_attention_layers)]
+            meta_path = [
+                {
+                    "old": f"input_blocks.{i}.{1 + layer_id}",
+                    "new": f"down_blocks.{block_id}.attentions.{layer_in_block_id * num_attention_layers + layer_id}",
+                }
+                for layer_id in range(num_attention_layers)
+            ]
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=meta_path, config=config
             )
@@ -401,12 +407,16 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     resnet_1 = middle_blocks[num_middle_blocks - 1]
 
     resnet_0_paths = renew_resnet_paths(resnet_0)
-    meta_path = {"old": f"middle_block.0", "new": f"mid_block.resnets.0"}
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config)
+    meta_path = {"old": "middle_block.0", "new": "mid_block.resnets.0"}
+    assign_to_checkpoint(
+        resnet_0_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
+    )
 
     resnet_1_paths = renew_resnet_paths(resnet_1)
-    meta_path = {"old": f"middle_block.{len(middle_blocks) - 1}", "new": f"mid_block.resnets.1"}
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config)
+    meta_path = {"old": f"middle_block.{len(middle_blocks) - 1}", "new": "mid_block.resnets.1"}
+    assign_to_checkpoint(
+        resnet_1_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
+    )
 
     for i in range(1, num_middle_blocks - 1):
         attentions = middle_blocks[i]
@@ -460,7 +470,13 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
             if len(attentions):
                 paths = renew_attention_paths(attentions)
-                meta_path = [{"old": f"output_blocks.{i}.{1 + layer_id}", "new": f"up_blocks.{block_id}.attentions.{layer_in_block_id * num_attention_layers + layer_id}"} for layer_id in range(num_attention_layers)]
+                meta_path = [
+                    {
+                        "old": f"output_blocks.{i}.{1 + layer_id}",
+                        "new": f"up_blocks.{block_id}.attentions.{layer_in_block_id * num_attention_layers + layer_id}",
+                    }
+                    for layer_id in range(num_attention_layers)
+                ]
                 assign_to_checkpoint(
                     paths, new_checkpoint, unet_state_dict, additional_replacements=meta_path, config=config
                 )
@@ -704,19 +720,19 @@ def convert_hifigan_checkpoint(checkpoint, config):
     return vocoder_state_dict
 
 
-def extract_submodel(checkpoint, key_prefix):
+def convert_t5_checkpoint(checkpoint):
     """
-    Takes a state dict and returns the state dict for a particular sub-model.
-    Useful for extracting a sub-model already in Transformers format from part of a larger model.
+    Takes a state dict and returns the state dict for the T5 sub-model.
     """
 
-    submodel_state_dict = {}
+    t5_state_dict = {}
+    key_prefix = "cond_stage_models.1.model."
     keys = list(checkpoint.keys())
     for key in keys:
         if key.startswith(key_prefix):
-            submodel_state_dict[key.replace(key_prefix, "")] = checkpoint.get(key)
+            t5_state_dict[key.replace(key_prefix, "")] = checkpoint.get(key)
 
-    return submodel_state_dict
+    return t5_state_dict
 
 
 # Adapted from https://github.com/haoheliu/AudioLDM2/blob/81ad2c6ce015c1310387695e2dae975a7d2ed6fd/audioldm2/utils.py#L143
@@ -762,7 +778,7 @@ DEFAULT_CONFIG = {
                     "params": {
                         "sequence_gen_length": 8,
                         "sequence_input_embed_dim": [512, 1024],
-                    }
+                    },
                 }
             },
             "vocoder_config": {
@@ -970,7 +986,7 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     flan_t5_config = T5Config.from_pretrained("google/flan-t5-large")
     flan_t5 = T5EncoderModel(flan_t5_config)
 
-    converted_t5_checkpoint = extract_submodel(checkpoint, key_prefix="cond_stage_models.1.model.")
+    converted_t5_checkpoint = convert_t5_checkpoint(checkpoint)
     flan_t5.load_state_dict(converted_t5_checkpoint)
 
     # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
@@ -998,7 +1014,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path", default="/Users/sanchitgandhi/convert-audioldm2/audioldm2-full.pth", type=str, help="Path to the checkpoint to convert."
+        "--checkpoint_path",
+        default="/Users/sanchitgandhi/convert-audioldm2/audioldm2-full.pth",
+        type=str,
+        help="Path to the checkpoint to convert.",
     )
     parser.add_argument(
         "--original_config_file",
@@ -1063,7 +1082,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument("--dump_path", default="/Users/sanchitgandhi/convert-audioldm2/diffusers_out", type=str, help="Path to the output model.")
+    parser.add_argument(
+        "--dump_path",
+        default="/Users/sanchitgandhi/convert-audioldm2/diffusers_out",
+        type=str,
+        help="Path to the output model.",
+    )
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
