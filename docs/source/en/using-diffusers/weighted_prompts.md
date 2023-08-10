@@ -154,6 +154,70 @@ image
   <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-conj.png"/>
 </div>
 
+## Textual inversion
+
+[Textual inversion](../training/text_inversion) is a technique for learning a specific concept from some images which you can use to generate new images conditioned on that concept.
+
+Create a pipeline and use the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] function to load the textual inversion embeddings (feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer) for 100+ trained concepts):
+
+```py
+import torch
+from diffusers import StableDiffusionPipeline
+from compel import Compel, DiffusersTextualInversionManager
+
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, variant="fp16").to("cuda")
+pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
+```
+
+Compel provides a `DiffusersTextualInversionManager` class to simplify prompt weighting with textual inversion. Instantiate `DiffusersTextualInversionManager` and pass it to the `Compel` class:
+
+```py
+textual_inversion_manager = DiffusersTextualInversionManager(pipe)
+compel = Compel(
+    tokenizer=pipe.tokenizer,
+    text_encoder=pipe.text_encoder,
+    textual_inversion_manager=textual_inversion_manager)
+```
+
+Incorporate the concept to condition a prompt with using the `<concept>` syntax:
+
+```py
+prompt_embeds = compel_proc('("A red cat++ playing with a ball <midjourney-style>")')
+
+image = pipe(prompt_embeds=prompt_embeds).images[0]
+image
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-text-inversion.png"/>
+</div>
+
+## DreamBooth
+
+[DreamBooth](../training/dreambooth) is a technique for generating contextualized images of a subject given just a few images of the subject to train on. It is similar to textual inversion, but DreamBooth trains the full model whereas textual inversion only fine-tunes the text embeddings. This means you should use [`~DiffusionPipeline.from_pretrained`] to load the DreamBooth model (feel free to browse the [Stable Diffusion Dreambooth Concepts Library](https://huggingface.co/sd-dreambooth-library) for 100+ trained models):
+
+```py
+import torch
+from diffusers import DiffusionPipeline, UniPCMultistepScheduler
+from compel import Compel
+
+pipe = DiffusionPipeline.from_pretrained("sd-dreambooth-library/dndcoverart-v1", torch_dtype=torch.float16).to("cuda")
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+```
+
+Create a `Compel` class with a tokenizer and text encoder, and pass your prompt to it. Depending on the model you use, you'll need to incorporate the model's unique identifier into your prompt. For example, the `dndcoverart-v1` model uses the identifier `dndcoverart`:
+
+```py
+compel_proc = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
+prompt_embeds = compel_proc('("magazine cover of a dndcoverart dragon, high quality, intricate details, larry elmore art style").and()')
+image = pipe(prompt_embeds=prompt_embeds).images[0]
+image
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-dreambooth.png"/>
+</div>
+
 ## Stable Diffusion XL
 
 Stable Diffusion XL (SDXL) has two tokenizers and text encoders so it's usage is a bit different. To address this, you should pass both tokenizers and encoders to the `Compel` class:
@@ -198,42 +262,4 @@ images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, gener
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/sdxl_ball2.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">"a red cat playing with a (ball)0.6"</figcaption>
   </div>
-</div>
-
-## Textual inversion
-
-[Textual inversion](../training/text_inversion) is a technique for learning a specific concept from some images which you can use to generate new images conditioned on that concept.
-
-Create a pipeline and use the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] function to load the textual inversion embeddings (feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer) for 100+ trained concepts):
-
-```py
-import torch
-from diffusers import StableDiffusionPipeline
-from compel import Compel, DiffusersTextualInversionManager
-
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, variant="fp16").to("cuda")
-pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
-```
-
-Compel provides a `DiffusersTextualInversionManager` class to simplify prompt weighting with textual inversion. Instantiate `DiffusersTextualInversionManager` and pass it to the `Compel` class:
-
-```py
-textual_inversion_manager = DiffusersTextualInversionManager(pipe)
-compel = Compel(
-    tokenizer=pipe.tokenizer,
-    text_encoder=pipe.text_encoder,
-    textual_inversion_manager=textual_inversion_manager)
-```
-
-Incorporate the concept to condition a prompt with using the `<concept>` syntax:
-
-```py
-prompt_embeds = compel_proc('("A red cat playing with a ball <midjourney-style>")')
-
-image = pipe(prompt_embeds=prompt_embeds).images[0]
-image
-```
-
-<div class="flex justify-center">
-  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/compel-text-inversion.png"/>
 </div>
