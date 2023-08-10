@@ -1905,8 +1905,10 @@ class FromSingleFileMixin:
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             if not has_valid_url_prefix:
-                raise ValueError(f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(valid_url_prefixes)}")
-                
+                raise ValueError(
+                    f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(valid_url_prefixes)}"
+                )
+
             # get repo_id and (potentially nested) file path of ckpt in repo
             repo_id = "/".join(ckpt_path.parts[:2])
             file_path = "/".join(ckpt_path.parts[2:])
