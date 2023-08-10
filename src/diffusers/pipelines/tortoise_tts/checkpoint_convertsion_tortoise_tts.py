@@ -1,11 +1,4 @@
 from tortoise.models.arch_util import AttentionBlock
-attn = AttentionBlock(channels=1024,
-                      num_heads=16,
-                      num_head_channels=-1,
-                      relative_pos_embeddings=True
-                      )
-weights = torch.load("./tmp_weights/attn_block.bin")
-attn.load_state_dict(weights, strict=True)
 
 cfg = T5Config()
 cfg.d_model = 1024
@@ -13,9 +6,7 @@ cfg.num_heads = 16
 cfg.dropout_rate = 0.0
 cfg.is_encoder_decoder = False
 cfg.use_cache = False
-attn_hf = TortoiseTTSDiffusionModelSelfAttention(cfg, has_relative_attention_bias=True)
-
-print(attn_hf.state_dict().keys())
+attn_hf = TortoiseTTSAttention(cfg, has_relative_attention_bias=True)
 
 
 # WEIGHTS

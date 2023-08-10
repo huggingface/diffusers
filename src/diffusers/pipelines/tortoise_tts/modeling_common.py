@@ -48,12 +48,8 @@ class AttentionBlock(nn.Module):
     ):
         pass
 
-# The outputs are NOT same now!!! But when they get I will replace Attention layer with this layer.
-# mostly copied from the T5 but there are some major differences
-# I think its better to use TortoiseTTSDiffusionModelAttention since it compiles with the HF transformer
-# design and also it makes it specific to the Diffusion model only(Since CLVP and GPT2 Attentions are slightly different)
 
-class TortoiseTTSDiffusionModelAttention(nn.Module):
+class TortoiseTTSAttention(nn.Module):
     def __init__(self, config: T5Config, has_relative_attention_bias=False):
         super().__init__()
         self.is_decoder = config.is_decoder

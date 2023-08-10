@@ -10,8 +10,7 @@ from ...models import ModelMixin
 from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Upsample2D, Downsample2D, upsample_2d, downsample_2d, partial
 from ...utils import BaseOutput, logging
-from .modeling_common import TortoiseTTSDiffusionModelAttention
-from .modeling_common import AttentionBlock, ConditioningEncoder
+from .modeling_common import TortoiseTTSAttention, ConditioningEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -194,7 +193,7 @@ class AttnEncoderBlock1D(nn.Module):
     """
     1D U-Net style block with architecture (no down/upsampling)
 
-    ResnetBlock1d => AttentionBlock
+    ResnetBlock1d => TortoiseTTSAttention
     """
     def __init__(
         self,
@@ -239,7 +238,7 @@ class AttnEncoderBlock1D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
+                TortoiseTTSAttention(
                     out_channels,
                     heads=out_channels // attention_head_dim,
                     dim_head=attention_head_dim,
@@ -336,9 +335,8 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         )
 
         # 4. Define the timestep embedding. Only support positional embeddings for now.
-        time_embed_dim = hidden_channels
         self.time_proj = Timesteps(hidden_channels, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift)
-        self.time_embedding = TimestepEmbedding(hidden_channels, time_embed_dim)
+        self.time_embedding = TimestepEmbedding(in_channels=hidden_channels, time_embed_dim=hidden_channels)
 
         # 5. Define the inital Conv1d layers
         self.conv_in = nn.Conv1d(in_channels, hidden_channels, 3, stride=1, padding=1)
