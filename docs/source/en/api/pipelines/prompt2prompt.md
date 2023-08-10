@@ -28,6 +28,7 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 ## Usage example
 
 ### ReplaceEdit
+
 ```python
 import torch
 import numpy as np
@@ -48,6 +49,7 @@ outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50
 ```
 
 ### ReplaceEdit with LocalBlend
+
 ```python
 import torch
 import numpy as np
@@ -69,6 +71,7 @@ outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50
 ```
 
 ### RefineEdit
+
 ```python
 import torch
 import numpy as np
@@ -89,6 +92,7 @@ outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50
 ```
 
 ### RefineEdit with LocalBlend
+
 ```python
 import torch
 import numpy as np
@@ -110,6 +114,7 @@ outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50
 ```
 
 ### ReweightEdit
+
 ```python
 import torch
 import numpy as np
