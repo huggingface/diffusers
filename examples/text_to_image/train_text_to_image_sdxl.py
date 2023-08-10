@@ -470,8 +470,7 @@ def compute_vae_encodings(batch, vae):
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-    pixel_values = pixel_values.to(dtype=vae.dtype)
-    print(f"pixel_values: {pixel_values.shape}, pixel_values: {pixel_values.dtype} vae: {vae.dtype}")
+    pixel_values = pixel_values.to(vae.device, dtype=vae.dtype)
     model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
     return {"model_input": model_input.cpu()}
@@ -806,7 +805,10 @@ def main(args):
         new_fingerprint_for_vae = Hasher.hash("vae")
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
         train_dataset = train_dataset.map(
-            compute_vae_encodings_fn, batched=True, new_fingerprint=new_fingerprint_for_vae
+            compute_vae_encodings_fn,
+            batched=True,
+            batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
+            new_fingerprint=new_fingerprint_for_vae,
         )
 
     del text_encoders, tokenizers, vae
