@@ -245,7 +245,7 @@
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
-      title: Kandinsky
+      title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
     - local: api/pipelines/latent_consistency_models

@@ -264,6 +264,165 @@ image
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/starry_cat.png"/>
 </div>
 
+## ControlNet
+
+<Tip warning={true}>
+
+⚠️ ControlNet is only supported for Kandinsky 2.2!
+
+</Tip>
+
+ControlNet enables conditioning large pretrained diffusion models with additional inputs such as a depth map or edge detection. For example, you can condition Kandinsky 2.2 with a depth map so the model understands and preserves the structure of the depth image.
+
+Let's load an image and extract it's depth map:
+
+```py
+from diffusers.utils import load_image
+
+img = load_image(
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png"
+).resize((768, 768))
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png"/>
+</div>
+
+Then you can use the `depth-estimation` [`~transformers.Pipeline`] from 🤗 Transformers to process the image and retrieve the depth map:
+
+```py
+import torch
+import numpy as np
+
+from transformers import pipeline
+from diffusers.utils import load_image
+
+
+def make_hint(image, depth_estimator):
+    image = depth_estimator(image)["depth"]
+    image = np.array(image)
+    image = image[:, :, None]
+    image = np.concatenate([image, image, image], axis=2)
+    detected_map = torch.from_numpy(image).float() / 255.0
+    hint = detected_map.permute(2, 0, 1)
+    return hint
+
+
+depth_estimator = pipeline("depth-estimation")
+hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
+```
+
+### Text-to-image
+
+Load the prior pipeline and the [`KandinskyV22ControlnetPipeline`]:
+
+```py
+from diffusers import KandinskyV22PriorPipeline, KandinskyV22ControlnetPipeline
+
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True
+)to("cuda")
+
+pipeline = KandinskyV22ControlnetPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
+```
+
+Generate the image embeddings from a prompt and negative prompt:
+
+```py
+prompt = "A robot, 4k photo"
+
+negative_prior_prompt = "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
+
+generator = torch.Generator(device="cuda").manual_seed(43)
+image_emb, zero_image_emb = pipe_prior(
+    prompt=prompt, negative_prompt=negative_prior_prompt, generator=generator
+).to_tuple()
+```
+
+Finally, pass the image embeddings and the depth image to the [`KandinskyV22ControlnetPipeline`] to generate an image:
+
+```py
+image = pipeline(image_embeds=image_emb, negative_image_embeds=zero_image_emb, hint=hint, num_inference_steps=50, generator=generator, height=768, width=768).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/robot_cat_text2img.png"/>
+</div>
+
+### Image-to-image
+
+For image-to-image with ControlNet, you'll need to use the:
+
+- [`KandinskyV22PriorEmb2EmbPipeline`] to generate the image embeddings from a text prompt and an image
+- [`KandinskyV22ControlnetImg2ImgPipeline`] to generate an image from the initial image and the image embeddings
+
+Process and extract a depth map of an initial image of a cat with the `depth-estimation` [`~transformers.Pipeline`] from 🤗 Transformers:
+
+```py
+import torch
+import numpy as np
+
+from diffusers import KandinskyV22PriorEmb2EmbPipeline, KandinskyV22ControlnetImg2ImgPipeline
+from diffusers.utils import load_image
+from transformers import pipeline
+
+img = load_image(
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinskyv22/cat.png"
+).resize((768, 768))
+
+
+def make_hint(image, depth_estimator):
+    image = depth_estimator(image)["depth"]
+    image = np.array(image)
+    image = image[:, :, None]
+    image = np.concatenate([image, image, image], axis=2)
+    detected_map = torch.from_numpy(image).float() / 255.0
+    hint = detected_map.permute(2, 0, 1)
+    return hint
+
+
+depth_estimator = pipeline("depth-estimation")
+hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
+```
+
+Load the prior pipeline and the [`KandinskyV22ControlnetImg2ImgPipeline`]:
+
+```py
+prior_pipeline = KandinskyV22PriorEmb2EmbPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
+
+pipeline = KandinskyV22ControlnetImg2ImgPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+).to("cuda")
+```
+
+Pass a text prompt and the initial image to the prior pipeline to generate the image embeddings:
+
+```py
+prompt = "A robot, 4k photo"
+negative_prior_prompt = "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
+
+generator = torch.Generator(device="cuda").manual_seed(43)
+
+img_emb = pipe_prior(prompt=prompt, image=img, strength=0.85, generator=generator)
+negative_emb = pipe_prior(prompt=negative_prior_prompt, image=img, strength=1, generator=generator)
+```
+
+Now you can run the [`KandinskyV22ControlnetImg2ImgPipeline`] to generate an image from the initial image and the image embeddings:
+
+```py
+image = pipeline(image=img, strength=0.5, image_embeds=img_emb.image_embeds, negative_image_embeds=negative_emb.image_embeds, hint=hint, num_inference_steps=50, generator=generator, height=768, width=768).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/robot_cat.png"/>
+</div>
+
 ## Optimizations
 
 Kandinsky is unique because it requires a prior pipeline to generate the mappings, and a second pipeline to decode the latents into an image. Optimization efforts should be focused on the second pipeline because that is where the bulk of the computation is done. Here are some tips to improve Kandinsky during inference.
