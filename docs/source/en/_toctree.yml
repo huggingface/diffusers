@@ -194,6 +194,8 @@
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_sdxl
+      title: ControlNet with Stable Diffusion XL
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
