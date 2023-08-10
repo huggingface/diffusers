@@ -33,6 +33,7 @@ from .unet_2d_blocks import (
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
+from . import FabricPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -143,7 +144,7 @@ class Fabric(DiffusionPipeline):
         self,
         model_name: Optional[str] = None,
         stable_diffusion_version: str = "1.5",
-        scheduler: EulerAncestralDiscreteScheduler,
+        scheduler: EulerAncestralDiscreteScheduler = EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
         torch_dtype=torch.float32
     ):
@@ -194,28 +195,30 @@ class Fabric(DiffusionPipeline):
         return super().to(device)
 
     def initialize_prompts(self, prompts: List[str]):
-        prompt_tokens = self.tokenizer(
-            prompts,
-            return_tensors="pt",
-            max_length=self.tokenizer.model_max_length,
-            padding="max_length",
-            truncation=True,
-        )
+        # Breaking into individual prompts feels memory efficient 
+        prompt_embed_list = []
+        for prompt in prompts:
+          prompt_tokens = self.tokenizer(
+              prompt,
+              return_tensors="pt",
+              max_length=self.tokenizer.model_max_length,
+              padding="max_length",
+              truncation=True,
+          )
 
-        if (
-            hasattr(self.text_encoder.config, "use_attention_mask")
-            and self.text_encoder.config.use_attention_mask
-        ):
-            attention_mask = prompt_tokens.attention_mask.to(self.device)
-        else:
-            attention_mask = None
+          attention_mask = prompt_tokens.attention_mask.to(self.device) if (
+              hasattr(self.text_encoder.config, "use_attention_mask")
+              and self.text_encoder.config.use_attention_mask
+          ) else None
 
-        prompt_embd = self.text_encoder(
-            input_ids=prompt_tokens.input_ids.to(self.device),
-            attention_mask=attention_mask,
-        ).last_hidden_state
+          prompt_embd = self.text_encoder(
+              input_ids=prompt_tokens.input_ids.to(self.device),
+              attention_mask=attention_mask,
+          ).last_hidden_state
+          
+          prompt_embed_list.append(prompt_embd)
 
-        return prompt_embd
+        return torch.cat(prompt_embed_list, dim=0)
 
     def get_unet_hidden_states(self, z_all, t, prompt_embd):
         cached_hidden_states = []
@@ -254,11 +257,31 @@ class Fabric(DiffusionPipeline):
             return self.unet(z_all, t, encoder_hidden_states=prompt_embd)
 
         local_pos_weights = torch.linspace(
-            *pos_weights, steps=len(self.unet.down_blocks) + 1
-        )[:-1].tolist()
+            *pos_weights, steps=len(self.unet.down_blocks) + 1)[:-1]
         local_neg_weights = torch.linspace(
-            *neg_weights, steps=len(self.unet.down_blocks) + 1
-        )[:-1].tolist()
+            *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1]
+
+        def new_forward_caching(module, hidden_states, cached_hiddens, weight, is_positive):
+            cached_hs = cached_hiddens.pop(0).to(
+                hidden_states.device
+            )
+            cond_hs = torch.cat(
+                [hidden_states, cached_hs], dim=1
+            )
+            weights = weights.clone().repeat(
+                1, 1 + cached_pos_hs.shape[1] // d_model
+            )
+            weights = torch.full((cond_hs.size(0), cond_hs.size(1) // hidden_states.size(1)), 
+                weight, device=hidden_states.device)
+            weights[:, hidden_states.size(1):] = 1.0
+            out = attn_with_weights(
+                self,
+                hidden_states,
+                encoder_hidden_states=cond_hs,
+                weights=weights,
+            )
+            return out
+
 
         for block, pos_weight, neg_weight in zip(
             self.unet.down_blocks + [self.unet.mid_block] + self.unet.up_blocks,
@@ -283,45 +306,19 @@ class Fabric(DiffusionPipeline):
                             batch_size, d_model, device=device, dtype=dtype
                         )
 
+                        out_pos = self.old_forward(hidden_states)
+                        out_neg = self.old_forward(hidden_states)
+
                         if cached_pos_hiddens is not None:
-                            cached_pos_hs = cached_pos_hiddens.pop(0).to(
-                                hidden_states.device
-                            )
-                            cond_pos_hs = torch.cat(
-                                [cond_hiddens, cached_pos_hs], dim=1
-                            )
-                            pos_weights = weights.clone().repeat(
-                                1, 1 + cached_pos_hs.shape[1] // d_model
-                            )
-                            pos_weights[:, d_model:] = pos_weight
-                            out_pos = attn_with_weights(
-                                self,
-                                cond_hiddens,
-                                encoder_hidden_states=cond_pos_hs,
-                                weights=pos_weights,
-                            )
-                        else:
-                            out_pos = self.old_forward(cond_hiddens)
+                            out_pos = new_forward_caching(
+                                self, hidden_states, cached_pos_hiddens, 
+                                pos_weight, is_positive=True)
+
 
                         if cached_neg_hiddens is not None:
-                            cached_neg_hs = cached_neg_hiddens.pop(0).to(
-                                hidden_states.device
-                            )
-                            uncond_neg_hs = torch.cat(
-                                [uncond_hiddens, cached_neg_hs], dim=1
-                            )
-                            neg_weights = weights.clone().repeat(
-                                1, 1 + cached_neg_hs.shape[1] // d_model
-                            )
-                            neg_weights[:, d_model:] = neg_weight
-                            out_neg = attn_with_weights(
-                                self,
-                                uncond_hiddens,
-                                encoder_hidden_states=uncond_neg_hs,
-                                weights=neg_weights,
-                            )
-                        else:
-                            out_neg = self.old_forward(uncond_hiddens)
+                            out_neg = new_forward_caching(
+                                self, hidden_states, cached_neg_hiddens, 
+                                neg_weight, is_positive=False)
 
                         out = torch.cat([out_pos, out_neg], dim=0)
                         return out
@@ -418,17 +415,15 @@ class Fabric(DiffusionPipeline):
                 z_all = torch.cat([z_single] * 2, dim=0)
                 z_ref = torch.cat([pos_latents, neg_latents], dim=0)
 
-                weight_factor = self.get_current_weight_factor(i, denoising_step, ref_start_idx,
-                                                            ref_end_idx, min_weight, max_weight)
                 if i >= ref_start_idx and i <= ref_end_idx:
-                    weight = max_weight
+                    weight_factor = max_weight
                 else:
-                    weight = min_weight
+                    weight_factor = min_weight
 
                 pos_ws = (weight_factor, weight_factor * pos_bottleneck_scale)
                 neg_ws = (weight_factor * neg_scale, weight_factor * neg_scale * neg_bottleneck_scale)
 
-                if z_ref.size(0) > 0 and weight > 0:
+                if z_ref.size(0) > 0 and weight_factor > 0:
                     noise = torch.randn_like(z_ref)
                     if isinstance(self.scheduler, EulerAncestralDiscreteScheduler):
                         z_ref_noised = (
@@ -437,13 +432,13 @@ class Fabric(DiffusionPipeline):
                     else:
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
-                    ref_prompt_embd = torch.cat([null_prompt_emb] * (pos_latents.size(0) + neg_latents.size(0)), dim=0)
+                    ref_prompt_embd = torch.cat([null_prompt_emb] * (len(posotive_latents) + len(negative_latents)), dim=0)
 
                     cached_hidden_states = self.get_unet_hidden_states(
                         z_ref_noised, t, ref_prompt_embd
                     )
 
-                    n_pos, n_neg = pos_latents.shape[0], neg_latents.shape[0]
+                    n_pos, n_neg = positive_latents.shape[0], negative_latents.shape[0]
                     cached_pos_hs, cached_neg_hs = [], []
                     for hs in cached_hidden_states:
                         cached_pos, cached_neg = hs.split([n_pos, n_neg], dim=0)
@@ -486,7 +481,7 @@ class Fabric(DiffusionPipeline):
         y = self.pipeline.decode_latents(z)
         imgs = self.pipeline.numpy_to_pil(y)
 
-        return imgs
+        return FabricPipelineOutpur(imgs)
 
     @staticmethod
     def image_to_tensor(image: Union[str, Image.Image]):
