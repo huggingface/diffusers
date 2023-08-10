@@ -18,7 +18,6 @@ from typing import Optional, Tuple, Union
 import flax
 import jax
 import jax.numpy as jnp
-from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils_flax import (
@@ -117,7 +116,9 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             sigmas=sigmas,
         )
 
-    def scale_model_input(self, state: EulerAncestralDiscreteSchedulerState, sample: jnp.ndarray, timestep: int) -> jnp.ndarray:
+    def scale_model_input(
+        self, state: EulerAncestralDiscreteSchedulerState, sample: jnp.ndarray, timestep: int
+    ) -> jnp.ndarray:
         """
         Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
@@ -185,7 +186,8 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            state (`EulerAncestralDiscreteSchedulerState`): the `FlaxEulerAncestralDiscreteScheduler` state data class instance.
+            state (`EulerAncestralDiscreteSchedulerState`):
+                the `FlaxEulerAncestralDiscreteScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -194,15 +196,15 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxEulerAncestralDiscreteScheduler class
 
         Returns:
-            [`FlaxEulerAncestralDiscreteScheduler`] or `tuple`: [`FlaxEulerAncestralDiscreteScheduler`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxEulerAncestralDiscreteScheduler`] or `tuple`: [`FlaxEulerAncestralDiscreteScheduler`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-        
+
         (step_index,) = jnp.where(state.timesteps == timestep, size=1)
         step_index = step_index[0]
 
