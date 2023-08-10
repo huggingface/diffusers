@@ -290,11 +290,11 @@ def create_controller(edit_type:str, prompts:List[str], edit_kwargs: Dict, num_i
     if edit_type == "save":
         return AttentionStore()
 
-    local_blend_words = edit_kwargs.pop("local_blend_words", None)
-    equalizer_words = edit_kwargs.pop("equalizer_words", None) 
-    equalizer_strengths = edit_kwargs.pop("equalizer_strengths", None)
-    n_cross_replace = edit_kwargs.pop("n_cross_replace", 0.4)
-    n_self_replace = edit_kwargs.pop("n_self_replace", 0.4)
+    local_blend_words = edit_kwargs.get("local_blend_words", None)
+    equalizer_words = edit_kwargs.get("equalizer_words", None) 
+    equalizer_strengths = edit_kwargs.get("equalizer_strengths", None)
+    n_cross_replace = edit_kwargs.get("n_cross_replace", 0.4)
+    n_self_replace = edit_kwargs.get("n_self_replace", 0.4)
 
     # only replace
     if edit_type == "replace" and local_blend_words is None:
