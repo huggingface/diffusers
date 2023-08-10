@@ -22,7 +22,7 @@ The abstract from the paper is:
 
 We provide support using ControlNets with [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl.md) (SDXL). 
 
-There are not many ControlNet checkpoints that are compatible with SDXL at the moment. So, we trained one using Canny edge maps as the conditioning images. To know more, check out the [model card](https://huggingface.co/diffusers/controlnet-sdxl-1.0). We encourage you to train custom ControlNets; we provide a [training script](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md) for this.
+There are not many ControlNet checkpoints that are compatible with SDXL at the moment. So, we trained one using Canny edge maps as the conditioning images. To know more, check out the [model card](https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0). We encourage you to train custom ControlNets; we provide a [training script](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md) for this.
 
 You can find some results below:
 
