@@ -470,6 +470,7 @@ def compute_vae_encodings(batch, vae):
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format, dtype=vae.dtype).float()
+    print(f"pixel_values: {pixel_values.dtype}, vae: {vae.dtype}")
     model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
     return {"model_input": model_input.cpu()}
@@ -658,9 +659,6 @@ def main(args):
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-    accelerator.register_save_state_pre_hook(save_model_hook)
-    accelerator.register_load_state_pre_hook(load_model_hook)
-
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
@@ -748,12 +746,7 @@ def main(args):
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
+    train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
