@@ -94,9 +94,9 @@ This is the entire denoising process, and you can use this same pattern to write
 >>> from PIL import Image
 >>> import numpy as np
 
->>> image = (input / 2 + 0.5).clamp(0, 1)
->>> image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
->>> image = Image.fromarray((image * 255).round().astype("uint8"))
+>>> image = (input / 2 + 0.5).clamp(0, 1).squeeze()
+>>> image = (image.permute(1, 2, 0) * 255).round().to(torch.uint8).cpu().numpy()
+>>> image = Image.fromarray(image)
 >>> image
 ```
 
@@ -267,11 +267,11 @@ with torch.no_grad():
 Lastly, convert the image to a `PIL.Image` to see your generated image!
 
 ```py
->>> image = (image / 2 + 0.5).clamp(0, 1)
->>> image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+>>> image = (image / 2 + 0.5).clamp(0, 1).squeeze()
+>>> image = (image.permute(1, 2, 0) * 255).to(torch.uint8).cpu().numpy()
 >>> images = (image * 255).round().astype("uint8")
->>> pil_images = [Image.fromarray(image) for image in images]
->>> pil_images[0]
+>>> image = Image.fromarray(image)
+>>> image
 ```
 
 <div class="flex justify-center">
