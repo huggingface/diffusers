@@ -60,10 +60,6 @@ class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
-        import diffusers
-
-        diffusers.utils.import_utils._safetensors_available = True
-
     def test_accelerate_loading_error_message(self):
         with self.assertRaises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
