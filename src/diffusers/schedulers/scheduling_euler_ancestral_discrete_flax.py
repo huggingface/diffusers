@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+import random
 from typing import Optional, Tuple, Union
 
 import flax
@@ -164,12 +165,16 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
         sigmas = jnp.concatenate([sigmas, jnp.array([0.0], dtype=self.dtype)])
 
+        # standard deviation of the initial noise distribution
+        init_noise_sigma = sigmas.max()
+
         timesteps = timesteps.astype(jnp.int32)
 
         return state.replace(
             timesteps=timesteps,
             sigmas=sigmas,
             num_inference_steps=num_inference_steps,
+            init_noise_sigma=init_noise_sigma,
         )
 
     def step(
@@ -234,7 +239,7 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         prev_sample = sample + derivative * dt
 
         if key is None:
-            key = jax.random.PRNGKey(0)
+            key = jax.random.PRNGKey(random.randint(0, 2 ** 32 - 1)
         else:
             key = jax.random.split(key, num=1)
         noise = jax.random.normal(key, shape=model_output.shape, dtype=self.dtype)
