@@ -65,7 +65,7 @@
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: Stable Diffusion in JAX/Flax
     - local: using-diffusers/weighted_prompts
-      title: Weighting Prompts
+      title: Prompt weighting
     title: Pipelines for Inference
   - sections:
     - local: training/overview
