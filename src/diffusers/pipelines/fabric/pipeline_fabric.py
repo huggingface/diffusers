@@ -159,6 +159,11 @@ class FabricPipeline(DiffusionPipeline):
                     f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
                 )
 
+        if self._execution_device is not "cuda":
+            torch_dtype = torch.float32
+        else:
+            torch_dtype = torch_dtype if torch_dtype else torch.float16
+
         scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -174,10 +179,6 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
-        if self._execution_device is not "cuda":
-            torch_dtype = torch.float32
-        else:
-            torch_dtype = torch_dtype if torch_dtype else torch.float16
 
         self.pipeline = pipe
         self.unet = pipe.unet
