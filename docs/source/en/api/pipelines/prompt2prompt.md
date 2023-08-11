@@ -29,11 +29,13 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 
 ### ReplaceEdit
 
+With `edit_type="replace"` you can swap words in a prompt while keeping the image structure consistent.
+
 ```python
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines.prompt2prompt.pipeline_prompt2prompt import Prompt2PromptPipeline
+from diffusers.pipelines import Prompt2PromptPipeline
 
 pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
 
@@ -46,16 +48,18 @@ cross_attention_kwargs = {
     "self_replace_steps": 0.4
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### ReplaceEdit with LocalBlend
+
+With `edit_type="replace"` you can swap words in a prompt while keeping the image structure consistent. Additionally, with `local_blend_words = [<the changed words>]` you ensure only the image parts that contain that words are changed.
 
 ```python
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines.prompt2prompt.pipeline_prompt2prompt import Prompt2PromptPipeline
+from diffusers.pipelines import Prompt2PromptPipeline
 
 pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
 
@@ -69,16 +73,18 @@ cross_attention_kwargs = {
     "local_blend_words": ["turtle", "monkey"]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### RefineEdit
+
+With `edit_type="refine"` you can add words in a prompt while keeping the image structure consistent.
 
 ```python
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines.prompt2prompt.pipeline_prompt2prompt import Prompt2PromptPipeline
+from diffusers.pipelines import Prompt2PromptPipeline
 
 pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
 
@@ -91,16 +97,18 @@ cross_attention_kwargs = {
     "self_replace_steps": 0.4,
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### RefineEdit with LocalBlend
+
+With `edit_type="refine"` you can add words in a prompt while keeping the image structure consistent. Additionally, with `local_blend_words = [<added words>]` you ensure only the image parts that contain that words are  changed.
 
 ```python
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines.prompt2prompt.pipeline_prompt2prompt import Prompt2PromptPipeline
+from diffusers.pipelines import Prompt2PromptPipeline
 
 pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
 
@@ -114,16 +122,18 @@ cross_attention_kwargs = {
     "local_blend_words": ["in", "a" , "forest"]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### ReweightEdit
+
+With `edit_type="reweight"` you can modify the strength of a specific words in a prompt while keeping the image structure consistent.
 
 ```python
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines.prompt2prompt.pipeline_prompt2prompt import Prompt2PromptPipeline
+from diffusers.pipelines import Prompt2PromptPipeline
 
 pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
 
@@ -137,7 +147,7 @@ edit_kcross_attention_kwargswargs = {
     "equalizer_strengths": [5]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ## Prompt2PromptPipeline
