@@ -81,8 +81,8 @@ EXAMPLE_DOC_STRING = """
         ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
+        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 
