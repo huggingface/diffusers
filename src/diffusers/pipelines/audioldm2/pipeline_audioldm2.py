@@ -18,12 +18,22 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
+from transformers import (
+    ClapTextModelWithProjection,
+    GPT2Model,
+    RobertaTokenizer,
+    RobertaTokenizerFast,
+    SpeechT5HifiGan,
+    T5EncoderModel,
+    T5Tokenizer,
+    T5TokenizerFast,
+)
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from .modeling_audioldm2_encoder import AudioLDM2ProjectionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -75,8 +85,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: ClapTextModelWithProjection,
-        tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
+        text_encoder_1: ClapTextModelWithProjection,
+        text_encoder_2: T5EncoderModel,
+        projection_model: AudioLDM2ProjectionModel,
+        language_model: GPT2Model,
+        tokenizer_1: Union[RobertaTokenizer, RobertaTokenizerFast],
+        tokenizer_2: Union[T5Tokenizer, T5TokenizerFast],
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
@@ -85,8 +99,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         self.register_modules(
             vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
+            text_encoder_1=text_encoder_1,
+            text_encoder_2=text_encoder_2,
+            projection_model=projection_model,
+            language_model=language_model,
+            tokenizer_1=tokenizer_1,
+            tokenizer_2=tokenizer_2,
             unet=unet,
             scheduler=scheduler,
             vocoder=vocoder,

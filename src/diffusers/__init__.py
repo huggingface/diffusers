@@ -134,7 +134,7 @@ else:
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
         AudioLDM2Pipeline,
-        AudioLDM2TextEncoder,
+        AudioLDM2ProjectionModel,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,

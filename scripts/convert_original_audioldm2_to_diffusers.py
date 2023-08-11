@@ -32,6 +32,7 @@ from transformers import (
 
 from diffusers import (
     AudioLDM2Pipeline,
+    AudioLDM2ProjectionModel,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -695,17 +696,26 @@ def create_transformers_vocoder_config(original_config):
     return config
 
 
+def extract_sub_model(checkpoint, key_prefix):
+    """
+    Takes a state dict and returns the state dict for a particular sub-model.
+    """
+
+    sub_model_state_dict = {}
+    keys = list(checkpoint.keys())
+    for key in keys:
+        if key.startswith(key_prefix):
+            sub_model_state_dict[key.replace(key_prefix, "")] = checkpoint.get(key)
+
+    return sub_model_state_dict
+
+
 def convert_hifigan_checkpoint(checkpoint, config):
     """
     Takes a state dict and config, and returns a converted HiFiGAN vocoder checkpoint.
     """
     # extract state dict for vocoder
-    vocoder_state_dict = {}
-    vocoder_key = "first_stage_model.vocoder."
-    keys = list(checkpoint.keys())
-    for key in keys:
-        if key.startswith(vocoder_key):
-            vocoder_state_dict[key.replace(vocoder_key, "")] = checkpoint.get(key)
+    vocoder_state_dict = extract_sub_model(checkpoint, key_prefix="first_stage_model.vocoder.")
 
     # fix upsampler keys, everything else is correct already
     for i in range(len(config.upsample_rates)):
@@ -720,19 +730,23 @@ def convert_hifigan_checkpoint(checkpoint, config):
     return vocoder_state_dict
 
 
-def convert_t5_checkpoint(checkpoint):
-    """
-    Takes a state dict and returns the state dict for the T5 sub-model.
-    """
+def convert_projection_checkpoint(checkpoint):
+    projection_state_dict = {}
+    conditioner_state_dict = extract_sub_model(checkpoint, key_prefix="cond_stage_models.0.")
 
-    t5_state_dict = {}
-    key_prefix = "cond_stage_models.1.model."
-    keys = list(checkpoint.keys())
-    for key in keys:
-        if key.startswith(key_prefix):
-            t5_state_dict[key.replace(key_prefix, "")] = checkpoint.get(key)
+    projection_state_dict["clap_sos_embed"] = conditioner_state_dict["start_of_sequence_tokens.weight"][0]
+    projection_state_dict["t5_sos_embed"] = conditioner_state_dict["start_of_sequence_tokens.weight"][1]
 
-    return t5_state_dict
+    projection_state_dict["clap_eos_embed"] = conditioner_state_dict["end_of_sequence_tokens.weight"][0]
+    projection_state_dict["t5_eos_embed"] = conditioner_state_dict["end_of_sequence_tokens.weight"][1]
+
+    projection_state_dict["clap_projection.weight"] = conditioner_state_dict["input_sequence_embed_linear.0.weight"]
+    projection_state_dict["clap_projection.bias"] = conditioner_state_dict["input_sequence_embed_linear.0.bias"]
+
+    projection_state_dict["t5_projection.weight"] = conditioner_state_dict["input_sequence_embed_linear.1.weight"]
+    projection_state_dict["t5_projection.bias"] = conditioner_state_dict["input_sequence_embed_linear.1.bias"]
+
+    return projection_state_dict
 
 
 # Adapted from https://github.com/haoheliu/AudioLDM2/blob/81ad2c6ce015c1310387695e2dae975a7d2ed6fd/audioldm2/utils.py#L143
@@ -958,13 +972,13 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
 
     # Convert the joint audio-text encoding model: AudioLDM2 uses the same configuration and
     # tokenizer as the original CLAP model
-    config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
+    clap_config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
     clap_tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
-    converted_text_model = convert_open_clap_checkpoint(checkpoint)
-    text_model = ClapTextModelWithProjection(config)
+    converted_clap_model = convert_open_clap_checkpoint(checkpoint)
+    clap_model = ClapTextModelWithProjection(clap_config)
 
-    missing_keys, unexpected_keys = text_model.load_state_dict(converted_text_model, strict=False)
+    missing_keys, unexpected_keys = clap_model.load_state_dict(converted_clap_model, strict=False)
     # we expect not to have token_type_ids in our original state dict so let's ignore them
     missing_keys = list(set(missing_keys) - set(CLAP_EXPECTED_MISSING_KEYS))
 
@@ -983,25 +997,35 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     vocoder.load_state_dict(converted_vocoder_checkpoint)
 
     # Convert the Flan-T5 encoder model: AudioLDM2 uses the same configuration and tokenizer as the original Flan-T5 large model
-    flan_t5_config = T5Config.from_pretrained("google/flan-t5-large")
-    flan_t5 = T5EncoderModel(flan_t5_config)
+    t5_config = T5Config.from_pretrained("google/flan-t5-large")
+    converted_t5_checkpoint = extract_sub_model(checkpoint, key_prefix="cond_stage_models.1.model.")
 
-    converted_t5_checkpoint = convert_t5_checkpoint(checkpoint)
-    flan_t5.load_state_dict(converted_t5_checkpoint)
+    t5_tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
+    t5_model = T5EncoderModel(t5_config)
+    t5_model.load_state_dict(converted_t5_checkpoint)
 
     # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
     gpt2_config = GPT2Config.from_pretrained("gpt2")
-    gpt2 = GPT2Model(gpt2_config)
+    gpt2_model = GPT2Model(gpt2_config)
 
-    converted_gpt2_checkpoint = extract_submodel(checkpoint, key_prefix="")
-    gpt2.load_state_dict(converted_gpt2_checkpoint)
+    converted_gpt2_checkpoint = extract_sub_model(checkpoint, key_prefix="cond_stage_models.0.model.")
+    gpt2_model.load_state_dict(converted_gpt2_checkpoint)
+
+    # Convert the extra embedding / projection layers
+    projection_model = AudioLDM2ProjectionModel(clap_config.projection_dim, t5_config.d_model, gpt2_config.n_embd)
+
+    converted_projection_checkpoint = convert_projection_checkpoint(checkpoint)
+    projection_model.load_state_dict(converted_projection_checkpoint)
 
     # Instantiate the diffusers pipeline
     pipe = AudioLDM2Pipeline(
         vae=vae,
-        text_encoder=text_model,
-        clap_tokenizer=clap_tokenizer,
-        t5_tokenizer=t5_tokenizer,
+        text_encoder_1=clap_model,
+        text_encoder_2=t5_model,
+        projection_model=projection_model,
+        language_model=gpt2_model,
+        tokenizer_1=clap_tokenizer,
+        tokenizer_2=t5_tokenizer,
         unet=unet,
         scheduler=scheduler,
         vocoder=vocoder,

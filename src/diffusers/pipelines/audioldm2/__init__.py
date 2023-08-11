@@ -11,9 +11,9 @@ try:
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
-        AudioLDM2TextEncoder,
+        AudioLDM2ProjectionModel,
         AudioLDMPipeline,
     )
 else:
-    from .modeling_audioldm2_encoder import AudioLDM2TextEncoder
+    from .modeling_audioldm2_encoder import AudioLDM2ProjectionModel
     from .pipeline_audioldm2 import AudioLDM2Pipeline
