@@ -21,6 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .attention import BasicTransformerBlock
 from .modeling_utils import ModelMixin
+from .embeddings import Timesteps
 
 
 @dataclass
@@ -83,6 +84,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         self.proj_in = nn.Linear(in_channels, inner_dim)
+        self.frames_position_embed = Timesteps(inner_dim, True, 0)
 
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -150,6 +152,12 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
+
+        frames_pos = torch.arange(num_frames).to(hidden_states)
+        frames_pos_emb = self.frames_position_embed(frames_pos)
+        frames_pos_emb = frames_pos_emb[None, ...].expand(hidden_states.shape[0], -1, -1).to(dtype=self.dtype)
+
+        hidden_states = hidden_states + frames_pos_emb
 
         # 2. Blocks
         for block in self.transformer_blocks:
