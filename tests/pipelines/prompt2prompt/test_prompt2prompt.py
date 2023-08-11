@@ -181,7 +181,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         ),
         (
             ["A turtle", "A turtle in a forest"],
-            {"edit_type": "refine" **replace_steps},
+            {"edit_type": "refine", **replace_steps},
             [0.256, 0.232, 0.209, 0.259, 0.254, 0.229, 0.285, 0.307, 0.295]
         ),
         (
@@ -191,7 +191,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         ),
         (
             ["A smiling turtle"] * 2,
-            {"edit_type": "reweight",**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
+            {"edit_type": "reweight", **replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.006, 0.010, 0.009, 0.003, 0.011, 0.008, 0.014, 0.009, 0.000]
         ),
         # todo: include save edit?
