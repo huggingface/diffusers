@@ -188,7 +188,6 @@ class FabricPipeline(DiffusionPipeline):
         self.scheduler = scheduler
         
         self.dtype = torch_dtype
-        self.device = self._execution_device
 
     #@property
     #def device(self):
