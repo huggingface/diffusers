@@ -25,6 +25,7 @@ from ...models.attention import Attention
 from ..stable_diffusion import StableDiffusionPipeline, StableDiffusionPipelineOutput
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -162,10 +163,10 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
-        controller = create_controller(
+        self.controller = create_controller(
             prompt, cross_attention_kwargs, num_inference_steps, tokenizer=self.tokenizer, device=self.device
         )
-        self.register_attention_control(controller)  # add attention controller
+        self.register_attention_control(self.controller)  # add attention controller
 
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -247,7 +248,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # step callback
-                latents = controller.step_callback(latents)
+                latents = self.controller.step_callback(latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -352,10 +353,6 @@ def create_controller(
     n_cross_replace = cross_attention_kwargs.get("n_cross_replace", 0.4)
     n_self_replace = cross_attention_kwargs.get("n_self_replace", 0.4)
 
-    # only save
-    if edit_type == "save":
-        return AttentionStore()
-
     # only replace
     if edit_type == "replace" and local_blend_words is None:
         return AttentionReplace(
@@ -401,7 +398,7 @@ def create_controller(
             equalizer=equalizer,
         )
 
-    raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight, save.")
+    raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight.")
 
 
 class AttentionControl(abc.ABC):

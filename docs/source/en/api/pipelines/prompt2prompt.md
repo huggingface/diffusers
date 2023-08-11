@@ -18,8 +18,7 @@ The abstract from the paper is:
 
 *Recent large-scale text-driven synthesis models have attracted much attention thanks to their remarkable capabilities of generating highly diverse images that follow given text prompts. Such text-based synthesis methods are particularly appealing to humans who are used to verbally describe their intent. Therefore, it is only natural to extend the text-driven image synthesis to text-driven image editing. Editing is challenging for these generative models, since an innate property of an editing technique is to preserve most of the original image, while in the text-based models, even a small modification of the text prompt often leads to a completely different outcome. State-of-the-art methods mitigate this by requiring the users to provide a spatial mask to localize the edit, hence, ignoring the original structure and content within the masked region. In this paper, we pursue an intuitive prompt-to-prompt editing framework, where the edits are controlled by text only. To this end, we analyze a text-conditioned model in depth and observe that the cross-attention layers are the key to controlling the relation between the spatial layout of the image to each word in the prompt. With this observation, we present several applications which monitor the image synthesis by editing the textual prompt only. This includes localized editing by replacing a word, global editing by adding a specification, and even delicately controlling the extent to which a word is reflected in the image. We present our results over diverse images and prompts, demonstrating high-quality synthesis and fidelity to the edited prompts. *
 
-You can find additional information about Prompt-to-Prompt on the [project page](https://prompt-to-prompt.github.io/) and [original codebase](https://github.com/google/prompt-to-prompt/).
-**TODO:** There is no demo yet. Add one?
+You can find additional information about Prompt-to-Prompt on the [project page](https://prompt-to-prompt.github.io/), in the [original codebase](https://github.com/google/prompt-to-prompt/) and [this demo](https://huggingface.co/spaces/UmerHA/Prompt-to-Prompt).
 
 <Tip>
 Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
@@ -149,6 +148,10 @@ edit_kcross_attention_kwargswargs = {
 
 outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
 ```
+
+### Visualizing attention maps
+
+See [this GitHub gist](https://gist.github.com/UmerHA/b65bb5fb9626c9c73f3ade2869e36164) if you want to visualize the attention maps.
 
 ## Prompt2PromptPipeline
 [[autodoc]] Prompt2PromptPipeline

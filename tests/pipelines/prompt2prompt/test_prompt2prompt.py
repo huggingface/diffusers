@@ -119,7 +119,6 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             {"edit_type": "reweight", **replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.573, 0.607, 0.502, 0.504, 0.540, 0.469, 0.500, 0.486, 0.483]
         ),
-        # todo: include save edit?
         # fmt: on
     ]
 
@@ -222,7 +221,6 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
             {"edit_type": "reweight", **replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.006, 0.010, 0.009, 0.003, 0.011, 0.008, 0.014, 0.009, 0.000]
         ),
-        # todo: include save edit?
         # fmt: on
     ]
 
