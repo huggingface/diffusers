@@ -21,6 +21,22 @@ from PIL import Image
 import numpy as np
 from tqdm import tqdm
 
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+
+from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import (
+    deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...models.cross_attention import LoRACrossAttnProcessor
@@ -138,7 +154,17 @@ def attn_with_weights(
 class FabricPipeline(DiffusionPipeline):
     def __init__(
         self,
-        model_name: Optional[str] = None,
+        #model_name: Optional[str] = None,
+
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        #scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
+        requires_safety_checker: bool = True,
+
         stable_diffusion_version: str = "1.5",
         scheduler: EulerAncestralDiscreteScheduler = EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
@@ -174,20 +200,13 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
-        
-        self.register_modules(
-            vae=pipe.vae,
-            text_encoder=pipe.text_encoder,
-            tokenizer=pipe.tokenizer,
-            unet=pipe.unet,
-            scheduler=scheduler,
-        )
+        self.register_modules(unet=unet, vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler)
 
         self.pipeline = pipe
-        self.unet = pipe.unet
-        self.vae = pipe.vae
-        self.text_encoder = pipe.text_encoder
-        self.tokenizer = pipe.tokenizer
+        self.unet = unet
+        self.vae = vae
+        self.text_encoder = text_encoder
+        self.tokenizer = tokenizer
         self.scheduler = scheduler
         
         self.dtype = torch_dtype
