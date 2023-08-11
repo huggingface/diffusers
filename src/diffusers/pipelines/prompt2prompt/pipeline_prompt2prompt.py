@@ -25,6 +25,20 @@ from ...models.attention import Attention
 from ..stable_diffusion import StableDiffusionPipeline, StableDiffusionPipelineOutput
 
 
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    """
+    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
+    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
+
+
 class Prompt2PromptPipeline(StableDiffusionPipeline):
     r"""
     Args:
@@ -72,7 +86,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        guidance_rescale: float = 0.0
+        guidance_rescale: float = 0.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -154,7 +168,13 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         self.check_inputs(prompt, height, width, callback_steps)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -162,8 +182,18 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_embeddings = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
+        prompt_embeds = self._encode_prompt(
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
         )
 
         # 4. Prepare timesteps
@@ -177,7 +207,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            text_embeddings.dtype,
+            prompt_embeds.dtype,
             device,
             generator,
             latents,
@@ -195,12 +225,16 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
@@ -218,7 +252,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         image = self.decode_latents(latents)
 
         # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # 10. Convert to PIL
         if output_type == "pil":

@@ -148,7 +148,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             height=64,
             width=64,
             num_inference_steps=2,
-            generator=generator,          
+            generator=generator,
             cross_attention_kwargs=cross_attention_kwargs,
             output_type="numpy",
             return_dict=False,
