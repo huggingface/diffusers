@@ -270,19 +270,19 @@ class FabricPipeline(DiffusionPipeline):
             return self.unet(z_all, t, encoder_hidden_states=prompt_embd)
 
         local_pos_weights = torch.linspace(
-            *pos_weights, steps=len(self.unet.down_blocks) + 1)[:-1]
+            *pos_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
         local_neg_weights = torch.linspace(
-            *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1]
+            *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
 
-        def new_forward_caching(module, hidden_states, cached_hiddens, weight, is_positive):
+        def new_forward_caching(module, hidden_states, cond_hiddens, cached_hiddens, d_model, weight, is_positive):
             cached_hs = cached_hiddens.pop(0).to(
                 hidden_states.device
             )
             cond_hs = torch.cat(
-                [hidden_states, cached_hs], dim=1
+                [cond_hiddens, cached_hs], dim=1
             )
-            weights = weights.clone().repeat(
-                1, 1 + cached_pos_hs.shape[1] // d_model
+            weights = weight.clone().repeat(
+                1, 1 + cached_hs.shape[1] // d_model
             )
             weights = torch.full((cond_hs.size(0), cond_hs.size(1) // hidden_states.size(1)), 
                 weight, device=hidden_states.device)
@@ -324,13 +324,13 @@ class FabricPipeline(DiffusionPipeline):
 
                         if cached_pos_hiddens is not None:
                             out_pos = new_forward_caching(
-                                self, hidden_states, cached_pos_hiddens, 
+                                self, hidden_states, cond_hiddens, cached_pos_hiddens, d_model,
                                 pos_weight, is_positive=True)
 
 
                         if cached_neg_hiddens is not None:
                             out_neg = new_forward_caching(
-                                self, hidden_states, cached_neg_hiddens, 
+                                self, hidden_states, uncond_hiddens, cached_neg_hiddens, d_model,
                                 neg_weight, is_positive=False)
 
                         out = torch.cat([out_pos, out_neg], dim=0)
@@ -349,12 +349,12 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(images, vae, device) -> torch.tensor:
+    def preprocess_feedback_images(self, images, vae, device) -> torch.tensor:
         images_t = [self.image_to_tensor(img) for img in images]
         images_t = torch.stack(images_t).to(device, dtype=self.dtype)
         latents = (
             vae.config.scaling_factor
-            * vae.encode(iamges_t).latent_dist.sample()
+            * vae.encode(images_t).latent_dist.sample()
         )
         return latents
 
@@ -446,7 +446,7 @@ class FabricPipeline(DiffusionPipeline):
                     else:
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
-                    ref_prompt_embd = torch.cat([null_prompt_emb] * (len(posotive_latents) + len(negative_latents)), dim=0)
+                    ref_prompt_embd = torch.cat([null_prompt_emb] * (len(positive_latents) + len(negative_latents)), dim=0)
 
                     cached_hidden_states = self.get_unet_hidden_states(
                         z_ref_noised, t, ref_prompt_embd
@@ -510,5 +510,6 @@ class FabricPipeline(DiffusionPipeline):
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
         return torch.from_numpy(image).permute(2, 0, 1)
+
 
 
