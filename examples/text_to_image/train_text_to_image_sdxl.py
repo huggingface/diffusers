@@ -1132,8 +1132,7 @@ def main(args):
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
-        # Final inference
-        # Load previous pipeline
+        # Serialize pipeline.
         vae = AutoencoderKL.from_pretrained(
             vae_path,
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
@@ -1146,9 +1145,10 @@ def main(args):
         if args.prediction_type is not None:
             scheduler_args = {"prediction_type": args.prediction_type}
             pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-        pipeline = pipeline.to(accelerator.device)
+        pipeline.save_pretrained(args.output_dir)
 
         # run inference
+        pipeline = pipeline.to(accelerator.device)
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
