@@ -21,6 +21,7 @@ import re
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
+import safetensors
 import torch
 from huggingface_hub import create_repo
 from torch import Tensor, device, nn
@@ -37,7 +38,6 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
-    is_safetensors_available,
     is_torch_version,
     logging,
 )
@@ -57,9 +57,6 @@ if is_accelerate_available():
     import accelerate
     from accelerate.utils import set_module_tensor_to_device
     from accelerate.utils.versions import is_torch_version
-
-if is_safetensors_available():
-    import safetensors
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -306,9 +303,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
-        if safe_serialization and not is_safetensors_available():
-            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
-
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
@@ -482,14 +476,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():

@@ -111,7 +111,9 @@ If you prefer to run inference with code, click on the **Use in Diffusers** butt
 ```py
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline")
+pipeline = DiffusionPipeline.from_pretrained(
+    "sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline", use_safetensors=True
+)
 ```
 
 Then you can generate an image like:
@@ -119,7 +121,9 @@ Then you can generate an image like:
 ```py
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline")
+pipeline = DiffusionPipeline.from_pretrained(
+    "sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline", use_safetensors=True
+)
 pipeline.to("cuda")
 
 placeholder_token = "<my-funny-cat-token>"

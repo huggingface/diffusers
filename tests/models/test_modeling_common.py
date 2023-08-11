@@ -69,10 +69,6 @@ class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
-        import diffusers
-
-        diffusers.utils.import_utils._safetensors_available = True
-
     def test_accelerate_loading_error_message(self):
         with self.assertRaises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
@@ -109,14 +105,15 @@ class ModelUtilsTest(unittest.TestCase):
         if torch_device == "mps":
             return
 
-        import diffusers
-
-        diffusers.utils.import_utils._safetensors_available = False
+        use_safetensors = False
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
                 UNet2DConditionModel.from_pretrained(
-                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    subfolder="unet",
+                    cache_dir=tmpdirname,
+                    use_safetensors=use_safetensors,
                 )
 
             download_requests = [r.method for r in m.request_history]
@@ -125,15 +122,16 @@ class ModelUtilsTest(unittest.TestCase):
 
             with requests_mock.mock(real_http=True) as m:
                 UNet2DConditionModel.from_pretrained(
-                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    subfolder="unet",
+                    cache_dir=tmpdirname,
+                    use_safetensors=use_safetensors,
                 )
 
             cache_requests = [r.method for r in m.request_history]
             assert (
                 "HEAD" == cache_requests[0] and len(cache_requests) == 1
             ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
-
-        diffusers.utils.import_utils._safetensors_available = True
 
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
