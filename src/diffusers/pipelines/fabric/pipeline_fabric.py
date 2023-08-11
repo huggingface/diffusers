@@ -274,22 +274,20 @@ class FabricPipeline(DiffusionPipeline):
         local_neg_weights = torch.linspace(
             *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
 
-        def new_forward_caching(module, hidden_states, cond_hiddens, cached_hiddens, d_model, weight, is_positive):
+        def new_forward_caching(module, hidden_states, cond_hiddens, cached_hiddens, weight, weights):
             cached_hs = cached_hiddens.pop(0).to(
                 hidden_states.device
             )
             cond_hs = torch.cat(
                 [cond_hiddens, cached_hs], dim=1
             )
-            weights = weight.clone().repeat(
-                1, 1 + cached_hs.shape[1] // d_model
+            weights = weights.clone().repeat(
+                1, 1 + cached_hs.shape[1] // hidden_states.size(1)
             )
-            weights = torch.full((cond_hs.size(0), cond_hs.size(1) // hidden_states.size(1)), 
-                weight, device=hidden_states.device)
-            weights[:, hidden_states.size(1):] = 1.0
+            weights[:, hidden_states.size(1):] = weight
             out = attn_with_weights(
                 self,
-                hidden_states,
+                cond_hs,
                 encoder_hidden_states=cond_hs,
                 weights=weights,
             )
@@ -324,14 +322,14 @@ class FabricPipeline(DiffusionPipeline):
 
                         if cached_pos_hiddens is not None:
                             out_pos = new_forward_caching(
-                                self, hidden_states, cond_hiddens, cached_pos_hiddens, d_model,
-                                pos_weight, is_positive=True)
+                                self, hidden_states, cond_hiddens, cached_pos_hiddens, pos_weight,
+                                weights)
 
 
                         if cached_neg_hiddens is not None:
                             out_neg = new_forward_caching(
-                                self, hidden_states, uncond_hiddens, cached_neg_hiddens, d_model,
-                                neg_weight, is_positive=False)
+                                self, hidden_states, uncond_hiddens, cached_neg_hiddens, 
+                                neg_weight, weights)
 
                         out = torch.cat([out_pos, out_neg], dim=0)
                         return out
