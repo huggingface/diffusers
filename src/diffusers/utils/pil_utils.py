@@ -1,3 +1,5 @@
+from typing import List
+
 import PIL.Image
 import PIL.ImageOps
 from packaging import version
@@ -46,3 +48,17 @@ def numpy_to_pil(images):
         pil_images = [Image.fromarray(image) for image in images]
 
     return pil_images
+
+
+def make_image_grid(imgs: List[PIL.Image.Image], rows: int, cols: int, resize: int = None):
+    assert len(imgs) == rows * cols
+
+    if resize is not None:
+        imgs = [img.resize((resize, resize)) for img in imgs]
+
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
