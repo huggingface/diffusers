@@ -94,7 +94,7 @@ output = pipeline()
 But what's even better is you can load pre-existing weights into the pipeline if the pipeline structure is identical. For example, you can load the [`google/ddpm-cifar10-32`](https://huggingface.co/google/ddpm-cifar10-32) weights into the one-step pipeline:
 
 ```python
-pipeline = UnetSchedulerOneForwardPipeline.from_pretrained("google/ddpm-cifar10-32")
+pipeline = UnetSchedulerOneForwardPipeline.from_pretrained("google/ddpm-cifar10-32", use_safetensors=True)
 
 output = pipeline()
 ```
@@ -108,7 +108,9 @@ Once it is merged, anyone with `diffusers >= 0.4.0` installed can use this pipel
 ```python
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="one_step_unet")
+pipe = DiffusionPipeline.from_pretrained(
+    "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", use_safetensors=True
+)
 pipe()
 ```
 
@@ -117,7 +119,9 @@ Another way to share your community pipeline is to upload the `one_step_unet.py`
 ```python
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="stevhliu/one_step_unet")
+pipeline = DiffusionPipeline.from_pretrained(
+    "google/ddpm-cifar10-32", custom_pipeline="stevhliu/one_step_unet", use_safetensors=True
+)
 ```
 
 Take a look at the following table to compare the two sharing workflows to help you decide the best option for you:
@@ -161,6 +165,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     feature_extractor=feature_extractor,
     scheduler=scheduler,
     torch_dtype=torch.float16,
+    use_safetensors=True,
 )
 ```
 
