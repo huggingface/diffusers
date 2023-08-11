@@ -58,6 +58,24 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+def prepare_inputs_for_generation(
+    inputs_embeds,
+    attention_mask=None,
+    past_key_values=None,
+    **kwargs,
+):
+    if past_key_values is not None:
+        # only last token for inputs_embeds if past is defined in kwargs
+        inputs_embeds = inputs_embeds[:, -1:]
+
+    return {
+        "inputs_embeds": inputs_embeds,
+        "attention_mask": attention_mask,
+        "past_key_values": past_key_values,
+        "use_cache": kwargs.get("use_cache"),
+    }
+
+
 class AudioLDM2Pipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-audio generation using AudioLDM2.
@@ -68,18 +86,32 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
-            Frozen text-encoder (`ClapTextModelWithProjection`, specifically the
-            [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
-        tokenizer ([`PreTrainedTokenizer`]):
-            A [`~transformers.RobertaTokenizer`] to tokenize text.
+        text_encoder_1 ([`~transformers.ClapTextModelWithProjection`]):
+            First frozen text-encoder. AudioLDM2 uses the text portion of the joint audio-text embedding model
+            [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.CLAPTextModelWithProjection),
+            specifically the [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
+        text_encoder_2 ([`~transformers.T5EncoderModel`]):
+            Second frozen text-encoder. AudioLDM2 uses the encoder of
+            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
+            [google/flan-t5-large](https://huggingface.co/google/flan-t5-large) variant.
+        projection_model ([`AudioLDM2ProjectionModel`]):
+            A trained model used to linearly project the hidden-states from the first and second text encoder models
+            and insert learned SOS and EOS token embeddings. The projected hidden-states from the two text encoders are
+            concatenated to give the input to the language model.
+        language_model ([`~transformers.GPT2Model`]):
+            An auto-regressive language model used to generate a sequence of hidden-states conditioned on the projected
+            outputs from the two text encoders.
+        tokenizer_1 ([`~transformers.RobertaTokenizer`]):
+            Tokenizer to tokenize text for the first frozen text-encoder.
+        tokenizer_2 ([`~transformers.T5Tokenizer`]):
+            Tokenizer to tokenize text for the second frozen text-encoder.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         vocoder ([`~transformers.SpeechT5HifiGan`]):
-            Vocoder of class `SpeechT5HifiGan`.
+            Vocoder of class `SpeechT5HifiGan` to convert the mel-spectrogram latents to the final audio waveform.
     """
 
     def __init__(
@@ -127,7 +159,51 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
-    def _encode_prompt(
+    def generate(
+        self,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        max_new_tokens: Optional[int] = None,
+        **model_kwargs,
+    ):
+        """
+
+        Generates a sequence of hidden-states from the language model, conditioned on the embedding inputs.
+
+        Parameters:
+            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+                The sequence used as a prompt for the generation.
+            max_new_tokens (`int`, *optional*):
+                Number of new tokens to generate. If un-specified, defaults to the model attribute `max_new_tokens`.
+            model_kwargs (`Dict[str, Any]`, *optional*):
+                Ad hoc parametrization of additional model-specific kwargs that will be forwarded to the `forward`
+                function of the model.
+
+        Return:
+            `inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+                The sequence of generated hidden-states.
+        """
+        # TODO(SG): how do we use a default max new tokens?
+        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.max_new_tokens
+        steps = 3 * max_new_tokens // 4
+
+        for _ in range(steps):
+            # prepare model inputs
+            model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
+
+            # forward pass to get next hidden states
+            output = self.language_model(**model_inputs, return_dict=True)
+
+            next_hidden_states = output.last_hidden_state
+
+            # Update the model input
+            inputs_embeds = torch.cat([inputs_embeds, next_hidden_states[:, -1:, :]], dim=1)
+
+            # Update generated hidden states, model inputs, and length for next step
+            model_kwargs = self.language_model._update_model_kwargs_for_generation(output, model_kwargs)
+
+        return inputs_embeds[:, -max_new_tokens:, :]
+
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -168,38 +244,60 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # Define tokenizers and text encoders
+        tokenizers = [self.tokenizer_1, self.tokenizer_2]
+        text_encoders = [self.text_encoder_1, self.text_encoder_2]
+
         if prompt_embeds is None:
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            attention_mask = text_inputs.attention_mask
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+            prompt_embeds_list = []
+            attention_mask_list = []
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                text_inputs = tokenizer(
+                    prompt,
+                    padding="max_length" if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast)) else True,
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
                 )
-                logger.warning(
-                    "The following part of your input was truncated because CLAP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                text_input_ids = text_inputs.input_ids
+                attention_mask = text_inputs.attention_mask
+                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                    text_input_ids, untruncated_ids
+                ):
+                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
+                    logger.warning(
+                        f"The following part of your input was truncated because {text_encoder.config.model_type} can "
+                        f"only handle sequences up to {tokenizer.model_max_length} tokens: {removed_text}"
+                    )
+
+                # TODO(SG): truncate sequence from t5 if it exceeds GPT2 max length
+
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask.to(device),
                 )
+                prompt_embeds = prompt_embeds[0]
+                if text_encoder.config.model_type == "clap_text_model":
+                    # CLAP requires additional L_2 normalization over each hidden-state
+                    prompt_embeds = F.normalize(prompt_embeds, dim=-1)
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask.to(device),
+                prompt_embeds_list.append(prompt_embeds)
+                attention_mask_list.append(attention_mask)
+
+            projection_output = self.projection_model(
+                clap_hidden_states=prompt_embeds_list[0],
+                t5_hidden_states=prompt_embeds_list[1],
+                clap_attention_mask=attention_mask_list[0],
+                t5_attention_mask=attention_mask_list[1],
             )
-            prompt_embeds = prompt_embeds.text_embeds
-            # additional L_2 normalization over each hidden-state
-            prompt_embeds = F.normalize(prompt_embeds, dim=-1)
+            prompt_embeds = projection_output.hidden_states
+            attention_mask = projection_output.hidden_states
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            prompt_embeds = self.generate(prompt_embeds, attention_mask=attention_mask, max_new_tokens=8)
+
+        prompt_embeds = prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
         (
             bs_embed,
@@ -230,31 +328,50 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+            negative_prompt_embeds_list = []
+            negative_attention_mask_list = []
+            for prompt_embed, tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                uncond_input = self.tokenizer(
+                    uncond_tokens,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
 
-            uncond_input_ids = uncond_input.input_ids.to(device)
-            attention_mask = uncond_input.attention_mask.to(device)
+                uncond_input_ids = uncond_input.input_ids.to(device)
+                attention_mask = uncond_input.attention_mask.to(device)
 
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input_ids,
-                attention_mask=attention_mask,
+                negative_prompt_embeds = self.text_encoder(
+                    uncond_input_ids,
+                    attention_mask=attention_mask,
+                )
+                negative_prompt_embeds = negative_prompt_embeds.text_embeds
+                if text_encoder.config.model_type == "clap_text_model":
+                    # CLAP requires additional L_2 normalization over each hidden-state
+                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)
+
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+                negative_attention_mask_list.append(attention_mask)
+
+            projection_output = self.projection_model(
+                clap_hidden_states=negative_prompt_embeds_list[0],
+                t5_hidden_states=negative_prompt_embeds_list[1],
+                clap_attention_mask=negative_attention_mask_list[0],
+                t5_attention_mask=negative_attention_mask_list[1],
             )
-            negative_prompt_embeds = negative_prompt_embeds.text_embeds
-            # additional L_2 normalization over each hidden-state
-            negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)
+            negative_prompt_embeds = projection_output.hidden_states
+            attention_mask = projection_output.hidden_states
+
+            negative_prompt_embeds = self.generate(
+                negative_prompt_embeds, attention_mask=attention_mask, max_new_tokens=8
+            )
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len)
@@ -501,7 +618,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_waveforms_per_prompt,

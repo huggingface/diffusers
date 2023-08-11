@@ -1001,6 +1001,8 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     converted_t5_checkpoint = extract_sub_model(checkpoint, key_prefix="cond_stage_models.1.model.")
 
     t5_tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
+    # hard-coded in the original implementation (i.e. not retrievable from the config)
+    t5_tokenizer.model_max_length = 128
     t5_model = T5EncoderModel(t5_config)
     t5_model.load_state_dict(converted_t5_checkpoint)
 
