@@ -312,7 +312,7 @@ depth_estimator = pipeline("depth-estimation")
 hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
 ```
 
-### Text-to-image
+### Text-to-image [[controlnet-text-to-image]]
 
 Load the prior pipeline and the [`KandinskyV22ControlnetPipeline`]:
 
@@ -352,7 +352,7 @@ image
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/robot_cat_text2img.png"/>
 </div>
 
-### Image-to-image
+### Image-to-image [[controlnet-image-to-image]]
 
 For image-to-image with ControlNet, you'll need to use the:
 

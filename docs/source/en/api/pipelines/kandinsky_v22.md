@@ -19,7 +19,7 @@ The original codebase can be found at [ai-forever/Kandinsky-2](https://github.co
 
 <Tip>
 
-Check out the [Kandinsky Community](https://huggingface.co/kandinsky-community) organization oon the Hub for the official model checkpoints for tasks like text-to-image, image-to-image, and inpainting.
+Check out the [Kandinsky Community](https://huggingface.co/kandinsky-community) organization on the Hub for the official model checkpoints for tasks like text-to-image, image-to-image, and inpainting.
 
 </Tip>
 
