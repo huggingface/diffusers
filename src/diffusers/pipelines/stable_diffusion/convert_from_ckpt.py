@@ -783,6 +783,8 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
             text_model = CLIPTextModel(config)
+    else:
+        text_model = text_encoder
 
     keys = list(checkpoint.keys())
 
