@@ -26,7 +26,7 @@ Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/r
 from diffusers import DiffusionPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
-pipeline = DiffusionPipeline.from_pretrained(model_id)
+pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 
 The example prompt you'll use is a portrait of an old warrior chief, but feel free to use your own prompt:
@@ -75,7 +75,7 @@ Let's start by loading the model in `float16` and generate an image:
 ```python
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipeline = pipeline.to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 image = pipeline(prompt, generator=generator).images[0]
