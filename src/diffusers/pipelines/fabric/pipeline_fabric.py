@@ -19,6 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
@@ -181,13 +182,13 @@ class FabricPipeline(DiffusionPipeline):
         self.scheduler = scheduler
         self.dtype = torch_dtype
 
-    @property
-    def device(self):
-        return next(self.parameters()).device
+    #@property
+    #def device(self):
+    #    return next(self.parameters()).device
 
-    def to(self, device):
-        self.pipeline.to(device)
-        return super().to(device)
+    #def to(self, device):
+    #    self.pipeline.to(device)
+    #    return super().to(device)
 
     def initialize_prompts(self, prompts: List[str]):
         # Breaking into individual prompts feels memory efficient 
@@ -331,9 +332,9 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(images, vae) -> torch.tensor:
+    def preprocess_feedback_images(images, vae, device) -> torch.tensor:
         images_t = [self.image_to_tensor(img) for img in images]
-        images_t = torch.stack(images_t).to(self.device, dtype=self.dtype)
+        images_t = torch.stack(images_t).to(device, dtype=self.dtype)
         latents = (
             vae.config.scaling_factor
             * vae.encode(iamges_t).latent_dist.sample()
@@ -344,10 +345,10 @@ class FabricPipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        liked: Optional[List[Image.Image]] = None,
-        disliked: Optional[List[Image.Image]] = None,
+        prompt: Optional[Union[str, List[str]]] = "",
+        negative_prompt: Optional[Union[str, List[str]]] = "",
+        liked: Optional[List[Image.Image]] = [],
+        disliked: Optional[List[Image.Image]] = [],
         random_seed: int = 42,
         n_images: int = 1,
         guidance_scale: float = 8.0,
@@ -364,15 +365,16 @@ class FabricPipeline(DiffusionPipeline):
         Generate a trajectory of images with binary feedback.
         The feedback can be given as a list of liked and disliked images.
         """
-
         if random_seed is not None:
             torch.manual_seed(random_seed)
+        
+        device = self._execution_device
 
-        latent_noise = torch.randn(n_images, 4, 64, 64, device=self.device, dtype=self.dtype)
+        latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=self.dtype)
 
-        positive_letents = self.preprocess_feedback_images(liked,self.vae) if liked and len(liked)>0 else torch.tensor([], device=self.device, dtype=self.dtype)
+        positive_latents = self.preprocess_feedback_images(liked,self.vae,device) if liked and len(liked)>1 else torch.tensor([], device=device, dtype=self.dtype)
 
-        negative_letents =  self.preprocess_feedback_images(disliked,self.vae) if disliked and len(disliked)>0 else torch.tensor([], device=self.device, dtype=self.dtype)
+        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=self.dtype)
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
@@ -388,7 +390,7 @@ class FabricPipeline(DiffusionPipeline):
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
-        self.scheduler.set_timesteps(denoising_steps, device=self.device)
+        self.scheduler.set_timesteps(denoising_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         latent_noise = latent_noise * self.scheduler.init_noise_sigma
@@ -408,7 +410,7 @@ class FabricPipeline(DiffusionPipeline):
 
                 z_single = self.scheduler.scale_model_input(latent_noise, t)
                 z_all = torch.cat([z_single] * 2, dim=0)
-                z_ref = torch.cat([pos_latents, neg_latents], dim=0)
+                z_ref = torch.cat([positive_latents, negative_latents], dim=0)
 
                 if i >= ref_start_idx and i <= ref_end_idx:
                     weight_factor = max_weight
@@ -466,14 +468,14 @@ class FabricPipeline(DiffusionPipeline):
                 noise_cond, noise_uncond = unet_out.chunk(2)
                 guidance = noise_cond - noise_uncond
                 noise_pred = noise_uncond + guidance_scale * guidance
-                z = self.scheduler.step(noise_pred, t, z).prev_sample
+                latent_noise = self.scheduler.step(noise_pred, t, latent_noise).prev_sample
 
                 if i == len(timesteps) - 1 or (
                     (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
                 ):
                     pbar.update()
 
-        y = self.pipeline.decode_latents(z)
+        y = self.pipeline.decode_latents(latent_noise)
         imgs = self.pipeline.numpy_to_pil(y)
 
         return FabricPipelineOutpur(imgs)
@@ -491,3 +493,4 @@ class FabricPipeline(DiffusionPipeline):
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
         return torch.from_numpy(image).permute(2, 0, 1)
+
