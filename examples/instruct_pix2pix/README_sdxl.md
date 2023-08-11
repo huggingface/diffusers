@@ -33,7 +33,7 @@ export DATASET_ID="fusing/instructpix2pix-1000-samples"
 Now, we can launch training:
 
 ```bash
-python train_instruct_pix2pix_sdxl.py \
+accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --enable_xformers_memory_efficient_attention \
@@ -50,7 +50,7 @@ Additionally, we support performing validation inference to monitor training pro
 with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 
 ```bash
-python train_instruct_pix2pix_sdxl.py \
+accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
@@ -79,7 +79,7 @@ python train_instruct_pix2pix_sdxl.py \
 for running distributed training with `accelerate`. Here is an example command:
 
 ```bash 
-accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
+accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
@@ -155,7 +155,7 @@ We aim to understand the differences resulting from the use of SD-1.5 and SDXL-0
 export MODEL_NAME="runwayml/stable-diffusion-v1-5" or "stabilityai/stable-diffusion-xl-base-0.9"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-CUDA_VISIBLE_DEVICES=1 python train_instruct_pix2pix.py \
+accelerate launch train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --use_ema \
