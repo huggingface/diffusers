@@ -142,7 +142,7 @@ class FabricPipeline(DiffusionPipeline):
         stable_diffusion_version: str = "1.5",
         scheduler: EulerAncestralDiscreteScheduler = EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
-        torch_dtype=torch.float32
+        torch_dtype = None,
     ):
         super().__init__()
 
@@ -174,13 +174,20 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
+        if self._execution_device is not "cuda":
+            torch_dtype = torch.float32
+        else:
+            torch_dtype = torch_dtype if torch_dtype else torch.float16
+
         self.pipeline = pipe
         self.unet = pipe.unet
         self.vae = pipe.vae
         self.text_encoder = pipe.text_encoder
         self.tokenizer = pipe.tokenizer
         self.scheduler = scheduler
+        
         self.dtype = torch_dtype
+        self.device = self._execution_device
 
     #@property
     #def device(self):
@@ -190,7 +197,7 @@ class FabricPipeline(DiffusionPipeline):
     #    self.pipeline.to(device)
     #    return super().to(device)
 
-    def initialize_prompts(self, prompts: List[str]):
+    def initialize_prompts(self, prompts: List[str], device):
         # Breaking into individual prompts feels memory efficient 
         prompt_embed_list = []
         for prompt in prompts:
@@ -202,13 +209,13 @@ class FabricPipeline(DiffusionPipeline):
               truncation=True,
           )
 
-          attention_mask = prompt_tokens.attention_mask.to(self.device) if (
+          attention_mask = prompt_tokens.attention_mask.to(device) if (
               hasattr(self.text_encoder.config, "use_attention_mask")
               and self.text_encoder.config.use_attention_mask
           ) else None
 
           prompt_embd = self.text_encoder(
-              input_ids=prompt_tokens.input_ids.to(self.device),
+              input_ids=prompt_tokens.input_ids.to(device),
               attention_mask=attention_mask,
           ).last_hidden_state
           
@@ -386,7 +393,7 @@ class FabricPipeline(DiffusionPipeline):
             assert len(negative_prompt) == n_images
 
         
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""]).split([n_images, n_images, 1])
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([n_images, n_images, 1])
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
