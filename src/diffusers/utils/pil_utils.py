@@ -50,7 +50,7 @@ def numpy_to_pil(images):
     return pil_images
 
 
-def make_image_grid(imgs: List[PIL.Image.Image], rows: int, cols: int, resize: int = None):
+def make_image_grid(imgs: List[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:
     assert len(imgs) == rows * cols
 
     if resize is not None:
