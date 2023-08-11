@@ -13,21 +13,20 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
-from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention import GatedSelfAttentionDense
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -49,6 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableDiffusionGLIGENPipeline
         >>> from diffusers.utils import load_image
 
+        >>> # Insert objects described by text at the region defined by bounding boxes
         >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
         ...     "masterful/gligen-1-4-inpainting-text-box", variant="fp16", torch_dtype=torch.float16
         ... )
@@ -68,12 +68,36 @@ EXAMPLE_DOC_STRING = """
         ...     gligen_inpaint_image=input_image,
         ...     gligen_boxes=boxes,
         ...     gligen_scheduled_sampling_beta=1,
-        ...     output_type="numpy",
+        ...     output_type="np",
         ...     num_inference_steps=50,
         ... ).images
 
         >>> images = torch.stack([torch.from_numpy(image) for image in images]).permute(0, 3, 1, 2)
         >>> torchvision.utils.save_image(images, "./gligen-1-4-inpainting-text-box.jpg", nrow=1, normalize=False)
+
+        >>> # Generate an image described by the prompt and
+        >>> # insert objects described by text at the region defined by bounding boxes
+        >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
+        ...     "masterful/gligen-1-4-generation-text-box", variant="fp16", torch_dtype=torch.float16
+        ... )
+        >>> pipe = gen_pipe.to("cuda")
+
+        >>> prompt = "a waterfall and a modern high speed train running through the tunnel in a beautiful forest with fall foliage"
+        >>> boxes = [[0.1387, 0.2051, 0.4277, 0.7090], [0.4980, 0.4355, 0.8516, 0.7266]]
+        >>> phrases = ["a waterfall", "a modern high speed train running through the tunnel"]
+
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     num_images_per_prompt=1,
+        ...     gligen_phrases=phrases,
+        ...     gligen_boxes=boxes,
+        ...     gligen_scheduled_sampling_beta=1,
+        ...     output_type="np",
+        ...     num_inference_steps=50,
+        ... ).images
+
+        >>> images = torch.stack([torch.from_numpy(image) for image in images]).permute(0, 3, 1, 2)
+        >>> torchvision.utils.save_image(images, "./gligen-1-4-generation-text-box.jpg", nrow=1, normalize=False)
         ```
 """
 
@@ -119,33 +143,6 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
-
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -161,27 +158,6 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
-
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
-            deprecation_message = (
-                "The configuration file of the unet has set the default `sample_size` to smaller than"
-                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
-                " in the config might lead to incorrect results in future versions. If you have downloaded this"
-                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
-                " the `unet/config.json` file"
-            )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(unet.config)
-            new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -494,6 +470,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -512,11 +489,31 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
         return latents
 
     def enable_fuser(self, enabled=True):
-        from diffusers.models.attention import GatedSelfAttentionDense
-
         for module in self.unet.modules():
             if type(module) is GatedSelfAttentionDense:
                 module.enabled = enabled
+
+    def draw_inpaint_mask_from_boxes(self, boxes, size):
+        inpaint_mask = torch.ones(size[0], size[1])
+        for box in boxes:
+            x0, x1 = box[0] * size[0], box[2] * size[0]
+            y0, y1 = box[1] * size[1], box[3] * size[1]
+            inpaint_mask[int(y0) : int(y1), int(x0) : int(x1)] = 0
+        return inpaint_mask
+
+    def crop(self, im, new_width, new_height):
+        width, height = im.size
+        left = (width - new_width) / 2
+        top = (height - new_height) / 2
+        right = (width + new_width) / 2
+        bottom = (height + new_height) / 2
+        return im.crop((left, top, right, bottom))
+
+    def target_size_center_crop(self, im, new_hw):
+        width, height = im.size
+        if width != height:
+            im = self.crop(im, min(height, width), min(height, width))
+        return im.resize((new_hw, new_hw), PIL.Image.LANCZOS)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -674,19 +671,18 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             latents,
         )
 
-        def draw_inpaint_mask_from_boxes(boxes, size):
-            inpaint_mask = torch.ones(size[0], size[1])
-            for box in boxes:
-                x0, x1 = box[0] * size[0], box[2] * size[0]
-                y0, y1 = box[1] * size[1], box[3] * size[1]
-                inpaint_mask[int(y0) : int(y1), int(x0) : int(x1)] = 0
-            return inpaint_mask
-
         # 5.1 Prepare GLIGEN variables
         if gligen_phrases is not None:
             assert len(gligen_phrases) == len(gligen_boxes)
             assert batch_size == 1
             max_objs = 30
+            if len(gligen_boxes) > max_objs:
+                warnings.warn(
+                    f"More that {max_objs} objects found. Only first {max_objs} objects will be processed.",
+                    FutureWarning,
+                )
+                gligen_phrases = gligen_phrases[:max_objs]
+                gligen_boxes = gligen_boxes[:max_objs]
             _boxes = gligen_boxes
             # prepare batched input to the PositionNet (boxes, phrases, mask)
             # Get tokens for phrases from pre-trained CLIPTokenizer
@@ -726,22 +722,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 # if the given input image is not of the same size as expected by VAE
                 # center crop and resize the input image to expected shape
                 if gligen_inpaint_image.size != (self.vae.sample_size, self.vae.sample_size):
-
-                    def crop(im, new_width, new_height):
-                        width, height = im.size
-                        left = (width - new_width) / 2
-                        top = (height - new_height) / 2
-                        right = (width + new_width) / 2
-                        bottom = (height + new_height) / 2
-                        return im.crop((left, top, right, bottom))
-
-                    def target_size_center_crop(im, new_hw):
-                        width, height = im.size
-                        if width != height:
-                            im = crop(im, min(height, width), min(height, width))
-                        return im.resize((new_hw, new_hw), PIL.Image.LANCZOS)
-
-                    gligen_inpaint_image = target_size_center_crop(gligen_inpaint_image, self.vae.sample_size)
+                    gligen_inpaint_image = self.target_size_center_crop(gligen_inpaint_image, self.vae.sample_size)
 
                 gligen_inpaint_image = torch.from_numpy(np.asarray(gligen_inpaint_image))
                 # Convert a single image into a batch of images with a batch size of 1
@@ -757,7 +738,9 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                 # Generate an inpainting mask
                 # pixel value = 0, where the object is present (defined by bounding boxes above)
                 #               1, everywhere else
-                gligen_inpaint_mask = draw_inpaint_mask_from_boxes(_boxes[:n_objs], gligen_inpaint_latent.shape[2:])
+                gligen_inpaint_mask = self.draw_inpaint_mask_from_boxes(
+                    _boxes[:n_objs], gligen_inpaint_latent.shape[2:]
+                )
                 gligen_inpaint_mask = gligen_inpaint_mask.to(
                     dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device
                 )
