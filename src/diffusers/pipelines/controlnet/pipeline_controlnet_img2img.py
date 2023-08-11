@@ -116,17 +116,12 @@ def prepare_image(image):
     return image
 
 
-class StableDiffusionControlNetImg2ImgPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
-):
+class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-
-    In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
 
     Args:
         vae ([`AutoencoderKL`]):
