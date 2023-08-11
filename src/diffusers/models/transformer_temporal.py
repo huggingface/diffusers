@@ -20,8 +20,8 @@ from torch import nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .attention import BasicTransformerBlock
-from .modeling_utils import ModelMixin
 from .embeddings import Timesteps
+from .modeling_utils import ModelMixin
 
 
 @dataclass
