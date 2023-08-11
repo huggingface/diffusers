@@ -96,18 +96,6 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            edit_type (`str`, *optional*, defaults to `save`):
-                The edit type to apply. Can be either of `replace`, `refine`, `reweight`, or `save`.
-            edit_kwargs (`Dict`, *optional*, defaults to `{}`):
-                The keyword arguments to configure the edit:
-                - n_cross_replace (`int`): Number of diffusion steps in which cross attention should be replaced
-                - n_self_replace (`int`): Number of diffusion steps in which self attention should be replaced
-                - local_blend_words(`List[str]`, *optional*, default to `None`): Determines which area should be
-                  changed. If None, then the whole image can be changed.
-                - equalizer_words(`List[str]`, *optional*, default to `None`): Required for edit type `reweight`.
-                  Determines which words should be enhanced.
-                - equalizer_strengths (`List[float]`, *optional*, default to `None`) Required for edit type `reweight`.
-                  Determines which how much the words in `equalizer_words` should be enhanced.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -146,7 +134,26 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
+                The keyword arguments to configure the edit are:
+                - edit_type (`str`). The edit type to apply. Can be either of `replace`, `refine`, `reweight`.
+                - n_cross_replace (`int`): Number of diffusion steps in which cross attention should be replaced
+                - n_self_replace (`int`): Number of diffusion steps in which self attention should be replaced
+                - local_blend_words(`List[str]`, *optional*, default to `None`): Determines which area should be
+                  changed. If None, then the whole image can be changed.
+                - equalizer_words(`List[str]`, *optional*, default to `None`): Required for edit type `reweight`.
+                  Determines which words should be enhanced.
+                - equalizer_strengths (`List[float]`, *optional*, default to `None`) Required for edit type `reweight`.
+                  Determines which how much the words in `equalizer_words` should be enhanced.
+
+            guidance_rescale (`float`, *optional*, defaults to 0.7):
+                Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR.
+            
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -249,14 +256,24 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Post-processing
-        image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
 
         # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        # 10. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image, has_nsfw_concept)
