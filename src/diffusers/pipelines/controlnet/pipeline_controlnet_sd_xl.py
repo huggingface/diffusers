@@ -672,6 +672,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
+        use_dynamic_scale: bool = False,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -726,6 +727,11 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            use_dynamic_scale (`bool`, *optional*, defaults to `False`):
+                Indicates whether to enable dynamic guidance scale.
+                When set to `True`, the model will dynamically adjust the `guidance_scale` during the generation
+                process based on the evolving conditions of the input and model state. Dynamic scaling can potentially
+                lead to images with richer and more vibrant colors.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -1006,7 +1012,12 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    if use_dynamic_scale:
+                        # To preserve the original parameters, subtract 1 is used here to represent a percentage.
+                        dynamic_w = (guidance_scale - 1) / (torch.norm(noise_pred_text - noise_pred_uncond) / torch.norm(noise_pred_text))
+                        noise_pred = noise_pred_uncond + dynamic_w * (noise_pred_text - noise_pred_uncond)
+                    else:
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
