@@ -139,7 +139,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             num_inference_steps=2,
             generator=generator,
             cross_attention_kwargs=cross_attention_kwargs,
-            output_type="numpy",
+            output_type="np",
         ).images
 
         generator = torch.Generator(device=device).manual_seed(0)
@@ -150,7 +150,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             num_inference_steps=2,
             generator=generator,
             cross_attention_kwargs=cross_attention_kwargs,
-            output_type="numpy",
+            output_type="np",
             return_dict=False,
         )[0]
 
@@ -162,6 +162,34 @@ class Prompt2PrompteFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_fast_inference_multiple_prompts(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = Prompt2PromptPipeline(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompts = [
+            "A turtle playing with a ball",
+            "A monkey playing with a ball",
+            "A dog playing with a ball",
+            "A cat playing with a ball",
+        ]
+        cross_attention_kwargs = {"edit_type": "replace", **replace_steps}
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image = pipe(
+            prompts,
+            height=64,
+            width=64,
+            num_inference_steps=2,
+            generator=generator,
+            cross_attention_kwargs=cross_attention_kwargs,
+            output_type="np",
+        ).images
+
+        assert image.shape == (4, 64, 64, 3)
 
 
 @slow
@@ -214,7 +242,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
             num_inference_steps=50,
             generator=generator,
             cross_attention_kwargs=cross_attention_kwargs,
-            output_type="numpy",
+            output_type="np",
         ).images
 
         image_slice = image[0, -3:, -3:, -1]
