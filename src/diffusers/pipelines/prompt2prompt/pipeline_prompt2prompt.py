@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -58,8 +58,6 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         prompt: Union[str, List[str]],
         height: Optional[int] = None,
         width: Optional[int] = None,
-        edit_type: str = "save",
-        edit_kwargs: Dict = {},
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -67,10 +65,14 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -140,7 +142,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
         """
 
         controller = create_controller(
-            edit_type, prompt, edit_kwargs, num_inference_steps, tokenizer=self.tokenizer, device=self.device
+            prompt, cross_attention_kwargs, num_inference_steps, tokenizer=self.tokenizer, device=self.device
         )
         self.register_attention_control(controller)  # add attention controller
 
@@ -290,17 +292,18 @@ class P2PCrossAttnProcessor:
 
 
 def create_controller(
-    edit_type: str, prompts: List[str], edit_kwargs: Dict, num_inference_steps: int, tokenizer, device
+    prompts: List[str], cross_attention_kwargs: Dict, num_inference_steps: int, tokenizer, device
 ) -> AttentionControl:
+    edit_type = cross_attention_kwargs.get("edit_type", None)
+    local_blend_words = cross_attention_kwargs.get("local_blend_words", None)
+    equalizer_words = cross_attention_kwargs.get("equalizer_words", None)
+    equalizer_strengths = cross_attention_kwargs.get("equalizer_strengths", None)
+    n_cross_replace = cross_attention_kwargs.get("n_cross_replace", 0.4)
+    n_self_replace = cross_attention_kwargs.get("n_self_replace", 0.4)
+
     # only save
     if edit_type == "save":
         return AttentionStore()
-
-    local_blend_words = edit_kwargs.get("local_blend_words", None)
-    equalizer_words = edit_kwargs.get("equalizer_words", None)
-    equalizer_strengths = edit_kwargs.get("equalizer_strengths", None)
-    n_cross_replace = edit_kwargs.get("n_cross_replace", 0.4)
-    n_self_replace = edit_kwargs.get("n_self_replace", 0.4)
 
     # only replace
     if edit_type == "replace" and local_blend_words is None:

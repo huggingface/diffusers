@@ -96,32 +96,27 @@ class Prompt2PrompteFastTests(unittest.TestCase):
         # fmt: off
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
-            "replace",
-            {**replace_steps},
+            {"edit_type": "replace", **replace_steps},
             [0.582, 0.610, 0.503, 0.507, 0.542, 0.471, 0.498, 0.490, 0.487]
         ),
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
-            "replace",
-            {**replace_steps, "local_blend_words": ["turtle", "monkey"]},
+            {"edit_type": "replace", **replace_steps, "local_blend_words": ["turtle", "monkey"]},
             [0.582, 0.610, 0.503, 0.507, 0.542, 0.471, 0.498, 0.490, 0.487]
         ),
         (
             ["A turtle", "A turtle in a forest"],
-            "refine",
-            {**replace_steps},
+            {"edit_type": "refine", **replace_steps},
             [0.571, 0.605, 0.499, 0.502, 0.541, 0.468, 0.500, 0.484, 0.483]
         ),
         (
             ["A turtle", "A turtle in a forest"],
-            "refine",
-            {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
+            {"edit_type": "refine", **replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [0.571, 0.605, 0.499, 0.502, 0.541, 0.468, 0.500, 0.484, 0.483]
         ),
         (
             ["A smiling turtle"] * 2,
-            "reweight",
-            {**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
+            {"edit_type": "reweight", **replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.573, 0.607, 0.502, 0.504, 0.540, 0.469, 0.500, 0.486, 0.483]
         ),
         # todo: include save edit?
@@ -129,7 +124,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
     ]
 
     @parameterized.expand(test_matrix)
-    def test_fast_inference(self, prompts, edit_type, edit_kwargs, expected_slice):
+    def test_fast_inference(self, prompts, cross_attention_kwargs, expected_slice):
         device = "cpu"
         components = self.get_dummy_components()
         pipe = Prompt2PromptPipeline(**components)
@@ -143,8 +138,7 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             width=64,
             num_inference_steps=2,
             generator=generator,
-            edit_type=edit_type,
-            edit_kwargs=edit_kwargs,
+            cross_attention_kwargs=cross_attention_kwargs,
             output_type="numpy",
         ).images
 
@@ -154,9 +148,8 @@ class Prompt2PrompteFastTests(unittest.TestCase):
             height=64,
             width=64,
             num_inference_steps=2,
-            generator=generator,
-            edit_type=edit_type,
-            edit_kwargs=edit_kwargs,
+            generator=generator,          
+            cross_attention_kwargs=cross_attention_kwargs,
             output_type="numpy",
             return_dict=False,
         )[0]
@@ -178,32 +171,27 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
         # fmt: off
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
-            "replace",
-            {**replace_steps},
+            {"edit_type": "replace", **replace_steps},
             [0.243, 0.233, 0.227, 0.253, 0.242, 0.237, 0.293, 0.292, 0.283]
         ),
         (
             ["A turtle playing with a ball", "A monkey playing with a ball"],
-            "replace",
-            {**replace_steps, "local_blend_words": ["turtle", "monkey"]},
+            {"edit_type": "replace", **replace_steps, "local_blend_words": ["turtle", "monkey"]},
             [0.243, 0.233, 0.227, 0.253, 0.242, 0.237, 0.293, 0.292, 0.283]
         ),
         (
             ["A turtle", "A turtle in a forest"],
-            "refine",
-            {**replace_steps},
+            {"edit_type": "refine" **replace_steps},
             [0.256, 0.232, 0.209, 0.259, 0.254, 0.229, 0.285, 0.307, 0.295]
         ),
         (
             ["A turtle", "A turtle in a forest"],
-            "refine",
-            {**replace_steps, "local_blend_words": ["in", "a" , "forest"]},
+            {"edit_type": "refine", **replace_steps, "local_blend_words": ["in", "a" , "forest"]},
             [0.256, 0.232, 0.209, 0.259, 0.254, 0.229, 0.285, 0.307, 0.295]
         ),
         (
             ["A smiling turtle"] * 2,
-            "reweight",
-            {**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
+            {"edit_type": "reweight",**replace_steps, "equalizer_words": ["smiling"], "equalizer_strengths": [5]},
             [0.006, 0.010, 0.009, 0.003, 0.011, 0.008, 0.014, 0.009, 0.000]
         ),
         # todo: include save edit?
@@ -211,7 +199,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
     ]
 
     @parameterized.expand(test_matrix)
-    def test_inference(self, prompts, edit_type, edit_kwargs, expected_slice):
+    def test_inference(self, prompts, cross_attention_kwargs, expected_slice):
         model_id = "CompVis/stable-diffusion-v1-4"  # TODO: Q: Use smaller model?
 
         pipe = Prompt2PromptPipeline.from_pretrained(model_id)
@@ -225,8 +213,7 @@ class Prompt2PromptIntegrationTests(unittest.TestCase):
             width=512,
             num_inference_steps=50,
             generator=generator,
-            edit_type=edit_type,
-            edit_kwargs=edit_kwargs,
+            cross_attention_kwargs=cross_attention_kwargs,
             output_type="numpy",
         ).images
 

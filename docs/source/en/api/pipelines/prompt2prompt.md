@@ -40,12 +40,13 @@ pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to
 prompts = ["A turtle playing with a ball",
            "A monkey playing with a ball"]
 
-edit_kwargs = {
+cross_attention_kwargs = {
+    "edit_type": "replace",
     "cross_replace_steps": 0.4,
     "self_replace_steps": 0.4
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, edit_type='replace', edit_kwargs=edit_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### ReplaceEdit with LocalBlend
@@ -61,13 +62,14 @@ pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to
 prompts = ["A turtle playing with a ball",
            "A monkey playing with a ball"]
 
-edit_kwargs = {
+cross_attention_kwargs = {
+    "edit_type": "replace",
     "cross_replace_steps": 0.4,
     "self_replace_steps": 0.4,
     "local_blend_words": ["turtle", "monkey"]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, edit_type='replace', edit_kwargs=edit_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### RefineEdit
@@ -83,12 +85,13 @@ pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to
 prompts = ["A turtle",
            "A turtle in a forest"]
 
-edit_kwargs = {
+cross_attention_kwargs = {
+    "edit_type": "refine",
     "cross_replace_steps": 0.4,
     "self_replace_steps": 0.4,
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, edit_type='refine', edit_kwargs=edit_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### RefineEdit with LocalBlend
@@ -104,13 +107,14 @@ pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to
 prompts = ["A turtle",
            "A turtle in a forest"]
 
-edit_kwargs = {
+cross_attention_kwargs = {
+    "edit_type": "refine",
     "cross_replace_steps": 0.4,
     "self_replace_steps": 0.4,
     "local_blend_words": ["in", "a" , "forest"]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, edit_type='refine', edit_kwargs=edit_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ### ReweightEdit
@@ -125,14 +129,15 @@ pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to
 
 prompts = ["A smiling turtle"] * 2
 
-edit_kwargs = {
+edit_kcross_attention_kwargswargs = {
+    "edit_type": "reweight",
     "cross_replace_steps": 0.4,
     "self_replace_steps": 0.4,
     "equalizer_words": ["smiling"],
     "equalizer_strengths": [5]
 }
 
-outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, edit_type='reweight', edit_kwargs=edit_kwargs)
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=NUM_50DIFFUSION_STEPS, cross_attention_kwargs=cross_attention_kwargs)
 ```
 
 ## Prompt2PromptPipeline
