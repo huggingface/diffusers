@@ -52,7 +52,6 @@ from ..utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_compiled_module,
-    is_safetensors_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -899,7 +898,7 @@ class DiffusionPipeline(ConfigMixin):
         offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         # 1. Download the checkpoints and configs
@@ -1311,14 +1310,9 @@ class DiffusionPipeline(ConfigMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         allow_patterns = None

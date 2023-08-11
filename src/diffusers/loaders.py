@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import requests
+import safetensors
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
@@ -34,15 +35,11 @@ from .utils import (
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
-    is_safetensors_available,
     is_transformers_available,
     logging,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
-
-if is_safetensors_available():
-    import safetensors
 
 if is_transformers_available():
     from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
@@ -261,14 +258,10 @@ class UNet2DConditionLoadersMixin:
         network_alphas = kwargs.pop("network_alphas", None)
         is_network_alphas_none = network_alphas is None
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
+
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -757,14 +750,9 @@ class TextualInversionLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -1014,14 +1002,9 @@ class LoraLoaderMixin:
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -1853,7 +1836,7 @@ class FromSingleFileMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
@@ -2050,7 +2033,7 @@ class FromOriginalVAEMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
@@ -2223,7 +2206,7 @@ class FromOriginalControlnetMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
