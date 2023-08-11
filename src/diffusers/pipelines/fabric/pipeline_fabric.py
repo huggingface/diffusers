@@ -154,17 +154,7 @@ def attn_with_weights(
 class FabricPipeline(DiffusionPipeline):
     def __init__(
         self,
-        #model_name: Optional[str] = None,
-
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
-        tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        #scheduler: KarrasDiffusionSchedulers,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        requires_safety_checker: bool = True,
-
+        model_name: Optional[str] = None,
         stable_diffusion_version: str = "1.5",
         scheduler: EulerAncestralDiscreteScheduler = EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
@@ -192,7 +182,7 @@ class FabricPipeline(DiffusionPipeline):
             scheduler=scheduler,
             torch_dtype=torch_dtype,
             safety_checker=None,
-        )
+        ).to("cuda")
 
         if lora_weights:
             print(f"Applying LoRA weights from {lora_weights}")
@@ -200,13 +190,11 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
-        self.register_modules(unet=unet, vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler)
-
         self.pipeline = pipe
-        self.unet = unet
-        self.vae = vae
-        self.text_encoder = text_encoder
-        self.tokenizer = tokenizer
+        self.unet = pipe.unet
+        self.vae = pipe.vae
+        self.text_encoder = pipe.text_encoder
+        self.tokenizer = pipe.tokenizer
         self.scheduler = scheduler
         
         self.dtype = torch_dtype
@@ -397,7 +385,7 @@ class FabricPipeline(DiffusionPipeline):
         if random_seed is not None:
             torch.manual_seed(random_seed)
         
-        device = self._execution_device
+        device = torch.device("cuda")
 
         latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=self.dtype)
 
@@ -507,7 +495,7 @@ class FabricPipeline(DiffusionPipeline):
         y = self.pipeline.decode_latents(latent_noise)
         imgs = self.pipeline.numpy_to_pil(y)
 
-        return FabricPipelineOutpur(imgs)
+        return FabricPipelineOutput(imgs,False)
 
     @staticmethod
     def image_to_tensor(image: Union[str, Image.Image]):
@@ -522,4 +510,5 @@ class FabricPipeline(DiffusionPipeline):
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
         return torch.from_numpy(image).permute(2, 0, 1)
+
 
