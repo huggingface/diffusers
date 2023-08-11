@@ -1198,6 +1198,7 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         """
 
         text = self.tokenizer(text_input, return_tensors="pt", padding=True)
+        text = text.to(self.device)
         input_ids = text.input_ids
         query_atts = torch.ones(self.query_tokens.size()[:-1], dtype=torch.long).to(
             self.device
