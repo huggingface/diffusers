@@ -159,11 +159,6 @@ class FabricPipeline(DiffusionPipeline):
                     f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
                 )
 
-        if self._execution_device is not "cuda":
-            torch_dtype = torch.float32
-        else:
-            torch_dtype = torch_dtype if torch_dtype else torch.float16
-
         scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -179,6 +174,14 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
+        
+        self.register_modules(
+            vae=pipe.vae,
+            text_encoder=pipe.text_encoder,
+            tokenizer=pipe.tokenizer,
+            unet=pipe.unet,
+            scheduler=scheduler,
+        )
 
         self.pipeline = pipe
         self.unet = pipe.unet
@@ -245,34 +248,6 @@ class FabricPipeline(DiffusionPipeline):
                 del module.attn1.old_forward
 
         return cached_hidden_states
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     def unet_forward_with_cached_hidden_states(
         self,
