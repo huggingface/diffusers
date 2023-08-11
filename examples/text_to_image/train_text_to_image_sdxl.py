@@ -1078,9 +1078,16 @@ def main(args):
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
+
                 # create pipeline
+                vae = AutoencoderKL.from_pretrained(
+                    vae_path,
+                    subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+                    revision=args.revision,
+                )
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
+                    vae=vae,
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
