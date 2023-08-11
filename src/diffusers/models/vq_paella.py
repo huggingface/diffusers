@@ -35,9 +35,9 @@ class VQModelPaella(ModelMixin, ConfigMixin):
         up_down_scale_factor (int, *optional*, defaults to 2): Up and Downscale factor of the input image.
         levels  (int, *optional*, defaults to 2): Number of levels in the model.
         bottleneck_blocks (int, *optional*, defaults to 12): Number of bottleneck blocks in the model.
-        c_hidden (int, *optional*, defaults to 384): Number of hidden channels in the model.
-        c_latent (int, *optional*, defaults to 4): Number of latent channels in the model.
-        codebook_size (int, *optional*, defaults to 8192): Number of codebook vectors in the VQ-VAE.
+        embed_dim (int, *optional*, defaults to 384): Number of hidden channels in the model.
+        latent_channels (int, *optional*, defaults to 4): Number of latent channels in the VQ-VAE model.
+        num_vq_embeddings (int, *optional*, defaults to 8192): Number of codebook vectors in the VQ-VAE.
         scale_factor (float, *optional*, defaults to 0.3764): Scaling factor of the latent space.
     """
 
@@ -49,14 +49,14 @@ class VQModelPaella(ModelMixin, ConfigMixin):
         up_down_scale_factor: int = 2,
         levels: int = 2,
         bottleneck_blocks: int = 12,
-        c_hidden: int = 384,
-        c_latent: int = 4,
-        codebook_size: int = 8192,
+        embed_dim: int = 384,
+        latent_channels: int = 4,
+        num_vq_embeddings: int = 8192,
         scale_factor: float = 0.3764,
     ):
         super().__init__()
 
-        c_levels = [c_hidden // (2**i) for i in reversed(range(levels))]
+        c_levels = [embed_dim // (2**i) for i in reversed(range(levels))]
         self.in_block = nn.Sequential(
             nn.PixelUnshuffle(up_down_scale_factor),
             nn.Conv2d(in_channels * up_down_scale_factor**2, c_levels[0], kernel_size=1),
@@ -70,15 +70,15 @@ class VQModelPaella(ModelMixin, ConfigMixin):
             down_blocks.append(block)
         down_blocks.append(
             nn.Sequential(
-                nn.Conv2d(c_levels[-1], c_latent, kernel_size=1, bias=False),
-                nn.BatchNorm2d(c_latent),  # then normalize them to have mean 0 and std 1
+                nn.Conv2d(c_levels[-1], latent_channels, kernel_size=1, bias=False),
+                nn.BatchNorm2d(latent_channels),  # then normalize them to have mean 0 and std 1
             )
         )
         self.down_blocks = nn.Sequential(*down_blocks)
-        self.vquantizer = VectorQuantizer(codebook_size, vq_embed_dim=c_latent, legacy=False, beta=0.25)
+        self.vquantizer = VectorQuantizer(num_vq_embeddings, vq_embed_dim=latent_channels, legacy=False, beta=0.25)
 
         # Decoder blocks
-        up_blocks = [nn.Sequential(nn.Conv2d(c_latent, c_levels[-1], kernel_size=1))]
+        up_blocks = [nn.Sequential(nn.Conv2d(latent_channels, c_levels[-1], kernel_size=1))]
         for i in range(levels):
             for j in range(bottleneck_blocks if i == 0 else 1):
                 block = MixingResidualBlock(c_levels[levels - 1 - i], c_levels[levels - 1 - i] * 4)
