@@ -1174,10 +1174,10 @@ def main(args):
 
         if args.push_to_hub:
             save_model_card(
-                repo_id,
+                repo_id=repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
-                prompt=args.instance_prompt,
+                dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
                 vae_path=args.pretrained_vae_model_name_or_path,
             )
