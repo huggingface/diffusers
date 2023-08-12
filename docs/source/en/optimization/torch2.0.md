@@ -39,7 +39,7 @@ pip install --upgrade torch diffusers
     import torch
     from diffusers import DiffusionPipeline
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
     pipe = pipe.to("cuda")
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -53,7 +53,7 @@ pip install --upgrade torch diffusers
     from diffusers import DiffusionPipeline
     + from diffusers.models.attention_processor import AttnProcessor2_0
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
     + pipe.unet.set_attn_processor(AttnProcessor2_0())
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -69,7 +69,7 @@ pip install --upgrade torch diffusers
     from diffusers import DiffusionPipeline
     from diffusers.models.attention_processor import AttnProcessor
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
     pipe.unet.set_default_attn_processor()
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -107,7 +107,7 @@ path = "runwayml/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
 
-pipe = DiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.unet.to(memory_format=torch.channels_last)
 
@@ -140,7 +140,7 @@ path = "runwayml/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
 
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained(path, torch_dtype=torch.float16)
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(path, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.unet.to(memory_format=torch.channels_last)
 
@@ -180,7 +180,7 @@ path = "runwayml/stable-diffusion-inpainting"
 
 run_compile = True  # Set True / False
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(path, torch_dtype=torch.float16)
+pipe = StableDiffusionInpaintPipeline.from_pretrained(path, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.unet.to(memory_format=torch.channels_last)
 
@@ -212,9 +212,9 @@ init_image = init_image.resize((512, 512))
 path = "runwayml/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
-controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    path, controlnet=controlnet, torch_dtype=torch.float16
+    path, controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
 )
 
 pipe = pipe.to("cuda")
@@ -240,11 +240,11 @@ import torch
 
 run_compile = True  # Set True / False
 
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16, use_safetensors=True)
 pipe.to("cuda")
-pipe_2 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-II-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16)
+pipe_2 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-II-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16, use_safetensors=True)
 pipe_2.to("cuda")
-pipe_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+pipe_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16, use_safetensors=True)
 pipe_3.to("cuda")
 
 
