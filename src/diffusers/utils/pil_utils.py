@@ -50,15 +50,18 @@ def numpy_to_pil(images):
     return pil_images
 
 
-def make_image_grid(imgs: List[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:
-    assert len(imgs) == rows * cols
+def make_image_grid(images: List[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:
+    """
+    Prepares a single grid of images. Useful for visualization purposes.
+    """
+    assert len(images) == rows * cols
 
     if resize is not None:
-        imgs = [img.resize((resize, resize)) for img in imgs]
+        images = [img.resize((resize, resize)) for img in images]
 
-    w, h = imgs[0].size
+    w, h = images[0].size
     grid = Image.new("RGB", size=(cols * w, rows * h))
 
-    for i, img in enumerate(imgs):
+    for i, img in enumerate(images):
         grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
