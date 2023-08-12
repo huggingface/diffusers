@@ -21,6 +21,7 @@ from torch import nn
 from torch.nn import functional as F
 from PIL import Image
 import numpy as np
+import warnings
 from tqdm import tqdm
 
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -85,72 +86,77 @@ def apply_unet_lora_weights(pipeline, unet_path):
     unet.load_state_dict(model_weight, strict=False)
 
 
-def attn_with_weights(
-    attn: nn.Module,
-    hidden_states,
-    encoder_hidden_states=None,
-    attention_mask=None,
-    weights=None,  # shape: (batch_size, sequence_length)
-    lora_scale=1.0,
-):
-    batch_size, sequence_length, _ = (
-        hidden_states.shape
-        if encoder_hidden_states is None
-        else encoder_hidden_states.shape
-    )
-    attention_mask = attn.prepare_attention_mask(
-        attention_mask, sequence_length, batch_size
-    )
+class CrossAttnStoreProcessor()
+    def __init__(self):
+        self.attntion_probs = None
 
-    if isinstance(attn.processor, LoRACrossAttnProcessor):
-        query = attn.to_q(hidden_states) + lora_scale * attn.processor.to_q_lora(
-            hidden_states
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        weights=None,  # shape: (batch_size, sequence_length)
+        lora_scale=1.0,
+    ):
+        batch_size, sequence_length, _ = (
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
-    else:
-        query = attn.to_q(hidden_states)
-
-    if encoder_hidden_states is None:
-        encoder_hidden_states = hidden_states
-    elif attn.norm_cross:
-        encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-    if isinstance(attn.processor, LoRACrossAttnProcessor):
-        key = attn.to_k(encoder_hidden_states) + lora_scale * attn.processor.to_k_lora(
-            encoder_hidden_states
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
         )
-        value = attn.to_v(
-            encoder_hidden_states
-        ) + lora_scale * attn.processor.to_v_lora(encoder_hidden_states)
-    else:
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
 
-    query = attn.head_to_batch_dim(query)
-    key = attn.head_to_batch_dim(key)
-    value = attn.head_to_batch_dim(value)
+        if isinstance(attn.processor, LoRACrossAttnProcessor):
+            query = attn.to_q(hidden_states) + lora_scale * attn.processor.to_q_lora(
+                hidden_states
+            )
+        else:
+            query = attn.to_q(hidden_states)
 
-    attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-    if weights is not None:
-        if weights.shape[0] != 1:
-            weights = weights.repeat_interleave(attn.heads, dim=0)
-        attention_probs = attention_probs * weights[:, None]
-        attention_probs = attention_probs / attention_probs.sum(dim=-1, keepdim=True)
+        if isinstance(attn.processor, LoRACrossAttnProcessor):
+            key = attn.to_k(encoder_hidden_states) + lora_scale * attn.processor.to_k_lora(
+                encoder_hidden_states
+            )
+            value = attn.to_v(
+                encoder_hidden_states
+            ) + lora_scale * attn.processor.to_v_lora(encoder_hidden_states)
+        else:
+            key = attn.to_k(encoder_hidden_states)
+            value = attn.to_v(encoder_hidden_states)
 
-    hidden_states = torch.bmm(attention_probs, value)
-    hidden_states = attn.batch_to_head_dim(hidden_states)
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
 
-    # linear proj
-    if isinstance(attn.processor, LoRACrossAttnProcessor):
-        hidden_states = attn.to_out[0](
-            hidden_states
-        ) + lora_scale * attn.processor.to_out_lora(hidden_states)
-    else:
-        hidden_states = attn.to_out[0](hidden_states)
-    # dropout
-    hidden_states = attn.to_out[1](hidden_states)
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
 
-    return hidden_states
+        if weights is not None:
+            if weights.shape[0] != 1:
+                weights = weights.repeat_interleave(attn.heads, dim=0)
+            attention_probs = attention_probs * weights[:, None]
+            attention_probs = attention_probs / attention_probs.sum(dim=-1, keepdim=True)
+
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        if isinstance(attn.processor, LoRACrossAttnProcessor):
+            hidden_states = attn.to_out[0](
+                hidden_states
+            ) + lora_scale * attn.processor.to_out_lora(hidden_states)
+        else:
+            hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
 
 
 class FabricPipeline(DiffusionPipeline):
@@ -228,7 +234,6 @@ class FabricPipeline(DiffusionPipeline):
               and self.text_encoder.config.use_attention_mask
           ) else None
 
-          print("Asdfsdf",attention_mask)
 
           prompt_embd = self.text_encoder(
               input_ids=prompt_tokens.input_ids.to(device),
@@ -291,6 +296,7 @@ class FabricPipeline(DiffusionPipeline):
                 1, 1 + cached_hs.shape[1] // hidden_states.size(1)
             )
             weights[:, hidden_states.size(1):] = weight
+            attn_with_weights = CrossAttnStoreProcessor()
             out = attn_with_weights(
                 self,
                 cond_hiddens,
@@ -352,8 +358,8 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(self, images, vae, device) -> torch.tensor:
-        images_t = [self.image_to_tensor(img) for img in images]
+    def preprocess_feedback_images(self, images, vae, device, dtype) -> torch.tensor:
+        images_t = [self.image_to_tensor(img,dtype) for img in images]
         images_t = torch.stack(images_t).to(device)
         latents = (
             vae.config.scaling_factor
@@ -362,7 +368,7 @@ class FabricPipeline(DiffusionPipeline):
         return latents
 
     def decode_latents(self, latents):
-       warnings.warn(
+        warnings.warn(
             "The decode_latents method is deprecated and will be removed in a future version. Plea                se"
             " use VaeImageProcessor instead",
             FutureWarning,
@@ -402,12 +408,13 @@ class FabricPipeline(DiffusionPipeline):
             torch.manual_seed(random_seed)
         
         device = self._execution_device
+        dtype = self.text_encoder.dtype
 
-        latent_noise = torch.randn(n_images, 4, 64, 64, device=device)
+        latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=dtype)
+        
+        positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, )
 
-        positive_latents = self.preprocess_feedback_images(liked,self.vae,device) if liked and len(liked)>1 else torch.tensor([], device=device)
-
-        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device) if disliked and len(disliked)>0 else torch.tensor([], device=device)
+        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device)
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
@@ -458,12 +465,12 @@ class FabricPipeline(DiffusionPipeline):
                     if isinstance(self.scheduler, EulerAncestralDiscreteScheduler):
                         z_ref_noised = (
                             alpha_hat**0.5 * z_ref + (1 - alpha_hat) ** 0.5 * noise
-                        )
+                        ).type(dtype)
+                        print("here")
                     else:
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
                     ref_prompt_embd = torch.cat([null_prompt_emb] * (len(positive_latents) + len(negative_latents)), dim=0)
-
                     cached_hidden_states = self.get_unet_hidden_states(
                         z_ref_noised, t, ref_prompt_embd
                     )
@@ -514,7 +521,7 @@ class FabricPipeline(DiffusionPipeline):
         return FabricPipelineOutput(imgs,False)
 
     @staticmethod
-    def image_to_tensor(image: Union[str, Image.Image]):
+    def image_to_tensor(image: Union[str, Image.Image], dtype):
         """
         Convert a PIL image to a torch tensor.
         """
@@ -525,7 +532,8 @@ class FabricPipeline(DiffusionPipeline):
         image = image.resize((512, 512))
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
-        return torch.from_numpy(image).permute(2, 0, 1)
+        image = torch.from_numpy(image).permute(2, 0, 1)
+        return image.type(dtype)
 
 
 
