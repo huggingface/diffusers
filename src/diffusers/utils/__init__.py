@@ -64,7 +64,6 @@ from .import_utils import (
     is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
-    is_safetensors_available,
     is_scipy_available,
     is_tensorboard_available,
     is_tf_available,
@@ -80,7 +79,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
-from .pil_utils import PIL_INTERPOLATION, numpy_to_pil, pt_to_pil
+from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .torch_utils import is_compiled_module, randn_tensor
 
 

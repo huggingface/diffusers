@@ -722,13 +722,13 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alpha = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alpha=network_alpha, unet=unet_)
+        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alpha=network_alpha, text_encoder=text_encoder_one_
+            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alpha=network_alpha, text_encoder=text_encoder_two_
+            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1262,8 +1262,8 @@ def main(args):
                 repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
+                dataset_name=args.dataset_name,
                 train_text_encoder=args.train_text_encoder,
-                prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
                 vae_path=args.pretrained_vae_model_name_or_path,
             )
