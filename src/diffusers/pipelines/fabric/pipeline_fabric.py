@@ -86,7 +86,7 @@ def apply_unet_lora_weights(pipeline, unet_path):
     unet.load_state_dict(model_weight, strict=False)
 
 
-class CrossAttnStoreProcessor()
+class CrossAttnStoreProcessor():
     def __init__(self):
         self.attntion_probs = None
 
@@ -157,7 +157,6 @@ class CrossAttnStoreProcessor()
         hidden_states = attn.to_out[1](hidden_states)
 
         return hidden_states
-
 
 class FabricPipeline(DiffusionPipeline):
     def __init__(
@@ -286,6 +285,7 @@ class FabricPipeline(DiffusionPipeline):
             *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
 
         def new_forward_caching(module, hidden_states, cond_hiddens, cached_hiddens, weight, weights):
+            
             cached_hs = cached_hiddens.pop(0).to(
                 hidden_states.device
             )
@@ -296,12 +296,12 @@ class FabricPipeline(DiffusionPipeline):
                 1, 1 + cached_hs.shape[1] // hidden_states.size(1)
             )
             weights[:, hidden_states.size(1):] = weight
+            print(self)
             attn_with_weights = CrossAttnStoreProcessor()
-            out = attn_with_weights(
-                self,
+            self.unet.set_attn_processor(attn_with_weights)
+            out = self.unet(
                 cond_hiddens,
                 encoder_hidden_states=cond_hs,
-                weights=weights,
             )
             return out
 
@@ -534,6 +534,7 @@ class FabricPipeline(DiffusionPipeline):
         image = (image / 127.5 - 1.0).astype(np.float32)
         image = torch.from_numpy(image).permute(2, 0, 1)
         return image.type(dtype)
+
 
 
 
