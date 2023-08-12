@@ -252,16 +252,9 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 
 ```py
 >>> from diffusers import DDPMPipeline
+>>> from diffusers.utils import make_image_grid
 >>> import math
 >>> import os
-
-
->>> def make_grid(images, rows, cols):
-...     w, h = images[0].size
-...     grid = Image.new("RGB", size=(cols * w, rows * h))
-...     for i, image in enumerate(images):
-...         grid.paste(image, box=(i % cols * w, i // cols * h))
-...     return grid
 
 
 >>> def evaluate(config, epoch, pipeline):
@@ -273,7 +266,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ...     ).images
 
 ...     # Make a grid out of the images
-...     image_grid = make_grid(images, rows=4, cols=4)
+...     image_grid = make_image_grid(images, rows=4, cols=4)
 
 ...     # Save the images
 ...     test_dir = os.path.join(config.output_dir, "samples")

@@ -47,7 +47,7 @@ from diffusers import (
     FlaxStableDiffusionControlNetPipeline,
     FlaxUNet2DConditionModel,
 )
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 
 
 # To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
@@ -62,18 +62,6 @@ if is_wandb_available():
 check_min_version("0.20.0.dev0")
 
 logger = logging.getLogger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(pipeline, pipeline_params, controlnet_params, tokenizer, args, rng, weight_dtype):
@@ -154,7 +142,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
