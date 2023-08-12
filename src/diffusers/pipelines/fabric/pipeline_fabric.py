@@ -200,6 +200,8 @@ class FabricPipeline(DiffusionPipeline):
             tokenizer = tokenizer,
             scheduler = scheduler,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     #@property
     #def device(self):
@@ -359,6 +361,19 @@ class FabricPipeline(DiffusionPipeline):
         )
         return latents
 
+    def decode_latents(self, latents):
+       warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Plea                se"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
+        latents = 1 / self.vae.config.scaling_factor * latents
+        image = self.vae.decode(latents, return_dict=False)[0]
+        image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible             with bfloat16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        return image
+
     @torch.no_grad()
 
     def __call__(
@@ -493,8 +508,8 @@ class FabricPipeline(DiffusionPipeline):
                 ):
                     pbar.update()
 
-        y = self.pipeline.decode_latents(latent_noise)
-        imgs = self.pipeline.numpy_to_pil(y)
+        y = self.decode_latents(latent_noise)
+        imgs = self.image_processor.numpy_to_pil(y)
 
         return FabricPipelineOutput(imgs,False)
 
