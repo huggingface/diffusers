@@ -1148,14 +1148,15 @@ def main(args):
         pipeline.save_pretrained(args.output_dir)
 
         # run inference
-        pipeline = pipeline.to(accelerator.device)
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
+            pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-                for _ in range(args.num_validation_images)
-            ]
+            with torch.cuda.amp.autocast():
+                images = [
+                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                    for _ in range(args.num_validation_images)
+                ]
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":
