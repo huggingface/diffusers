@@ -1,3 +1,5 @@
+### I'm fucking wrong you dont have to initialize and load stable diffusion ditch that 
+### do it with raw unet, vae and stuff '
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,35 +156,36 @@ def attn_with_weights(
 class FabricPipeline(DiffusionPipeline):
     def __init__(
         self,
-        model_name: Optional[str] = None,
-        stable_diffusion_version: str = "1.5",
-        scheduler: EulerAncestralDiscreteScheduler = EulerAncestralDiscreteScheduler,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: EulerAncestralDiscreteScheduler,
         lora_weights: Optional[str] = None,
-        torch_dtype = None,
     ):
         super().__init__()
 
-        if stable_diffusion_version == "2.1":
-            warnings.warn("StableDiffusion v2.x is not supported and may give unexpected results.")
+        #if stable_diffusion_version == "2.1":
+        #    warnings.warn("StableDiffusion v2.x is not supported and may give unexpected results.")
 
-        if model_name is None:
-            if stable_diffusion_version == "1.5":
-                model_name = "runwayml/stable-diffusion-v1-5"
-            elif stable_diffusion_version == "2.1":
-                model_name = "stabilityai/stable-diffusion-2-1"
-            else:
-                raise ValueError(
-                    f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
-                )
+        #if model_name is None:
+        #    if stable_diffusion_version == "1.5":
+        #        model_name = "runwayml/stable-diffusion-v1-5"
+        #    elif stable_diffusion_version == "2.1":
+        #        model_name = "stabilityai/stable-diffusion-2-1"
+        #    else:
+        #        raise ValueError(
+        #            f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
+        #        )
 
-        scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
+        #scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
 
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_name,
-            scheduler=scheduler,
-            torch_dtype=torch_dtype,
-            safety_checker=None,
-        ).to("cuda")
+       # pipe = StableDiffusionPipeline.from_pretrained(
+       #     model_name,
+       #     scheduler=scheduler,
+       #     torch_dtype=torch_dtype,
+       #     safety_checker=None,
+       # ).to("cuda")
 
         if lora_weights:
             print(f"Applying LoRA weights from {lora_weights}")
@@ -190,14 +193,13 @@ class FabricPipeline(DiffusionPipeline):
                 pipeline=pipe, unet_path=lora_weights
             )
 
-        self.pipeline = pipe
-        self.unet = pipe.unet
-        self.vae = pipe.vae
-        self.text_encoder = pipe.text_encoder
-        self.tokenizer = pipe.tokenizer
-        self.scheduler = scheduler
-        
-        self.dtype = torch_dtype
+        self.register_modules(
+            unet = unet,
+            vae = vae,
+            text_encoder = text_encoder,
+            tokenizer = tokenizer,
+            scheduler = scheduler,
+        )
 
     #@property
     #def device(self):
@@ -223,6 +225,8 @@ class FabricPipeline(DiffusionPipeline):
               hasattr(self.text_encoder.config, "use_attention_mask")
               and self.text_encoder.config.use_attention_mask
           ) else None
+
+          print("Asdfsdf",attention_mask)
 
           prompt_embd = self.text_encoder(
               input_ids=prompt_tokens.input_ids.to(device),
@@ -287,7 +291,7 @@ class FabricPipeline(DiffusionPipeline):
             weights[:, hidden_states.size(1):] = weight
             out = attn_with_weights(
                 self,
-                cond_hs,
+                cond_hiddens,
                 encoder_hidden_states=cond_hs,
                 weights=weights,
             )
@@ -325,7 +329,6 @@ class FabricPipeline(DiffusionPipeline):
                                 self, hidden_states, cond_hiddens, cached_pos_hiddens, pos_weight,
                                 weights)
 
-
                         if cached_neg_hiddens is not None:
                             out_neg = new_forward_caching(
                                 self, hidden_states, uncond_hiddens, cached_neg_hiddens, 
@@ -349,7 +352,7 @@ class FabricPipeline(DiffusionPipeline):
 
     def preprocess_feedback_images(self, images, vae, device) -> torch.tensor:
         images_t = [self.image_to_tensor(img) for img in images]
-        images_t = torch.stack(images_t).to(device, dtype=self.dtype)
+        images_t = torch.stack(images_t).to(device)
         latents = (
             vae.config.scaling_factor
             * vae.encode(images_t).latent_dist.sample()
@@ -383,13 +386,13 @@ class FabricPipeline(DiffusionPipeline):
         if random_seed is not None:
             torch.manual_seed(random_seed)
         
-        device = torch.device("cuda")
+        device = self._execution_device
 
-        latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=self.dtype)
+        latent_noise = torch.randn(n_images, 4, 64, 64, device=device)
 
-        positive_latents = self.preprocess_feedback_images(liked,self.vae,device) if liked and len(liked)>1 else torch.tensor([], device=device, dtype=self.dtype)
+        positive_latents = self.preprocess_feedback_images(liked,self.vae,device) if liked and len(liked)>1 else torch.tensor([], device=device)
 
-        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=self.dtype)
+        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device) if disliked and len(disliked)>0 else torch.tensor([], device=device)
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
