@@ -10,9 +10,9 @@ import torch
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.clip.configuration_clip import CLIPTextConfig
+from transformers import CLIPPreTrainedModel
 from transformers.models.clip.modeling_clip import (
     CLIPEncoder,
-    CLIPPreTrainedModel,
     _expand_mask,
 )
 
@@ -28,12 +28,6 @@ class CtxCLIPTextModel(CLIPPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def get_input_embeddings(self) -> nn.Module:
-        return self.text_model.embeddings.token_embedding
-
-    def set_input_embeddings(self, value):
-        self.text_model.embeddings.token_embedding = value
-
     def forward(
         self,
         ctx_embeddings: torch.Tensor = None,
@@ -45,23 +39,6 @@ class CtxCLIPTextModel(CLIPPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
-        r"""
-        Returns:
-
-        Examples:
-
-        ```python
-        >>> from transformers import CLIPTokenizer, CLIPTextModel
-
-        >>> model = CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
-        >>> tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
-
-        >>> inputs = tokenizer(["a photo of a cat", "a photo of a dog"], padding=True, return_tensors="pt")
-
-        >>> outputs = model(**inputs)
-        >>> last_hidden_state = outputs.last_hidden_state
-        >>> pooled_output = outputs.pooler_output  # pooled (EOS token) states
-        ```"""
         return self.text_model(
             ctx_embeddings=ctx_embeddings,
             ctx_begin_pos=ctx_begin_pos,
