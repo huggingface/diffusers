@@ -461,7 +461,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # YiYI TO-DO: update this 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -1069,7 +1069,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
             ]
             controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
 
-        original_size = original_size or image.shape[-2:]
+        original_size = original_size or control_image.shape[-2:]
         target_size = target_size or (height, width)
 
         # 7.2 Prepare added time ids & embeddings
