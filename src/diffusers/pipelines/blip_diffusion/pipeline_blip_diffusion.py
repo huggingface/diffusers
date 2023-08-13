@@ -228,7 +228,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return transform(image)
 
-
+    @torch.no_grad()
     def __call__(
         self,
         samples,

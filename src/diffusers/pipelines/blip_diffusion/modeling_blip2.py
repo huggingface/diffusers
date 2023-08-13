@@ -42,7 +42,7 @@ from transformers.utils import (
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2Config, Blip2VisionConfig
 from transformers import BertTokenizer
 from transformers.activations import QuickGELUActivation as QuickGELU
-from transformers.models.blip_2.modeling_blip_2 import Blip2Attention, Blip2MLP, Blip2EncoderLayer, Blip2Encoder, Blip2QFormerAttention, Blip2QFormerIntermediate, Blip2QFormerOutput, Blip2PreTrainedModel, Blip2QFormerEncoder
+from transformers.models.blip_2.modeling_blip_2 import Blip2Attention, Blip2MLP, Blip2EncoderLayer, Blip2Encoder, Blip2QFormerAttention, Blip2QFormerIntermediate, Blip2QFormerOutput, Blip2PreTrainedModel
 
 logger = logging.get_logger(__name__)
 
@@ -139,6 +139,107 @@ class Blip2VisionEmbeddings(nn.Module):
         embeddings = torch.cat([class_embeds, patch_embeds], dim=1)
         embeddings = embeddings + self.position_embedding[:, : embeddings.size(1), :].to(target_dtype)
         return embeddings
+
+class Blip2QFormerEncoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.layer = nn.ModuleList(
+            [Blip2QFormerLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+        )
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        past_key_values=None,
+        use_cache=None,
+        output_attentions=False,
+        output_hidden_states=False,
+        return_dict=True,
+        query_length=0,
+    ):
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+        all_cross_attentions = () if output_attentions else None
+
+        next_decoder_cache = () if use_cache else None
+
+        for i in range(self.config.num_hidden_layers):
+            layer_module = self.layer[i]
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer_head_mask = head_mask[i] if head_mask is not None else None
+            past_key_value = past_key_values[i] if past_key_values is not None else None
+
+            if getattr(self.config, "gradient_checkpointing", False) and self.training:
+                if use_cache:
+                    logger.warning(
+                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                    )
+                    use_cache = False
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs, past_key_value, output_attentions, query_length)
+
+                    return custom_forward
+
+                layer_outputs = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(layer_module),
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                )
+            else:
+                layer_outputs = layer_module(
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    past_key_value,
+                    output_attentions,
+                    query_length,
+                )
+
+            hidden_states = layer_outputs[0]
+            if use_cache:
+                next_decoder_cache += (layer_outputs[-1],)
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (layer_outputs[1],)
+                if layer_module.has_cross_attention:
+                    all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(
+                v
+                for v in [
+                    hidden_states,
+                    next_decoder_cache,
+                    all_hidden_states,
+                    all_self_attentions,
+                    all_cross_attentions,
+                ]
+                if v is not None
+            )
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=next_decoder_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+            cross_attentions=all_cross_attentions,
+        )
 
 
 
