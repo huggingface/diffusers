@@ -827,7 +827,7 @@ class StableDiffusionUpscalePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionXLControlNetPipeline(metaclass=DummyObject):
+class StableDiffusionXLControlNetImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -842,7 +842,7 @@ class StableDiffusionXLControlNetPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionXLControlNetImg2ImgPipeline(metaclass=DummyObject):
+class StableDiffusionXLControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
