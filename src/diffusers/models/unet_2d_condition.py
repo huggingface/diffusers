@@ -566,7 +566,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         )
 
         if attention_type == "gated":
-            self.position_net = PositionNet(positive_len=768, out_dim=cross_attention_dim)
+            positive_len = 768
+            if isinstance(cross_attention_dim, int):
+                positive_len = cross_attention_dim
+            elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
+                positive_len = cross_attention_dim[0]
+            self.position_net = PositionNet(positive_len=positive_len, out_dim=cross_attention_dim)
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:

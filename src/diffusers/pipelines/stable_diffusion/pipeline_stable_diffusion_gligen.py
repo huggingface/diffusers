@@ -674,7 +674,6 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
         # 5.1 Prepare GLIGEN variables
         if gligen_phrases is not None:
             assert len(gligen_phrases) == len(gligen_boxes)
-            assert batch_size == 1
             max_objs = 30
             if len(gligen_boxes) > max_objs:
                 warnings.warn(
@@ -686,20 +685,17 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             _boxes = gligen_boxes
             # prepare batched input to the PositionNet (boxes, phrases, mask)
             # Get tokens for phrases from pre-trained CLIPTokenizer
-            tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(
-                self.text_encoder.device
-            )
+            tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(device)
             # For the token, we use the same pre-trained text encoder
             # to obtain its text feature
             _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
             n_objs = min(len(_boxes), max_objs)
-            device = self.text_encoder.device
             dtype = self.text_encoder.dtype
             # For each entity, described in phrases, is denoted with a bounding box,
             # we represent the location information as (xmin,ymin,xmax,ymax)
             boxes = torch.zeros(max_objs, 4, device=device, dtype=dtype)
             boxes[:n_objs] = torch.tensor(_boxes[:n_objs])
-            text_embeddings = torch.zeros(max_objs, 768, device=device, dtype=dtype)
+            text_embeddings = torch.zeros(max_objs, self.unet.cross_attention_dim, device=device, dtype=dtype)
             text_embeddings[:n_objs] = _text_embeddings[:n_objs]
             # Generate a mask for each object that is entity described by phrases
             masks = torch.zeros(max_objs, device=device, dtype=dtype)
