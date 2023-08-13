@@ -461,7 +461,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.check_inputs
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -758,8 +758,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=dtype)
 
-        return add_time_ids, add_neg_time_idstensor([add_time_ids], dtype=dtype)
-        return add_time_ids
+        return add_time_ids, add_neg_time_id
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
