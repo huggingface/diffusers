@@ -804,7 +804,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        strength: float = 0.3,
+        strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
