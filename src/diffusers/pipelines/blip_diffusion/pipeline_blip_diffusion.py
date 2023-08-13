@@ -8,14 +8,16 @@ from .modeling_ctx_clip import CtxCLIPTextModel
 from transformers import CLIPTokenizer
 from ...pipelines import DiffusionPipeline
 import torch
-from ...schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler
+from ...schedulers import PNDMScheduler
 from ...utils import (
     BaseOutput,
     is_accelerate_available,
+    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
 )
+
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
 from .modeling_blip2 import Blip2QFormerModel
@@ -49,21 +51,74 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         self._CTX_BEGIN_POS = 2
 
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
-
-    def prepare_latents():
-        pass
-
-    def encode_prompt():
-        pass
     
-    def enable_sequential_cpu_offload():
-        pass
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
+        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
+        when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        models = [
+            self.text_encoder,
+            self.vae,
+            self.unet,
+            self.qformer,
+        ]
+        for cpu_offloaded_model in models:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     def enable_model_cpu_offload(self, gpu_id=0):
-        pass
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-    def __call__(self):
-        pass
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.unet, self.qformer, self.vae, self.text_encoder]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
+
+    @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
 
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
         rv = []
@@ -174,8 +229,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         return transform(image)
 
 
-    @torch.no_grad()
-    def generate(
+    def __call__(
         self,
         samples,
         latents=None,
@@ -185,13 +239,10 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         seed=42,
         num_inference_steps=50,
         neg_prompt="",
-        controller=None,
         prompt_strength=1.0,
         prompt_reps=20,
         use_ddim=False,
     ):
-        if controller is not None:
-            self._register_attention_refine(controller)
 
         cond_image = samples["cond_images"]  # reference image
         cond_subject = samples["cond_subject"]  # source subject category
@@ -316,7 +367,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             noise_placeholder.append(noise_pred[-1].unsqueeze(0))
             noise_pred = torch.cat(noise_placeholder)
 
-        # TODO - Handle pndm_scheduler as well
+        # TODO - Handle ddim as well
         # # compute the previous noisy sample x_t -> x_t-1
         # scheduler = self.ddim_scheduler if use_inversion else self.pndm_scheduler
 
