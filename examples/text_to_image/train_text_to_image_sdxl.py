@@ -70,6 +70,7 @@ DATASET_NAME_MAPPING = {
 def save_model_card(
     repo_id: str,
     images=None,
+    validation_prompt=None,
     base_model=str,
     dataset_name=str,
     repo_folder=None,
@@ -96,7 +97,7 @@ inference: true
     model_card = f"""
 # Text-to-image finetuning - {repo_id}
 
-This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
+This pipeline was finetuned from **{base_model}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompt: {validation_prompt}: \n
 {img_str}
 
 Special VAE used for training: {vae_path}.
@@ -1176,6 +1177,7 @@ def main(args):
             save_model_card(
                 repo_id=repo_id,
                 images=images,
+                validation_prompt=args.validation_prompt,
                 base_model=args.pretrained_model_name_or_path,
                 dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
