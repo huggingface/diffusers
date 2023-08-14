@@ -65,7 +65,7 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 To load a diffusion pipeline locally, use [`git-lfs`](https://git-lfs.github.com/) to manually download the checkpoint (in this case, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) to your local disk. This creates a local folder, `./stable-diffusion-v1-5`, on your disk:
 
 ```bash
-git lfs install
+git-lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
