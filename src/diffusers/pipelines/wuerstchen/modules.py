@@ -92,9 +92,9 @@ class GlobalResponseNorm(nn.Module):
         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
 
     def forward(self, x):
-        Gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
-        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
-        return self.gamma * (x * Nx) + self.beta + x
+        agg_norm = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
+        stand_div_norm = agg_norm / (agg_norm.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (x * stand_div_norm) + self.beta + x
 
 
 class AttnBlock(nn.Module):
