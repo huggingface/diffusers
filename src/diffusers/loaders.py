@@ -1540,9 +1540,11 @@ class LoraLoaderMixin:
                 diffusers_name = diffusers_name.replace("proj.in", "proj_in")
                 diffusers_name = diffusers_name.replace("proj.out", "proj_out")
                 diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+                diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
+                diffusers_name = diffusers_name.replace("conv.shortcut", "conv_shortcut")
 
                 # SDXL specificity.
-                if "emb" in diffusers_name:
+                if "emb" in diffusers_name and "time_emb_proj" not in diffusers_name:
                     pattern = r"\.\d+(?=\D*$)"
                     diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
                 if ".in." in diffusers_name:
