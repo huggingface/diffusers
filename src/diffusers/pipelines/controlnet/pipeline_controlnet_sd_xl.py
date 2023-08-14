@@ -149,7 +149,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: ControlNetModel,
+        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -157,7 +157,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         super().__init__()
 
         if isinstance(controlnet, (list, tuple)):
-            raise ValueError("MultiControlNet is not yet supported.")
+            controlnet = MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -569,6 +569,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
@@ -606,6 +607,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -888,6 +890,9 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
             if isinstance(controlnet, ControlNetModel)
@@ -933,6 +938,26 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
+        elif isinstance(controlnet, MultiControlNetModel):
+            images = []
+
+            for image_ in image:
+                image_ = self.prepare_image(
+                    image=image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                images.append(image_)
+
+            image = images
+            height, width = image[0].shape[-2:]
         else:
             assert False
 
