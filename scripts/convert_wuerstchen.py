@@ -8,8 +8,8 @@ from diffusers import (
     DDPMWuerstchenScheduler,
     VQModelPaella,
     WuerstchenDecoderPipeline,
-    WuerstchenPriorPipeline,
     WuerstchenPipeline,
+    WuerstchenPriorPipeline,
 )
 from diffusers.pipelines.wuerstchen import DiffNeXt, Prior
 

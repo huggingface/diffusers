@@ -13,28 +13,28 @@
 # limitations under the License.
 from typing import Callable, List, Optional, Union
 
-import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
-from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...schedulers import DDPMWuerstchenScheduler
 from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_accelerate_available, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...models import PriorTransformer, UNet2DConditionModel, VQModel
-from ...schedulers import DDIMScheduler, DDPMScheduler, UnCLIPScheduler
 from ...utils import replace_example_docstring
-
-from .modules import DiffNeXt, Prior
 from ..pipeline_utils import DiffusionPipeline
+from .diffnext import DiffNeXt
 from .pipeline_wuerstchen import WuerstchenDecoderPipeline
 from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
+from .wuerstchen_prior import WuerstchenPrior
+
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> from diffusions import WuerstchenPipeline
+
+        >>> pipe = WuerstchenPipeline.from_pretrained("warp-diffusion/Wuerstchen", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
+        >>> images = pipe(prompt=prompt)
         ```
 """
 
@@ -61,7 +61,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         vqgan: VQModelPaella,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
-        prior_prior: Prior,
+        prior_prior: WuerstchenPrior,
         prior_scheduler: DDPMWuerstchenScheduler,
     ):
         super().__init__()

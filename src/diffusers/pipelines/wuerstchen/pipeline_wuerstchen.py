@@ -22,7 +22,7 @@ from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .modules import DiffNeXt
+from .diffnext import DiffNeXt
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

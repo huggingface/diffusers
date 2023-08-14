@@ -209,8 +209,8 @@ else:
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
         WuerstchenDecoderPipeline,
-        WuerstchenPriorPipeline,
         WuerstchenPipeline,
+        WuerstchenPriorPipeline,
     )
 
 try:

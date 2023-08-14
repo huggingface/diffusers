@@ -13,17 +13,17 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from math import ceil
 from typing import List, Optional, Union
 
 import numpy as np
 import torch
-from math import ceil
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .modules import Prior
+from .wuerstchen_prior import WuerstchenPrior
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -81,7 +81,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        prior: Prior,
+        prior: WuerstchenPrior,
         scheduler: DDPMWuerstchenScheduler,
     ) -> None:
         super().__init__()
