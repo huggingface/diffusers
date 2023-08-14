@@ -947,6 +947,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
 
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+            print(f"From pipeline call: {controlnet_conditioning_scale}, {type(controlnet_conditioning_scale)}")
 
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
@@ -1043,12 +1044,15 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
-
-        original_size = original_size or image[0].shape[-2:]
-        target_size = target_size or (height, width)
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 7.2 Prepare added time ids & embeddings
+        if isinstance(image, list):
+            original_size = original_size or image[0].shape[-2:]
+        else:
+            original_size = original_size or image.shape[-2:]
+        target_size = target_size or (height, width)
+
         add_text_embeds = pooled_prompt_embeds
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
@@ -1088,6 +1092,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
+                    print(f"From pipeline call: {cond_scale}, {type(cond_scale)}")
 
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
