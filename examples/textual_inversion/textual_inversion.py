@@ -708,7 +708,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=args.placeholder_token,
+        placeholder_token=(" ".join(tokenizer.convert_ids_to_tokens(placeholder_token_ids))),
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,

@@ -24,6 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.utils import make_image_grid
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -427,19 +428,6 @@ def freeze_params(params):
         param.requires_grad = False
 
 
-def image_grid(imgs, rows, cols):
-    if not len(imgs) == rows * cols:
-        raise ValueError("The specified number of rows and columns are not correct.")
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
-
-
 def generate_images(pipeline, prompt="", guidance_scale=7.5, num_inference_steps=50, num_images_per_prompt=1, seed=42):
     generator = torch.Generator(pipeline.device).manual_seed(seed)
     images = pipeline(
@@ -450,7 +438,7 @@ def generate_images(pipeline, prompt="", guidance_scale=7.5, num_inference_steps
         num_images_per_prompt=num_images_per_prompt,
     ).images
     _rows = int(math.sqrt(num_images_per_prompt))
-    grid = image_grid(images, rows=_rows, cols=num_images_per_prompt // _rows)
+    grid = make_image_grid(images, rows=_rows, cols=num_images_per_prompt // _rows)
     return grid
 
 

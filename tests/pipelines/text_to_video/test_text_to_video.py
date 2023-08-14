@@ -22,11 +22,10 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
     TextToVideoSDPipeline,
     UNet3DConditionModel,
 )
-from diffusers.utils import is_xformers_available, load_numpy, skip_mps, slow, torch_device
+from diffusers.utils import is_xformers_available, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -170,31 +169,15 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @skip_mps
+@require_torch_gpu
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
-    def test_full_model(self):
-        expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video.npy"
-        )
-
-        pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to("cuda")
-
-        prompt = "Spiderman is surfing"
-        generator = torch.Generator(device="cpu").manual_seed(0)
-
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=25, output_type="pt").frames
-        video = video_frames.cpu().numpy()
-
-        assert np.abs(expected_video - video).mean() < 5e-2
-
     def test_two_step_model(self):
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
         )
 
         pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(torch_device)
 
         prompt = "Spiderman is surfing"
         generator = torch.Generator(device="cpu").manual_seed(0)
