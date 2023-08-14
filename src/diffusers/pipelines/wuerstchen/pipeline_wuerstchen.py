@@ -74,6 +74,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         generator: DiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
+        latent_dim_scale: float = 10.67,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -257,8 +258,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         )
 
         dtype = predicted_image_embeddings.dtype
-        latent_height = int(predicted_image_embeddings.size(2) * 10.67)
-        latent_width = int(predicted_image_embeddings.size(3) * 10.67)
+        latent_height = int(predicted_image_embeddings.size(2) * self.config.latent_dim_scale)
+        latent_width = int(predicted_image_embeddings.size(3) * self.config.latent_dim_scale)
         latent_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
