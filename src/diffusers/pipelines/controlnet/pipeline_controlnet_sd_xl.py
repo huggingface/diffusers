@@ -1045,7 +1045,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             ]
             controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
 
-        original_size = original_size or image.shape[-2:]
+        original_size = original_size or image[0].shape[-2:]
         target_size = target_size or (height, width)
 
         # 7.2 Prepare added time ids & embeddings
