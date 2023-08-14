@@ -12,22 +12,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Conversion script for the AudioLDM checkpoints."""
+""" Conversion script for the MusicLDM checkpoints."""
 
 import argparse
 import re
 
 import torch
 from transformers import (
+    AutoFeatureExtractor,
     AutoTokenizer,
-    ClapTextConfig,
-    ClapTextModelWithProjection,
+    ClapConfig,
+    ClapModel,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
 )
 
 from diffusers import (
-    AudioLDMPipeline,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -35,6 +35,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
     LMSDiscreteScheduler,
+    MusicLDMPipeline,
     PNDMScheduler,
     UNet2DConditionModel,
 )
@@ -209,7 +210,7 @@ def conv_attn_to_linear(checkpoint):
 
 def create_unet_diffusers_config(original_config, image_size: int):
     """
-    Creates a UNet config for diffusers based on the config of the original AudioLDM model.
+    Creates a UNet config for diffusers based on the config of the original MusicLDM model.
     """
     unet_params = original_config.model.params.unet_config.params
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
@@ -262,7 +263,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
 # Adapted from diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_diffusers_config
 def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     """
-    Creates a VAE config for diffusers based on the config of the original AudioLDM model. Compared to the original
+    Creates a VAE config for diffusers based on the config of the original MusicLDM model. Compared to the original
     Stable Diffusion conversion, this function passes a *learnt* VAE scaling factor to the diffusers VAE.
     """
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
@@ -587,6 +588,7 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
 
 CLAP_KEYS_TO_MODIFY_MAPPING = {
     "text_branch": "text_model",
+    "audio_branch": "audio_model.audio_encoder",
     "attn": "attention.self",
     "self.proj": "output.dense",
     "attention.self_mask": "attn_mask",
@@ -597,7 +599,15 @@ CLAP_KEYS_TO_MODIFY_MAPPING = {
     "bn0": "batch_norm",
 }
 
-CLAP_KEYS_TO_IGNORE = ["text_transform"]
+CLAP_KEYS_TO_IGNORE = [
+    "text_transform",
+    "audio_transform",
+    "stft",
+    "logmel_extractor",
+    "tscam_conv",
+    "head",
+    "attn_mask",
+]
 
 CLAP_EXPECTED_MISSING_KEYS = ["text_model.embeddings.token_type_ids"]
 
@@ -608,11 +618,11 @@ def convert_open_clap_checkpoint(checkpoint):
     """
     # extract state dict for CLAP text embedding model, discarding the audio component
     model_state_dict = {}
-    model_key = "cond_stage_model.model.text_"
+    model_key = "cond_stage_model.model."
     keys = list(checkpoint.keys())
     for key in keys:
         if key.startswith(model_key):
-            model_state_dict[key.replace(model_key, "text_")] = checkpoint.get(key)
+            model_state_dict[key.replace(model_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
 
@@ -620,9 +630,10 @@ def convert_open_clap_checkpoint(checkpoint):
     text_projection_pattern = r".*_projection.(\d+).*"
 
     for key, value in model_state_dict.items():
-        # check if key should be ignored in mapping
-        if key.split(".")[0] in CLAP_KEYS_TO_IGNORE:
-            continue
+        # check if key should be ignored in mapping - if so map it to a key name that we'll filter out at the end
+        for key_to_ignore in CLAP_KEYS_TO_IGNORE:
+            if key_to_ignore in key:
+                key = "spectrogram"
 
         # check if any key needs to be modified
         for key_to_modify, new_key in CLAP_KEYS_TO_MODIFY_MAPPING.items():
@@ -654,7 +665,7 @@ def convert_open_clap_checkpoint(checkpoint):
             new_checkpoint[key.replace("qkv", "query")] = query_layer
             new_checkpoint[key.replace("qkv", "key")] = key_layer
             new_checkpoint[key.replace("qkv", "value")] = value_layer
-        else:
+        elif key != "spectrogram":
             new_checkpoint[key] = value
 
     return new_checkpoint
@@ -707,7 +718,7 @@ def convert_hifigan_checkpoint(checkpoint, config):
     return vocoder_state_dict
 
 
-# Adapted from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
+# Adapted from https://huggingface.co/spaces/haoheliu/MusicLDM-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/MusicLDM/utils.py#L72-L73
 DEFAULT_CONFIG = {
     "model": {
         "params": {
@@ -717,7 +728,7 @@ DEFAULT_CONFIG = {
             "channels": 8,
             "scale_by_std": True,
             "unet_config": {
-                "target": "audioldm.latent_diffusion.openaimodel.UNetModel",
+                "target": "MusicLDM.latent_diffusion.openaimodel.UNetModel",
                 "params": {
                     "extra_film_condition_dim": 512,
                     "extra_film_use_concat": True,
@@ -731,7 +742,7 @@ DEFAULT_CONFIG = {
                 },
             },
             "first_stage_config": {
-                "target": "audioldm.variational_autoencoder.autoencoder.AutoencoderKL",
+                "target": "MusicLDM.variational_autoencoder.autoencoder.AutoencoderKL",
                 "params": {
                     "embed_dim": 8,
                     "ddconfig": {
@@ -746,7 +757,7 @@ DEFAULT_CONFIG = {
                 },
             },
             "vocoder_config": {
-                "target": "audioldm.first_stage_model.vocoder",
+                "target": "MusicLDM.first_stage_model.vocoder",
                 "params": {
                     "upsample_rates": [5, 4, 2, 2, 2],
                     "upsample_kernel_sizes": [16, 16, 8, 4, 4],
@@ -762,7 +773,7 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_pipeline_from_original_audioldm_ckpt(
+def load_pipeline_from_original_MusicLDM_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
     image_size: int = 512,
@@ -774,9 +785,9 @@ def load_pipeline_from_original_audioldm_ckpt(
     num_head_channels: int = None,
     device: str = None,
     from_safetensors: bool = False,
-) -> AudioLDMPipeline:
+) -> MusicLDMPipeline:
     """
-    Load an AudioLDM pipeline object from a `.ckpt`/`.safetensors` file and (ideally) a `.yaml` config file.
+    Load an MusicLDM pipeline object from a `.ckpt`/`.safetensors` file and (ideally) a `.yaml` config file.
 
     Although many of the arguments can be automatically inferred, some of these rely on brittle checks against the
     global step count, which will likely fail for models that have undergone further fine-tuning. Therefore, it is
@@ -786,7 +797,7 @@ def load_pipeline_from_original_audioldm_ckpt(
         checkpoint_path (`str`): Path to `.ckpt` file.
         original_config_file (`str`):
             Path to `.yaml` config file corresponding to the original architecture. If `None`, will be automatically
-            set to the audioldm-s-full-v2 config.
+            set to the MusicLDM-s-full-v2 config.
         image_size (`int`, *optional*, defaults to 512):
             The image size that the model was trained on.
         prediction_type (`str`, *optional*):
@@ -811,7 +822,7 @@ def load_pipeline_from_original_audioldm_ckpt(
             The device to use. Pass `None` to determine automatically.
         from_safetensors (`str`, *optional*, defaults to `False`):
             If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.
-        return: An AudioLDMPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+        return: An MusicLDMPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
     if not is_omegaconf_available():
@@ -921,12 +932,20 @@ def load_pipeline_from_original_audioldm_ckpt(
     vae.load_state_dict(converted_vae_checkpoint)
 
     # Convert the text model
-    # AudioLDM uses the same configuration and tokenizer as the original CLAP model
-    config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
+    # MusicLDM uses the same tokenizer as the original CLAP model, but a slightly different configuration
+    config = ClapConfig.from_pretrained("laion/clap-htsat-unfused")
+    config.audio_config.update(
+        {
+            "patch_embeds_hidden_size": 128,
+            "hidden_size": 1024,
+            "depths": [2, 2, 12, 2],
+        }
+    )
     tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
+    feature_extractor = AutoFeatureExtractor.from_pretrained("laion/clap-htsat-unfused")
 
     converted_text_model = convert_open_clap_checkpoint(checkpoint)
-    text_model = ClapTextModelWithProjection(config)
+    text_model = ClapModel(config)
 
     missing_keys, unexpected_keys = text_model.load_state_dict(converted_text_model, strict=False)
     # we expect not to have token_type_ids in our original state dict so let's ignore them
@@ -947,13 +966,14 @@ def load_pipeline_from_original_audioldm_ckpt(
     vocoder.load_state_dict(converted_vocoder_checkpoint)
 
     # Instantiate the diffusers pipeline
-    pipe = AudioLDMPipeline(
+    pipe = MusicLDMPipeline(
         vae=vae,
         text_encoder=text_model,
         tokenizer=tokenizer,
         unet=unet,
         scheduler=scheduler,
         vocoder=vocoder,
+        feature_extractor=feature_extractor,
     )
 
     return pipe
@@ -962,8 +982,13 @@ def load_pipeline_from_original_audioldm_ckpt(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    # TODO(SG): revert these args
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
+        "--checkpoint_path",
+        default="/Users/sanchitgandhi/convert-musicldm/musicldm-ckpt.ckpt",
+        type=str,
+        required=False,
+        help="Path to the checkpoint to convert.",
     )
     parser.add_argument(
         "--original_config_file",
@@ -1028,11 +1053,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument(
+        "--dump_path",
+        default="/Users/sanchitgandhi/convert-musicldm/diffusers_out",
+        type=str,
+        help="Path to the output model.",
+    )
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
-    pipe = load_pipeline_from_original_audioldm_ckpt(
+    pipe = load_pipeline_from_original_MusicLDM_ckpt(
         checkpoint_path=args.checkpoint_path,
         original_config_file=args.original_config_file,
         image_size=args.image_size,
