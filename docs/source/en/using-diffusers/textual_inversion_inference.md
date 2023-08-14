@@ -14,7 +14,7 @@ from huggingface_hub import notebook_login
 notebook_login()
 ```
 
-Import the necessary libraries, and create a helper function to visualize the generated images:
+Import the necessary libraries:
 
 ```py
 import os
@@ -24,19 +24,8 @@ import PIL
 from PIL import Image
 
 from diffusers import StableDiffusionPipeline
+from diffusers.utils import make_image_grid
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 ```
 
 Pick a Stable Diffusion checkpoint and a pre-learned concept from the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer):
@@ -73,7 +62,7 @@ for _ in range(num_rows):
     images = pipe(prompt, num_images_per_prompt=num_samples, num_inference_steps=50, guidance_scale=7.5).images
     all_images.extend(images)
 
-grid = image_grid(all_images, num_samples, num_rows)
+grid = make_image_grid(all_images, num_samples, num_rows)
 grid
 ```
 
