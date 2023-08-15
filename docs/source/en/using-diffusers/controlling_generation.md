@@ -66,7 +66,7 @@ For convenience, we provide a table to denote which methods are inference-only a
 
 [Paper](https://arxiv.org/abs/2211.09800)
 
-[Instruct Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
+[Instruct Pix2Pix](../api/pipelines/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
 Instruct Pix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
 See [here](../api/pipelines/pix2pix) for more information on how to use it.
