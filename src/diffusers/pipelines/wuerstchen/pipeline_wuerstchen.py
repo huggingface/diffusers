@@ -65,6 +65,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
+        latent_dim_scale (float, `optional`, defaults to 10.67):
+            The scale of the latent dimension. This is used to determine the size of the latent space.
     """
 
     def __init__(

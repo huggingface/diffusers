@@ -1,3 +1,4 @@
+# Run inside root directory of official source code
 import os
 
 import torch
@@ -28,12 +29,10 @@ vqmodel = VQModelPaella(
     latent_channels=paella_vqmodel.c_latent,
 )
 vqmodel.load_state_dict(state_dict)
-# TODO: test vqmodel outputs match paella_vqmodel outputs
 
 # Clip Text encoder and tokenizer
 text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-
 
 # Generator
 state_dict = torch.load(os.path.join(model_path, "model_v2_stage_b.pt"), map_location=device)
@@ -41,10 +40,6 @@ gen_text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s3
 gen_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 generator = DiffNeXt()
 generator.load_state_dict(state_dict["state_dict"])
-
-# EfficientNet
-# efficient_net = EfficientNetEncoder()
-# efficient_net.load_state_dict(state_dict["effnet_state_dict"])
 
 # Prior
 state_dict = torch.load(os.path.join(model_path, "model_v3_stage_c.pt"), map_location=device)
