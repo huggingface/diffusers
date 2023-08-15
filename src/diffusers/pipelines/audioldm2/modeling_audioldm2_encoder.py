@@ -89,12 +89,12 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         )
 
         t5_hidden_states = self.t5_projection(t5_hidden_states)
-        t5_hidden_states, t5_attention_mask = self.add_special_tokens(
+        t5_hidden_states, t5_attention_mask = add_special_tokens(
             t5_hidden_states, t5_attention_mask, sos_token=self.t5_sos_embed, eos_token=self.t5_eos_embed
         )
 
         # concatenate clap and t5 text encoding
-        hidden_states = torch.cat([clap_hidden_states, t5_hidden_states], dim=-1)
+        hidden_states = torch.cat([clap_hidden_states, t5_hidden_states], dim=1)
 
         # concatenate attention masks
         if clap_attention_mask is None and t5_attention_mask is not None:
