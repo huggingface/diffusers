@@ -131,7 +131,7 @@ text_encoder = CLIPTextModel(text_encoder_config)
 tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 ```
 
-Pass all of the components to the [`StableDiffusionPipleine`] and call [`~diffusers.utils.PushToHubMixin.push_to_hub`] to push the pipeline to the Hub:
+Pass all of the components to the [`StableDiffusionPipeline`] and call [`~diffusers.utils.PushToHubMixin.push_to_hub`] to push the pipeline to the Hub:
 
 ```py
 components = {
