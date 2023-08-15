@@ -184,9 +184,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         """
         # TODO(SG): how do we use a default max new tokens?
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.max_new_tokens
-        steps = 3 * max_new_tokens // 4
 
-        for _ in range(steps):
+        for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
 
@@ -280,8 +279,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 )
                 prompt_embeds = prompt_embeds[0]
                 if text_encoder.config.model_type == "clap_text_model":
-                    # CLAP requires additional L_2 normalization over each hidden-state
-                    prompt_embeds = F.normalize(prompt_embeds, dim=-1)
+                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
+                    prompt_embeds = F.normalize(prompt_embeds, dim=-1)[:, None, :]
+                    # make sure that we attend to this single hidden-state
+                    attention_mask = attention_mask.new_ones((batch_size, 1))
 
                 prompt_embeds_list.append(prompt_embeds)
                 attention_mask_list.append(attention_mask)
@@ -293,19 +294,16 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 t5_attention_mask=attention_mask_list[1],
             )
             prompt_embeds = projection_output.hidden_states
-            attention_mask = projection_output.hidden_states
+            attention_mask = projection_output.attention_mask
 
             prompt_embeds = self.generate(prompt_embeds, attention_mask=attention_mask, max_new_tokens=8)
 
         prompt_embeds = prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
-        (
-            bs_embed,
-            seq_len,
-        ) = prompt_embeds.shape
+        bs_embed, seq_len, hidden_size = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len)
+        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -330,10 +328,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
             negative_prompt_embeds_list = []
             negative_attention_mask_list = []
-            for prompt_embed, tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                uncond_input = self.tokenizer(
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                uncond_input = tokenizer(
                     uncond_tokens,
-                    padding="max_length",
+                    padding="max_length" if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast)) else True,
                     max_length=tokenizer.model_max_length,
                     truncation=True,
                     return_tensors="pt",
@@ -342,14 +340,16 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 uncond_input_ids = uncond_input.input_ids.to(device)
                 attention_mask = uncond_input.attention_mask.to(device)
 
-                negative_prompt_embeds = self.text_encoder(
+                negative_prompt_embeds = text_encoder(
                     uncond_input_ids,
                     attention_mask=attention_mask,
                 )
-                negative_prompt_embeds = negative_prompt_embeds.text_embeds
+                negative_prompt_embeds = negative_prompt_embeds[0]
                 if text_encoder.config.model_type == "clap_text_model":
-                    # CLAP requires additional L_2 normalization over each hidden-state
-                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)
+                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
+                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)[:, None, :]
+                    # make sure that we attend to this single hidden-state
+                    attention_mask = attention_mask.new_ones((batch_size, 1))
 
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
                 negative_attention_mask_list.append(attention_mask)
@@ -361,7 +361,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 t5_attention_mask=negative_attention_mask_list[1],
             )
             negative_prompt_embeds = projection_output.hidden_states
-            attention_mask = projection_output.hidden_states
+            attention_mask = projection_output.attention_mask
 
             negative_prompt_embeds = self.generate(
                 negative_prompt_embeds, attention_mask=attention_mask, max_new_tokens=8
@@ -373,8 +373,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -659,8 +659,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=None,
-                    class_labels=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
