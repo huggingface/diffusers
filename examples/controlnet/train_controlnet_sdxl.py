@@ -50,7 +50,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -61,17 +61,6 @@ if is_wandb_available():
 check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step):
@@ -205,12 +194,12 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: openrail++
 base_model: {base_model}
 tags:
 - stable-diffusion-xl
@@ -227,12 +216,7 @@ inference: true
 These are controlnet weights trained on {base_model} with new type of conditioning.
 {img_str}
 """
-    model_card += """
 
-## License
-
-[SDXL 1.0 License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md)
-"""
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
@@ -904,6 +888,7 @@ def main(args):
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
+        unet.enable_gradient_checkpointing()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (

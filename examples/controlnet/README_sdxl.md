@@ -1,6 +1,6 @@
-# DreamBooth training example for Stable Diffusion XL (SDXL)
+# ControlNet training example for Stable Diffusion XL (SDXL)
 
-The `train_controlnet_sdxl.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
+The `train_controlnet_sdxl.py` script shows how to implement the ControlNet training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
 ## Running locally with PyTorch
 

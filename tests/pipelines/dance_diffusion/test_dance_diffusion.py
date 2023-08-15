@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
-from diffusers.utils import slow, torch_device
+from diffusers.utils import nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS, UNCONDITIONAL_AUDIO_GENERATION_PARAMS
@@ -116,7 +116,7 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

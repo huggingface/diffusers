@@ -55,7 +55,7 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
         "output_type",
         "return_dict",
     ]
-    test_xformers_attention = False
+    test_xformers_attention = True
 
     def get_dummy_components(self):
         dummy = Dummies()

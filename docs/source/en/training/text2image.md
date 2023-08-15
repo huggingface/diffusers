@@ -238,7 +238,7 @@ Now you can load the fine-tuned model for inference by passing the model path or
 from diffusers import StableDiffusionPipeline
 
 model_path = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, use_safetensors=True)
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]

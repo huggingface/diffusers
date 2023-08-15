@@ -306,9 +306,9 @@ import torch
 base_model_path = "path to model"
 controlnet_path = "path to controlnet"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+    base_model_path, controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
@@ -327,3 +327,7 @@ image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_
 
 image.save("./output.png")
 ```
+
+## Stable Diffusion XL
+
+Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md). 

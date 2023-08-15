@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
+from diffusers.utils.import_utils import is_invisible_watermark_available
+
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
@@ -42,7 +44,11 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
-from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+
+
+if is_invisible_watermark_available():
+    from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+
 from .multicontrolnet import MultiControlNetModel
 
 
@@ -52,8 +58,45 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # To be updated when there's a useful ControlNet checkpoint
-        >>> # compatible with SDXL.
+        >>> # !pip install opencv-python transformers accelerate
+        >>> from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
+        >>> from diffusers.utils import load_image
+        >>> import numpy as np
+        >>> import torch
+
+        >>> import cv2
+        >>> from PIL import Image
+
+        >>> prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
+        >>> negative_prompt = "low quality, bad quality, sketches"
+
+        >>> # download an image
+        >>> image = load_image(
+        ...     "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
+        ... )
+
+        >>> # initialize the models and pipeline
+        >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
+        >>> controlnet = ControlNetModel.from_pretrained(
+        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+        ... )
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
+        ... )
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> # get canny image
+        >>> image = np.array(image)
+        >>> image = cv2.Canny(image, 100, 200)
+        >>> image = image[:, :, None]
+        >>> image = np.concatenate([image, image, image], axis=2)
+        >>> canny_image = Image.fromarray(image)
+
+        >>> # generate image
+        >>> image = pipe(
+        ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image
+        ... ).images[0]
         ```
 """
 
@@ -109,6 +152,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         controlnet: ControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -130,7 +174,13 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
-        self.watermark = StableDiffusionXLWatermarker()
+        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
+
+        if add_watermarker:
+            self.watermark = StableDiffusionXLWatermarker()
+        else:
+            self.watermark = None
+
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
@@ -292,7 +342,6 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
 
                 text_input_ids = text_inputs.input_ids
                 untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                     text_input_ids, untruncated_ids
@@ -419,6 +468,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        pooled_prompt_embeds=None,
+        negative_pooled_prompt_embeds=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
@@ -468,6 +519,16 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if prompt_embeds is not None and pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+
+        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            )
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
@@ -656,6 +717,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -726,6 +789,13 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
+            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -797,6 +867,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             negative_prompt_2,
             prompt_embeds,
             negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
@@ -842,6 +914,8 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             negative_prompt_2,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
 
@@ -930,7 +1004,10 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
-                    cond_scale = controlnet_conditioning_scale * controlnet_keep[i]
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
@@ -995,7 +1072,10 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
 
-        image = self.watermark.apply_watermark(image)
+        # apply watermark if available
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
+
         image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
