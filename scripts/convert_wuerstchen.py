@@ -11,7 +11,7 @@ from diffusers import (
     WuerstchenPipeline,
     WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import DiffNeXt, Prior
+from diffusers.pipelines.wuerstchen import DiffNeXt, WuerstchenPrior
 
 
 model_path = "models/"
@@ -48,7 +48,7 @@ generator.load_state_dict(state_dict["state_dict"])
 
 # Prior
 state_dict = torch.load(os.path.join(model_path, "model_v3_stage_c.pt"), map_location=device)
-prior_model = Prior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24).to(device)
+prior_model = WuerstchenPrior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24).to(device)
 prior_model.load_state_dict(state_dict["ema_state_dict"])
 
 # scheduler
@@ -88,4 +88,4 @@ wuerstchen_pipeline = WuerstchenPipeline(
     prior_prior=prior_model,
     prior_scheduler=scheduler,
 )
-wuerstchen_pipeline.save_pretrained("warp-diffusion/Wuerstchen")
+wuerstchen_pipeline.save_pretrained("warp-diffusion/WuerstchenPipeline")
