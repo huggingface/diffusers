@@ -10,7 +10,7 @@ from .common import AttnBlock, LayerNorm2d, ResBlock, TimestepBlock
 
 class WuerstchenPrior(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, latent_size=(12, 12), dropout=0.1):
+    def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, dropout=0.1):
         super().__init__()
         self.c_r = c_r
         self.projection = nn.Conv2d(c_in, c, kernel_size=1)
