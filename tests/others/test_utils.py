@@ -13,10 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import unittest
+from distutils.util import strtobool
+
+import pytest
 
 from diffusers import __version__
 from diffusers.utils import deprecate
+
+
+# Used to test the hub
+USER = "__DUMMY_TRANSFORMERS_USER__"
+ENDPOINT_STAGING = "https://hub-ci.huggingface.co"
+
+# Not critical, only usable on the sandboxed CI instance.
+TOKEN = "hf_94wBhPGp6KrrTH3KDchhKpRxZwd6dmHWLL"
 
 
 class DeprecateTester(unittest.TestCase):
@@ -168,3 +180,34 @@ class DeprecateTester(unittest.TestCase):
             deprecate(("deprecated_arg", self.higher_version, "This message is better!!!"), standard_warn=False)
         assert str(warning.warning) == "This message is better!!!"
         assert "diffusers/tests/others/test_utils.py" in warning.filename
+
+
+def parse_flag_from_env(key, default=False):
+    try:
+        value = os.environ[key]
+    except KeyError:
+        # KEY isn't set, default to `default`.
+        _value = default
+    else:
+        # KEY is set, convert it to True or False.
+        try:
+            _value = strtobool(value)
+        except ValueError:
+            # More values are supported, but let's keep the message simple.
+            raise ValueError(f"If set, {key} must be yes or no.")
+    return _value
+
+
+_run_staging = parse_flag_from_env("HUGGINGFACE_CO_STAGING", default=False)
+
+
+def is_staging_test(test_case):
+    """
+    Decorator marking a test as a staging test.
+
+    Those tests will run using the staging environment of huggingface.co instead of the real model hub.
+    """
+    if not _run_staging:
+        return unittest.skip("test is staging test")(test_case)
+    else:
+        return pytest.mark.is_staging_test()(test_case)
