@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from ...models.attention_processor import Attention
+
 
 class LayerNorm2d(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
@@ -18,23 +20,6 @@ class TimestepBlock(nn.Module):
     def forward(self, x, t):
         a, b = self.mapper(t)[:, :, None, None].chunk(2, dim=1)
         return x * (1 + a) + b
-
-
-class Attention2D(nn.Module):
-    def __init__(self, c, nhead, dropout=0.0):
-        super().__init__()
-        self.attn = nn.MultiheadAttention(c, nhead, dropout=dropout, bias=True, batch_first=True)
-
-    def forward(self, x, kv=None, self_attn=False):
-        orig_shape = x.shape
-        x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)  # Bx4xHxW -> Bx(HxW)x4
-        if self_attn and kv is not None:
-            kv = torch.cat([x, kv], dim=1)
-        elif kv is None:
-            kv = x
-        x = self.attn(x, kv, kv, need_weights=False)[0]
-        x = x.permute(0, 2, 1).view(*orig_shape)
-        return x
 
 
 class ResBlockStageB(nn.Module):
@@ -95,11 +80,14 @@ class AttnBlock(nn.Module):
         super().__init__()
         self.self_attn = self_attn
         self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
-        self.attention = Attention2D(c, nhead, dropout)
+        self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
         self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
     def forward(self, x, kv=None):
         if kv is not None:
             kv = self.kv_mapper(kv)
-        x = x + self.attention(self.norm(x), kv, self_attn=self.self_attn)
+        if self.self_attn and kv is not None:
+            batch_size, channel, height, width = x.shape
+            kv = torch.cat([x.view(batch_size, channel, height * width).transpose(1, 2), kv], dim=1)
+        x = x + self.attention(self.norm(x), encoder_hidden_states=kv)
         return x
