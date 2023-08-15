@@ -26,11 +26,9 @@ from tqdm import tqdm
 
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     deprecate,
     is_accelerate_available,
@@ -38,17 +36,16 @@ from ...utils import (
     logging,
     randn_tensor,
     replace_example_docstring,
+    BaseOutput,
 )
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, logging
 from ...models.cross_attention import LoRACrossAttnProcessor
 from ...models.attention import BasicTransformerBlock
-from ..stable_diffusion import StableDiffusionPipeline
 from ...schedulers import EulerAncestralDiscreteScheduler
 from . import FabricPipelineOutput
 
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -159,6 +156,31 @@ class CrossAttnProcessor():
         return hidden_states
 
 class FabricPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for text-to-image generation using Stable Diffusion and conditioning the results 
+    using feedback images.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Stable Diffusion uses the text portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`EulerAncestralDiscreteScheduler`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+    """
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -166,37 +188,57 @@ class FabricPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: EulerAncestralDiscreteScheduler,
-        lora_weights: Optional[str] = None,
+        safety_checker: StableDiffusionSafetyChecker,
+        requires_safety_checker:bool = True,
     ):
         super().__init__()
-
-        #if stable_diffusion_version == "2.1":
-        #    warnings.warn("StableDiffusion v2.x is not supported and may give unexpected results.")
-
-        #if model_name is None:
-        #    if stable_diffusion_version == "1.5":
-        #        model_name = "runwayml/stable-diffusion-v1-5"
-        #    elif stable_diffusion_version == "2.1":
-        #        model_name = "stabilityai/stable-diffusion-2-1"
-        #    else:
-        #        raise ValueError(
-        #            f"Unknown stable diffusion version: {stable_diffusion_version}. Version must be either '1.5' or '2.1'"
-        #        )
-
-        #scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_name, subfolder="scheduler")
-
-       # pipe = StableDiffusionPipeline.from_pretrained(
-       #     model_name,
-       #     scheduler=scheduler,
-       #     torch_dtype=torch_dtype,
-       #     safety_checker=None,
-       # ).to("cuda")
-
-        if lora_weights:
-            print(f"Applying LoRA weights from {lora_weights}")
-            apply_unet_lora_weights(
-                pipeline=pipe, unet_path=lora_weights
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want
+                 to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_che
+                cker=None'` instead."
+            )
+
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
+            deprecation_message = (
+                "The configuration file of the unet has set the default `sample_size` to smaller t
+                han"
+                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of an
+                y of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \
+                n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/sta
+                ble-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 6
+                4 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving
+                 `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have do
+                wnloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a
+                Pull request for"
+                " the `unet/config.json` file"
+            )
+
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(unet.config)
+            new_config["sample_size"] = 64
+            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             unet = unet,
@@ -208,13 +250,6 @@ class FabricPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    #@property
-    #def device(self):
-    #    return next(self.parameters()).device
-
-    #def to(self, device):
-    #    self.pipeline.to(device)
-    #    return super().to(device)
 
     def initialize_prompts(self, prompts: List[str], device):
         # Breaking into individual prompts feels memory efficient 
@@ -420,8 +455,8 @@ class FabricPipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = "",
         negative_prompt: Optional[Union[str, List[str]]] = "lowres, bad anatomy, bad hands, cropped, worst quality",
-        liked: Optional[List[Image.Image]] = [],
-        disliked: Optional[List[Image.Image]] = [],
+        liked: Optional[Union[List[str], List[Image.Image]]] = [],
+        disliked: Optional[Union[List[str], List[Image.Image]]] = [],
         random_seed: int = 37,
         n_images: int = 4,
         guidance_scale: float = 7.0,
@@ -434,11 +469,50 @@ class FabricPipeline(DiffusionPipeline):
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
     ):
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            liked (`List[Image.Image]` or `List[str]`, *optional*):
+                Liked enables feedback through images, encourages images with liked features.
+            disliked (`List[Image.Image]` or `List[str]`, *optional*):
+                Disliked enables feedback through images, discourages images with disliked features.
+            random_seed (`torch.Generator` or `List[torch.Generator]` or `int`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html), can be int.
+                to make generation deterministic.
+            n_images (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            guidance_scale (`float`, *optional*, defaults to 7.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            denoising_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            When returning a tuple, the first element is a list with the generated images, and the second element is a
+            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
+            (nsfw) content, according to the `safety_checker`.
+        """
         """
         Generate a trajectory of images with binary feedback.
         The feedback can be given as a list of liked and disliked images.
         """
-        if random_seed is not None:
+        if random_seed is not None and random_seed is not torch.Generator:
             torch.manual_seed(random_seed)
         
         device = self._execution_device
@@ -557,7 +631,7 @@ class FabricPipeline(DiffusionPipeline):
     @staticmethod
     def image_to_tensor(image: Union[str, Image.Image], dtype):
         """
-        Convert a PIL image to a torch tensor.
+        Convert latent PIL image to a torch tensor for further processing.
         """
         if isinstance(image, str):
             image = Image.open(image)
