@@ -103,7 +103,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         downsample_type: str = "conv",
         upsample_type: str = "conv",
         act_fn: str = "silu",
-        attention_head_dim: Optional[int] = 8,
+        attention_head_dim: Union[int, Tuple[int]] = 8,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
@@ -117,6 +117,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         time_embed_dim = block_out_channels[0] * 4
 
         # Check inputs
+        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+            )
+
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
                 f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
@@ -154,6 +159,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(attention_head_dim, int):
+            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -171,7 +179,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
+                attention_head_dim=attention_head_dim[i] if attention_head_dim is not None else output_channel,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 downsample_type=downsample_type,
@@ -186,7 +194,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            attention_head_dim=attention_head_dim if attention_head_dim is not None else block_out_channels[-1],
+            attention_head_dim=attention_head_dim[-1] if attention_head_dim is not None else block_out_channels[-1],
             resnet_groups=norm_num_groups,
             add_attention=add_attention,
         )
@@ -212,7 +220,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
+                attention_head_dim=attention_head_dim[i] if attention_head_dim is not None else output_channel,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 upsample_type=upsample_type,
             )
