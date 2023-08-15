@@ -247,7 +247,32 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         tokenizers = [self.tokenizer_1, self.tokenizer_2]
         text_encoders = [self.text_encoder_1, self.text_encoder_2]
 
+        # TODO(SG): handle the case where prompt embeds is passed as an argument -> we also need cross_attention_embeds in this case
+        # TODO(SG): also need to handle negative prompt embeds passed as inputs
         if prompt_embeds is None:
+            # get unconditional embeddings for classifier free guidance
+            if do_classifier_free_guidance:
+                uncond_tokens: List[str]
+                if negative_prompt is None:
+                    uncond_tokens = [""] * batch_size
+                elif type(prompt) is not type(negative_prompt):
+                    raise TypeError(
+                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                        f" {type(prompt)}."
+                    )
+                elif isinstance(negative_prompt, str):
+                    uncond_tokens = [negative_prompt]
+                elif batch_size != len(negative_prompt):
+                    raise ValueError(
+                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                        " the batch size of `prompt`."
+                    )
+                else:
+                    uncond_tokens = negative_prompt
+
+                prompt = uncond_tokens + list(prompt)
+
             prompt_embeds_list = []
             attention_mask_list = []
             for tokenizer, text_encoder in zip(tokenizers, text_encoders):
@@ -282,7 +307,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
                     prompt_embeds = F.normalize(prompt_embeds, dim=-1)[:, None, :]
                     # make sure that we attend to this single hidden-state
-                    attention_mask = attention_mask.new_ones((batch_size, 1))
+                    attention_mask = attention_mask.new_ones((attention_mask.shape[0], 1))
 
                 prompt_embeds_list.append(prompt_embeds)
                 attention_mask_list.append(attention_mask)
@@ -301,87 +326,20 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
         bs_embed, seq_len, hidden_size = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        # duplicate generated text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
 
-        # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-            else:
-                uncond_tokens = negative_prompt
+        # duplicate encoder-only text embeddings for each generation per prompt
+        cross_attention_embeds = prompt_embeds_list[-1]
+        bs_embed, seq_len, hidden_size = cross_attention_embeds.shape
+        cross_attention_embeds = cross_attention_embeds.repeat(1, num_waveforms_per_prompt, 1)
+        cross_attention_embeds = cross_attention_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
 
-            negative_prompt_embeds_list = []
-            negative_attention_mask_list = []
-            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                uncond_input = tokenizer(
-                    uncond_tokens,
-                    padding="max_length" if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast)) else True,
-                    max_length=tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
+        cross_attention_mask = attention_mask_list[-1].repeat(1, num_waveforms_per_prompt)
+        cross_attention_mask = cross_attention_mask.view(bs_embed * num_waveforms_per_prompt, seq_len)
 
-                uncond_input_ids = uncond_input.input_ids.to(device)
-                attention_mask = uncond_input.attention_mask.to(device)
-
-                negative_prompt_embeds = text_encoder(
-                    uncond_input_ids,
-                    attention_mask=attention_mask,
-                )
-                negative_prompt_embeds = negative_prompt_embeds[0]
-                if text_encoder.config.model_type == "clap_text_model":
-                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
-                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)[:, None, :]
-                    # make sure that we attend to this single hidden-state
-                    attention_mask = attention_mask.new_ones((batch_size, 1))
-
-                negative_prompt_embeds_list.append(negative_prompt_embeds)
-                negative_attention_mask_list.append(attention_mask)
-
-            projection_output = self.projection_model(
-                clap_hidden_states=negative_prompt_embeds_list[0],
-                t5_hidden_states=negative_prompt_embeds_list[1],
-                clap_attention_mask=negative_attention_mask_list[0],
-                t5_attention_mask=negative_attention_mask_list[1],
-            )
-            negative_prompt_embeds = projection_output.hidden_states
-            attention_mask = projection_output.attention_mask
-
-            negative_prompt_embeds = self.generate(
-                negative_prompt_embeds, attention_mask=attention_mask, max_new_tokens=8
-            )
-
-        if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
-
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.language_model.dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        return prompt_embeds
+        return prompt_embeds, cross_attention_embeds, cross_attention_mask
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -503,7 +461,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 10,
-        guidance_scale: float = 2.5,
+        guidance_scale: float = 3.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -528,7 +486,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 10):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 2.5):
+            guidance_scale (`float`, *optional*, defaults to 3.5):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -618,7 +576,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds = self.encode_prompt(
+        prompt_embeds, cross_attention_embeds, cross_attention_mask = self.encode_prompt(
             prompt,
             device,
             num_waveforms_per_prompt,
@@ -660,7 +618,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_hidden_states_2=cross_attention_embeds,
+                    encoder_attention_mask_2=cross_attention_mask,
                 ).sample
 
                 # perform guidance

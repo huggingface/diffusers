@@ -65,6 +65,7 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.double_self_attention = double_self_attention
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
@@ -170,7 +171,7 @@ class BasicTransformerBlock(nn.Module):
 
             attn_output = self.attn2(
                 norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=encoder_hidden_states if not self.double_self_attention else None,
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
