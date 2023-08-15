@@ -1018,14 +1018,14 @@ class LoraLoaderMixin:
             if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
-                # Here we're relaxing the loading check to enable more Inference API
-                # friendliness where sometimes, it's not at all possible to automatically
-                # determine `weight_name`.
-                if weight_name is None:
-                    weight_name = cls._best_guess_weight_name(
-                        pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
-                    )
                 try:
+                    # Here we're relaxing the loading check to enable more Inference API
+                    # friendliness where sometimes, it's not at all possible to automatically
+                    # determine `weight_name`.
+                    if weight_name is None:
+                        weight_name = cls._best_guess_weight_name(
+                            pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
+                        )
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -1047,7 +1047,10 @@ class LoraLoaderMixin:
                     pass
 
             if model_file is None:
-                weight_name = cls._best_guess_weight_name(pretrained_model_name_or_path_or_dict, file_extension=".bin")
+                if weight_name is None:
+                    weight_name = cls._best_guess_weight_name(
+                        pretrained_model_name_or_path_or_dict, file_extension=".bin"
+                    )
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME,
@@ -1084,7 +1087,8 @@ class LoraLoaderMixin:
         return state_dict, network_alphas
 
     @classmethod
-    def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension):
+    def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension=".safetensors"):
+        targeted_files = []
         if os.path.isdir(pretrained_model_name_or_path_or_dict):
             targeted_files = [
                 f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
@@ -1092,10 +1096,12 @@ class LoraLoaderMixin:
         else:
             files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
             targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
-        if targeted_files and len(targeted_files) > 1:
+        if len(targeted_files) > 1:
             raise ValueError(
-                f"Provided path contains more than one `.safetensors` file. This makes the loading process ambiguous. `weight_name` wasn't specified. So, we tried to pick a `.safetensors` from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single `.safetensors` file."
+                f"Provided path contains more than one weights file in the {file_extension} format. Also, `weight_name` wasn't specified. This makes the loading process ambiguous. So, we tried to pick a file having the `.safetensors` or the `.bin` extension from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single weights file having either `.safetensors` or `.bin` extension."
             )
+        if len(targeted_files) == 0:
+            return
         weight_name = targeted_files[0]
         return weight_name
 
