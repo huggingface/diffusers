@@ -472,15 +472,13 @@ class DownloadTests(unittest.TestCase):
                     assert False, "Parameters not the same!"
 
     def test_download_from_variant_folder(self):
-        for safe_avail in [False, True]:
-            import diffusers
-
-            diffusers.utils.import_utils._safetensors_available = safe_avail
-
-            other_format = ".bin" if safe_avail else ".safetensors"
+        for use_safetensors in [False, True]:
+            other_format = ".bin" if use_safetensors else ".safetensors"
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
-                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
+                    "hf-internal-testing/stable-diffusion-all-variants",
+                    cache_dir=tmpdirname,
+                    use_safetensors=use_safetensors,
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
@@ -492,21 +490,18 @@ class DownloadTests(unittest.TestCase):
                 # no variants
                 assert not any(len(f.split(".")) == 3 for f in files)
 
-        diffusers.utils.import_utils._safetensors_available = True
-
     def test_download_variant_all(self):
-        for safe_avail in [False, True]:
-            import diffusers
-
-            diffusers.utils.import_utils._safetensors_available = safe_avail
-
-            other_format = ".bin" if safe_avail else ".safetensors"
-            this_format = ".safetensors" if safe_avail else ".bin"
+        for use_safetensors in [False, True]:
+            other_format = ".bin" if use_safetensors else ".safetensors"
+            this_format = ".safetensors" if use_safetensors else ".bin"
             variant = "fp16"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
-                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                    "hf-internal-testing/stable-diffusion-all-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
@@ -520,21 +515,18 @@ class DownloadTests(unittest.TestCase):
                 assert not any(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files)
                 assert not any(f.endswith(other_format) for f in files)
 
-        diffusers.utils.import_utils._safetensors_available = True
-
     def test_download_variant_partly(self):
-        for safe_avail in [False, True]:
-            import diffusers
-
-            diffusers.utils.import_utils._safetensors_available = safe_avail
-
-            other_format = ".bin" if safe_avail else ".safetensors"
-            this_format = ".safetensors" if safe_avail else ".bin"
+        for use_safetensors in [False, True]:
+            other_format = ".bin" if use_safetensors else ".safetensors"
+            this_format = ".safetensors" if use_safetensors else ".bin"
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
-                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                    "hf-internal-testing/stable-diffusion-all-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
@@ -551,13 +543,8 @@ class DownloadTests(unittest.TestCase):
                 assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
                 assert not any(f.endswith(other_format) for f in files)
 
-        diffusers.utils.import_utils._safetensors_available = True
-
     def test_download_broken_variant(self):
-        for safe_avail in [False, True]:
-            import diffusers
-
-            diffusers.utils.import_utils._safetensors_available = safe_avail
+        for use_safetensors in [False, True]:
             # text encoder is missing no variant and "no_ema" variant weights, so the following can't work
             for variant in [None, "no_ema"]:
                 with self.assertRaises(OSError) as error_context:
@@ -566,6 +553,7 @@ class DownloadTests(unittest.TestCase):
                             "hf-internal-testing/stable-diffusion-broken-variants",
                             cache_dir=tmpdirname,
                             variant=variant,
+                            use_safetensors=use_safetensors,
                         )
 
                 assert "Error no file name" in str(error_context.exception)
@@ -573,7 +561,10 @@ class DownloadTests(unittest.TestCase):
             # text encoder has fp16 variants so we can load it
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
-                    "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    use_safetensors=use_safetensors,
+                    cache_dir=tmpdirname,
+                    variant="fp16",
                 )
 
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
@@ -583,8 +574,6 @@ class DownloadTests(unittest.TestCase):
                 # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
                 assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
                 # only unet has "no_ema" variant
-
-        diffusers.utils.import_utils._safetensors_available = True
 
     def test_local_save_load_index(self):
         prompt = "hello"
@@ -961,10 +950,6 @@ class PipelineFastTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        import diffusers
-
-        diffusers.utils.import_utils._safetensors_available = True
-
     def dummy_image(self):
         batch_size = 1
         num_channels = 3
@@ -1319,14 +1304,13 @@ class PipelineFastTests(unittest.TestCase):
             assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
 
     def test_no_safetensors_download_when_doing_pytorch(self):
-        # mock diffusers safetensors not available
-        import diffusers
-
-        diffusers.utils.import_utils._safetensors_available = False
+        use_safetensors = False
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             _ = StableDiffusionPipeline.from_pretrained(
-                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all",
+                cache_dir=tmpdirname,
+                use_safetensors=use_safetensors,
             )
 
             path = os.path.join(
@@ -1340,8 +1324,6 @@ class PipelineFastTests(unittest.TestCase):
             assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.safetensors"))
             # pytorch does
             assert os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
-
-        diffusers.utils.import_utils._safetensors_available = True
 
     def test_optional_components(self):
         unet = self.dummy_cond_unet()

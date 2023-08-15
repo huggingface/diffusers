@@ -113,3 +113,60 @@ jobs:
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
+
+  run_staging_tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Hub tests for models, schedulers, and pipelines
+            framework: hub_tests_pytorch
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_hub
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        apt-get update && apt-get install libsndfile1-dev libgl1 -y
+        python -m pip install -e .[quality,test]
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run Hub tests for models, schedulers, and pipelines on a staging env
+      if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
+      run: |
+        HUGGINGFACE_CO_STAGING=true python -m pytest \
+          -m "is_staging_test" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports

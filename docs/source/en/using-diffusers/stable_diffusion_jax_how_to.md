@@ -153,19 +153,10 @@ images = pipeline.numpy_to_pil(images)
 
 ### Visualization
 
-Let's create a helper function to display images in a grid.
-
 ```python
-def image_grid(imgs, rows, cols):
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
-```
+from diffusers import make_image_grid
 
-```python
-image_grid(images, 2, 4)
+make_image_grid(images, 2, 4)
 ```
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/stable_diffusion_jax_how_to_cell_38_output_0.jpeg)
@@ -198,7 +189,7 @@ images = pipeline(prompt_ids, p_params, rng, jit=True).images
 images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
 images = pipeline.numpy_to_pil(images)
 
-image_grid(images, 2, 4)
+make_image_grid(images, 2, 4)
 ```
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/stable_diffusion_jax_how_to_cell_43_output_0.jpeg)
