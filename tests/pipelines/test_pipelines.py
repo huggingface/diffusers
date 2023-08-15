@@ -327,7 +327,7 @@ class DownloadTests(unittest.TestCase):
     def test_download_no_onnx_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
-                "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                "hf-internal-testing/tiny-stable-diffusion-xl-pipe",
                 cache_dir=tmpdirname,
                 use_safetensors=False,
             )
@@ -335,7 +335,7 @@ class DownloadTests(unittest.TestCase):
             all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
-            # make sure that by default no onnx weights are downloaded for not ONNX pipelines
+            # make sure that by default no onnx weights are downloaded for non-ONNX pipelines
             assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
             assert not any((f.endswith(".onnx") or f.endswith(".pb")) for f in files)
 
