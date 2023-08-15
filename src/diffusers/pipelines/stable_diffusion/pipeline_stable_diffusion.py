@@ -639,7 +639,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
     def encode_prompt_from_cls(
         cls,
         prompt,
-        device,
+        device=None,
         text_encoder: CLIPTextModel = None,
         tokenizer: CLIPTokenizer = None,
         unet: UNet2DConditionModel = None,
@@ -693,6 +693,15 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        if device is None:
+            if text_encoder is None or unet is None:
+                raise ValueError("When `device` is not specified, either `text_encoder` or `unet` is expected.")
+        else:
+            if text_encoder is not None:
+                device = text_encoder.device
+            elif unet is not None:
+                device = unet.device
 
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
