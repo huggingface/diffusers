@@ -708,7 +708,7 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="scheduler",
         rescale_betas_zero_snr=args.scale_scheduler,
-        timestep_spacing=args.scale_scheduler if "trailing" else None,
+        timestep_spacing="trailing" if args.scale_scheduler else None,
     )
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
