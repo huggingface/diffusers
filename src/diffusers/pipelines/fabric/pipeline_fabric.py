@@ -50,39 +50,6 @@ from ..pipeline_utils import DiffusionPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-def apply_unet_lora_weights(pipeline, unet_path):
-    model_weight = torch.load(unet_path, map_location="cpu")
-    unet = pipeline.unet
-    lora_attn_procs = {}
-    lora_rank = list(
-        set([v.size(0) for k, v in model_weight.items() if k.endswith("down.weight")])
-    )
-    assert len(lora_rank) == 1
-    lora_rank = lora_rank[0]
-    for name in unet.attn_processors.keys():
-        cross_attention_dim = (
-            None
-            if name.endswith("attn1.processor")
-            else unet.config.cross_attention_dim
-        )
-        if name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = unet.config.block_out_channels[block_id]
-
-        lora_attn_procs[name] = LoRACrossAttnProcessor(
-            hidden_size=hidden_size,
-            cross_attention_dim=cross_attention_dim,
-            rank=lora_rank,
-        ).to(pipeline.device)
-    unet.set_attn_processor(lora_attn_procs)
-    unet.load_state_dict(model_weight, strict=False)
-
-
 class CrossAttnProcessor():
     def __init__(self):
         self.attntion_probs = None
