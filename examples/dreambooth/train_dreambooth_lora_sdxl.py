@@ -408,6 +408,12 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--scale_scheduler",
+        action="store_true",
+        default=false,
+        help="Rescale Scheduler based on Zero SNR paper during training and sampling"
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -698,7 +704,13 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler,
+        rescale_betas_zero_snr=args.scale_scheduler,
+        timestep_spacing=args.scale_scheduler if "trailing" else None,
+    )
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
