@@ -84,7 +84,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             scheduler=scheduler,
             vqgan=vqgan,
         )
-        self.register_to_config()
+        self.register_to_config(latent_dim_scale=latent_dim_scale)
 
     def prepare_latents(self, shape, dtype, device, generator, latents):
         if latents is None:
