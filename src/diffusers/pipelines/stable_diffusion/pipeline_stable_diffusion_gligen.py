@@ -16,7 +16,6 @@ import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import PIL
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
@@ -44,7 +43,6 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> import torchvision
         >>> from diffusers import StableDiffusionGLIGENPipeline
         >>> from diffusers.utils import load_image
 
@@ -63,24 +61,22 @@ EXAMPLE_DOC_STRING = """
 
         >>> images = pipe(
         ...     prompt=prompt,
-        ...     num_images_per_prompt=1,
         ...     gligen_phrases=phrases,
         ...     gligen_inpaint_image=input_image,
         ...     gligen_boxes=boxes,
         ...     gligen_scheduled_sampling_beta=1,
-        ...     output_type="np",
+        ...     output_type="pil",
         ...     num_inference_steps=50,
         ... ).images
 
-        >>> images = torch.stack([torch.from_numpy(image) for image in images]).permute(0, 3, 1, 2)
-        >>> torchvision.utils.save_image(images, "./gligen-1-4-inpainting-text-box.jpg", nrow=1, normalize=False)
+        >>> images[0].save("./gligen-1-4-inpainting-text-box.jpg")
 
         >>> # Generate an image described by the prompt and
         >>> # insert objects described by text at the region defined by bounding boxes
         >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
         ...     "masterful/gligen-1-4-generation-text-box", variant="fp16", torch_dtype=torch.float16
         ... )
-        >>> pipe = gen_pipe.to("cuda")
+        >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a waterfall and a modern high speed train running through the tunnel in a beautiful forest with fall foliage"
         >>> boxes = [[0.1387, 0.2051, 0.4277, 0.7090], [0.4980, 0.4355, 0.8516, 0.7266]]
@@ -88,16 +84,14 @@ EXAMPLE_DOC_STRING = """
 
         >>> images = pipe(
         ...     prompt=prompt,
-        ...     num_images_per_prompt=1,
         ...     gligen_phrases=phrases,
         ...     gligen_boxes=boxes,
         ...     gligen_scheduled_sampling_beta=1,
-        ...     output_type="np",
+        ...     output_type="pil",
         ...     num_inference_steps=50,
         ... ).images
 
-        >>> images = torch.stack([torch.from_numpy(image) for image in images]).permute(0, 3, 1, 2)
-        >>> torchvision.utils.save_image(images, "./gligen-1-4-generation-text-box.jpg", nrow=1, normalize=False)
+        >>> images[0].save("./gligen-1-4-generation-text-box.jpg")
         ```
 """
 
@@ -429,6 +423,8 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
         height,
         width,
         callback_steps,
+        gligen_phrases,
+        gligen_boxes,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -469,6 +465,12 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if len(gligen_phrases) != len(gligen_boxes):
+            ValueError(
+                "length of `gligen_phrases` and `gligen_boxes` has to be same, but"
+                f" got: `gligen_phrases` {len(gligen_phrases)} != `gligen_boxes` {len(gligen_boxes)}"
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -626,7 +628,15 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            gligen_phrases,
+            gligen_boxes,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -672,80 +682,75 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
         )
 
         # 5.1 Prepare GLIGEN variables
-        if gligen_phrases is not None:
-            assert len(gligen_phrases) == len(gligen_boxes)
-            max_objs = 30
-            if len(gligen_boxes) > max_objs:
-                warnings.warn(
-                    f"More that {max_objs} objects found. Only first {max_objs} objects will be processed.",
-                    FutureWarning,
-                )
-                gligen_phrases = gligen_phrases[:max_objs]
-                gligen_boxes = gligen_boxes[:max_objs]
-            _boxes = gligen_boxes
-            # prepare batched input to the PositionNet (boxes, phrases, mask)
-            # Get tokens for phrases from pre-trained CLIPTokenizer
-            tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(device)
-            # For the token, we use the same pre-trained text encoder
-            # to obtain its text feature
-            _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
-            n_objs = min(len(_boxes), max_objs)
-            dtype = self.text_encoder.dtype
-            # For each entity, described in phrases, is denoted with a bounding box,
-            # we represent the location information as (xmin,ymin,xmax,ymax)
-            boxes = torch.zeros(max_objs, 4, device=device, dtype=dtype)
-            boxes[:n_objs] = torch.tensor(_boxes[:n_objs])
-            text_embeddings = torch.zeros(max_objs, self.unet.cross_attention_dim, device=device, dtype=dtype)
-            text_embeddings[:n_objs] = _text_embeddings[:n_objs]
-            # Generate a mask for each object that is entity described by phrases
-            masks = torch.zeros(max_objs, device=device, dtype=dtype)
-            masks[:n_objs] = 1
+        max_objs = 30
+        if len(gligen_boxes) > max_objs:
+            warnings.warn(
+                f"More that {max_objs} objects found. Only first {max_objs} objects will be processed.",
+                FutureWarning,
+            )
+            gligen_phrases = gligen_phrases[:max_objs]
+            gligen_boxes = gligen_boxes[:max_objs]
+        # prepare batched input to the PositionNet (boxes, phrases, mask)
+        # Get tokens for phrases from pre-trained CLIPTokenizer
+        tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(device)
+        # For the token, we use the same pre-trained text encoder
+        # to obtain its text feature
+        _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
+        n_objs = len(gligen_boxes)
+        # For each entity, described in phrases, is denoted with a bounding box,
+        # we represent the location information as (xmin,ymin,xmax,ymax)
+        boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
+        boxes[:n_objs] = torch.tensor(gligen_boxes)
+        text_embeddings = torch.zeros(
+            max_objs, self.unet.cross_attention_dim, device=device, dtype=self.text_encoder.dtype
+        )
+        text_embeddings[:n_objs] = _text_embeddings
+        # Generate a mask for each object that is entity described by phrases
+        masks = torch.zeros(max_objs, device=device, dtype=self.text_encoder.dtype)
+        masks[:n_objs] = 1
 
-            repeat_batch = batch_size * num_images_per_prompt
-            if do_classifier_free_guidance:
-                repeat_batch = repeat_batch * 2
-            boxes = boxes.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
-            text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
-            masks = masks.unsqueeze(0).expand(repeat_batch, -1).clone()
-            if do_classifier_free_guidance:
-                masks[: repeat_batch // 2] = 0
-            if cross_attention_kwargs is None:
-                cross_attention_kwargs = {}
-            cross_attention_kwargs["gligen"] = {"boxes": boxes, "positive_embeddings": text_embeddings, "masks": masks}
+        repeat_batch = batch_size * num_images_per_prompt
+        boxes = boxes.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        masks = masks.unsqueeze(0).expand(repeat_batch, -1).clone()
+        if do_classifier_free_guidance:
+            repeat_batch = repeat_batch * 2
+            boxes = torch.cat([boxes] * 2)
+            text_embeddings = torch.cat([text_embeddings] * 2)
+            masks = torch.cat([masks] * 2)
+            masks[: repeat_batch // 2] = 0
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
+        cross_attention_kwargs["gligen"] = {"boxes": boxes, "positive_embeddings": text_embeddings, "masks": masks}
 
-            # Prepare latent variables for GLIGEN inpainting
-            if gligen_inpaint_image is not None:
-                # if the given input image is not of the same size as expected by VAE
-                # center crop and resize the input image to expected shape
-                if gligen_inpaint_image.size != (self.vae.sample_size, self.vae.sample_size):
-                    gligen_inpaint_image = self.target_size_center_crop(gligen_inpaint_image, self.vae.sample_size)
-
-                gligen_inpaint_image = torch.from_numpy(np.asarray(gligen_inpaint_image))
-                # Convert a single image into a batch of images with a batch size of 1
-                # The resulting shape becomes (1, C, H, W), where C is the number of channels,
-                # and H and W are the height and width of the image.
-                gligen_inpaint_image = gligen_inpaint_image.unsqueeze(0).permute(0, 3, 1, 2)
-                # scales the pixel values to a range [-1, 1]
-                gligen_inpaint_image = gligen_inpaint_image.to(dtype=torch.float32) / 127.5 - 1.0
-                gligen_inpaint_image = gligen_inpaint_image.to(dtype=self.vae.dtype, device=self.vae.device)
-                # Run AutoEncoder to get corresponding latents
-                gligen_inpaint_latent = self.vae.encode(gligen_inpaint_image).latent_dist.sample()
-                gligen_inpaint_latent = self.vae.config.scaling_factor * gligen_inpaint_latent
-                # Generate an inpainting mask
-                # pixel value = 0, where the object is present (defined by bounding boxes above)
-                #               1, everywhere else
-                gligen_inpaint_mask = self.draw_inpaint_mask_from_boxes(
-                    _boxes[:n_objs], gligen_inpaint_latent.shape[2:]
-                )
-                gligen_inpaint_mask = gligen_inpaint_mask.to(
-                    dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device
-                )
-                gligen_inpaint_mask = gligen_inpaint_mask[None, None]
-                gligen_inpaint_mask_addition = torch.cat(
-                    (gligen_inpaint_latent * gligen_inpaint_mask, gligen_inpaint_mask), dim=1
-                )
-                # Convert a single mask into a batch of masks with a batch size of 1
-                gligen_inpaint_mask_addition = gligen_inpaint_mask_addition.expand(repeat_batch, -1, -1, -1).clone()
+        # Prepare latent variables for GLIGEN inpainting
+        if gligen_inpaint_image is not None:
+            # if the given input image is not of the same size as expected by VAE
+            # center crop and resize the input image to expected shape
+            if gligen_inpaint_image.size != (self.vae.sample_size, self.vae.sample_size):
+                gligen_inpaint_image = self.target_size_center_crop(gligen_inpaint_image, self.vae.sample_size)
+            # Convert a single image into a batch of images with a batch size of 1
+            # The resulting shape becomes (1, C, H, W), where C is the number of channels,
+            # and H and W are the height and width of the image.
+            # scales the pixel values to a range [-1, 1]
+            gligen_inpaint_image = self.image_processor.preprocess(gligen_inpaint_image)
+            gligen_inpaint_image = gligen_inpaint_image.to(dtype=self.vae.dtype, device=self.vae.device)
+            # Run AutoEncoder to get corresponding latents
+            gligen_inpaint_latent = self.vae.encode(gligen_inpaint_image).latent_dist.sample()
+            gligen_inpaint_latent = self.vae.config.scaling_factor * gligen_inpaint_latent
+            # Generate an inpainting mask
+            # pixel value = 0, where the object is present (defined by bounding boxes above)
+            #               1, everywhere else
+            gligen_inpaint_mask = self.draw_inpaint_mask_from_boxes(gligen_boxes, gligen_inpaint_latent.shape[2:])
+            gligen_inpaint_mask = gligen_inpaint_mask.to(
+                dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device
+            )
+            gligen_inpaint_mask = gligen_inpaint_mask[None, None]
+            gligen_inpaint_mask_addition = torch.cat(
+                (gligen_inpaint_latent * gligen_inpaint_mask, gligen_inpaint_mask), dim=1
+            )
+            # Convert a single mask into a batch of masks with a batch size of 1
+            gligen_inpaint_mask_addition = gligen_inpaint_mask_addition.expand(repeat_batch, -1, -1, -1).clone()
 
         num_grounding_steps = int(gligen_scheduled_sampling_beta * len(timesteps))
         self.enable_fuser(True)

@@ -26,6 +26,8 @@ If you want to use one of the official checkpoints for a task, explore the [glig
 
 </Tip>
 
+This pipeline was contributed by [Nikhil Gajendrakumar](https://github.com/nikhil-masterful).
+
 ## StableDiffusionGLIGENPipeline
 
 [[autodoc]] StableDiffusionGLIGENPipeline

@@ -20,21 +20,6 @@ TEXT_TO_IMAGE_PARAMS = frozenset(
     ]
 )
 
-GLIGEN_PARAMS = frozenset(
-    [
-        "prompt",
-        "height",
-        "width",
-        "guidance_scale",
-        "negative_prompt",
-        "gligen_phrases",
-        "gligen_boxes",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-        "cross_attention_kwargs",
-    ]
-)
-
 TEXT_TO_IMAGE_BATCH_PARAMS = frozenset(["prompt", "negative_prompt"])
 
 TEXT_TO_IMAGE_IMAGE_PARAMS = frozenset([])

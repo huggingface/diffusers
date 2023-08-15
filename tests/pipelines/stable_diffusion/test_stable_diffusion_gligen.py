@@ -28,9 +28,9 @@ from diffusers import (
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import (
-    GLIGEN_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -42,7 +42,7 @@ class GligenPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionGLIGENPipeline
-    params = GLIGEN_PARAMS
+    params = TEXT_TO_IMAGE_PARAMS | {"gligen_phrases", "gligen_boxes"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
