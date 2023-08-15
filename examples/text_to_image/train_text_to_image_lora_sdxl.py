@@ -1175,6 +1175,8 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
 
+                pipeline.scheduler = noise_scheduler
+
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -1239,6 +1241,7 @@ def main(args):
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path, vae=vae, revision=args.revision, torch_dtype=weight_dtype
         )
+        pipeline.scheduler = noise_scheduler
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
