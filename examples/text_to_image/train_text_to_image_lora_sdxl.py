@@ -421,7 +421,7 @@ def parse_args(input_args=None):
         "--scale_scheduler",
         action="store_true",
         default=False,
-        help="Rescale Scheduler based on Zero SNR paper during training and sampling"
+        help="Rescale Scheduler based on Zero SNR paper during training and sampling",
     )
 
     if input_args is not None:
