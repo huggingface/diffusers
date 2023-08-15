@@ -706,7 +706,7 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(
         args.pretrained_model_name_or_path,
-        subfolder="scheduler,
+        subfolder="scheduler",
         rescale_betas_zero_snr=args.scale_scheduler,
         timestep_spacing=args.scale_scheduler if "trailing" else None,
     )
