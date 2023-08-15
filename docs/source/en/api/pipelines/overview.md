@@ -34,3 +34,7 @@ Pipelines do not offer any training functionality. You'll notice PyTorch's autog
 ## FlaxDiffusionPipeline
 
 [[autodoc]] pipelines.pipeline_flax_utils.FlaxDiffusionPipeline
+
+## Pushing to the Hub 
+
+[[autodoc]] utils.PushToHubMixin
