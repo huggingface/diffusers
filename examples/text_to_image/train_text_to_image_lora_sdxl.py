@@ -417,6 +417,12 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--scale_scheduler",
+        action="store_true",
+        default=False,
+        help="Rescale Scheduler based on Zero SNR paper during training and sampling"
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
