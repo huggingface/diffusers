@@ -656,14 +656,26 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
-        is_multi_adapter = isinstance(self.adapter, MultiAdapter)
-        if is_multi_adapter:
-            adapter_input = [_preprocess_adapter_image(img, height, width).to(device) for img in image]
-            n, c, h, w = adapter_input[0].shape
-            adapter_input = torch.stack([x.reshape([n * c, h, w]) for x in adapter_input])
+        if isinstance(self.adapter, MultiAdapter):
+            if not isinstance(image, list):
+                raise ValueError(
+                    "MultiAdapter is enabled, but `image` is not a list. Please pass a list of images to `image`."
+                )
+
+            if len(image) != len(self.adapter.adapters):
+                raise ValueError(
+                    f"MultiAdapter requires passing the same number of images as adapters. Given {len(image)} images and {len(self.adapter.adapters)} adapters."
+                )
+
+            adapter_input = []
+
+            for one_image in image:
+                one_image = _preprocess_adapter_image(one_image, height, width)
+                one_image = one_image.to(device=device, dtype=self.adapter.dtype)
+                adapter_input.append(one_image)
         else:
-            adapter_input = _preprocess_adapter_image(image, height, width).to(device)
-        adapter_input = adapter_input.to(self.adapter.dtype)
+            adapter_input = _preprocess_adapter_image(image, height, width)
+            adapter_input = adapter_input.to(device=device, dtype=self.adapter.dtype)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
