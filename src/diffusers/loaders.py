@@ -1022,18 +1022,9 @@ class LoraLoaderMixin:
                 # friendliness where sometimes, it's not at all possible to automatically
                 # determine `weight_name`.
                 if weight_name is None:
-                    if os.path.isdir(pretrained_model_name_or_path_or_dict):
-                        all_safetensors = [
-                            f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(".safetensors")
-                        ]
-                    else:
-                        files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
-                        all_safetensors = [f.rfilename for f in files_in_repo if f.rfilename.endswith(".safetensors")]
-                    if all_safetensors and len(all_safetensors) > 1:
-                        raise ValueError(
-                            f"Provided path contains more than one `.safetensors` file. This makes the loading process ambiguous. `weight_name` wasn't specified. So, we tried to pick a `.safetensors` from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single `.safetensors` file."
-                        )
-                    weight_name = all_safetensors[0]
+                    weight_name = cls._best_guess_weight_name(
+                        pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
+                    )
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
@@ -1056,6 +1047,7 @@ class LoraLoaderMixin:
                     pass
 
             if model_file is None:
+                weight_name = cls._best_guess_weight_name(pretrained_model_name_or_path_or_dict, file_extension=".bin")
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME,
@@ -1090,6 +1082,22 @@ class LoraLoaderMixin:
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
+
+    @classmethod
+    def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension):
+        if os.path.isdir(pretrained_model_name_or_path_or_dict):
+            all_safetensors = [
+                f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
+            ]
+        else:
+            files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
+            all_safetensors = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
+        if all_safetensors and len(all_safetensors) > 1:
+            raise ValueError(
+                f"Provided path contains more than one `.safetensors` file. This makes the loading process ambiguous. `weight_name` wasn't specified. So, we tried to pick a `.safetensors` from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single `.safetensors` file."
+            )
+        weight_name = all_safetensors[0]
+        return weight_name
 
     @classmethod
     def _map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
