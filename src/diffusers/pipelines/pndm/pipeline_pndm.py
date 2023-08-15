@@ -25,13 +25,16 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 class PNDMPipeline(DiffusionPipeline):
     r"""
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    Pipeline for unconditional image generation.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Parameters:
-        unet (`UNet2DModel`): U-Net architecture to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
-            The `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
+        unet ([`UNet2DModel`]):
+            A `UNet2DModel` to denoise the encoded image latents.
+        scheduler ([`PNDMScheduler`]):
+            A `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
 
     unet: UNet2DModel
@@ -55,22 +58,41 @@ class PNDMPipeline(DiffusionPipeline):
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
+        The call function to the pipeline for generation.
+
         Args:
-            batch_size (`int`, `optional`, defaults to 1): The number of images to generate.
+            batch_size (`int`, `optional`, defaults to 1):
+                The number of images to generate.
             num_inference_steps (`int`, `optional`, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator`, `optional`): A [torch
-                generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
-            output_type (`str`, `optional`, defaults to `"pil"`): The output format of the generate image. Choose
-                between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, `optional`, defaults to `True`): Whether or not to return a
-                [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, `optional`):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            output_type (`str`, `optional`, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
+
+        Example:
+
+        ```py
+        >>> from diffusers import PNDMPipeline
+
+        >>> # load model and scheduler
+        >>> pndm = PNDMPipeline.from_pretrained("google/ddpm-cifar10-32")
+
+        >>> # run pipeline in inference (sample random noise and denoise)
+        >>> image = pndm().images[0]
+
+        >>> # save image
+        >>> image.save("pndm_generated_image.png")
+        ```
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf

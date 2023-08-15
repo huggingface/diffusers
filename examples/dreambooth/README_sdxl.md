@@ -65,31 +65,27 @@ snapshot_download(
 )
 ```
 
-Since SDXL 0.9 weights are gated, we need to be authenticated to be able to use them. So, let's run:
-
-```bash
-huggingface-cli login
-```
-
 This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform. 
 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="diffusers/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="lora-trained-xl"
+export VAE_PATH="madebyollin/sdxl-vae-fp16-fix"
 
 accelerate launch train_dreambooth_lora_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
+  --pretrained_vae_model_name_or_path=$VAE_PATH \
   --output_dir=$OUTPUT_DIR \
   --mixed_precision="fp16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=1024 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --learning_rate=1e-4 \
+  --learning_rate=1e-5 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
@@ -106,6 +102,24 @@ To better track our training experiments, we're using the following flags in the
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
 
 Our experiments were conducted on a single 40GB A100 GPU.
+
+### Dog toy example with < 16GB VRAM
+
+By making use of [`gradient_checkpointing`](https://pytorch.org/docs/stable/checkpoint.html) (which is natively supported in Diffusers), [`xformers`](https://github.com/facebookresearch/xformers), and [`bitsandbytes`](https://github.com/TimDettmers/bitsandbytes) libraries, you can train SDXL LoRAs with less than 16GB of VRAM by adding the following flags to your accelerate launch command:
+
+```diff
++  --enable_xformers_memory_efficient_attention \
++  --gradient_checkpointing \
++  --use_8bit_adam \
++  --mixed_precision="fp16" \
+```
+
+and making sure that you have the following libraries installed:
+
+```
+bitsandbytes>=0.40.0
+xformers>=0.0.20
+```
 
 ### Inference
 
@@ -127,7 +141,7 @@ image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).image
 image.save("sks_dog.png")
 ```
 
-We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-0.9):
+We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
 
 ```python
 from huggingface_hub.repocard import RepoCard
@@ -145,7 +159,7 @@ pipe.load_lora_weights(lora_model_id)
 
 # Load the refiner.
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 
@@ -164,9 +178,20 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sks_dog.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_sks_dog.png) |
 
+### Training with text encoder(s)
+
+Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
+
+* SDXL has two text encoders. So, we fine-tune both using LoRA.
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
+
+### Specifying a better VAE
+
+SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
 ## Notes
 
-In our experiments we found that SDXL yields very good initial results using the default settings of the script. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
+In our experiments, we found that SDXL yields good initial results without extensive hyperparameter tuning. For example, without fine-tuning the text encoders and without using prior-preservation, we observed decent results. We didn't explore further hyper-parameter tuning experiments, but we do encourage the community to explore this avenue further and share their results with us 🤗
 
 ## Results
 
@@ -176,3 +201,7 @@ You can explore the results from a couple of our internal experiments by checkin
 * [Starbucks logo](https://huggingface.co/datasets/diffusers/starbucks-example)
 * [Mr. Potato Head](https://huggingface.co/datasets/diffusers/potato-head-example)
 * [Keramer face](https://huggingface.co/datasets/diffusers/keramer-face-example)
+
+## Running on a free-tier Colab Notebook
+
+Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb). 

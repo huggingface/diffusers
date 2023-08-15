@@ -63,9 +63,9 @@ def _test_img2img_compile(in_queue, out_queue, timeout):
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
         pipe.unet.to(memory_format=torch.channels_last)
         pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
@@ -73,7 +73,7 @@ def _test_img2img_compile(in_queue, out_queue, timeout):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.0593, 0.0607, 0.0851, 0.0582, 0.0636, 0.0721, 0.0751, 0.0981, 0.0781])
+        expected_slice = np.array([0.0606, 0.0570, 0.0805, 0.0579, 0.0628, 0.0623, 0.0843, 0.1115, 0.0806])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-3
     except Exception:

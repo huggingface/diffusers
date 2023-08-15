@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDPMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -27,6 +25,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -191,6 +190,8 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -233,6 +234,12 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -259,8 +266,11 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             negative_image_embeds = negative_image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             hint = hint.repeat_interleave(num_images_per_prompt, dim=0)
 
-        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(dtype=self.unet.dtype, device=device)
-        hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0).to(
+                dtype=self.unet.dtype, device=device
+            )
+            hint = torch.cat([hint, hint], dim=0).to(dtype=self.unet.dtype, device=device)
+
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps_tensor = self.scheduler.timesteps
 
@@ -311,8 +321,15 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
                 latents,
                 generator=generator,
             )[0]
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
+
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
