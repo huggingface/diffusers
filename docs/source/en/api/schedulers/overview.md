@@ -59,6 +59,6 @@ All schedulers are built from the base [`SchedulerMixin`] class which implements
 
 The different schedulers in this class, depending on the ordinary differential equations (ODE) solver type, fall into the above taxonomy and provide a good abstraction for the design of the main schedulers implemented in 🤗 Diffusers. The schedulers in this class are given [here](https://github.com/huggingface/diffusers/blob/a69754bb879ed55b9b6dc9dd0b3cf4fa4124c765/src/diffusers/schedulers/scheduling_utils.py#L32).
 
-## Pushing to the Hub 
+## PushToHubMixin
 
 [[autodoc]] utils.PushToHubMixin

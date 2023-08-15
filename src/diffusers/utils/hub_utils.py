@@ -372,7 +372,7 @@ def _get_model_file(
 
 class PushToHubMixin:
     """
-    A Mixin containing the functionality to push a model/scheduler/pipeline to the Hugging Face Hub.
+    A Mixin to push a model, scheduler, or pipeline to the Hugging Face Hub.
     """
 
     def _upload_folder(
