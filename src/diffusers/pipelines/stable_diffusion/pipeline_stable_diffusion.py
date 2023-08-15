@@ -695,7 +695,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             batch_size = prompt_embeds.shape[0]
 
         if device is None:
-            if text_encoder is None or unet is None:
+            if text_encoder is None and unet is None:
                 raise ValueError("When `device` is not specified, either `text_encoder` or `unet` is expected.")
         else:
             if text_encoder is not None:
