@@ -1051,7 +1051,6 @@ def main(args):
                     text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
                 )
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
-                prompt_embeds = prompt_embeds
                 model_pred = unet(
                     noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                 ).sample
