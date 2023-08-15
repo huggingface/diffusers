@@ -697,11 +697,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         if device is None:
             if text_encoder is None and unet is None:
                 raise ValueError("When `device` is not specified, either `text_encoder` or `unet` is expected.")
-        else:
-            if text_encoder is not None:
-                device = text_encoder.device
-            elif unet is not None:
-                device = unet.device
+            else:
+                if text_encoder is not None:
+                    device = text_encoder.device
+                elif unet is not None:
+                    device = unet.device
 
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
@@ -731,7 +731,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
-
+            
             prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
 
