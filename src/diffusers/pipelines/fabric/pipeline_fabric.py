@@ -419,17 +419,17 @@ class FabricPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = "",
-        negative_prompt: Optional[Union[str, List[str]]] = "",
+        negative_prompt: Optional[Union[str, List[str]]] = "lowres, bad anatomy, bad hands, cropped, worst quality",
         liked: Optional[List[Image.Image]] = [],
         disliked: Optional[List[Image.Image]] = [],
-        random_seed: int = 42,
-        n_images: int = 1,
-        guidance_scale: float = 8.0,
+        random_seed: int = 37,
+        n_images: int = 4,
+        guidance_scale: float = 7.0,
         denoising_steps: int = 20,
         feedback_start_ratio: float = 0.33,
         feedback_end_ratio: float = 0.66,
-        min_weight: float = 0.1,
-        max_weight: float = 1.0,
+        min_weight: float = 0.05,
+        max_weight: float = .8,
         neg_scale: float = 0.5,
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
@@ -446,9 +446,9 @@ class FabricPipeline(DiffusionPipeline):
 
         latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=dtype)
         
-        positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, )
+        positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, dtype=dtype)
 
-        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device)
+        negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=dtype)
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
