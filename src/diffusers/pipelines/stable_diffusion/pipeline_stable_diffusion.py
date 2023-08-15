@@ -731,7 +731,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
-            
+
             prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
 
@@ -746,8 +746,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        if num_images_per_prompt is not None:
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -799,9 +800,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             seq_len = negative_prompt_embeds.shape[1]
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            if num_images_per_prompt is not None:
+                negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+                negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
