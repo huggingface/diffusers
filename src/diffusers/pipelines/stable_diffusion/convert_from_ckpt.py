@@ -1385,8 +1385,9 @@ def download_from_original_stable_diffusion_ckpt(
         unet = UNet2DConditionModel(**unet_config)
 
     if is_accelerate_available():
-        for param_name, param in converted_unet_checkpoint.items():
-            set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+        if model_type not in ["SDXL", "SDXL-Refiner"]: # SBM Delay this.
+            for param_name, param in converted_unet_checkpoint.items():
+                set_module_tensor_to_device(unet, param_name, "cpu", value=param)
     else:
         unet.load_state_dict(converted_unet_checkpoint)
 
@@ -1586,6 +1587,11 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
             )
 
+            if is_accelerate_available(): # SBM Now move model to cpu.
+                if model_type in ["SDXL", "SDXL-Refiner"]:
+                    for param_name, param in converted_unet_checkpoint.items():
+                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+
             pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_encoder,
@@ -1609,6 +1615,11 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
             )
 
+            if is_accelerate_available(): # SBM Now move model to cpu.
+                if model_type in ["SDXL", "SDXL-Refiner"]:
+                    for param_name, param in converted_unet_checkpoint.items():
+                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+            
             pipe = StableDiffusionXLImg2ImgPipeline(
                 vae=vae,
                 text_encoder=text_encoder,
