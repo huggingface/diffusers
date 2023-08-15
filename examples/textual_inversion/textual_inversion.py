@@ -79,7 +79,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.19.0.dev0")
+check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -718,7 +718,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=args.placeholder_token,
+        placeholder_token=(" ".join(tokenizer.convert_ids_to_tokens(placeholder_token_ids))),
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,

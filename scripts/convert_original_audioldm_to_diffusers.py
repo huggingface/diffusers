@@ -38,7 +38,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_omegaconf_available, is_safetensors_available
+from diffusers.utils import is_omegaconf_available
 from diffusers.utils.import_utils import BACKENDS_MAPPING
 
 
@@ -824,9 +824,6 @@ def load_pipeline_from_original_audioldm_ckpt(
     from omegaconf import OmegaConf
 
     if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
-
         from safetensors import safe_open
 
         checkpoint = {}

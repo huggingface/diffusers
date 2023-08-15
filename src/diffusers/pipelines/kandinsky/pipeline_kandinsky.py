@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import (
@@ -20,8 +20,6 @@ from transformers import (
 )
 
 from ...models import UNet2DConditionModel, VQModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
     is_accelerate_available,
@@ -30,6 +28,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
@@ -270,6 +269,8 @@ class KandinskyPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -310,6 +311,12 @@ class KandinskyPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -398,6 +405,10 @@ class KandinskyPipeline(DiffusionPipeline):
                 latents,
                 generator=generator,
             ).prev_sample
+
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
+
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
