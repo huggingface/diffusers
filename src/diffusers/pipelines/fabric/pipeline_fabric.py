@@ -86,7 +86,7 @@ def apply_unet_lora_weights(pipeline, unet_path):
     unet.load_state_dict(model_weight, strict=False)
 
 
-class CrossAttnStoreProcessor():
+class CrossAttnProcessor():
     def __init__(self):
         self.attntion_probs = None
 
@@ -284,26 +284,6 @@ class FabricPipeline(DiffusionPipeline):
         local_neg_weights = torch.linspace(
             *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
 
-        def new_forward_caching(module, hidden_states, cond_hiddens, cached_hiddens, weight, weights):
-            
-            cached_hs = cached_hiddens.pop(0).to(
-                hidden_states.device
-            )
-            cond_hs = torch.cat(
-                [cond_hiddens, cached_hs], dim=1
-            )
-            weights = weights.clone().repeat(
-                1, 1 + cached_hs.shape[1] // hidden_states.size(1)
-            )
-            weights[:, hidden_states.size(1):] = weight
-            print(self)
-            attn_with_weights = CrossAttnStoreProcessor()
-            self.unet.set_attn_processor(attn_with_weights)
-            out = self.unet(
-                cond_hiddens,
-                encoder_hidden_states=cond_hs,
-            )
-            return out
 
 
         for block, pos_weight, neg_weight in zip(
@@ -332,15 +312,69 @@ class FabricPipeline(DiffusionPipeline):
                         out_pos = self.old_forward(hidden_states)
                         out_neg = self.old_forward(hidden_states)
 
+                        def new_forward_caching(self, hidden_states, cond_hiddens, cached_hiddens, weight, weights):
+                            
+                            cached_hs = cached_hiddens.pop(0).to(
+                                hidden_states.device
+                            )
+                            cond_hs = torch.cat(
+                                [cond_hiddens, cached_hs], dim=1
+                            )
+                            weights = weights.clone().repeat(
+                                1, 1 + cached_hs.shape[1] // hidden_states.size(1)
+                            )
+                            weights[:, hidden_states.size(1):] = weight
+                            print(self)
+                            attn_with_weights = CrossAttnStoreProcessor()
+                            out = self.attn_with_weights(
+                                self,
+                                cond_hiddens,
+                                encoder_hidden_states=cond_hs,
+                                weights=weights
+                            )
+                            return out
+
                         if cached_pos_hiddens is not None:
-                            out_pos = new_forward_caching(
-                                self, hidden_states, cond_hiddens, cached_pos_hiddens, pos_weight,
-                                weights)
+                            cached_pos_hs = cached_pos_hiddens.pop(0).to(
+                                hidden_states.device
+                            )
+                            cond_pos_hs = torch.cat(
+                                [cond_hiddens, cached_pos_hs], dim=1
+                            )
+                            pos_weights = weights.clone().repeat(
+                                1, 1 + cached_pos_hs.shape[1] // d_model
+                            )
+                            pos_weights[:, d_model:] = pos_weight
+                            attn_with_weights = CrossAttnProcessor()
+                            out_pos = attn_with_weights(
+                                self,
+                                cond_hiddens,
+                                encoder_hidden_states=cond_pos_hs,
+                                weights=pos_weights,
+                            )
+                        else:
+                            out_pos = self.old_forward(cond_hiddens)
 
                         if cached_neg_hiddens is not None:
-                            out_neg = new_forward_caching(
-                                self, hidden_states, uncond_hiddens, cached_neg_hiddens, 
-                                neg_weight, weights)
+                            cached_neg_hs = cached_neg_hiddens.pop(0).to(
+                                hidden_states.device
+                            )
+                            uncond_neg_hs = torch.cat(
+                                [uncond_hiddens, cached_neg_hs], dim=1
+                            )
+                            neg_weights = weights.clone().repeat(
+                                1, 1 + cached_neg_hs.shape[1] // d_model
+                            )
+                            neg_weights[:, d_model:] = neg_weight
+                            attn_with_weights = CrossAttnProcessor()
+                            out_neg = attn_with_weights(
+                                self,
+                                uncond_hiddens,
+                                encoder_hidden_states=uncond_neg_hs,
+                                weights=neg_weights,
+                            )
+                        else:
+                            out_neg = self.old_forward(uncond_hiddens)
 
                         out = torch.cat([out_pos, out_neg], dim=0)
                         return out
