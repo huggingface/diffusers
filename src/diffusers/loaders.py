@@ -25,7 +25,7 @@ import requests
 import safetensors
 import torch
 import torch.nn.functional as F
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, model_info
 from torch import nn
 
 from .utils import (
@@ -1018,6 +1018,22 @@ class LoraLoaderMixin:
             if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
+                # Here we're relaxing the loading check to enable more Inference API
+                # friendliness where sometimes, it's not at all possible to automatically
+                # determine `weight_name`.
+                if weight_name is None:
+                    if os.path.isdir(pretrained_model_name_or_path_or_dict):
+                        all_safetensors = [
+                            f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(".safetensors")
+                        ]
+                    else:
+                        files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
+                        all_safetensors = [f.rfilename for f in files_in_repo if f.rfilename.endswith(".safetensors")]
+                    if all_safetensors and len(all_safetensors) > 1:
+                        raise ValueError(
+                            f"Provided path contains more than one `.safetensors` file. This makes the loading process ambiguous. `weight_name` wasn't specified. So, we tried to pick a `.safetensors` from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single `.safetensors` file."
+                        )
+                    weight_name = all_safetensors[0]
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
@@ -1038,6 +1054,7 @@ class LoraLoaderMixin:
                         raise e
                     # try loading non-safetensors weights
                     pass
+
             if model_file is None:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
