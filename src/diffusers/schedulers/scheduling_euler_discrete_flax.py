@@ -157,11 +157,6 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         if self.config.timestep_spacing == "linspace":
             timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
         elif self.config.timestep_spacing == "leading":
-            # step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-            # timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
-            # timesteps += self.config.steps_offset
-
-            # convert the above code to jax
             step_ratio = self.config.num_train_timesteps // num_inference_steps
             timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
             timesteps += 1
