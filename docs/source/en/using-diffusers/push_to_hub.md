@@ -44,10 +44,10 @@ controlnet.push_to_hub("my-controlnet-model", variant="fp16")
 
 The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves the model's `config.json` file and the weights are automatically saved in the `safetensors` format.
 
-Now you can reload the model from the Hub:
+Now you can reload the model from your repository on the Hub:
 
 ```py
-model = ControlNetModel.from_pretrained("stevhliu/my-controlnet-model")
+model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model")
 ```
 
 ## Scheduler
@@ -69,10 +69,10 @@ scheduler.push_to_hub("my-controlnet-scheduler")
 
 The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves the scheduler's `scheduler_config.json` file to the specified repository.
 
-Now you can reload the scheduler from the Hub:
+Now you can reload the scheduler from your repository on the Hub:
 
 ```py
-scheduler = DDIMScheduler.from_pretrained("stevhliu/my-controlnet-scheduler")
+scheduler = DDIMScheduler.from_pretrained("your-namepsace/my-controlnet-scheduler")
 ```
 
 ## Pipeline
@@ -148,10 +148,10 @@ pipeline = StableDiffusionPipeline(**components)
 pipeline.push_to_hub("my-pipeline")
 ```
 
-The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves each component to a subfolder in the repository. Now you can reload the pipeline from the Hub:
+The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves each component to a subfolder in the repository. Now you can reload the pipeline from your repository on the Hub:
 
 ```py
-pipeline = StableDiffusionPipeline.from_pretrained("stevhliu/my-pipeline")
+pipeline = StableDiffusionPipeline.from_pretrained("your-namespace/my-pipeline")
 ```
 
 ## Privacy
@@ -163,3 +163,9 @@ controlnet.push_to_hub("my-controlnet-model", private=True)
 ```
 
 Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Repo not found error.`
+
+To load a model, scheduler, or pipeline from a private or gated repositories, set `use_auth_token=True`:
+
+```py
+model = ControlNet.from_pretrained("your-namespace/my-controlnet-model", use_auth_token=True)
+```
