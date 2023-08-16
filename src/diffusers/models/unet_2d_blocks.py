@@ -709,8 +709,12 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
+                    encoder_hidden_states=encoder_hidden_states_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -1122,8 +1126,12 @@ class CrossAttnDownBlock2D(nn.Module):
                 hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
+                    encoder_hidden_states=encoder_hidden_states_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -2299,8 +2307,12 @@ class CrossAttnUpBlock2D(nn.Module):
                 hidden_states = self.attentions[i * num_attention_per_layer + 2](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
+                    encoder_hidden_states=encoder_hidden_states_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2
+                    if encoder_hidden_states_2 is not None
+                    else encoder_attention_mask,
                     return_dict=False,
                 )[0]
 

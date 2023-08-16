@@ -29,11 +29,11 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_audioldm2 import AudioLDM2ProjectionModel
+from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
-        >>> audio = pipe(prompt, num_inference_steps=10, audio_length_in_s=5.0).audios[0]
+        >>> audio = pipe(prompt, num_inference_steps=10, audio_length_in_s=10.0).audios[0]
 
         >>> # save the audio sample as a .wav file
         >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
@@ -123,7 +123,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         language_model: GPT2Model,
         tokenizer_1: Union[RobertaTokenizer, RobertaTokenizerFast],
         tokenizer_2: Union[T5Tokenizer, T5TokenizerFast],
-        unet: UNet2DConditionModel,
+        unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
     ):
@@ -462,7 +462,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         audio_length_in_s: Optional[float] = None,
-        num_inference_steps: int = 10,
+        num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
@@ -483,9 +483,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
-            audio_length_in_s (`int`, *optional*, defaults to 5.12):
+            audio_length_in_s (`int`, *optional*, defaults to 10.24):
                 The length of the generated audio sample in seconds.
-            num_inference_steps (`int`, *optional*, defaults to 10):
+            num_inference_steps (`int`, *optional*, defaults to 200):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 3.5):
@@ -539,7 +539,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
 
         if audio_length_in_s is None:
-            audio_length_in_s = self.unet.config.sample_size * self.vae_scale_factor * vocoder_upsample_factor
+            audio_length_in_s = 2 * self.unet.config.sample_size * self.vae_scale_factor * vocoder_upsample_factor
 
         height = int(audio_length_in_s / vocoder_upsample_factor)
 

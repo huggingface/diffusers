@@ -33,6 +33,7 @@ from transformers import (
 from diffusers import (
     AudioLDM2Pipeline,
     AudioLDM2ProjectionModel,
+    AudioLDM2UNet2DConditionModel,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -41,7 +42,6 @@ from diffusers import (
     HeunDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DConditionModel,
 )
 from diffusers.utils import is_omegaconf_available, is_safetensors_available
 from diffusers.utils.import_utils import BACKENDS_MAPPING
@@ -361,8 +361,10 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     }
 
     # Check how many Transformer blocks we have per layer
-    if isinstance(config.get("cross_attention_dim"), list) and config.get("preserve_cross_attention_dim"):
-        num_attention_layers = 2
+    if isinstance(config.get("cross_attention_dim"), (list, tuple)):
+        if isinstance(config["cross_attention_dim"][0], (list, tuple)):
+            # in this case we have multiple cross-attention layers per-block
+            num_attention_layers = len(config.get("cross_attention_dim")[0])
     else:
         num_attention_layers = 1
 
@@ -956,7 +958,7 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
 
     # Convert the UNet2DModel
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet = UNet2DConditionModel(**unet_config)
+    unet = AudioLDM2UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
@@ -1111,7 +1113,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dump_path",
-        default="/Users/sanchitgandhi/convert-audioldm2/diffusers_out",
+        default="/Users/sanchitgandhi/convert-audioldm2/diffusers_custom",
         type=str,
         help="Path to the output model.",
     )

@@ -15,5 +15,5 @@ except OptionalDependencyNotAvailable:
         AudioLDMPipeline,
     )
 else:
-    from .modeling_audioldm2 import AudioLDM2ProjectionModel
+    from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
     from .pipeline_audioldm2 import AudioLDM2Pipeline
