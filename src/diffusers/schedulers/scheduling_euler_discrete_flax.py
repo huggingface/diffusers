@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-import random
 from typing import Optional, Tuple, Union
 
 import flax
@@ -98,6 +97,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[jnp.ndarray] = None,
         prediction_type: str = "epsilon",
+        timestep_spacing: str = "linspace",
         dtype: jnp.dtype = jnp.float32,
     ):
         self.dtype = dtype
@@ -119,9 +119,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             sigmas=sigmas,
         )
 
-    def scale_model_input(
-        self, state: EulerDiscreteSchedulerState, sample: jnp.ndarray, timestep: int
-    ) -> jnp.ndarray:
+    def scale_model_input(self, state: EulerDiscreteSchedulerState, sample: jnp.ndarray, timestep: int) -> jnp.ndarray:
         """
         Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
@@ -156,7 +154,21 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
 
-        timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
+        if self.config.timestep_spacing == "linspace":
+            timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
+        elif self.config.timestep_spacing == "leading":
+            # step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            # timesteps += self.config.steps_offset
+
+            # convert the above code to jax
+            step_ratio = self.config.num_train_timesteps // num_inference_steps
+            timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            timesteps += 1
+        else:
+            raise ValueError(
+                f"timestep_spacing must be one of ['linspace', 'leading'], got {self.config.timestep_spacing}"
+            )
 
         low_idx = jnp.floor(timesteps).astype(jnp.int32)
         high_idx = jnp.ceil(timesteps).astype(jnp.int32)
@@ -203,8 +215,8 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxEulerDiscreteScheduler class
 
         Returns:
-            [`FlaxEulerDiscreteScheduler`] or `tuple`: [`FlaxEulerDiscreteScheduler`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxEulerDiscreteScheduler`] or `tuple`: [`FlaxEulerDiscreteScheduler`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
