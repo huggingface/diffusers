@@ -232,7 +232,9 @@ def create_unet_diffusers_config(original_config, image_size: int):
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
     cross_attention_dim = list(unet_params.context_dim) if "context_dim" in unet_params else block_out_channels
-    preserve_cross_attention_dim = len(cross_attention_dim) > 1
+    if len(cross_attention_dim) > 1:
+        # require two cross-attention layers per-block, each of different dimension
+        cross_attention_dim = [cross_attention_dim for _ in range(len(block_out_channels))]
 
     config = {
         "sample_size": image_size // vae_scale_factor,
@@ -242,8 +244,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
         "layers_per_block": unet_params.num_res_blocks,
-        "cross_attention_dim": cross_attention_dim,
-        "preserve_cross_attention_dim": preserve_cross_attention_dim,
+        "cross_attention_dim": tuple(cross_attention_dim),
         "extra_self_attn_layer": True,
     }
 
