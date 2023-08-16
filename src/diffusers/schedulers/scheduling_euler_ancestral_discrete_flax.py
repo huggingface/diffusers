@@ -235,7 +235,7 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         derivative = (sample - pred_original_sample) / sigma
 
         # dt = sigma_down - sigma
-        dt = self.sigmas[step_index + 1] - sigma
+        dt = state.sigmas[step_index + 1] - sigma
 
         prev_sample = sample + derivative * dt
 
