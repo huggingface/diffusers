@@ -297,10 +297,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     )
 
                 # TODO(SG): truncate sequence from t5 if it exceeds GPT2 max length
+                text_input_ids = text_input_ids.to(device)
+                attention_mask = attention_mask.to(device)
 
                 prompt_embeds = text_encoder(
-                    text_input_ids.to(device),
-                    attention_mask=attention_mask.to(device),
+                    text_input_ids,
+                    attention_mask=attention_mask,
                 )
                 prompt_embeds = prompt_embeds[0]
                 if text_encoder.config.model_type == "clap_text_model":
@@ -612,12 +614,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                # TODO(SG): remove debugging statements
-                latent_model_input = torch.ones_like(latent_model_input)
-                prompt_embeds = torch.ones_like(prompt_embeds)
-                cross_attention_embeds = torch.ones_like(cross_attention_embeds)
-                cross_attention_mask = torch.ones_like(cross_attention_mask)
 
                 # predict the noise residual
                 noise_pred = self.unet(
