@@ -141,13 +141,8 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
         # only relevant if vae tiling is enabled
-        self.spatial_scale_factor = 2 ** out_channels
+        self.spatial_scale_factor = 2**out_channels
         self.tile_overlap_factor = 0.125
-        # self.tile_sample_min_size = (
-        #     self.config.sample_size[0]
-        #     if isinstance(self.config.sample_size, (list, tuple))
-        #     else self.config.sample_size
-        # )
         self.tile_sample_min_size = 512
         self.tile_latent_min_size = self.tile_sample_min_size // self.spatial_scale_factor
 
@@ -223,10 +218,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         # mask for blending
         blend_masks = torch.stack(
-            torch.meshgrid(
-                [torch.arange(tile_size / sf) / (blend_size / sf - 1)] * 2,
-                indexing="ij"
-            )
+            torch.meshgrid([torch.arange(tile_size / sf) / (blend_size / sf - 1)] * 2, indexing="ij")
         )
         blend_masks = blend_masks.clamp(0, 1).to(x.device)
 
@@ -234,9 +226,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         out = torch.zeros(x.shape[0], 4, x.shape[-2] // sf, x.shape[-1] // sf, device=x.device)
         for i in ti:
             for j in tj:
-                tile_in = x[..., i:i + tile_size, j:j + tile_size]
+                tile_in = x[..., i : i + tile_size, j : j + tile_size]
                 # tile result
-                tile_out = out[..., i // sf:(i + tile_size) // sf, j // sf:(j + tile_size) // sf]
+                tile_out = out[..., i // sf : (i + tile_size) // sf, j // sf : (j + tile_size) // sf]
                 tile = self.encoder(tile_in)
                 h, w = tile.shape[-2], tile.shape[-1]
                 # blend tile result into output
@@ -278,10 +270,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         # mask for blending
         blend_masks = torch.stack(
-            torch.meshgrid(
-                [torch.arange(tile_size * sf) / (blend_size * sf - 1)] * 2,
-                indexing="ij"
-            )
+            torch.meshgrid([torch.arange(tile_size * sf) / (blend_size * sf - 1)] * 2, indexing="ij")
         )
         blend_masks = blend_masks.clamp(0, 1).to(x.device)
 
@@ -289,9 +278,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         out = torch.zeros(x.shape[0], 3, x.shape[-2] * sf, x.shape[-1] * sf, device=x.device)
         for i in ti:
             for j in tj:
-                tile_in = x[..., i:i + tile_size, j:j + tile_size]
+                tile_in = x[..., i : i + tile_size, j : j + tile_size]
                 # tile result
-                tile_out = out[..., i * sf:(i + tile_size) * sf, j * sf:(j + tile_size) * sf]
+                tile_out = out[..., i * sf : (i + tile_size) * sf, j * sf : (j + tile_size) * sf]
                 tile = self.decoder(tile_in)
                 h, w = tile.shape[-2], tile.shape[-1]
                 # blend tile result into output
@@ -306,9 +295,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self, x: torch.FloatTensor, return_dict: bool = True
     ) -> Union[AutoencoderTinyOutput, Tuple[torch.FloatTensor]]:
         if self.use_slicing and x.shape[0] > 1:
-            output = [self._tiled_encode(x_slice)
-                      if self.use_tiling else self.encoder(x)
-                      for x_slice in x.split(1)]
+            output = [self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x) for x_slice in x.split(1)]
             output = torch.cat(output)
         else:
             output = self._tiled_encode(x) if self.use_tiling else self.encoder(x)
@@ -321,9 +308,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         if self.use_slicing and x.shape[0] > 1:
-            output = [self._tiled_decode(x_slice)
-                      if self.use_tiling else self.decoder(x)
-                      for x_slice in x.split(1)]
+            output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
             output = torch.cat(output)
         else:
             output = self._tiled_decode(x) if self.use_tiling else self.decoder(x)
