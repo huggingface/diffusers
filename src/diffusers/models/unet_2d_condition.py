@@ -202,8 +202,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads=64,
-        preserve_cross_attention_dim: bool = False,
-        extra_self_attn_layer: bool = False,
     ):
         super().__init__()
 
@@ -221,11 +219,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
         # which is why we correct for the naming here.
         num_attention_heads = num_attention_heads or attention_head_dim
-
-        if isinstance(cross_attention_dim, int) or (
-            isinstance(cross_attention_dim, list) and preserve_cross_attention_dim
-        ):
-            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -410,6 +403,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
+        if isinstance(cross_attention_dim, int):
+            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
+
         if isinstance(layers_per_block, int):
             layers_per_block = [layers_per_block] * len(down_block_types)
 
@@ -454,7 +450,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.down_blocks.append(down_block)
 
@@ -474,7 +469,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
         elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
             self.mid_block = UNetMidBlock2DSimpleCrossAttn(
@@ -545,7 +539,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -714,8 +707,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        encoder_attention_mask_2: Optional[torch.Tensor] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
@@ -738,13 +729,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             added_cond_kwargs: (`dict`, *optional*):
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
-            encoder_hidden_states_2 (`torch.FloatTensor`, *optional*):
-                A second set of encoder hidden states with shape `(batch, sequence_length_2, feature_dim_2)`. Can be
-                used to condition the model on a different set of embeddings to `encoder_hidden_states`.
-            encoder_attention_mask (`torch.Tensor`, *optional*):
-                A cross-attention mask of shape `(batch, sequence_length_2)` is applied to `encoder_hidden_states_2`.
-                If `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
-                which adds large negative values to the attention scores corresponding to "discard" tokens.
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -785,10 +769,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
-        if encoder_attention_mask_2 is not None:
-            encoder_attention_mask_2 = (1 - encoder_attention_mask_2.to(sample.dtype)) * -10000.0
-            encoder_attention_mask_2 = encoder_attention_mask_2.unsqueeze(1)
 
         # 0. center input if necessary
         if self.config.center_input_sample:
@@ -935,8 +915,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    encoder_hidden_states_2=encoder_hidden_states_2,
-                    encoder_attention_mask_2=encoder_attention_mask_2,
                     **additional_residuals,
                 )
             else:
@@ -967,8 +945,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
                 encoder_attention_mask=encoder_attention_mask,
-                encoder_hidden_states_2=encoder_hidden_states_2,
-                encoder_attention_mask_2=encoder_attention_mask_2,
             )
 
         if is_controlnet:
@@ -996,8 +972,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
-                    encoder_hidden_states_2=encoder_hidden_states_2,
-                    encoder_attention_mask_2=encoder_attention_mask_2,
                 )
             else:
                 sample = upsample_block(
