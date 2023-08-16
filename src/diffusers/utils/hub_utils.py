@@ -372,7 +372,7 @@ def _get_model_file(
 
 class PushToHubMixin:
     """
-    A Mixin containing the functionality to push a model/scheduler to the Hugging Face Hub.
+    A Mixin to push a model, scheduler, or pipeline to the Hugging Face Hub.
     """
 
     def _upload_folder(
@@ -440,7 +440,7 @@ class PushToHubMixin:
         # Push the `unet` to your namespace with the name "my-finetuned-unet".
         unet.push_to_hub("my-finetuned-unet")
 
-        # Push the {object} to an organization with the name "my-finetuned-unet".
+        # Push the `unet` to an organization with the name "my-finetuned-unet".
         unet.push_to_hub("your-org/my-finetuned-unet")
         ```
         """
