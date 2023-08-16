@@ -171,7 +171,8 @@ class Attention(nn.Module):
             LORA_ATTENTION_PROCESSORS,
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
-            self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0)
+            self.processor,
+            (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0),
         )
         is_added_kv_processor = hasattr(self, "processor") and isinstance(
             self.processor,
@@ -260,7 +261,9 @@ class Attention(nn.Module):
                 processor.to(self.processor.to_q_lora.up.weight.device)
             elif is_custom_diffusion:
                 attn_processor_class = (
-                    CustomDiffusionAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else CustomDiffusionAttnProcessor
+                    CustomDiffusionAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else CustomDiffusionAttnProcessor
                 )
                 processor = attn_processor_class(
                     train_kv=self.processor.train_kv,
