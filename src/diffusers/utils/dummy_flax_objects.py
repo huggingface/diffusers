@@ -122,7 +122,7 @@ class FlaxDPMSolverMultistepScheduler(metaclass=DummyObject):
         requires_backends(cls, ["flax"])
 
 
-class FlaxEulerAncestralDiscreteScheduler(metaclass=DummyObject):
+class FlaxEulerDiscreteScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):

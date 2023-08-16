@@ -262,7 +262,7 @@ else:
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
         FlaxDPMSolverMultistepScheduler,
-        FlaxEulerAncestralDiscreteScheduler,
+        FlaxEulerDiscreteScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,

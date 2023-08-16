@@ -31,7 +31,7 @@ from .scheduling_utils_flax import (
 
 
 @flax.struct.dataclass
-class EulerAncestralDiscreteSchedulerState:
+class EulerDiscreteSchedulerState:
     common: CommonSchedulerState
 
     # setable values
@@ -48,14 +48,16 @@ class EulerAncestralDiscreteSchedulerState:
 
 
 @dataclass
-class FlaxEulerAncestralDiscreteSchedulerOutput(FlaxSchedulerOutput):
-    state: EulerAncestralDiscreteSchedulerState
+class FlaxEulerDiscreteSchedulerOutput(FlaxSchedulerOutput):
+    state: EulerDiscreteSchedulerState
 
 
-class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
+class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
-    Ancestral sampling with Euler method steps. Based on the original k-diffusion implementation by Katherine Crowson:
-    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72
+    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://arxiv.org/abs/2206.00364. . Based on the original
+    k-diffusion implementation by Katherine Crowson:
+    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51
+
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -100,7 +102,7 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> EulerAncestralDiscreteSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> EulerDiscreteSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -110,7 +112,7 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         # standard deviation of the initial noise distribution
         init_noise_sigma = sigmas.max()
 
-        return EulerAncestralDiscreteSchedulerState.create(
+        return EulerDiscreteSchedulerState.create(
             common=common,
             init_noise_sigma=init_noise_sigma,
             timesteps=timesteps,
@@ -118,14 +120,14 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def scale_model_input(
-        self, state: EulerAncestralDiscreteSchedulerState, sample: jnp.ndarray, timestep: int
+        self, state: EulerDiscreteSchedulerState, sample: jnp.ndarray, timestep: int
     ) -> jnp.ndarray:
         """
         Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
         Args:
-            state (`EulerAncestralDiscreteSchedulerState`):
-                the `FlaxEulerAncestralDiscreteScheduler` state data class instance.
+            state (`EulerDiscreteSchedulerState`):
+                the `FlaxEulerDiscreteScheduler` state data class instance.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             timestep (`int`):
@@ -142,14 +144,14 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: EulerAncestralDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
-    ) -> EulerAncestralDiscreteSchedulerState:
+        self, state: EulerDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> EulerDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            state (`EulerAncestralDiscreteSchedulerState`):
-                the `FlaxEulerAncestralDiscreteScheduler` state data class instance.
+            state (`EulerDiscreteSchedulerState`):
+                the `FlaxEulerDiscreteScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
@@ -179,29 +181,29 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        state: EulerAncestralDiscreteSchedulerState,
+        state: EulerDiscreteSchedulerState,
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
         key: Optional[jax.random.KeyArray] = None,
         return_dict: bool = True,
-    ) -> Union[FlaxEulerAncestralDiscreteSchedulerOutput, Tuple]:
+    ) -> Union[FlaxEulerDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            state (`EulerAncestralDiscreteSchedulerState`):
-                the `FlaxEulerAncestralDiscreteScheduler` state data class instance.
+            state (`EulerDiscreteSchedulerState`):
+                the `FlaxEulerDiscreteScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than FlaxEulerAncestralDiscreteScheduler class
+            return_dict (`bool`): option for returning tuple rather than FlaxEulerDiscreteScheduler class
 
         Returns:
-            [`FlaxEulerAncestralDiscreteScheduler`] or `tuple`: [`FlaxEulerAncestralDiscreteScheduler`] if
+            [`FlaxEulerDiscreteScheduler`] or `tuple`: [`FlaxEulerDiscreteScheduler`] if
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
@@ -226,11 +228,6 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        # sigma_from = state.sigmas[step_index]
-        # sigma_to = state.sigmas[step_index + 1]
-        # sigma_up = jnp.sqrt((sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2))
-        # sigma_down = jnp.sqrt((sigma_to**2 - sigma_up**2))
-
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
 
@@ -239,22 +236,14 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
-        # if key is None:
-        #     key = jax.random.PRNGKey(random.randint(0, 2 ** 32 - 1))
-        # else:
-        #     key = jax.random.split(key, num=1)
-        # noise = jax.random.normal(key, shape=model_output.shape, dtype=self.dtype)
-
-        # prev_sample = prev_sample + noise * sigma_up
-
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxEulerAncestralDiscreteSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxEulerDiscreteSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,
-        state: EulerAncestralDiscreteSchedulerState,
+        state: EulerDiscreteSchedulerState,
         original_samples: jnp.ndarray,
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
