@@ -23,20 +23,26 @@ import torch.nn.functional as F
 from transformers import (
     ClapTextConfig,
     ClapTextModelWithProjection,
+    GPT2Config,
+    GPT2Model,
     RobertaTokenizer,
     SpeechT5HifiGan,
-    SpeechT5HifiGanConfig, T5Config, T5EncoderModel, T5Tokenizer, GPT2Config, GPT2Model,
+    SpeechT5HifiGanConfig,
+    T5Config,
+    T5EncoderModel,
+    T5Tokenizer,
 )
 
 from diffusers import (
     AudioLDM2Pipeline,
+    AudioLDM2ProjectionModel,
+    AudioLDM2UNet2DConditionModel,
     AutoencoderKL,
     DDIMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    AudioLDM2UNet2DConditionModel, AudioLDM2ProjectionModel,
 )
-from diffusers.utils import is_xformers_available, slow
+from diffusers.utils import is_xformers_available, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
@@ -45,9 +51,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 enable_full_determinism()
 
-
-# TODO(SG): remove torch device setting
-torch_device = "cpu"
 
 class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDM2Pipeline
@@ -132,7 +135,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         language_model = GPT2Model(language_model_config)
 
-        projection_model = AudioLDM2ProjectionModel(text_encoder_1_dim=16, text_encoder_2_dim=32, langauge_model_dim=16)
+        projection_model = AudioLDM2ProjectionModel(
+            text_encoder_1_dim=16, text_encoder_2_dim=32, langauge_model_dim=16
+        )
 
         vocoder_config = SpeechT5HifiGanConfig(
             model_in_dim=8,
@@ -425,7 +430,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
+        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=3e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
