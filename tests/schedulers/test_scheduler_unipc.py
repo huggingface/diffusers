@@ -208,11 +208,23 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_mean.item() - 0.2464) < 1e-3
 
+    def test_full_loop_with_karras(self):
+        sample = self.full_loop(use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2925) < 1e-3
+
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.1014) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1966) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]
