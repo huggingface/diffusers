@@ -262,6 +262,7 @@ else:
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
         FlaxDPMSolverMultistepScheduler,
+        FlaxEulerDiscreteScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
@@ -281,8 +282,8 @@ else:
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
-        FlaxStableDiffusionXLPipeline,
         FlaxStableDiffusionXLImg2ImgPipeline,
+        FlaxStableDiffusionXLPipeline,
     )
 
 try:

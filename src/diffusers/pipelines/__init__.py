@@ -180,8 +180,8 @@ else:
         FlaxStableDiffusionPipeline,
     )
     from .stable_diffusion_xl import (
-        FlaxStableDiffusionXLPipeline,
         FlaxStableDiffusionXLImg2ImgPipeline,
+        FlaxStableDiffusionXLPipeline,
     )
 try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
