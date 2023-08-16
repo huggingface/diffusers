@@ -1255,7 +1255,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        unet.save_attn_procs(args.output_dir)
+        unet.save_attn_procs(args.output_dir, safe_serialization=not args.no_safe_serialization)
         save_new_embed(
             text_encoder,
             modifier_token_id,
@@ -1274,9 +1274,15 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.unet.load_attn_procs(args.output_dir, weight_name="pytorch_custom_diffusion_weights.bin")
+        weight_name = (
+            "pytorch_custom_diffusion_weights.safetensors"
+            if not args.no_safe_serialization
+            else "pytorch_custom_diffusion_weights.bin"
+        )
+        pipeline.unet.load_attn_procs(args.output_dir, weight_name=weight_name)
         for token in args.modifier_token:
-            pipeline.load_textual_inversion(args.output_dir, weight_name=f"{token}.bin")
+            token_weight_name = f"{token}.safetensors" if not args.no_safe_serialization else f"{token}.bin"
+            pipeline.load_textual_inversion(args.output_dir, weight_name=token_weight_name)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
