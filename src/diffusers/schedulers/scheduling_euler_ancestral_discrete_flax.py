@@ -226,25 +226,26 @@ class FlaxEulerAncestralDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        sigma_from = state.sigmas[step_index]
-        sigma_to = state.sigmas[step_index + 1]
-        sigma_up = jnp.sqrt((sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2))
-        sigma_down = jnp.sqrt((sigma_to**2 - sigma_up**2))
+        # sigma_from = state.sigmas[step_index]
+        # sigma_to = state.sigmas[step_index + 1]
+        # sigma_up = jnp.sqrt((sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2))
+        # sigma_down = jnp.sqrt((sigma_to**2 - sigma_up**2))
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
 
-        dt = sigma_down - sigma
+        # dt = sigma_down - sigma
+        dt = self.sigmas[step_index + 1] - sigma
 
         prev_sample = sample + derivative * dt
 
-        if key is None:
-            key = jax.random.PRNGKey(random.randint(0, 2 ** 32 - 1))
-        else:
-            key = jax.random.split(key, num=1)
-        noise = jax.random.normal(key, shape=model_output.shape, dtype=self.dtype)
+        # if key is None:
+        #     key = jax.random.PRNGKey(random.randint(0, 2 ** 32 - 1))
+        # else:
+        #     key = jax.random.split(key, num=1)
+        # noise = jax.random.normal(key, shape=model_output.shape, dtype=self.dtype)
 
-        prev_sample = prev_sample + noise * sigma_up
+        # prev_sample = prev_sample + noise * sigma_up
 
         if not return_dict:
             return (prev_sample, state)
