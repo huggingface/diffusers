@@ -33,7 +33,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_audioldm2_encoder import AudioLDM2ProjectionModel
+from .modeling_audioldm2 import AudioLDM2ProjectionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -612,6 +612,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # TODO(SG): remove debugging statements
+                latent_model_input = torch.ones_like(latent_model_input)
+                prompt_embeds = torch.ones_like(prompt_embeds)
+                cross_attention_embeds = torch.ones_like(cross_attention_embeds)
+                cross_attention_mask = torch.ones_like(cross_attention_mask)
 
                 # predict the noise residual
                 noise_pred = self.unet(

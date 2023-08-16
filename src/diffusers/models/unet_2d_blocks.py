@@ -570,6 +570,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,)
+        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 2:
+            raise ValueError(
+                "Only up to 2 cross-attention layers are supported. Ensure that the length of cross-attention "
+                f"dims is less than or equal to 2, got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
+            )
 
         # there is always at least one resnet
         resnets = [
@@ -692,32 +697,24 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     **ckpt_kwargs,
                 )
             else:
-                if encoder_hidden_states_2 is None:
-                    hidden_states = self.attentions[i * num_attention_per_layer: (i + 1) * num_attention_per_layer](
+                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                    hidden_states = self.attentions[j](
                         hidden_states,
                         attention_mask=attention_mask,
                         encoder_hidden_states=encoder_hidden_states,
                         encoder_attention_mask=encoder_attention_mask,
                         return_dict=False,
                     )[0]
-                else:
-                    for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
-                        hidden_states = self.attentions[j](
-                            hidden_states,
-                            attention_mask=attention_mask,
-                            encoder_hidden_states=encoder_hidden_states,
-                            encoder_attention_mask=encoder_attention_mask,
-                            return_dict=False,
-                        )[0]
-                    hidden_states = self.attentions[i * num_attention_per_layer + num_attention_per_layer - 1](
-                        hidden_states,
-                        attention_mask=attention_mask,
-                        encoder_hidden_states=encoder_hidden_states_2,
-                        encoder_attention_mask=encoder_attention_mask_2,
-                        return_dict=False,
-                    )[0]
 
-                hidden_states = self.resnets[i+1](hidden_states, temb)
+                hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
+                    return_dict=False,
+                )[0]
+
+                hidden_states = self.resnets[i + 1](hidden_states, temb)
 
         return hidden_states
 
@@ -1113,30 +1110,22 @@ class CrossAttnDownBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = self.resnets[i](hidden_states, temb)
-                if encoder_hidden_states_2 is None:
-                    hidden_states = self.attentions[i * num_attention_per_layer: (i + 1) * num_attention_per_layer](
+                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                    hidden_states = self.attentions[j](
                         hidden_states,
                         attention_mask=attention_mask,
                         encoder_hidden_states=encoder_hidden_states,
                         encoder_attention_mask=encoder_attention_mask,
                         return_dict=False,
                     )[0]
-                else:
-                    for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
-                        hidden_states = self.attentions[j](
-                            hidden_states,
-                            attention_mask=attention_mask,
-                            encoder_hidden_states=encoder_hidden_states,
-                            encoder_attention_mask=encoder_attention_mask,
-                            return_dict=False,
-                        )[0]
-                    hidden_states = self.attentions[i * num_attention_per_layer + num_attention_per_layer - 1](
-                        hidden_states,
-                        attention_mask=attention_mask,
-                        encoder_hidden_states=encoder_hidden_states_2,
-                        encoder_attention_mask=encoder_attention_mask_2,
-                        return_dict=False,
-                    )[0]
+
+                hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
+                    return_dict=False,
+                )[0]
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == num_layers - 1 and additional_residuals is not None:
@@ -2299,23 +2288,19 @@ class CrossAttnUpBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = self.resnets[i](hidden_states, temb)
-                hidden_states = self.attentions[i * num_attention_per_layer](
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    return_dict=False,
-                )[0]
-                hidden_states = self.attentions[i * num_attention_per_layer + 1](
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
+                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                    hidden_states = self.attentions[j](
+                        hidden_states,
+                        attention_mask=attention_mask,
+                        encoder_hidden_states=encoder_hidden_states,
+                        encoder_attention_mask=encoder_attention_mask,
+                        return_dict=False,
+                    )[0]
                 hidden_states = self.attentions[i * num_attention_per_layer + 2](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2,
-                    encoder_attention_mask=encoder_attention_mask_2,
+                    encoder_hidden_states=encoder_hidden_states_2 if encoder_hidden_states_2 is not None else encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask_2 if encoder_hidden_states_2 is not None else encoder_attention_mask,
                     return_dict=False,
                 )[0]
 
