@@ -557,7 +557,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_attention_mask = (
                 negative_attention_mask.to(device=device)
                 if negative_attention_mask is not None
-                else torch.ones(negative_attention_mask.shape[:2], dtype=torch.long, device=device)
+                else torch.ones(negative_prompt_embeds.shape[:2], dtype=torch.long, device=device)
             )
             negative_generated_prompt_embeds = negative_generated_prompt_embeds.to(
                 dtype=self.language_model.dtype, device=device

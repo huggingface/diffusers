@@ -275,26 +275,46 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prompt = 3 * [inputs.pop("prompt")]
 
         embeds = []
+        generated_embeds = []
         for p in [prompt, negative_prompt]:
-            text_inputs = audioldm_pipe.tokenizer(
+            text_inputs = audioldm_pipe.tokenizer_1(
                 p,
                 padding="max_length",
-                max_length=audioldm_pipe.tokenizer.model_max_length,
+                max_length=audioldm_pipe.tokenizer_1.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            text_embeds = audioldm_pipe.text_encoder(
+            clap_prompt_embeds = audioldm_pipe.text_encoder_1(
                 text_inputs,
             )
-            text_embeds = text_embeds.text_embeds
+            clap_prompt_embeds = clap_prompt_embeds.text_embeds
             # additional L_2 normalization over each hidden-state
-            text_embeds = F.normalize(text_embeds, dim=-1)
+            clap_prompt_embeds = F.normalize(clap_prompt_embeds, dim=-1)[:, None, :]
 
-            embeds.append(text_embeds)
+            text_inputs = audioldm_pipe.tokenizer_2(
+                prompt,
+                padding="max_length",
+                max_length=True if len(embeds) == 0 else embeds[0].shape[1],
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_inputs = text_inputs["input_ids"].to(torch_device)
+
+            t5_prompt_embeds = audioldm_pipe.text_encoder_2(
+                text_inputs,
+            )
+            t5_prompt_embeds = t5_prompt_embeds[0]
+
+            projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
+            generated_prompt_embeds = audioldm_pipe.generate(projection_embeds, max_new_tokens=8)
+
+            embeds.append(t5_prompt_embeds)
+            generated_embeds.append(generated_prompt_embeds)
 
         inputs["prompt_embeds"], inputs["negative_prompt_embeds"] = embeds
+        inputs["generated_prompt_embeds"], inputs["negative_generated_prompt_embeds"] = generated_embeds
 
         # forward
         output = audioldm_pipe(**inputs)
