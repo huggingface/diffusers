@@ -884,7 +884,7 @@ class CustomPipelineTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
 
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
