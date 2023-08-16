@@ -18,9 +18,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
-from transformers import (
-    PreTrainedModel,
-)
 
 from diffusers.utils import BaseOutput
 
@@ -76,20 +73,6 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
 
     hidden_states: torch.FloatTensor
     attention_mask: Optional[torch.LongTensor] = None
-
-
-class AudioLDM2PreTrainedModel(PreTrainedModel):
-    def __init__(self, *inputs, **kwargs):
-        super().__init__(*inputs, **kwargs)
-
-    def _init_weights(self, module):
-        """Initialize the weights."""
-        if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
 
 
 class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):

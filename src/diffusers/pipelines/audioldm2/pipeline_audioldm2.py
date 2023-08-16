@@ -161,8 +161,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
     def generate(
         self,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        max_new_tokens: Optional[int] = None,
+        inputs_embeds: torch.Tensor = None,
+        max_new_tokens: int = None,
         **model_kwargs,
     ):
         """
@@ -172,8 +172,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Parameters:
             inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence used as a prompt for the generation.
-            max_new_tokens (`int`, *optional*):
-                Number of new tokens to generate. If un-specified, defaults to the model attribute `max_new_tokens`.
+            max_new_tokens (`int`):
+                Number of new tokens to generate.
             model_kwargs (`Dict[str, Any]`, *optional*):
                 Ad hoc parametrization of additional model-specific kwargs that will be forwarded to the `forward`
                 function of the model.
@@ -182,9 +182,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             `inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
-        # TODO(SG): how do we use a default max new tokens?
-        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.max_new_tokens
-
         for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
@@ -211,6 +208,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        max_new_tokens: Optional[int] = 8,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -235,6 +233,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            max_new_tokens (`int`, *optional*, defaults to 8):
+                Number of new tokens to generate with the GPT2 language model.
         """
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -323,7 +323,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             prompt_embeds = projection_output.hidden_states
             attention_mask = projection_output.attention_mask
 
-            prompt_embeds = self.generate(prompt_embeds, attention_mask=attention_mask, max_new_tokens=8)
+            prompt_embeds = self.generate(prompt_embeds, attention_mask=attention_mask, max_new_tokens=max_new_tokens)
 
         prompt_embeds = prompt_embeds.to(dtype=self.language_model.dtype, device=device)
 
@@ -338,16 +338,19 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         cross_attention_embeds = cross_attention_embeds.repeat(1, num_waveforms_per_prompt, 1)
         cross_attention_embeds = cross_attention_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
 
+        # duplicate encoder-only attention mask for each generation per prompt
         cross_attention_mask = attention_mask_list[-1].repeat(1, num_waveforms_per_prompt)
         cross_attention_mask = cross_attention_mask.view(bs_embed * num_waveforms_per_prompt, seq_len)
 
         return prompt_embeds, cross_attention_embeds, cross_attention_mask
 
+    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
         mel_spectrogram = self.vae.decode(latents).sample
         return mel_spectrogram
 
+    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
@@ -464,6 +467,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
+        max_new_tokens: int = 8,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -491,6 +495,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 3.5):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
+            max_new_tokens (`int`, *optional*, defaults to 8):
+                The number of new tokens to generate with the GPT2 language model. The diffusion model is pre-trained
+                on a sequence of 8 new tokens, hence this is the recommended sequence length.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -586,6 +593,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            max_new_tokens=max_new_tokens,
         )
 
         # 4. Prepare timesteps
