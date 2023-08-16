@@ -267,6 +267,8 @@
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
         title: Stable Diffusion T2I-adapter
+      - local: api/pipelines/stable_diffusion/gligen
+        title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
