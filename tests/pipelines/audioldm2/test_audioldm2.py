@@ -25,18 +25,18 @@ from transformers import (
     ClapTextModelWithProjection,
     RobertaTokenizer,
     SpeechT5HifiGan,
-    SpeechT5HifiGanConfig,
+    SpeechT5HifiGanConfig, T5Config, T5EncoderModel, T5Tokenizer, GPT2Config, GPT2Model,
 )
 
 from diffusers import (
-    AudioLDMPipeline,
+    AudioLDM2Pipeline,
     AutoencoderKL,
     DDIMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DConditionModel,
+    AudioLDM2UNet2DConditionModel, AudioLDM2ProjectionModel,
 )
-from diffusers.utils import is_xformers_available, slow, torch_device
+from diffusers.utils import is_xformers_available, slow
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
@@ -46,8 +46,11 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = AudioLDMPipeline
+# TODO(SG): remove torch device setting
+torch_device = "cpu"
+
+class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = AudioLDM2Pipeline
     params = TEXT_TO_AUDIO_PARAMS
     batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
     required_optional_params = frozenset(
@@ -65,7 +68,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        unet = UNet2DConditionModel(
+        unet = AudioLDM2UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -73,10 +76,8 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=(32, 64),
-            class_embed_type="simple_projection",
-            projection_class_embeddings_input_dim=32,
-            class_embeddings_concat=True,
+            cross_attention_dim=([16, 32], [16, 32]),
+            extra_self_attn_layer=True,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -95,20 +96,43 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_channels=4,
         )
         torch.manual_seed(0)
-        text_encoder_config = ClapTextConfig(
+        text_encoder_1_config = ClapTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
+            hidden_size=16,
             intermediate_size=37,
             layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
+            num_attention_heads=2,
+            num_hidden_layers=2,
             pad_token_id=1,
             vocab_size=1000,
-            projection_dim=32,
+            projection_dim=16,
         )
-        text_encoder = ClapTextModelWithProjection(text_encoder_config)
-        tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
+        text_encoder_1 = ClapTextModelWithProjection(text_encoder_1_config)
+        tokenizer_1 = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
+
+        text_encoder_2_config = T5Config(
+            vocab_size=32100,
+            d_model=32,
+            d_ff=37,
+            d_kv=8,
+            num_heads=2,
+            num_layers=2,
+        )
+        text_encoder_2 = T5EncoderModel(text_encoder_2_config)
+        tokenizer_2 = T5Tokenizer.from_pretrained("hf-internal-testing/tiny-random-T5Model", model_max_length=77)
+
+        language_model_config = GPT2Config(
+            n_embd=16,
+            n_head=2,
+            n_layer=2,
+            vocab_size=1000,
+            n_ctx=99,
+            n_positions=99,
+        )
+        language_model = GPT2Model(language_model_config)
+
+        projection_model = AudioLDM2ProjectionModel(text_encoder_1_dim=16, text_encoder_2_dim=32, langauge_model_dim=16)
 
         vocoder_config = SpeechT5HifiGanConfig(
             model_in_dim=8,
@@ -127,8 +151,12 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "text_encoder_1": text_encoder_1,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_1": tokenizer_1,
+            "tokenizer_2": tokenizer_2,
+            "language_model": language_model,
+            "projection_model": projection_model,
             "vocoder": vocoder,
         }
         return components
@@ -150,7 +178,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -159,7 +187,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 256
+        assert len(audio) == 512
 
         audio_slice = audio[:10]
         expected_slice = np.array(
@@ -170,7 +198,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_audioldm_prompt_embeds(self):
         components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -185,23 +213,41 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
-        text_inputs = audioldm_pipe.tokenizer(
+        text_inputs = audioldm_pipe.tokenizer_1(
             prompt,
             padding="max_length",
-            max_length=audioldm_pipe.tokenizer.model_max_length,
+            max_length=audioldm_pipe.tokenizer_1.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        prompt_embeds = audioldm_pipe.text_encoder(
+        clap_prompt_embeds = audioldm_pipe.text_encoder_1(
             text_inputs,
         )
-        prompt_embeds = prompt_embeds.text_embeds
+        clap_prompt_embeds = clap_prompt_embeds.text_embeds
         # additional L_2 normalization over each hidden-state
-        prompt_embeds = F.normalize(prompt_embeds, dim=-1)
+        clap_prompt_embeds = F.normalize(clap_prompt_embeds, dim=-1)[:, None, :]
 
-        inputs["prompt_embeds"] = prompt_embeds
+        text_inputs = audioldm_pipe.tokenizer_2(
+            prompt,
+            padding="max_length",
+            max_length=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_inputs = text_inputs["input_ids"].to(torch_device)
+
+        t5_prompt_embeds = audioldm_pipe.text_encoder_2(
+            text_inputs,
+        )
+        t5_prompt_embeds = t5_prompt_embeds[0]
+
+        projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
+        generated_prompt_embeds = audioldm_pipe.generate(projection_embeds, max_new_tokens=8)
+
+        inputs["prompt_embeds"] = t5_prompt_embeds
+        inputs["generated_prompt_embeds"] = generated_prompt_embeds
 
         # forward
         output = audioldm_pipe(**inputs)
@@ -211,7 +257,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_audioldm_negative_prompt_embeds(self):
         components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -260,7 +306,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -270,7 +316,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 256
+        assert len(audio) == 512
 
         audio_slice = audio[:10]
         expected_slice = np.array(
@@ -283,7 +329,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -292,19 +338,19 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # test num_waveforms_per_prompt=1 (default)
         audios = audioldm_pipe(prompt, num_inference_steps=2).audios
 
-        assert audios.shape == (1, 256)
+        assert audios.shape == (1, 512)
 
         # test num_waveforms_per_prompt=1 (default) for batch of prompts
         batch_size = 2
         audios = audioldm_pipe([prompt] * batch_size, num_inference_steps=2).audios
 
-        assert audios.shape == (batch_size, 256)
+        assert audios.shape == (batch_size, 512)
 
         # test num_waveforms_per_prompt for single prompt
         num_waveforms_per_prompt = 2
         audios = audioldm_pipe(prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt).audios
 
-        assert audios.shape == (num_waveforms_per_prompt, 256)
+        assert audios.shape == (num_waveforms_per_prompt, 512)
 
         # test num_waveforms_per_prompt for batch of prompts
         batch_size = 2
@@ -312,12 +358,12 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             [prompt] * batch_size, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
         ).audios
 
-        assert audios.shape == (batch_size * num_waveforms_per_prompt, 256)
+        assert audios.shape == (batch_size * num_waveforms_per_prompt, 512)
 
     def test_audioldm_audio_length_in_s(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
         vocoder_sampling_rate = audioldm_pipe.vocoder.config.sampling_rate
@@ -337,7 +383,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_audioldm_vocoder_model_in_dim(self):
         components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -345,7 +391,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output = audioldm_pipe(prompt, num_inference_steps=1)
         audio_shape = output.audios.shape
-        assert audio_shape == (1, 256)
+        assert audio_shape == (1, 512)
 
         config = audioldm_pipe.vocoder.config
         config.model_in_dim *= 2
@@ -353,7 +399,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = audioldm_pipe(prompt, num_inference_steps=1)
         audio_shape = output.audios.shape
         # waveform shape is unchanged, we just have 2x the number of mel channels in the spectrogram
-        assert audio_shape == (1, 256)
+        assert audio_shape == (1, 512)
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
@@ -370,7 +416,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-class AudioLDMPipelineSlowTests(unittest.TestCase):
+class AudioLDM2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -390,7 +436,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_audioldm(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm")
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -409,7 +455,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-2
 
     def test_audioldm_lms(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm")
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)

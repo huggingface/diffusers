@@ -162,7 +162,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     def generate(
         self,
         inputs_embeds: torch.Tensor = None,
-        max_new_tokens: int = None,
+        max_new_tokens: int = 8,
         **model_kwargs,
     ):
         """
@@ -860,6 +860,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
+            generated_prompt_embeds,
+            negative_generated_prompt_embeds,
+            attention_mask,
+            negative_attention_mask,
         )
 
         # 2. Define call parameters
@@ -885,6 +889,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            generated_prompt_embeds=generated_prompt_embeds,
+            negative_generated_prompt_embeds=negative_generated_prompt_embeds,
+            attention_mask=attention_mask,
+            negative_attention_mask=negative_attention_mask,
             max_new_tokens=max_new_tokens,
         )
 
