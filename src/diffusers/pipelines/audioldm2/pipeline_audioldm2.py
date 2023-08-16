@@ -199,7 +199,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         return inputs_embeds[:, -max_new_tokens:, :]
 
-    def encode_prompt(
+    def encode_prompt_2(
         self,
         prompt,
         device,
@@ -247,8 +247,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         tokenizers = [self.tokenizer_1, self.tokenizer_2]
         text_encoders = [self.text_encoder_1, self.text_encoder_2]
 
-        # TODO(SG): handle the case where prompt embeds is passed as an argument -> we also need cross_attention_embeds in this case
-        # TODO(SG): also need to handle negative prompt embeds passed as inputs
         if prompt_embeds is None:
             # get unconditional embeddings for classifier free guidance
             if do_classifier_free_guidance:
@@ -296,7 +294,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         f"only handle sequences up to {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                # TODO(SG): truncate sequence from t5 if it exceeds GPT2 max length
                 text_input_ids = text_input_ids.to(device)
                 attention_mask = attention_mask.to(device)
 
@@ -344,6 +341,252 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         return prompt_embeds, cross_attention_embeds, cross_attention_mask
 
+    def encode_prompt(
+        self,
+        prompt,
+        device,
+        num_waveforms_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        negative_attention_mask: Optional[torch.LongTensor] = None,
+        max_new_tokens: Optional[int] = 8,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            device (`torch.device`):
+                torch device
+            num_waveforms_per_prompt (`int`):
+                number of waveforms that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the audio generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-computed text embeddings from the Flan T5 model. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, text embeddings will be computed from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-computed negative text embeddings from the Flan T5 model. Can be used to easily tweak text inputs,
+                *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
+                `negative_prompt` input argument.
+            generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                 *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
+                 argument.
+            negative_generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings from the GPT2 language model. Can be used to easily tweak text
+                inputs, *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
+                `negative_prompt` input argument.
+            attention_mask (`torch.LongTensor`, *optional*):
+                Pre-computed attention mask to be applied to the `prompt_embeds`. If not provided, attention mask will
+                be computed from `prompt` input argument.
+            negative_attention_mask (`torch.LongTensor`, *optional*):
+                Pre-computed attention mask to be applied to the `negative_prompt_embeds`. If not provided, attention
+                mask will be computed from `negative_prompt` input argument.
+            max_new_tokens (`int`, *optional*, defaults to 8):
+                Number of new tokens to generate with the GPT2 language model.
+        """
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        # Define tokenizers and text encoders
+        tokenizers = [self.tokenizer_1, self.tokenizer_2]
+        text_encoders = [self.text_encoder_1, self.text_encoder_2]
+
+        if prompt_embeds is None:
+            prompt_embeds_list = []
+            attention_mask_list = []
+
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                text_inputs = tokenizer(
+                    prompt,
+                    padding="max_length" if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast)) else True,
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                text_input_ids = text_inputs.input_ids
+                attention_mask = text_inputs.attention_mask
+                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                    text_input_ids, untruncated_ids
+                ):
+                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
+                    logger.warning(
+                        f"The following part of your input was truncated because {text_encoder.config.model_type} can "
+                        f"only handle sequences up to {tokenizer.model_max_length} tokens: {removed_text}"
+                    )
+
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask.to(device),
+                )
+                prompt_embeds = prompt_embeds[0]
+                if text_encoder.config.model_type == "clap_text_model":
+                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
+                    prompt_embeds = F.normalize(prompt_embeds, dim=-1)[:, None, :]
+                    # make sure that we attend to this single hidden-state
+                    attention_mask = attention_mask.new_ones((batch_size, 1))
+
+                prompt_embeds_list.append(prompt_embeds)
+                attention_mask_list.append(attention_mask)
+
+            projection_output = self.projection_model(
+                clap_hidden_states=prompt_embeds_list[0],
+                t5_hidden_states=prompt_embeds_list[1],
+                clap_attention_mask=attention_mask_list[0],
+                t5_attention_mask=attention_mask_list[1],
+            )
+            projected_prompt_embeds = projection_output.hidden_states
+            projected_attention_mask = projection_output.attention_mask
+
+            generated_prompt_embeds = self.generate(
+                projected_prompt_embeds, attention_mask=projected_attention_mask, max_new_tokens=max_new_tokens
+            )
+
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        attention_mask = (
+            attention_mask.to(device=device)
+            if attention_mask is not None
+            else torch.ones(prompt_embeds.shape[:2], dtype=torch.long, device=device)
+        )
+        generated_prompt_embeds = generated_prompt_embeds.to(dtype=self.language_model.dtype, device=device)
+
+        bs_embed, seq_len, hidden_size = prompt_embeds.shape
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
+
+        # duplicate attention mask for each generation per prompt
+        attention_mask = attention_mask.repeat(1, num_waveforms_per_prompt)
+        attention_mask = attention_mask.view(bs_embed * num_waveforms_per_prompt, seq_len)
+
+        bs_embed, seq_len, hidden_size = generated_prompt_embeds.shape
+        # duplicate generated embeddings for each generation per prompt, using mps friendly method
+        generated_prompt_embeds = generated_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+        generated_prompt_embeds = generated_prompt_embeds.view(
+            bs_embed * num_waveforms_per_prompt, seq_len, hidden_size
+        )
+
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt]
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            negative_prompt_embeds_list = []
+            negative_attention_mask_list = []
+            max_length = prompt_embeds.shape[1]
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                uncond_input = tokenizer(
+                    uncond_tokens,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length
+                    if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast))
+                    else max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+
+                uncond_input_ids = uncond_input.input_ids.to(device)
+                negative_attention_mask = uncond_input.attention_mask.to(device)
+
+                negative_prompt_embeds = text_encoder(
+                    uncond_input_ids,
+                    attention_mask=negative_attention_mask,
+                )
+                negative_prompt_embeds = negative_prompt_embeds[0]
+                if text_encoder.config.model_type == "clap_text_model":
+                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
+                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)[:, None, :]
+                    # make sure that we attend to this single hidden-state
+                    negative_attention_mask = negative_attention_mask.new_ones((batch_size, 1))
+
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+                negative_attention_mask_list.append(negative_attention_mask)
+
+            projection_output = self.projection_model(
+                clap_hidden_states=negative_prompt_embeds_list[0],
+                t5_hidden_states=negative_prompt_embeds_list[1],
+                clap_attention_mask=negative_attention_mask_list[0],
+                t5_attention_mask=negative_attention_mask_list[1],
+            )
+            negative_projected_prompt_embeds = projection_output.hidden_states
+            negative_projected_attention_mask = projection_output.attention_mask
+
+            negative_generated_prompt_embeds = self.generate(
+                negative_projected_prompt_embeds,
+                attention_mask=negative_projected_attention_mask,
+                max_new_tokens=max_new_tokens,
+            )
+
+        if do_classifier_free_guidance:
+            seq_len = negative_prompt_embeds.shape[1]
+
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            negative_attention_mask = (
+                negative_attention_mask.to(device=device)
+                if negative_attention_mask is not None
+                else torch.ones(negative_attention_mask.shape[:2], dtype=torch.long, device=device)
+            )
+            negative_generated_prompt_embeds = negative_generated_prompt_embeds.to(
+                dtype=self.language_model.dtype, device=device
+            )
+
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
+
+            # duplicate unconditional attention mask for each generation per prompt
+            negative_attention_mask = negative_attention_mask.repeat(1, num_waveforms_per_prompt)
+            negative_attention_mask = negative_attention_mask.view(batch_size * num_waveforms_per_prompt, seq_len)
+
+            # duplicate unconditional generated embeddings for each generation per prompt
+            seq_len = negative_generated_prompt_embeds.shape[1]
+            negative_generated_prompt_embeds = negative_generated_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+            negative_generated_prompt_embeds = negative_generated_prompt_embeds.view(
+                batch_size * num_waveforms_per_prompt, seq_len, -1
+            )
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            attention_mask = torch.cat([negative_attention_mask, attention_mask])
+            generated_prompt_embeds = torch.cat([negative_generated_prompt_embeds, generated_prompt_embeds])
+
+        return prompt_embeds, attention_mask, generated_prompt_embeds
+
     # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -387,6 +630,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        generated_prompt_embeds=None,
+        negative_generated_prompt_embeds=None,
+        attention_mask=None,
+        negative_attention_mask=None,
     ):
         min_audio_length_in_s = vocoder_upsample_factor * self.vae_scale_factor
         if audio_length_in_s < min_audio_length_in_s:
@@ -415,9 +662,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
                 " only forward one of the two."
             )
-        elif prompt is None and prompt_embeds is None:
+        elif prompt is None and (prompt_embeds is None or generated_prompt_embeds is None):
             raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+                "Provide either `prompt`, or `prompt_embeds` and `generated_prompt_embeds`. Cannot leave "
+                "`prompt` undefined without specifying both `prompt_embeds` and `generated_prompt_embeds`."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -427,6 +675,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
+        elif negative_prompt_embeds is not None and negative_generated_prompt_embeds is None:
+            raise ValueError(
+                "Cannot forward `negative_prompt_embeds` without `negative_generated_prompt_embeds`. Ensure that"
+                "both arguments are specified"
+            )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -434,6 +687,27 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+            if attention_mask is not None and attention_mask.shape != prompt_embeds.shape[:2]:
+                raise ValueError(
+                    "`attention_mask should have the same batch size and sequence length as `prompt_embeds`, but got:"
+                    f"`attention_mask: {attention_mask.shape} != `prompt_embeds` {prompt_embeds.shape}"
+                )
+
+        if generated_prompt_embeds is not None and negative_generated_prompt_embeds is not None:
+            if generated_prompt_embeds.shape != negative_generated_prompt_embeds.shape:
+                raise ValueError(
+                    "`generated_prompt_embeds` and `negative_generated_prompt_embeds` must have the same shape when "
+                    f"passed directly, but got: `generated_prompt_embeds` {generated_prompt_embeds.shape} != "
+                    f"`negative_generated_prompt_embeds` {negative_generated_prompt_embeds.shape}."
+                )
+            if (
+                negative_attention_mask is not None
+                and negative_attention_mask.shape != negative_prompt_embeds.shape[:2]
+            ):
+                raise ValueError(
+                    "`attention_mask should have the same batch size and sequence length as `prompt_embeds`, but got:"
+                    f"`attention_mask: {negative_attention_mask.shape} != `prompt_embeds` {negative_prompt_embeds.shape}"
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
@@ -467,7 +741,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
-        max_new_tokens: int = 8,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -475,6 +748,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        negative_attention_mask: Optional[torch.LongTensor] = None,
+        max_new_tokens: int = 8,
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -495,9 +773,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 3.5):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
-            max_new_tokens (`int`, *optional*, defaults to 8):
-                The number of new tokens to generate with the GPT2 language model. The diffusion model is pre-trained
-                on a sequence of 8 new tokens, hence this is the recommended sequence length.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -519,6 +794,23 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
+                 *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
+                 argument.
+            negative_generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings from the GPT2 language model. Can be used to easily tweak text
+                inputs, *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
+                `negative_prompt` input argument.
+            attention_mask (`torch.LongTensor`, *optional*):
+                Pre-computed attention mask to be applied to the `prompt_embeds`. If not provided, attention mask will
+                be computed from `prompt` input argument.
+            negative_attention_mask (`torch.LongTensor`, *optional*):
+                Pre-computed attention mask to be applied to the `negative_prompt_embeds`. If not provided, attention
+                mask will be computed from `negative_prompt` input argument.
+            max_new_tokens (`int`, *optional*, defaults to 8):
+                The number of new tokens to generate with the GPT2 language model. The diffusion model is pre-trained
+                on a sequence of 8 new tokens, hence this is the recommended sequence length.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -585,7 +877,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, cross_attention_embeds, cross_attention_mask = self.encode_prompt(
+        prompt_embeds, attention_mask, generated_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_waveforms_per_prompt,
@@ -627,9 +919,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_2=cross_attention_embeds,
-                    encoder_attention_mask_2=cross_attention_mask,
+                    encoder_hidden_states=generated_prompt_embeds,
+                    encoder_hidden_states_2=prompt_embeds,
+                    encoder_attention_mask_2=attention_mask,
                 ).sample
 
                 # perform guidance
