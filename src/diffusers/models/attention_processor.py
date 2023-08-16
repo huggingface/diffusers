@@ -1468,7 +1468,8 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
 
 class CustomDiffusionAttnProcessor2_0(nn.Module):
     r"""
-    Processor for implementing attention for the Custom Diffusion method.
+    Processor for implementing attention for the Custom Diffusion method
+    using PyTorch 2.0’s memory-efficient scaled dot-product attention.
 
     Args:
         train_kv (`bool`, defaults to `True`):
@@ -1758,6 +1759,7 @@ AttentionProcessor = Union[
     LoRAAttnAddedKVProcessor,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
 ]
 
 LORA_ATTENTION_PROCESSORS = (
