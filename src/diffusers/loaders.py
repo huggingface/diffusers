@@ -1103,7 +1103,7 @@ class LoraLoaderMixin:
         targeted_files = list(filter(lambda x: "scheduler" not in x and "optimizer" not in x, targeted_files))
         if len(targeted_files) > 1:
             raise ValueError(
-                f"Provided path contains more than one weights file in the {file_extension} format. Also, `weight_name` wasn't specified. This makes the loading process ambiguous. So, we tried to pick a file having the `.safetensors` or the `.bin` extension from the provided path: {pretrained_model_name_or_path_or_dict}. Please either pass `weight_name` or ensure {pretrained_model_name_or_path_or_dict} only has a single weights file having either `.safetensors` or `.bin` extension."
+                f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
             )
         weight_name = targeted_files[0]
         return weight_name
