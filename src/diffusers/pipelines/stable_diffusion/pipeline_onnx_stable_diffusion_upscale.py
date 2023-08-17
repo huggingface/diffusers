@@ -7,9 +7,7 @@ import torch
 
 from ...schedulers import DDPMScheduler
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import ImagePipelineOutput
-from . import StableDiffusionUpscalePipeline
-
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 logger = getLogger(__name__)
 
@@ -45,7 +43,7 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
+class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
     _is_onnx = True
 
     def __init__(
@@ -58,18 +56,102 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         scheduler: Any,
         max_noise_level: int = 350,
     ):
-        super().__init__(
+        super().__init__()
+        self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             unet=unet,
-            low_res_scheduler=low_res_scheduler,
-            scheduler=scheduler,
+            scheduler=low_res_scheduler,
             safety_checker=None,
             feature_extractor=None,
-            watermarker=None,
-            max_noise_level=max_noise_level,
         )
+        self.register_to_config(max_noise_level=max_noise_level)
+
+    def check_inputs(
+        self,
+        prompt,
+        image,
+        noise_level,
+        callback_steps,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+    ):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
+        if (
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, np.ndarray)
+            and not isinstance(image, list)
+        ):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `np.ndarray`, `PIL.Image.Image` or `list` but is {type(image)}"
+            )
+
+        # verify batch size of prompt and image are same if image is a list or tensor or numpy array
+        if isinstance(image, list) or isinstance(image, torch.Tensor) or isinstance(image, np.ndarray):
+            if prompt is not None and isinstance(prompt, str):
+                batch_size = 1
+            elif prompt is not None and isinstance(prompt, list):
+                batch_size = len(prompt)
+            else:
+                batch_size = prompt_embeds.shape[0]
+
+            if isinstance(image, list):
+                image_batch_size = len(image)
+            else:
+                image_batch_size = image.shape[0]
+            if batch_size != image_batch_size:
+                raise ValueError(
+                    f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
+                    " Please make sure that passed `prompt` matches the batch size of `image`."
+                )
+
+        # check noise level
+        if noise_level > self.config.max_noise_level:
+            raise ValueError(f"`noise_level` has to be <= {self.config.max_noise_level} but is {noise_level}")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
     def __call__(
         self,
