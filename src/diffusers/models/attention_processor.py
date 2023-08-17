@@ -1547,9 +1547,6 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
             key = detach * key + (1 - detach) * key.detach()
             value = detach * value + (1 - detach) * value.detach()
 
-        # query = attn.head_to_batch_dim(query)
-        # key = attn.head_to_batch_dim(key)
-        # value = attn.head_to_batch_dim(value)
         inner_dim = hidden_states.shape[-1]
 
         head_dim = inner_dim // attn.heads
@@ -1565,10 +1562,6 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
-
-        # attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        # hidden_states = torch.bmm(attention_probs, value)
-        # hidden_states = attn.batch_to_head_dim(hidden_states)
 
         if self.train_q_out:
             # linear proj
