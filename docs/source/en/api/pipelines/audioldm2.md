@@ -26,7 +26,7 @@ Flan-T5 embeddings. The generated embedding vectors and Flan-T5 text embeddings 
 in the LDM. The [UNet](TODO(SG)) of AudioLDM 2 is unique in the sense that it takes **two** cross-attention embeddings, as opposed 
 to one cross-attention conditioning in most other LDMs.
 
-The abstract from the paper is:
+The abstract of the paper is the following:
 
 *Although audio generation shares commonalities across different types of audio, such as speech, music, and sound effects, designing models for each type requires careful consideration of specific objectives and biases that can significantly differ from those of other types. To bring us closer to a unified perspective of audio generation, this paper proposes a framework that utilizes the same learning method for speech, music, and sound effect generation. Our framework introduces a general representation of audio, called language of audio (LOA). Any audio can be translated into LOA based on AudioMAE, a self-supervised pre-trained representation learning model. In the generation process, we translate any modalities into LOA by using a GPT-2 model, and we perform self-supervised audio generation learning with a latent diffusion model conditioned on LOA. The proposed framework naturally brings advantages such as in-context learning abilities and reusable self-supervised pretrained AudioMAE and latent diffusion models. Experiments on the major benchmarks of text-to-audio, text-to-music, and text-to-speech demonstrate new state-of-the-art or competitive performance to previous approaches.*
 
