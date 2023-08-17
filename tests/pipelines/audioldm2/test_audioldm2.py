@@ -179,7 +179,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_audioldm_ddim(self):
+    def test_audioldm2_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
@@ -201,7 +201,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
 
-    def test_audioldm_prompt_embeds(self):
+    def test_audioldm2_prompt_embeds(self):
         components = self.get_dummy_components()
         audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
@@ -260,7 +260,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_1 - audio_2).max() < 1e-2
 
-    def test_audioldm_negative_prompt_embeds(self):
+    def test_audioldm2_negative_prompt_embeds(self):
         components = self.get_dummy_components()
         audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
@@ -327,7 +327,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_1 - audio_2).max() < 1e-2
 
-    def test_audioldm_negative_prompt(self):
+    def test_audioldm2_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
@@ -350,7 +350,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
 
-    def test_audioldm_num_waveforms_per_prompt(self):
+    def test_audioldm2_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
@@ -385,7 +385,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert audios.shape == (batch_size * num_waveforms_per_prompt, 512)
 
-    def test_audioldm_audio_length_in_s(self):
+    def test_audioldm2_audio_length_in_s(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         audioldm_pipe = AudioLDM2Pipeline(**components)
@@ -406,7 +406,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audio.ndim == 1
         assert len(audio) / vocoder_sampling_rate == 0.032
 
-    def test_audioldm_vocoder_model_in_dim(self):
+    def test_audioldm2_vocoder_model_in_dim(self):
         components = self.get_dummy_components()
         audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
@@ -460,9 +460,8 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
-    def test_audioldm(self):
+    def test_audioldm2(self):
         audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -480,7 +479,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
 
-    def test_audioldm_lms(self):
+    def test_audioldm2_lms(self):
         audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
