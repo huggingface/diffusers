@@ -561,7 +561,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             video (`List[np.ndarray]` or `torch.FloatTensor`):
                 `video` frames or tensor representing a video batch to be used as the starting point for the process.
-                Can also accpet video latents as `image`, if passing latents directly, it will not be encoded again.
+                Can also accept video latents as `image`, if passing latents directly, it will not be encoded again.
             strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent to transform the reference `video`. Must be between 0 and 1. `video` is used as a
                 starting point, adding more noise to it the larger the `strength`. The number of denoising steps

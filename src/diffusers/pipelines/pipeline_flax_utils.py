@@ -23,14 +23,22 @@ import flax
 import numpy as np
 import PIL
 from flax.core.frozen_dict import FrozenDict
-from huggingface_hub import snapshot_download
+from huggingface_hub import create_repo, snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
 from ..configuration_utils import ConfigMixin
 from ..models.modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from ..schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
-from ..utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, http_user_agent, is_transformers_available, logging
+from ..utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    BaseOutput,
+    PushToHubMixin,
+    http_user_agent,
+    is_transformers_available,
+    logging,
+)
 
 
 if is_transformers_available():
@@ -90,7 +98,7 @@ class FlaxImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class FlaxDiffusionPipeline(ConfigMixin):
+class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for Flax-based pipelines.
 
@@ -139,7 +147,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], params: Union[Dict, FrozenDict]):
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        params: Union[Dict, FrozenDict],
+        push_to_hub: bool = False,
+        **kwargs,
+    ):
         # TODO: handle inference_state
         """
         Save all saveable variables of the pipeline to a directory. A pipeline variable can be saved and loaded if its
@@ -149,6 +163,12 @@ class FlaxDiffusionPipeline(ConfigMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory)
 
@@ -156,6 +176,14 @@ class FlaxDiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_class_name")
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module", None)
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
@@ -187,6 +215,15 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 )
             else:
                 save_method(os.path.join(save_directory, pipeline_component_name))
+
+            if push_to_hub:
+                self._upload_folder(
+                    save_directory,
+                    repo_id,
+                    token=token,
+                    commit_message=commit_message,
+                    create_pr=create_pr,
+                )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import requests
+import safetensors
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
@@ -34,15 +35,11 @@ from .utils import (
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
-    is_safetensors_available,
     is_transformers_available,
     logging,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
-
-if is_safetensors_available():
-    import safetensors
 
 if is_transformers_available():
     from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
@@ -261,14 +258,10 @@ class UNet2DConditionLoadersMixin:
         network_alphas = kwargs.pop("network_alphas", None)
         is_network_alphas_none = network_alphas is None
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
+
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -504,7 +497,8 @@ class UNet2DConditionLoadersMixin:
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
+        **kwargs,
     ):
         r"""
         Save an attention processor to a directory so that it can be reloaded using the
@@ -521,7 +515,8 @@ class UNet2DConditionLoadersMixin:
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
@@ -757,14 +752,9 @@ class TextualInversionLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -1014,14 +1004,9 @@ class LoraLoaderMixin:
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         user_agent = {
@@ -1054,6 +1039,7 @@ class LoraLoaderMixin:
                     if not allow_pickle:
                         raise e
                     # try loading non-safetensors weights
+                    model_file = None
                     pass
             if model_file is None:
                 model_file = _get_model_file(
@@ -1430,7 +1416,7 @@ class LoraLoaderMixin:
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -1451,6 +1437,8 @@ class LoraLoaderMixin:
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         # Create a flat dictionary.
         state_dict = {}
@@ -1853,7 +1841,7 @@ class FromSingleFileMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
@@ -1894,16 +1882,24 @@ class FromSingleFileMixin:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 
         # remove huggingface url
-        for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
+        has_valid_url_prefix = False
+        valid_url_prefixes = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
+        for prefix in valid_url_prefixes:
             if pretrained_model_link_or_path.startswith(prefix):
                 pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+                has_valid_url_prefix = True
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
+            if not has_valid_url_prefix:
+                raise ValueError(
+                    f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(valid_url_prefixes)}"
+                )
+
             # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = os.path.join(*ckpt_path.parts[:2])
-            file_path = os.path.join(*ckpt_path.parts[2:])
+            repo_id = "/".join(ckpt_path.parts[:2])
+            file_path = "/".join(ckpt_path.parts[2:])
 
             if file_path.startswith("blob/"):
                 file_path = file_path[len("blob/") :]
@@ -2050,7 +2046,7 @@ class FromOriginalVAEMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
@@ -2223,7 +2219,7 @@ class FromOriginalControlnetMixin:
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
