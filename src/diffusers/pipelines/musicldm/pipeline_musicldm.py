@@ -575,7 +575,7 @@ class MusicLDMPipeline(DiffusionPipeline):
         audio = audio[:, :original_waveform_length]
 
         # 9. Automatic scoring
-        if num_waveforms_per_prompt > 1 and self.feature_extractor is not None:
+        if num_waveforms_per_prompt > 1:
             audio = self.score_waveforms(text=prompt, audio=audio)
 
         if output_type == "np":
