@@ -763,7 +763,7 @@ DEFAULT_CONFIG = {
             "unet_config": {
                 "target": "audioldm2.latent_diffusion.openaimodel.UNetModel",
                 "params": {
-                    "context_dim": [768, 1024],  # required? - this is new
+                    "context_dim": [768, 1024],
                     "in_channels": 8,
                     "out_channels": 8,
                     "model_channels": 128,
@@ -1042,10 +1042,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path",
-        default="/Users/sanchitgandhi/convert-audioldm2/audioldm2-full.pth",
-        type=str,
-        help="Path to the checkpoint to convert.",
+        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
         "--original_config_file",
@@ -1110,12 +1107,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument(
-        "--dump_path",
-        default="/Users/sanchitgandhi/convert-audioldm2/diffusers_custom",
-        type=str,
-        help="Path to the output model.",
-    )
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 

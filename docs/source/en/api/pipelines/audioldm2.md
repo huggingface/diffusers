@@ -24,7 +24,7 @@ are then projected to a shared embedding space by an [AudioLDM2ProjectionModel](
 _language model (LM)_ is used to auto-regressively predict eight new embedding vectors, conditional on the projected CLAP and 
 Flan-T5 embeddings. The generated embedding vectors and Flan-T5 text embeddings are used as cross-attention conditioning
 in the LDM. The [UNet](TODO(SG)) of AudioLDM 2 is unique in the sense that it takes **two** cross-attention embeddings, as opposed 
-to one cross-attention conditioning in most other LDMs.
+to one cross-attention conditioning, as in most other LDMs.
 
 The abstract of the paper is the following:
 
