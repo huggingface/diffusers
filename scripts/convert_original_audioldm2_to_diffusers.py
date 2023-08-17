@@ -464,7 +464,6 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                     f"output_blocks.{i}.{index}.conv.bias"
                 ]
 
-                # TODO(SG): is this safe?
                 attentions.remove(f"output_blocks.{i}.{index}.conv.bias")
                 attentions.remove(f"output_blocks.{i}.{index}.conv.weight")
 
