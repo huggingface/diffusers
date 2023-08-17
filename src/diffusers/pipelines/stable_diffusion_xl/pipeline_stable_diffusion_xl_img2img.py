@@ -1058,7 +1058,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
     ):
         state_dict = {}
 
