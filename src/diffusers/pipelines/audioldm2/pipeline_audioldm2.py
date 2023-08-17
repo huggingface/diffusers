@@ -432,9 +432,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         f"only handle sequences up to {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
+                text_input_ids = text_input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+
                 prompt_embeds = text_encoder(
-                    text_input_ids.to(device),
-                    attention_mask=attention_mask.to(device),
+                    text_input_ids,
+                    attention_mask=attention_mask,
                 )
                 prompt_embeds = prompt_embeds[0]
                 if text_encoder.config.model_type == "clap_text_model":

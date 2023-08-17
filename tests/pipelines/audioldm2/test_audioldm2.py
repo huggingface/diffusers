@@ -461,7 +461,8 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_audioldm(self):
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -470,17 +471,17 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         audio = audioldm_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 81920
+        assert len(audio) == 81952
 
-        audio_slice = audio[77230:77240]
+        audio_slice = audio[17275:17285]
         expected_slice = np.array(
-            [-0.4884, -0.4607, 0.0023, 0.5007, 0.5896, 0.5151, 0.3813, -0.0208, -0.3687, -0.4315]
+            [0.0791, 0.0666, 0.1158, 0.1227, 0.1171, -0.2880, -0.1940, -0.0283, -0.0126, 0.1127]
         )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
 
     def test_audioldm_lms(self):
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -489,9 +490,11 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         audio = audioldm_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 81920
+        assert len(audio) == 81952
 
-        audio_slice = audio[27780:27790]
-        expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
+        audio_slice = audio[31390:31400]
+        expected_slice = np.array(
+            [-0.1318, -0.0577,  0.0446, -0.0573,  0.0659,  0.1074, -0.2600, 0.0080, -0.2190, -0.4301]
+        )
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 3e-2
+        assert max_diff < 1e-2
