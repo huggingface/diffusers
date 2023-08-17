@@ -22,11 +22,20 @@ The abstract from the paper is:
 
 We provide support using ControlNets with [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl.md) (SDXL). 
 
-There are not many ControlNet checkpoints that are compatible with SDXL at the moment. So, we trained one using Canny edge maps as the conditioning images. To know more, check out the [model card](https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0). We encourage you to train custom ControlNets; we provide a [training script](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md) for this.
+You can find numerous SDXL ControlNet checkpoints from [this link](https://huggingface.co/models?other=stable-diffusion-xl&other=controlnet). There are some smaller ControlNet checkpoints too:
+
+* [controlnet-canny-sdxl-1.0-small](https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0-small)
+* [controlnet-canny-sdxl-1.0-mid](https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0-mid)
+* [controlnet-depth-sdxl-1.0-small](https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0-small)
+* [controlnet-depth-sdxl-1.0-mid](https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0-mid)
+
+We also encourage you to train custom ControlNets; we provide a [training script](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md) for this.
 
 You can find some results below:
 
 <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sdxl_controlnet_canny_grid.png" width=600/>
+
+🚨 At the time of this writing, many of these SDXL ControlNet checkpoints are experimental and there is a lot of room for improvement. We encourage our users to provide feedback. 🚨
 
 ## MultiControlNet
 
