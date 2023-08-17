@@ -201,8 +201,8 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         Returns:
             [`~models.autoencoder_tiny.AutoencoderTinyOutput`] or `tuple`:
-                If return_dict is True, a [`~models.autoencoder_tiny.AutoencoderTinyOutput`] is returned, otherwise a plain
-                `tuple` is returned.
+                If return_dict is True, a [`~models.autoencoder_tiny.AutoencoderTinyOutput`] is returned, otherwise a
+                plain `tuple` is returned.
         """
         # scale of encoder output relative to input
         sf = self.spatial_scale_factor
