@@ -1,4 +1,4 @@
-### I'm fucking wrong you dont have to initialize and load stable diffusion ditch that 
+### I'm fucking wrong you dont have to initialize and load stable diffusion ditch that
 ### do it with raw unet, vae and stuff '
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
@@ -15,6 +15,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
+from packaging import version
 
 import torch
 from torch import nn
@@ -40,7 +41,7 @@ from ...utils import (
 )
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.cross_attention import LoRACrossAttnProcessor
+from ...models.attention_processor import LoRAAttnProcessor
 from ...models.attention import BasicTransformerBlock
 from ...schedulers import EulerAncestralDiscreteScheduler
 from . import FabricPipelineOutput
@@ -63,6 +64,7 @@ class CrossAttnProcessor():
         weights=None,  # shape: (batch_size, sequence_length)
         lora_scale=1.0,
     ):
+        print("in")
         batch_size, sequence_length, _ = (
             hidden_states.shape
             if encoder_hidden_states is None
@@ -72,7 +74,7 @@ class CrossAttnProcessor():
             attention_mask, sequence_length, batch_size
         )
 
-        if isinstance(attn.processor, LoRACrossAttnProcessor):
+        if isinstance(attn.processor, LoRAAttnProcessor):
             query = attn.to_q(hidden_states) + lora_scale * attn.processor.to_q_lora(
                 hidden_states
             )
@@ -84,7 +86,7 @@ class CrossAttnProcessor():
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        if isinstance(attn.processor, LoRACrossAttnProcessor):
+        if isinstance(attn.processor, LoRAAttnProcessor):
             key = attn.to_k(encoder_hidden_states) + lora_scale * attn.processor.to_k_lora(
                 encoder_hidden_states
             )
@@ -111,7 +113,7 @@ class CrossAttnProcessor():
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        if isinstance(attn.processor, LoRACrossAttnProcessor):
+        if isinstance(attn.processor, LoRAAttnProcessor):
             hidden_states = attn.to_out[0](
                 hidden_states
             ) + lora_scale * attn.processor.to_out_lora(hidden_states)
@@ -124,7 +126,7 @@ class CrossAttnProcessor():
 
 class FabricPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion and conditioning the results 
+    Pipeline for text-to-image generation using Stable Diffusion and conditioning the results
     using feedback images.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
@@ -155,27 +157,9 @@ class FabricPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: EulerAncestralDiscreteScheduler,
-        safety_checker: StableDiffusionSafetyChecker,
         requires_safety_checker:bool = True,
     ):
         super().__init__()
-        if safety_checker is None and requires_safety_checker:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
-
-        if safety_checker is not None and feature_extractor is None:
-            raise ValueError(
-                "Make sure to define a feature extractor when loading {self.__class__} if you want
-                 to use the safety"
-                " checker. If you do not want to use the safety checker, you can pass `'safety_che
-                cker=None'` instead."
-            )
 
         is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
@@ -183,22 +167,14 @@ class FabricPipeline(DiffusionPipeline):
         is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
-                "The configuration file of the unet has set the default `sample_size` to smaller t
-                han"
-                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of an
-                y of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \
-                n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/sta
-                ble-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 6
-                4 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving
-                 `sample_size=32`"
-                " in the config might lead to incorrect results in future versions. If you have do
-                wnloaded this"
-                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a
-                Pull request for"
+                "The configuration file of the unet has set the default `sample_size` to smaller than"
+                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have downloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
 
@@ -219,7 +195,7 @@ class FabricPipeline(DiffusionPipeline):
 
 
     def initialize_prompts(self, prompts: List[str], device):
-        # Breaking into individual prompts feels memory efficient 
+        # Breaking into individual prompts feels memory efficient
         prompt_embed_list = []
         for prompt in prompts:
           prompt_tokens = self.tokenizer(
@@ -240,7 +216,7 @@ class FabricPipeline(DiffusionPipeline):
               input_ids=prompt_tokens.input_ids.to(device),
               attention_mask=attention_mask,
           ).last_hidden_state
-          
+
           prompt_embed_list.append(prompt_embd)
 
         return torch.cat(prompt_embed_list, dim=0)
@@ -285,9 +261,6 @@ class FabricPipeline(DiffusionPipeline):
             *pos_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
         local_neg_weights = torch.linspace(
             *neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
-
-
-
         for block, pos_weight, neg_weight in zip(
             self.unet.down_blocks + [self.unet.mid_block] + self.unet.up_blocks,
             local_pos_weights + [pos_weights[1]] + local_pos_weights[::-1],
@@ -313,28 +286,6 @@ class FabricPipeline(DiffusionPipeline):
 
                         out_pos = self.old_forward(hidden_states)
                         out_neg = self.old_forward(hidden_states)
-
-                        def new_forward_caching(self, hidden_states, cond_hiddens, cached_hiddens, weight, weights):
-                            
-                            cached_hs = cached_hiddens.pop(0).to(
-                                hidden_states.device
-                            )
-                            cond_hs = torch.cat(
-                                [cond_hiddens, cached_hs], dim=1
-                            )
-                            weights = weights.clone().repeat(
-                                1, 1 + cached_hs.shape[1] // hidden_states.size(1)
-                            )
-                            weights[:, hidden_states.size(1):] = weight
-                            print(self)
-                            attn_with_weights = CrossAttnStoreProcessor()
-                            out = self.attn_with_weights(
-                                self,
-                                cond_hiddens,
-                                encoder_hidden_states=cond_hs,
-                                weights=weights
-                            )
-                            return out
 
                         if cached_pos_hiddens is not None:
                             cached_pos_hs = cached_pos_hiddens.pop(0).to(
@@ -405,7 +356,7 @@ class FabricPipeline(DiffusionPipeline):
 
     def decode_latents(self, latents):
         warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Plea                se"
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
             " use VaeImageProcessor instead",
             FutureWarning,
         )
@@ -437,7 +388,7 @@ class FabricPipeline(DiffusionPipeline):
         neg_bottleneck_scale: float = 1.0,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary feedback. The feedback can be given as a list of liked and disliked images.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
@@ -467,6 +418,15 @@ class FabricPipeline(DiffusionPipeline):
                 expense of slower inference.
 
         Examples:
+            >>> from diffusers import FabricPipeline
+            >>> import torch
+            >>> model_id = "dreamlike-art/dreamlike-photoreal-2.0"
+            >>> pipe = FabricPipeline(model_id, torch_dtype = torch.float16)
+            >>> pipe = pipe.to("cuda")
+            >>> prompt = "a giant standing in a fantasy landscape best quality"
+            >>> liked = []
+            >>> disliked = []
+            >>> image = pipe(prompt, n_images=4, liked=liked,disliked=disliked).images
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -474,21 +434,17 @@ class FabricPipeline(DiffusionPipeline):
             When returning a tuple, the first element is a list with the generated images, and the second element is a
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
-        """
-        """
-        Generate a trajectory of images with binary feedback.
-        The feedback can be given as a list of liked and disliked images.
+
         """
         if random_seed is not None and random_seed is not torch.Generator:
             torch.manual_seed(random_seed)
-        
+
         device = self._execution_device
         dtype = self.text_encoder.dtype
 
         latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=dtype)
-        
-        positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, dtype=dtype)
 
+        positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, dtype=dtype)
         negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=dtype)
 
         if isinstance(prompt, str):
@@ -500,7 +456,7 @@ class FabricPipeline(DiffusionPipeline):
         else:
             assert len(negative_prompt) == n_images
 
-        
+
         (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([n_images, n_images, 1])
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
@@ -609,7 +565,4 @@ class FabricPipeline(DiffusionPipeline):
         image = (image / 127.5 - 1.0).astype(np.float32)
         image = torch.from_numpy(image).permute(2, 0, 1)
         return image.type(dtype)
-
-
-
 

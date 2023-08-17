@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
+from diffusers import AutoencoderKL, DDIMScheduler, FabricPipeline, DPMSolverMultistepScheduler, Transformer2DModel
 from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
@@ -85,8 +85,6 @@ class FabricPipelineFastTests(
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "safety_checker": None,
-            "feature_extractor": None,
         }
         return components
 
@@ -174,7 +172,7 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
     def test_fabric(self):
         generator = torch.manual_seed(0)
 
-        pipe = DiTPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0")
+        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0")
         pipe.to("cuda")
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -185,12 +183,12 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
             expected_image = load_numpy(
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
             )
-            assert np.abs((expected_image - image).max()) < 1e-2
+            assert np.abs((expected_image - np.array(image)).max()) < 1e-2
 
     def test_fabric_feedback(self):
         generator = torch.manual_seed(0)
 
-        pipe = DiTPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0")
+        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0")
         pipe.to("cuda")
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -203,4 +201,4 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
             expected_image = load_numpy(
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_w_feedback.npy"
             )
-            assert np.abs((expected_image - image).max()) < 1e-2
+            assert np.abs((expected_image - np.array(image)).max()) < 1e-2
