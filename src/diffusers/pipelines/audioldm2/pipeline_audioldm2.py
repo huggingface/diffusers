@@ -253,7 +253,40 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 mask will be computed from `negative_prompt` input argument.
             max_new_tokens (`int`, *optional*, defaults to 8):
                 Number of new tokens to generate with the GPT2 language model.
-        """
+        Returns:
+            prompt_embeds (`torch.FloatTensor`):
+                Text embeddings from the Flan T5 model.
+            attention_mask (`torch.LongTensor`):
+                Attention mask to be applied to the `prompt_embeds`.
+            generated_prompt_embeds (`torch.FloatTensor`):
+                Text embeddings generated from the GPT2 langauge model.
+
+        Example:
+
+        ```python
+        >>> import torch
+        >>> from diffusers import AudioLDM2Pipeline
+
+        >>> repo_id = "cvssp/audioldm2"
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> # Get text embedding vectors
+        >>> prompt_embeds, attention_mask, generated_prompt_embeds = pipe.encode_prompt(
+        ...     prompt="Techno music with a strong, upbeat tempo and high melodic riffs",
+        ...     device="cuda",
+        ...     do_classifier_free_guidance=True,
+        ... )
+
+        >>> # Pass text embeddings to pipeline for text-conditional audio generation
+        >>> audio = pipe(
+        ...     prompt_embeds=prompt_embeds,
+        ...     attention_mask=attention_mask,
+        ...     generated_prompt_embeds=generated_prompt_embeds,
+        ...     num_inference_steps=200,
+        ...     audio_length_in_s=10.0,
+        ... ).audios[0]
+        ```"""
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
