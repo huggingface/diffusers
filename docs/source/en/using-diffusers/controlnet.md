@@ -4,7 +4,9 @@ ControlNet is a type of model for controlling image diffusion models by conditio
 
 <Tip>
 
-Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper for a list of ControlNet implementations of various conditioning inputs. You can find all available ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile.
+Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper for a list of ControlNet implementations of various conditioning inputs. You can find the official Stable Diffusion ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile, and more [community-trained](https://huggingface.co/models?other=stable-diffusion&other=controlnet) ones on the Hub.
+
+For Stable Diffusion XL (SDXL) ControlNet models, you can find them on the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization, or you can browse [community-trained](https://huggingface.co/models?other=stable-diffusion-xl&other=controlnet) ones on the Hub.
 
 </Tip>
 
@@ -21,7 +23,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install transformers accelerate safetensors opencv-contrib-python
+#!pip install diffusers transformers accelerate safetensors opencv-python
 ```
 
 ## Text-to-image
@@ -88,7 +90,9 @@ output = pipe(
 
 ## Image-to-image
 
-For image-to-image, you would typically pass an initial image and a prompt to the pipeline to generate a new image. With ControlNet, you can pass an additional conditioning input to steer the model. Let's condition the model with a depth map, an image which contains spatial information. This way, the ControlNet can use the depth map as a control to guide the model to generate an image that preserves spatial information.
+For image-to-image, you'd typically pass an initial image and a prompt to the pipeline to generate a new image. With ControlNet, you can pass an additional conditioning input to steer the model. Let's condition the model with a depth map, an image which contains spatial information. This way, the ControlNet can use the depth map as a control to guide the model to generate an image that preserves spatial information.
+
+You'll use the [`StableDiffusionControlNetImg2ImgPipeline`] for this task, which is different from the [`StableDiffusionControlNetPipeline`] because it allows you to pass an initial image as the starting point for the image generation process.
 
 Load an image and use the `depth-estimation` [`~transformers.Pipeline`] from 🤗 Transformers to extract the depth map of an image:
 
@@ -171,7 +175,7 @@ def make_inpaint_condition(image, image_mask):
     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
 
     assert image.shape[0:1] == image_mask.shape[0:1]
-    image[image_mask > 0.5] = -1.0  # set as masked pixel
+    image[image_mask > 0.5] = 1.0  # set as masked pixel
     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)
     return image
@@ -219,7 +223,7 @@ Guess mode does not have any impact on prompt conditioning and you can still pro
 
 </Tip>
 
-Set `guess_mode=True` in the pipeline to enable it, and it is [recommended](https://github.com/lllyasviel/ControlNet#guess-mode--non-prompt-mode) to set the `guidance_scale` value between 3.0 and 5.0.
+Set `guess_mode=True` in the pipeline, and it is [recommended](https://github.com/lllyasviel/ControlNet#guess-mode--non-prompt-mode) to set the `guidance_scale` value between 3.0 and 5.0.
 
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
@@ -248,7 +252,7 @@ image
 
 There aren't too many ControlNet models compatible with Stable Diffusion XL (SDXL) at the moment, but we've trained two full-sized ControlNet models for SDXL conditioned on canny edge detection and depth maps. We're also experimenting with creating smaller versions of these SDXL-compatible ControlNet models so it is easier to run on resource-constrained hardware. You can find these checkpoints on the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization!
 
-Let's use a canny edge ControlNet with SDXL to generate an image. Start by loading an image and prepare the canny image:
+Let's use a SDXL ControlNet conditioned on canny images to generate an image. Start by loading an image and prepare the canny image:
 
 ```py
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
@@ -315,7 +319,12 @@ The [`controlnet_conditioning_scale`](https://huggingface.co/docs/diffusers/main
 prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
 negative_prompt = 'low quality, bad quality, sketches'
 
-images = pipe(prompt, negative_prompt=negative_prompt, image=image, controlnet_conditioning_scale=controlnet_conditioning_scale).images[0]
+images = pipe(
+    prompt, 
+    negative_prompt=negative_prompt, 
+    image=image, 
+    controlnet_conditioning_scale=controlnet_conditioning_scale
+).images[0]
 images
 ```
 
@@ -327,7 +336,7 @@ images
 
 <Tip>
 
-Replace the Stable Diffusion XL model with a Stable Diffusion model like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) to use multiple conditioning inputs!
+Replace the SDXL model with a model like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) to use multiple conditioning inputs with Stable Diffusion models.
 
 </Tip>
 
@@ -412,7 +421,9 @@ controlnets = [
     ControlNetModel.from_pretrained(
         "thibaud/controlnet-openpose-sdxl-1.0", torch_dtype=torch.float16, use_safetensors=True
     ),
-    ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16, use_safetensors=True),
+    ControlNetModel.from_pretrained(
+        "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16, use_safetensors=True
+    ),
 ]
 
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16, use_safetensors=True)
