@@ -742,6 +742,26 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
+    def test_kohya_sd_v15_with_higher_dimensions(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
+            torch_device
+        )
+        lora_model_id = "hf-internal-testing/urushisato-lora"
+        lora_filename = "urushisato_v15.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in images.tolist()]))
+        # expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, [], atol=1e-4))
+
     def test_vanilla_funetuning(self):
         generator = torch.Generator().manual_seed(0)
 
