@@ -309,7 +309,7 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
@@ -597,7 +597,7 @@ class PipelineTesterMixin:
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
