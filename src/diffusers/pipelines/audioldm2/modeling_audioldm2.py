@@ -74,6 +74,18 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
 
 
 class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
+    """
+    A simple linear projection model to map two text embeddings to a shared latent space. It also inserts
+    learned embedding vectors at the start and end of each text embedding sequence respectively.
+
+    Args:
+        text_encoder_dim (`int`):
+            Dimensionality of the text embeddings from the first text encoder (CLAP).
+        text_encoder_2_dim (`int`):
+            Dimensionality of the text embeddings from the second text encoder (T5).
+        langauge_model_dim (`int`):
+            Dimensionality of the text embeddings from the language model (GPT2).
+    """
     @register_to_config
     def __init__(self, text_encoder_dim, text_encoder_2_dim, langauge_model_dim):
         super().__init__()
@@ -128,7 +140,9 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
 class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
-    shaped output.
+    shaped output. Compared to the vanilla [`UNet2DConditionModel`], this variant optionally includes an additional
+    self-attention layer in each Transformer block, as well as multiple cross-attention layers. It also allows for up
+    to two cross-attention embeddings, `encoder_hidden_states` and `encoder_hidden_states_1`.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -643,8 +657,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        encoder_attention_mask_2: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
@@ -664,11 +678,11 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
-            encoder_hidden_states_2 (`torch.FloatTensor`, *optional*):
+            encoder_hidden_states_1 (`torch.FloatTensor`, *optional*):
                 A second set of encoder hidden states with shape `(batch, sequence_length_2, feature_dim_2)`. Can be
                 used to condition the model on a different set of embeddings to `encoder_hidden_states`.
-            encoder_attention_mask_2 (`torch.Tensor`, *optional*):
-                A cross-attention mask of shape `(batch, sequence_length_2)` is applied to `encoder_hidden_states_2`.
+            encoder_attention_mask_1 (`torch.Tensor`, *optional*):
+                A cross-attention mask of shape `(batch, sequence_length_2)` is applied to `encoder_hidden_states_1`.
                 If `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
 
@@ -712,9 +726,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        if encoder_attention_mask_2 is not None:
-            encoder_attention_mask_2 = (1 - encoder_attention_mask_2.to(sample.dtype)) * -10000.0
-            encoder_attention_mask_2 = encoder_attention_mask_2.unsqueeze(1)
+        if encoder_attention_mask_1 is not None:
+            encoder_attention_mask_1 = (1 - encoder_attention_mask_1.to(sample.dtype)) * -10000.0
+            encoder_attention_mask_1 = encoder_attention_mask_1.unsqueeze(1)
 
         # 1. time
         timesteps = timestep
@@ -780,8 +794,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    encoder_hidden_states_2=encoder_hidden_states_2,
-                    encoder_attention_mask_2=encoder_attention_mask_2,
+                    encoder_hidden_states_1=encoder_hidden_states_1,
+                    encoder_attention_mask_1=encoder_attention_mask_1,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -797,8 +811,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
                 encoder_attention_mask=encoder_attention_mask,
-                encoder_hidden_states_2=encoder_hidden_states_2,
-                encoder_attention_mask_2=encoder_attention_mask_2,
+                encoder_hidden_states_1=encoder_hidden_states_1,
+                encoder_attention_mask_1=encoder_attention_mask_1,
             )
 
         # 5. up
@@ -823,8 +837,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
-                    encoder_hidden_states_2=encoder_hidden_states_2,
-                    encoder_attention_mask_2=encoder_attention_mask_2,
+                    encoder_hidden_states_1=encoder_hidden_states_1,
+                    encoder_attention_mask_1=encoder_attention_mask_1,
                 )
             else:
                 sample = upsample_block(
@@ -1067,8 +1081,8 @@ class CrossAttnDownBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_2: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_2: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
         num_layers = len(self.resnets)
@@ -1121,11 +1135,11 @@ class CrossAttnDownBlock2D(nn.Module):
                 hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_hidden_states=encoder_hidden_states_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_attention_mask=encoder_attention_mask_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_attention_mask,
                     return_dict=False,
                 )[0]
@@ -1247,8 +1261,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_2: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_2: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         num_attention_per_layer = len(self.attentions) // (len(self.resnets) - 1)
@@ -1297,11 +1311,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_hidden_states=encoder_hidden_states_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_attention_mask=encoder_attention_mask_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_attention_mask,
                     return_dict=False,
                 )[0]
@@ -1415,8 +1429,8 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_2: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_2: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
     ):
         num_layers = len(self.resnets)
         num_attention_per_layer = len(self.attentions) // num_layers
@@ -1473,11 +1487,11 @@ class CrossAttnUpBlock2D(nn.Module):
                 hidden_states = self.attentions[i * num_attention_per_layer + 2](
                     hidden_states,
                     attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_hidden_states=encoder_hidden_states_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask_2
-                    if encoder_hidden_states_2 is not None
+                    encoder_attention_mask=encoder_attention_mask_1
+                    if encoder_hidden_states_1 is not None
                     else encoder_attention_mask,
                     return_dict=False,
                 )[0]

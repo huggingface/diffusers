@@ -29,11 +29,9 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from diffusers.utils import is_accelerate_available, is_accelerate_version
-
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -853,8 +851,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=generated_prompt_embeds,
-                    encoder_hidden_states_2=prompt_embeds,
-                    encoder_attention_mask_2=attention_mask,
+                    encoder_hidden_states_1=prompt_embeds,
+                    encoder_attention_mask_1=attention_mask,
                 ).sample
 
                 # perform guidance
