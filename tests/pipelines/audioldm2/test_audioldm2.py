@@ -99,7 +99,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_channels=4,
         )
         torch.manual_seed(0)
-        text_encoder_1_config = ClapTextConfig(
+        text_encoder_config = ClapTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=16,
@@ -111,8 +111,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vocab_size=1000,
             projection_dim=16,
         )
-        text_encoder_1 = ClapTextModelWithProjection(text_encoder_1_config)
-        tokenizer_1 = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
+        text_encoder = ClapTextModelWithProjection(text_encoder_config)
+        tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
 
         text_encoder_2_config = T5Config(
             vocab_size=32100,
@@ -135,9 +135,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         language_model = GPT2Model(language_model_config)
 
-        projection_model = AudioLDM2ProjectionModel(
-            text_encoder_1_dim=16, text_encoder_2_dim=32, langauge_model_dim=16
-        )
+        projection_model = AudioLDM2ProjectionModel(text_encoder_dim=16, text_encoder_2_dim=32, langauge_model_dim=16)
 
         vocoder_config = SpeechT5HifiGanConfig(
             model_in_dim=8,
@@ -156,9 +154,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder_1": text_encoder_1,
+            "text_encoder": text_encoder,
             "text_encoder_2": text_encoder_2,
-            "tokenizer_1": tokenizer_1,
+            "tokenizer": tokenizer,
             "tokenizer_2": tokenizer_2,
             "language_model": language_model,
             "projection_model": projection_model,
@@ -218,16 +216,16 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
-        text_inputs = audioldm_pipe.tokenizer_1(
+        text_inputs = audioldm_pipe.tokenizer(
             prompt,
             padding="max_length",
-            max_length=audioldm_pipe.tokenizer_1.model_max_length,
+            max_length=audioldm_pipe.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        clap_prompt_embeds = audioldm_pipe.text_encoder_1(
+        clap_prompt_embeds = audioldm_pipe.text_encoder(
             text_inputs,
         )
         clap_prompt_embeds = clap_prompt_embeds.text_embeds
@@ -282,16 +280,16 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         embeds = []
         generated_embeds = []
         for p in [prompt, negative_prompt]:
-            text_inputs = audioldm_pipe.tokenizer_1(
+            text_inputs = audioldm_pipe.tokenizer(
                 p,
                 padding="max_length",
-                max_length=audioldm_pipe.tokenizer_1.model_max_length,
+                max_length=audioldm_pipe.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            clap_prompt_embeds = audioldm_pipe.text_encoder_1(
+            clap_prompt_embeds = audioldm_pipe.text_encoder(
                 text_inputs,
             )
             clap_prompt_embeds = clap_prompt_embeds.text_embeds

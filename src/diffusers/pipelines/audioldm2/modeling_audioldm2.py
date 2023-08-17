@@ -19,8 +19,6 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from diffusers.utils import BaseOutput
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...models.activations import get_activation
@@ -34,7 +32,7 @@ from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_blocks import DownBlock2D, UpBlock2D
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import is_torch_version, logging
+from ...utils import BaseOutput, is_torch_version, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -77,10 +75,10 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
 
 class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, text_encoder_1_dim, text_encoder_2_dim, langauge_model_dim):
+    def __init__(self, text_encoder_dim, text_encoder_2_dim, langauge_model_dim):
         super().__init__()
         # additional projection layers
-        self.clap_projection = nn.Linear(text_encoder_1_dim, langauge_model_dim)
+        self.clap_projection = nn.Linear(text_encoder_dim, langauge_model_dim)
         self.t5_projection = nn.Linear(text_encoder_2_dim, langauge_model_dim)
 
         # learnable SOS / EOS token embeddings

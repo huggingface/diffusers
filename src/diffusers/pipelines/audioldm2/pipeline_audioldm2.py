@@ -88,7 +88,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder_1 ([`~transformers.ClapTextModelWithProjection`]):
+        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
             First frozen text-encoder. AudioLDM2 uses the text portion of the joint audio-text embedding model
             [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.CLAPTextModelWithProjection),
             specifically the [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
@@ -103,7 +103,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         language_model ([`~transformers.GPT2Model`]):
             An auto-regressive language model used to generate a sequence of hidden-states conditioned on the projected
             outputs from the two text encoders.
-        tokenizer_1 ([`~transformers.RobertaTokenizer`]):
+        tokenizer ([`~transformers.RobertaTokenizer`]):
             Tokenizer to tokenize text for the first frozen text-encoder.
         tokenizer_2 ([`~transformers.T5Tokenizer`]):
             Tokenizer to tokenize text for the second frozen text-encoder.
@@ -119,11 +119,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder_1: ClapTextModelWithProjection,
+        text_encoder: ClapTextModelWithProjection,
         text_encoder_2: T5EncoderModel,
         projection_model: AudioLDM2ProjectionModel,
         language_model: GPT2Model,
-        tokenizer_1: Union[RobertaTokenizer, RobertaTokenizerFast],
+        tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         tokenizer_2: Union[T5Tokenizer, T5TokenizerFast],
         unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -133,11 +133,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         self.register_modules(
             vae=vae,
-            text_encoder_1=text_encoder_1,
+            text_encoder=text_encoder,
             text_encoder_2=text_encoder_2,
             projection_model=projection_model,
             language_model=language_model,
-            tokenizer_1=tokenizer_1,
+            tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             unet=unet,
             scheduler=scheduler,
@@ -331,8 +331,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # Define tokenizers and text encoders
-        tokenizers = [self.tokenizer_1, self.tokenizer_2]
-        text_encoders = [self.text_encoder_1, self.text_encoder_2]
+        tokenizers = [self.tokenizer, self.tokenizer_2]
+        text_encoders = [self.text_encoder, self.text_encoder_2]
 
         if prompt_embeds is None:
             prompt_embeds_list = []

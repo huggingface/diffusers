@@ -1025,11 +1025,11 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     # Instantiate the diffusers pipeline
     pipe = AudioLDM2Pipeline(
         vae=vae,
-        text_encoder_1=clap_model,
+        text_encoder=clap_model,
         text_encoder_2=t5_model,
         projection_model=projection_model,
         language_model=gpt2_model,
-        tokenizer_1=clap_tokenizer,
+        tokenizer=clap_tokenizer,
         tokenizer_2=t5_tokenizer,
         unet=unet,
         scheduler=scheduler,
