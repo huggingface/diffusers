@@ -196,10 +196,10 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [-0.0050, 0.0050, -0.0060, 0.0033, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0033]
+            [0.0027, 0.0019, -0.0032, -0.0017, -0.0046, -0.0014, -0.0047, -0.0016, -0.0049, -0.0015]
         )
 
-        assert np.abs(audio_slice - expected_slice).max() < 1e-2
+        assert np.abs(audio_slice - expected_slice).max() < 1e-4
 
     def test_audioldm_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -345,10 +345,10 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032]
+            [0.0027, 0.0019, -0.0032, -0.0017, -0.0046, -0.0014, -0.0048, -0.0016, -0.0048, -0.0015]
         )
 
-        assert np.abs(audio_slice - expected_slice).max() < 1e-2
+        assert np.abs(audio_slice - expected_slice).max() < 1e-4
 
     def test_audioldm_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
