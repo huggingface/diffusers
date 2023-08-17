@@ -77,7 +77,7 @@ class MultiControlNetModel(ModelMixin):
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
     ):
         """
@@ -95,7 +95,7 @@ class MultiControlNetModel(ModelMixin):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
                 need to replace `torch.save` by another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.

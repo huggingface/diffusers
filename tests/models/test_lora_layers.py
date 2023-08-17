@@ -201,7 +201,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             unet_lora_layers=lora_components["unet_lora_layers"],
             text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
         )
-        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+        self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
     def test_lora_save_load(self):
         pipeline_components, lora_components = self.get_dummy_components()
@@ -220,33 +220,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 unet_lora_layers=lora_components["unet_lora_layers"],
                 text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            sd_pipe.load_lora_weights(tmpdirname)
-
-        lora_images = sd_pipe(**pipeline_inputs).images
-        lora_image_slice = lora_images[0, -3:, -3:, -1]
-
-        # Outputs shouldn't match.
-        self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
-
-    def test_lora_save_load_safetensors(self):
-        pipeline_components, lora_components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**pipeline_components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        _, _, pipeline_inputs = self.get_dummy_inputs()
-
-        original_images = sd_pipe(**pipeline_inputs).images
-        orig_image_slice = original_images[0, -3:, -3:, -1]
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            LoraLoaderMixin.save_lora_weights(
-                save_directory=tmpdirname,
-                unet_lora_layers=lora_components["unet_lora_layers"],
-                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
-                safe_serialization=True,
-            )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
@@ -256,7 +229,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
-    def test_lora_save_load_legacy(self):
+    def test_lora_save_load_no_safe_serialization(self):
         pipeline_components, lora_components = self.get_dummy_components()
         unet_lora_attn_procs = lora_components["unet_lora_attn_procs"]
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
@@ -271,7 +244,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet = sd_pipe.unet
             unet.set_attn_processor(unet_lora_attn_procs)
-            unet.save_attn_procs(tmpdirname)
+            unet.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             sd_pipe.load_lora_weights(tmpdirname)
 
@@ -368,7 +341,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 unet_lora_layers=lora_components["unet_lora_layers"],
                 text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
         lora_images = sd_pipe(**pipeline_inputs).images
@@ -425,7 +398,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 unet_lora_layers=lora_components["unet_lora_layers"],
                 text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
         lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
@@ -501,7 +474,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 unet_lora_layers=lora_components["unet_lora_layers"],
                 text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
         lora_images = sd_pipe(**pipeline_inputs).images
@@ -629,7 +602,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
                 text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
                 text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
         lora_images = sd_pipe(**pipeline_inputs).images
@@ -658,7 +631,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
                 text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
                 text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
             )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
 
         lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images

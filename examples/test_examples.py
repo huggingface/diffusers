@@ -23,7 +23,7 @@ import tempfile
 import unittest
 from typing import List
 
-import torch
+import safetensors
 from accelerate.utils import write_basic_config
 
 from diffusers import DiffusionPipeline, UNet2DConditionModel
@@ -93,7 +93,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_textual_inversion(self):
@@ -144,7 +144,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_if(self):
@@ -170,7 +170,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_checkpointing(self):
@@ -272,10 +272,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -305,10 +305,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # check `text_encoder` is present at all.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             keys = lora_state_dict.keys()
             is_text_encoder_present = any(k.startswith("text_encoder") for k in keys)
             self.assertTrue(is_text_encoder_present)
@@ -341,10 +341,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -373,10 +373,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -406,10 +406,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -437,6 +437,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --modifier_token <new1>
+                --no_safe_serialization
                 --output_dir {tmpdir}
                 """.split()
 
@@ -466,7 +467,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_text_to_image_checkpointing(self):
@@ -778,7 +779,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit(self):
@@ -1373,7 +1374,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1390,6 +1391,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --max_train_steps=6
             --checkpoints_total_limit=2
             --checkpointing_steps=2
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + test_args)
@@ -1413,6 +1415,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --dataloader_num_workers=0
             --max_train_steps=9
             --checkpointing_steps=2
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + test_args)
@@ -1436,6 +1439,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --checkpointing_steps=2
             --resume_from_checkpoint=checkpoint-8
             --checkpoints_total_limit=3
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + resume_run_args)
@@ -1464,10 +1468,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -1491,10 +1495,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
