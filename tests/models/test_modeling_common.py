@@ -52,7 +52,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         model = torch.compile(model)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
+            model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
 
@@ -205,7 +205,7 @@ class ModelTesterMixin:
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
+            model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname)
             if hasattr(new_model, "set_default_attn_processor"):
                 new_model.set_default_attn_processor()
@@ -327,7 +327,7 @@ class ModelTesterMixin:
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname, variant="fp16")
+            model.save_pretrained(tmpdirname, variant="fp16", safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
             if hasattr(new_model, "set_default_attn_processor"):
                 new_model.set_default_attn_processor()
@@ -372,7 +372,7 @@ class ModelTesterMixin:
                 continue
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.to(dtype)
-                model.save_pretrained(tmpdirname)
+                model.save_pretrained(tmpdirname, safe_serialization=False)
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
                 assert new_model.dtype == dtype
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype)
@@ -429,7 +429,7 @@ class ModelTesterMixin:
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
+            model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
