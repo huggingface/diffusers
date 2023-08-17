@@ -556,7 +556,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
         push_to_hub: bool = False,
         **kwargs,
@@ -569,7 +569,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save a pipeline to. Will be created if it doesn't exist.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
