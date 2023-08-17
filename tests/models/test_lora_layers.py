@@ -679,6 +679,43 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             orig_image_slice, orig_image_slice_two, atol=1e-3
         ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
+    def test_load_lora_locally(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+
+        sd_pipe.unload_lora_weights()
+
+    def test_load_lora_locally_safetensors(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.unload_lora_weights()
+
 
 @slow
 @require_torch_gpu
