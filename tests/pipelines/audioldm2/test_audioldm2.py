@@ -473,9 +473,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         assert len(audio) == 81952
 
         audio_slice = audio[17275:17285]
-        expected_slice = np.array(
-            [0.0791, 0.0666, 0.1158, 0.1227, 0.1171, -0.2880, -0.1940, -0.0283, -0.0126, 0.1127]
-        )
+        expected_slice = np.array([0.0791, 0.0666, 0.1158, 0.1227, 0.1171, -0.2880, -0.1940, -0.0283, -0.0126, 0.1127])
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
 
@@ -493,7 +491,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
 
         audio_slice = audio[31390:31400]
         expected_slice = np.array(
-            [-0.1318, -0.0577,  0.0446, -0.0573,  0.0659,  0.1074, -0.2600, 0.0080, -0.2190, -0.4301]
+            [-0.1318, -0.0577, 0.0446, -0.0573, 0.0659, 0.1074, -0.2600, 0.0080, -0.2190, -0.4301]
         )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
