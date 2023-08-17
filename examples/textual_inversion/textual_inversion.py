@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import PIL
+import safetensors
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -157,7 +158,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     return images
 
 
-def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path):
+def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path, safe_serialization=True):
     logger.info("Saving embeddings")
     learned_embeds = (
         accelerator.unwrap_model(text_encoder)
@@ -165,7 +166,11 @@ def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_p
         .weight[min(placeholder_token_ids) : max(placeholder_token_ids) + 1]
     )
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
-    torch.save(learned_embeds_dict, save_path)
+
+    if safe_serialization:
+        safetensors.torch.save_file(learned_embeds_dict, save_path, metadata={"format": "pt"})
+    else:
+        torch.save(learned_embeds_dict, save_path)
 
 
 def parse_args():
@@ -408,6 +413,11 @@ def parse_args():
     )
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument(
+        "--no_safe_serialization",
+        action="store_true",
+        help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
     )
 
     args = parser.parse_args()
@@ -878,7 +888,14 @@ def main():
                 global_step += 1
                 if global_step % args.save_steps == 0:
                     save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
-                    save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
+                    save_progress(
+                        text_encoder,
+                        placeholder_token_ids,
+                        accelerator,
+                        args,
+                        save_path,
+                        safe_serialization=not args.no_safe_serialization,
+                    )
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -936,7 +953,14 @@ def main():
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
         save_path = os.path.join(args.output_dir, "learned_embeds.bin")
-        save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
+        save_progress(
+            text_encoder,
+            placeholder_token_ids,
+            accelerator,
+            args,
+            save_path,
+            safe_serialization=not args.no_safe_serialization,
+        )
 
         if args.push_to_hub:
             save_model_card(
