@@ -757,10 +757,9 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        print(", ".join([str(round(x, 4)) for x in images.tolist()]))
-        # expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+        expected = np.array([0.7165, 0.6616, 0.5833, 0.7504, 0.6718, 0.587, 0.6871, 0.6361, 0.5694])
 
-        self.assertTrue(np.allclose(images, [], atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
     def test_vanilla_funetuning(self):
         generator = torch.Generator().manual_seed(0)
