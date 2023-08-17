@@ -10,3 +10,7 @@ All models are built from the base [`ModelMixin`] class which is a [`torch.nn.mo
 ## FlaxModelMixin
 
 [[autodoc]] FlaxModelMixin
+
+## PushToHubMixin
+
+[[autodoc]] utils.PushToHubMixin
