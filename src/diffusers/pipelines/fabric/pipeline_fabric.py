@@ -1,5 +1,3 @@
-### I'm fucking wrong you dont have to initialize and load stable diffusion ditch that
-### do it with raw unet, vae and stuff '
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -346,7 +344,7 @@ class FabricPipeline(DiffusionPipeline):
         return out
 
     def preprocess_feedback_images(self, images, vae, device, dtype) -> torch.tensor:
-        images_t = [self.image_to_tensor(img,dtype) for img in images]
+        images_t = [self.image_to_tensor(img, dtype) for img in images]
         images_t = torch.stack(images_t).to(device)
         latents = (
             vae.config.scaling_factor
@@ -362,9 +360,7 @@ class FabricPipeline(DiffusionPipeline):
         )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible             with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     @torch.no_grad()
@@ -375,10 +371,11 @@ class FabricPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = "lowres, bad anatomy, bad hands, cropped, worst quality",
         liked: Optional[Union[List[str], List[Image.Image]]] = [],
         disliked: Optional[Union[List[str], List[Image.Image]]] = [],
-        random_seed: int = 37,
+        random_seed: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        return_dict: bool = True,
         n_images: int = 4,
         guidance_scale: float = 7.0,
-        denoising_steps: int = 20,
+        num_inference_steps: int = 20,
         feedback_start_ratio: float = 0.33,
         feedback_end_ratio: float = 0.66,
         min_weight: float = 0.05,
@@ -386,6 +383,7 @@ class FabricPipeline(DiffusionPipeline):
         neg_scale: float = 0.5,
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
+        output_type: Optional[str] = "pil",
     ):
         r"""
         Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary feedback. The feedback can be given as a list of liked and disliked images.
@@ -413,7 +411,7 @@ class FabricPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            denoising_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
 
@@ -429,15 +427,12 @@ class FabricPipeline(DiffusionPipeline):
             >>> image = pipe(prompt, n_images=4, liked=liked,disliked=disliked).images
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`:
             When returning a tuple, the first element is a list with the generated images, and the second element is a
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
 
         """
-        if random_seed is not None and random_seed is not torch.Generator:
-            torch.manual_seed(random_seed)
 
         device = self._execution_device
         dtype = self.text_encoder.dtype
@@ -449,10 +444,14 @@ class FabricPipeline(DiffusionPipeline):
 
         if isinstance(prompt, str):
             prompt = [prompt] * n_images
+        elif isinstance(prompt, list):
+            prompt = prompt
         else:
             assert len(prompt) == n_images
         if isinstance(negative_prompt, str):
             negative_prompt = [negative_prompt] * n_images
+        elif isinstance(negative_prompt, list):
+            negative_prompt = negative_prompt
         else:
             assert len(negative_prompt) == n_images
 
@@ -461,17 +460,17 @@ class FabricPipeline(DiffusionPipeline):
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
-        self.scheduler.set_timesteps(denoising_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         latent_noise = latent_noise * self.scheduler.init_noise_sigma
 
-        num_warmup_steps = len(timesteps) - denoising_steps * self.scheduler.order
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
         ref_start_idx = round(len(timesteps) * feedback_start_ratio)
         ref_end_idx = round(len(timesteps) * feedback_end_ratio)
 
-        with tqdm(total=denoising_steps) as pbar:
+        with self.progress_bar(total=num_inference_steps) as pbar:
             for i, t in enumerate(timesteps):
                 sigma = self.scheduler.sigma_t[t] if hasattr(self.scheduler, 'sigma_t') else 0
                 if hasattr(self.scheduler, "sigmas"):
@@ -547,9 +546,12 @@ class FabricPipeline(DiffusionPipeline):
                     pbar.update()
 
         y = self.decode_latents(latent_noise)
-        imgs = self.image_processor.numpy_to_pil(y)
+        imgs = self.image_processor.postprocess(y, output_type=output_type)
 
-        return FabricPipelineOutput(imgs,False)
+        if not return_dict:
+            return (imgs)
+
+        return FabricPipelineOutput(imgs, False)
 
     @staticmethod
     def image_to_tensor(image: Union[str, Image.Image], dtype):

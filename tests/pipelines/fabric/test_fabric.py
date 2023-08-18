@@ -14,32 +14,51 @@
 # limitations under the License.
 
 import gc
+import tempfile
+import time
+import traceback
 import unittest
 
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, DDIMScheduler, FabricPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
-
-from ..pipeline_params import (
-    CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
-    CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+    FabricPipeline,
+    UNet2DConditionModel,
+    logging,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
+from diffusers.utils import load_numpy, nightly, slow, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
+
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
 class FabricPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineTesterMixin, unittest.TestCase
 ):
-    pipeline_class = FabricDiffusionPipeline
-    params = TEXT_TO_IMAGE_PARAMS
+    pipeline_class = FabricPipeline
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS - {'negative_prompt_embeds', 'width', 'prompt_embeds', 'cross_attention_kwargs', 'height'}
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
@@ -54,6 +73,7 @@ class FabricPipelineFastTests(
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
+        torch.manual_seed(0)
         scheduler = EulerAncestralDiscreteScheduler()
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -95,70 +115,54 @@ class FabricPipelineFastTests(
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "random_ssed": generator,
-            "num_images": 1,
+            "negative_prompt": "lowres, dark, cropped",
+            "random_seed": generator,
+            "n_images": 1,
+            "num_inference_steps":2,
+            "output_type": "numpy"
         }
         return inputs
 
-    def test_stable_diffusion_ddim(self):
+    def test_fabric(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = FabricPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = FabricPipeline(**components)
+        pipe = pipe.to(torch_device)
+
+        pipe.set_progress_bar_config(disable=True)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        output = pipe(**inputs)
+        image = np.array(output.images[0])
+        image_slice = image[-3:, -3:, -1]
+        print(image_slice.flatten()/128)
+        assert image.shape == (128, 128, 3)
+        expected_slice = np.array([0.44185049, 0.06685049, 0.14494485, 0.62536765, 0.16056985, 0.22693015, 0.03474265, 0.10505515, 0.1010723])
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten()/128 - expected_slice).max() < 1e-2
 
 
-    def test_stable_diffusion_negative_prompt_embeds(self):
+    def test_fabric_w_fb(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
         components = self.get_dummy_components()
-        sd_pipe = FabricPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = FabricPipeline(**components)
+        pipe = pipe.to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        inputs["negative_prompt"] = negative_prompt
-        inputs["prompt"] = 3 * [inputs["prompt"]]
+        pipe.set_progress_bar_config(disable=True)
 
-        # forward
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs)
+        image = output.images[0]
+        inputs["liked"] = [image]
+        output = pipe(**inputs)
+        image_slice = np.array(output.images[0])[-3:, -3:, -1]
 
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = 3 * [inputs.pop("prompt")]
+        assert image.shape == (128, 128, 3)
+        expected_slice = np.array([0.77254902, 0.77647059, 0.78431373, 0.8, 0.78823529, 0.79607843, 0.78823529, 0.78823529, 0.78039216])
 
-        embeds = []
-        for p in [prompt, negative_prompt]:
-            text_inputs = sd_pipe.tokenizer(
-                p,
-                padding="max_length",
-                max_length=sd_pipe.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_inputs = text_inputs["input_ids"].to(torch_device)
-
-            embeds.append(sd_pipe.text_encoder(text_inputs)[0])
-
-        inputs["prompt_embeds"], inputs["negative_prompt_embeds"] = embeds
-
-        # forward
-        output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert np.abs(image_slice.flatten()/128 - expected_slice).max() < 1e-2
 
 
 @require_torch_gpu
