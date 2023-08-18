@@ -20,8 +20,8 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenDecoderPipeline
-from diffusers.pipelines.wuerstchen import DiffNeXt
 from diffusers.models import VQModelPaella
+from diffusers.pipelines.wuerstchen import DiffNeXt
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
 
