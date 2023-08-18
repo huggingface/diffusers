@@ -144,16 +144,31 @@ class StableDiffusionInpaintPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+        if output_pil:
+            # Get random floats in [0, 1] as image
+            image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+            image = image.cpu().permute(0, 2, 3, 1)[0]
+            mask_image = torch.ones_like(image)
+            # Convert image and mask_image to [0, 255]
+            image = 255 * image
+            mask_image = 255 * mask_image
+            # Convert to PIL image
+            init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
+            mask_image = Image.fromarray(np.uint8(mask_image)).convert("RGB").resize((img_res, img_res))
+        else:
+            # Get random floats in [0, 1] as image with spatial size (img_res, img_res)
+            image = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed)).to(device)
+            # Convert image to [-1, 1]
+            init_image = 2.0 * image - 1.0
+            mask_image = torch.ones((1, 1, img_res, img_res), device=device)
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
@@ -259,28 +274,24 @@ class StableDiffusionInpaintPipelineFastTests(
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        # Get 32 x 32 image manually
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        original_image_slice = image[-3:, -3:, :].numpy()
-        init_image = Image.fromarray(np.uint8(255 * image)).convert("RGB")
+        inputs = self.get_dummy_inputs(device, output_pil=False)
+        init_image = inputs["image"].detach().clone()
+        mask_image = inputs["mask_image"].detach().clone()
+        # Map init_image to [0, 1]
+        init_image = (init_image / 2 + 0.5).clamp(0, 1)
+        # Get image slice
+        original_image_slice = init_image[0, -1, -3:, -3:].flatten().numpy()
+        # Unmask the same slice in mask_image
+        mask_image[0, 0, -3:, -3:] = 0
 
-        # mask_array = image + 4
-        mask_array = image + 250
-        # # Make some pixels unmasked
-        # mask_array[-3:, -3:, :] = 255
-        mask_array[-3:, -3:, :] = 4
-        mask_image = Image.fromarray(np.uint8(mask_array)).convert("RGB")
-        
-        inputs = self.get_dummy_inputs(device)
-        inputs["image"] = init_image
         inputs["mask_image"] = mask_image
         inputs["force_unmasked_unchanged"] = True
+        inputs["output_type"] = "pt"
 
         image = sd_pipe(**inputs).images
+        output_image_slice = image[0, -1, -3:, -3:].flatten().numpy()
 
-        output_image_slice = image[0, -3:, -3:, :]
-        assert np.abs(original_image_slice.flatten() - output_image_slice.flatten()).max() < 1e-3
+        assert np.abs(original_image_slice - output_image_slice).max() < 1e-3
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
