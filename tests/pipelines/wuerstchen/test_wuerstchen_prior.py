@@ -124,7 +124,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 4.0,
-            "num_inference_steps": {0.0: 2},
+            "num_inference_steps": 2,
             "output_type": "np",
         }
         return inputs

@@ -133,7 +133,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 1.0,
-            "num_inference_steps": {0.0: 2},
+            "num_inference_steps": 2,
             "output_type": "np",
         }
         return inputs
