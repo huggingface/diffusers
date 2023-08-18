@@ -550,7 +550,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         waveform = waveform.cpu().float()
         return waveform
 
-    def score_waveforms(self, text, audio, num_waveforms_per_prompt, device):
+    def score_waveforms(self, text, audio, num_waveforms_per_prompt, device, dtype):
         if not is_librosa_available():
             logger.info(
                 "Automatic scoring of the generated audio waveforms against the input prompt text requires the "
@@ -564,7 +564,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         )
         inputs["input_features"] = self.feature_extractor(
             list(resampled_audio), return_tensors="pt", sampling_rate=self.feature_extractor.sampling_rate
-        ).input_features.type(self.text_encoder.dtype)
+        ).input_features.type(dtype)
         inputs = inputs.to(device)
 
         # compute the audio-text similarity score using the CLAP model
@@ -930,7 +930,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         # 9. Automatic scoring
         if num_waveforms_per_prompt > 1 and prompt is not None:
             audio = self.score_waveforms(
-                text=prompt, audio=audio, num_waveforms_per_prompt=num_waveforms_per_prompt, device=device
+                text=prompt,
+                audio=audio,
+                num_waveforms_per_prompt=num_waveforms_per_prompt,
+                device=device,
+                dtype=prompt_embeds.dtype,
             )
 
         if output_type == "np":

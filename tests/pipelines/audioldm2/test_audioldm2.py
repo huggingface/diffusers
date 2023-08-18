@@ -116,22 +116,26 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio_branch_config = ClapAudioConfig(
             spec_size=64,
             window_size=4,
-            num_mel_bins=16,
+            num_mel_bins=64,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             depths=[2, 2],
             num_attention_heads=[2, 2],
             num_hidden_layers=2,
-            hidden_size=16,
+            hidden_size=192,
             projection_dim=16,
             patch_size=2,
+            patch_stride=2,
+            patch_embed_input_channels=4,
         )
         text_encoder_config = ClapConfig.from_text_audio_configs(
             text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
-        feature_extractor = ClapFeatureExtractor.from_pretrained("hf-internal-testing/tiny-random-ClapModel")
+        feature_extractor = ClapFeatureExtractor.from_pretrained(
+            "hf-internal-testing/tiny-random-ClapModel", hop_length=7900
+        )
 
         torch.manual_seed(0)
         text_encoder_2_config = T5Config(
