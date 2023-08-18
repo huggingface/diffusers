@@ -37,13 +37,52 @@ found at [haoheliu/audioldm2](https://github.com/haoheliu/audioldm2).
 
 When constructing a prompt, keep in mind:
 
-* Descriptive prompt inputs work best; you can use adjectives to describe the sound (for example, "high quality" or "clear") and make the prompt context specific (for example, "water stream in a forest" instead of "stream").
+* Descriptive prompt inputs work best: use adjectives to describe the sound (e.g. "high quality" or "clear") and make the prompt context specific (e.g. "water stream in a forest" instead of "stream").
 * It's best to use general terms like "cat" or "dog" instead of specific names or abstract objects the model may not be familiar with.
+* Using a **negative prompt** can significantly improve the quality of the generated waveform, by guiding the generation away from terms that correspond to poor quality audio. Try using a negative prompt of "Low quality." 
 
 During inference:
 
 * The _quality_ of the predicted audio sample can be controlled by the `num_inference_steps` argument; higher steps give higher quality audio at the expense of slower inference.
 * The _length_ of the predicted audio sample can be controlled by varying the `audio_length_in_s` argument.
+
+When evaluating generated waveforms:
+
+* The quality of the generated waveforms can vary significantly based on the seed. Try generating with different seeds until you find a satisfactory generation
+* Multiple waveforms can be generated in one go: set `num_waveforms_per_prompt` to a value greater than 1. Automatic scoring will be performed between the generated waveforms and prompt text, and the audios ranked from best to worst accordingly.
+
+The following example demonstrates how to construct a good audio generation using the aforementioned tips: 
+
+```python
+import scipy
+import torch
+from diffusers import AudioLDM2Pipeline
+
+# load the pipeline
+repo_id = "cvssp/audioldm2"
+pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+
+# define the prompts
+prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
+negative_prompt = "Low quality."
+
+# set the seed
+generator = torch.Generator("cuda").manual_seed(0)
+
+# run the generation
+audio = pipe(
+    prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=200,
+    audio_length_in_s=10.0,
+    num_waveforms_per_prompt=3,
+).audios
+
+# save the best audio sample (index 0) as a .wav file
+scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
+
+```
 
 <Tip>
 
@@ -57,3 +96,11 @@ section to learn how to efficiently load the same components into multiple pipel
 [[autodoc]] AudioLDM2Pipeline
 	- all
 	- __call__
+
+## AudioLDM2ProjectionModel
+[[autodoc]] AudioLDM2ProjectionModel
+	- forward
+
+## AudioLDM2UNet2DConditionModel
+[[autodoc]] AudioLDM2UNet2DConditionModel
+	- forward
