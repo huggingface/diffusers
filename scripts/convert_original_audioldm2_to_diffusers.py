@@ -817,7 +817,7 @@ DEFAULT_CONFIG = {
 def load_pipeline_from_original_AudioLDM2_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 512,
+    image_size: int = 1024,
     prediction_type: str = None,
     extract_ema: bool = False,
     scheduler_type: str = "ddim",
@@ -838,21 +838,13 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
         checkpoint_path (`str`): Path to `.ckpt` file.
         original_config_file (`str`):
             Path to `.yaml` config file corresponding to the original architecture. If `None`, will be automatically
-            set to the AudioLDM2-s-full-v2 config.
-        image_size (`int`, *optional*, defaults to 512):
+            set to the AudioLDM2 base config.
+        image_size (`int`, *optional*, defaults to 1024):
             The image size that the model was trained on.
         prediction_type (`str`, *optional*):
             The prediction type that the model was trained on. If `None`, will be automatically
             inferred by looking for a key in the config. For the default config, the prediction type is `'epsilon'`.
-        num_in_channels (`int`, *optional*, defaults to None):
-            The number of UNet input channels. If `None`, it will be automatically inferred from the config.
-        model_channels (`int`, *optional*, defaults to None):
-            The number of UNet model channels. If `None`, it will be automatically inferred from the config. Override
-            to 128 for the small checkpoints, 192 for the medium checkpoints and 256 for the large.
-        num_head_channels (`int`, *optional*, defaults to None):
-            The number of UNet head channels. If `None`, it will be automatically inferred from the config. Override
-            to 32 for the small and medium checkpoints, and 64 for the large.
-        scheduler_type (`str`, *optional*, defaults to 'pndm'):
+        scheduler_type (`str`, *optional*, defaults to 'ddim'):
             Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
             "ddim"]`.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
