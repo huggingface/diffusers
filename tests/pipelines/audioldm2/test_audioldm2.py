@@ -19,7 +19,6 @@ import unittest
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from transformers import (
     ClapAudioConfig,
     ClapConfig,
@@ -122,7 +121,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             depths=[2, 2],
             num_attention_heads=[2, 2],
             num_hidden_layers=2,
+            hidden_size=16,
             projection_dim=16,
+            patch_size=2,
         )
         text_encoder_config = ClapConfig.from_text_audio_configs(
             text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
@@ -246,12 +247,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        clap_prompt_embeds = audioldm_pipe.text_encoder(
-            text_inputs,
-        )
-        clap_prompt_embeds = clap_prompt_embeds.text_embeds
-        # additional L_2 normalization over each hidden-state
-        clap_prompt_embeds = F.normalize(clap_prompt_embeds, dim=-1)[:, None, :]
+        clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+        clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
         text_inputs = audioldm_pipe.tokenizer_2(
             prompt,
@@ -310,12 +307,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            clap_prompt_embeds = audioldm_pipe.text_encoder(
-                text_inputs,
-            )
-            clap_prompt_embeds = clap_prompt_embeds.text_embeds
-            # additional L_2 normalization over each hidden-state
-            clap_prompt_embeds = F.normalize(clap_prompt_embeds, dim=-1)[:, None, :]
+            clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+            clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
             text_inputs = audioldm_pipe.tokenizer_2(
                 prompt,
