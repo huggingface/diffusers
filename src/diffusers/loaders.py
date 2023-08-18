@@ -1296,9 +1296,10 @@ class LoraLoaderMixin:
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
                 if patch_mlp:
                     for name, _ in text_encoder_mlp_modules(text_encoder):
-                        print(f"MLP names: {name}")
-                        # rank_key = f"{name}.lora_linear_layer.up.weight"
-                        # rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+                        rank_key_fc1 = f"{name}_fc1.lora_linear_layer.up.weight"
+                        rank_key_fc2 = f"{name}_fc2.lora_linear_layer.up.weight"
+                        rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
+                        rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1402,15 +1403,16 @@ class LoraLoaderMixin:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
                 fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
                 fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
-                # current_rank = rank.pop(f"{name}.lora_linear_layer.up.weight")
+                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
+                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
                 mlp_module.fc1 = PatchedLoraProjection(
-                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
+                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
 
                 mlp_module.fc2 = PatchedLoraProjection(
-                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=rank, dtype=dtype
+                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
 
