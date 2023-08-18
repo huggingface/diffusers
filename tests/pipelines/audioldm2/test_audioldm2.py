@@ -451,6 +451,14 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
+    def test_dict_tuple_outputs_equivalent(self):
+        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=2e-4)
+
+    def test_inference_batch_single_identical(self):
+        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
+        super().test_inference_batch_single_identical(expected_max_difference=2e-4)
+
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
         super().test_save_load_local(expected_max_difference=2e-4)
