@@ -17,11 +17,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import (
-    CLIPTextConfig,
-    CLIPTextModel,
-    CLIPTokenizer,
-)
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
 from diffusers.pipelines.wuerstchen import WuerstchenPrior
