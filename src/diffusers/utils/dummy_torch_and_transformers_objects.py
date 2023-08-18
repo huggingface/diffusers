@@ -1157,7 +1157,7 @@ class WuerstchenDecoderPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class WuerstchenPriorPipeline(metaclass=DummyObject):
+class WuerstchenPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1172,7 +1172,7 @@ class WuerstchenPriorPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class WuerstchenPipeline(metaclass=DummyObject):
+class WuerstchenPriorPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

@@ -50,7 +50,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
-from .wuerstchen import WuerstchenPipeline, WuerstchenDecoderPipeline
+from .wuerstchen import WuerstchenDecoderPipeline, WuerstchenPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
