@@ -36,31 +36,41 @@ found at [haoheliu/audioldm2](https://github.com/haoheliu/audioldm2).
 
 ## Tips
 
-When constructing a prompt, keep in mind:
+### Choosing a checkpoint
+
+AudioLDM2 comes in three variants. Two of these checkpoints are applicable to the general task of text-to-audio generation. The third checkpoint is trained exclusively on text-to-music generation. See table below for details on the three official checkpoints:
+
+| Checkpoint                                                      | Task          | Model Size | Training Data / h |
+|-----------------------------------------------------------------|---------------|------------|-------------------|
+| [audioldm2](https://huggingface.co/cvssp/audioldm2)             | Text-to-audio | 1.1B       | 1150k             |
+| [audioldm2-music](https://huggingface.co/cvssp/audioldm2-music) | Text-to-music | 1.1B       | 665k              |
+| [audioldm2-large](https://huggingface.co/cvssp/audioldm2-large) | Text-to-audio | 1.5B       | 1150k             |
+
+### Constructing a prompt
 
 * Descriptive prompt inputs work best: use adjectives to describe the sound (e.g. "high quality" or "clear") and make the prompt context specific (e.g. "water stream in a forest" instead of "stream").
 * It's best to use general terms like "cat" or "dog" instead of specific names or abstract objects the model may not be familiar with.
 * Using a **negative prompt** can significantly improve the quality of the generated waveform, by guiding the generation away from terms that correspond to poor quality audio. Try using a negative prompt of "Low quality." 
 
-During inference:
+### Controlling inference
 
 * The _quality_ of the predicted audio sample can be controlled by the `num_inference_steps` argument; higher steps give higher quality audio at the expense of slower inference.
 * The _length_ of the predicted audio sample can be controlled by varying the `audio_length_in_s` argument.
 
-When evaluating generated waveforms:
+### Evaluating generated waveforms:
 
 * The quality of the generated waveforms can vary significantly based on the seed. Try generating with different seeds until you find a satisfactory generation
 * Multiple waveforms can be generated in one go: set `num_waveforms_per_prompt` to a value greater than 1. Automatic scoring will be performed between the generated waveforms and prompt text, and the audios ranked from best to worst accordingly.
 
-The following example demonstrates how to construct a good audio generation using the aforementioned tips: 
+The following example demonstrates how to construct good music generation using the aforementioned tips: 
 
 ```python
 import scipy
 import torch
 from diffusers import AudioLDM2Pipeline
 
-# load the pipeline
-repo_id = "cvssp/audioldm2"
+# load the best weights for music generation
+repo_id = "cvssp/audioldm2-music"
 pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
