@@ -20,11 +20,12 @@ Inspired by [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelin
 is a text-to-audio _latent diffusion model (LDM)_ that learns continuous audio representations from text embeddings. Two 
 text encoder models are used to compute the text embeddings from a prompt input: the text-branch of [CLAP](https://huggingface.co/docs/transformers/main/en/model_doc/clap)
 and the encoder of [Flan-T5](https://huggingface.co/docs/transformers/main/en/model_doc/flan-t5). These text embeddings 
-are then projected to a shared embedding space by an [AudioLDM2ProjectionModel](TODO(SG)). A [GPT2](https://huggingface.co/docs/transformers/main/en/model_doc/gpt2)
-_language model (LM)_ is used to auto-regressively predict eight new embedding vectors, conditional on the projected CLAP and 
-Flan-T5 embeddings. The generated embedding vectors and Flan-T5 text embeddings are used as cross-attention conditioning
-in the LDM. The [UNet](TODO(SG)) of AudioLDM 2 is unique in the sense that it takes **two** cross-attention embeddings, as opposed 
-to one cross-attention conditioning, as in most other LDMs.
+are then projected to a shared embedding space by an [AudioLDM2ProjectionModel](https://huggingface.co/docs/diffusers/api/pipelines/audioldm2/AudioLDM2ProjectionModel). 
+A [GPT2](https://huggingface.co/docs/transformers/main/en/model_doc/gpt2) _language model (LM)_ is used to auto-regressively 
+predict eight new embedding vectors, conditional on the projected CLAP and Flan-T5 embeddings. The generated embedding 
+vectors and Flan-T5 text embeddings are used as cross-attention conditioning in the LDM. The [UNet](https://huggingface.co/docs/diffusers/api/pipelines/audioldm2/AudioLDM2UNet2DConditionModel) 
+of AudioLDM 2 is unique in the sense that it takes **two** cross-attention embeddings, as opposed to one cross-attention 
+conditioning, as in most other LDMs.
 
 The abstract of the paper is the following:
 
@@ -81,7 +82,6 @@ audio = pipe(
 
 # save the best audio sample (index 0) as a .wav file
 scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
-
 ```
 
 <Tip>
