@@ -461,7 +461,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_inference_batch_single_identical(expected_max_diff=2e-4)
+        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=2e-4)
 
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
@@ -470,6 +470,29 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_optional_components(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
         super().test_save_load_optional_components(expected_max_difference=2e-4)
+
+    def test_to_dtype(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        # The method component.dtype returns the dtype of the first parameter registered in the model, not the
+        # dtype of the entire model. In the case of CLAP, the first parameter is a float64 constant (logit scale)
+        model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
+        self.assertTrue(model_dtypes["text_encoder"] == torch.float64)
+
+        # Without the logit scale parameters, everything is float32
+        model_dtypes.pop("text_encoder")
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
+
+        # the CLAP sub-models are float32
+        model_dtypes["clap_text_branch"] = components["text_encoder"].text_model.dtype
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
+
+        # Once we send to fp16, all params are in half-precision, including the logit scale
+        pipe.to(torch_dtype=torch.float16)
+        model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
+        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
 
 @slow
