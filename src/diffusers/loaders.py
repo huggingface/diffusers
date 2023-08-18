@@ -1823,7 +1823,6 @@ class FromSingleFileMixin:
         # import here to avoid circular dependency
         from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
-
         original_config_file = kwargs.pop("original_config_file", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
