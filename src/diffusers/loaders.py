@@ -1296,8 +1296,8 @@ class LoraLoaderMixin:
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
                 if patch_mlp:
                     for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}_fc1.lora_linear_layer.up.weight"
-                        rank_key_fc2 = f"{name}_fc2.lora_linear_layer.up.weight"
+                        rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
+                        rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
                         rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
                         rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
