@@ -360,12 +360,14 @@ class UNet2DConditionLoadersMixin:
                     f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
                 )
 
+            temp = 0
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
-                print(f"Self type: {type(self)}")
                 for sub_key in key.split("."):
-                    print(f"From UNet: {key}")
+                    if temp < 50:
+                        print(f"From UNet: {key}, {sub_key}")
                     attn_processor = getattr(attn_processor, sub_key)
+                temp += 1
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
