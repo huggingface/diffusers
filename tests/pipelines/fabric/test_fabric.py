@@ -14,15 +14,11 @@
 # limitations under the License.
 
 import gc
-import tempfile
-import time
-import traceback
 import unittest
 
 import numpy as np
-from PIL import Image
 import torch
-from huggingface_hub import hf_hub_download
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -30,16 +26,11 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     FabricPipeline,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils import load_numpy, nightly, slow, torch_device
+from diffusers.utils import load_numpy, slow
 from diffusers.utils.testing_utils import (
-    CaptureLogger,
     enable_full_determinism,
-    require_torch_2,
     require_torch_gpu,
-    run_test_in_subprocess,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -49,13 +40,19 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class FabricPipelineFastTests(
-    PipelineTesterMixin, unittest.TestCase
-):
+class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = FabricPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {'negative_prompt_embeds', 'width', 'prompt_embeds', 'cross_attention_kwargs', 'height','callback', 'callback_steps'}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS 
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS 
+    params = TEXT_TO_IMAGE_PARAMS - {
+        "negative_prompt_embeds",
+        "width",
+        "prompt_embeds",
+        "cross_attention_kwargs",
+        "height",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = PipelineTesterMixin.required_optional_params - {
         "latents",
         "num_images_per_prompt",
@@ -117,7 +114,7 @@ class FabricPipelineFastTests(
             "negative_prompt": "lowres, dark, cropped",
             "generator": generator,
             "num_images": 1,
-            "num_inference_steps":2,
+            "num_inference_steps": 2,
             "output_type": "np",
         }
         return inputs
@@ -137,10 +134,11 @@ class FabricPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
         print(image_slice.flatten())
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524])
+        expected_slice = np.array(
+            [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
 
     def test_fabric_w_fb(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -152,16 +150,18 @@ class FabricPipelineFastTests(
         pipe.set_progress_bar_config(disable=True)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["liked"] = [Image.fromarray(np.ones((512,512)))]
+        inputs["liked"] = [Image.fromarray(np.ones((512, 512)))]
         output = pipe(**inputs)
         image = output.images
         image_slice = output.images[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
         print(image_slice)
-        expected_slice = np.array([0.77254902, 0.77647059, 0.78431373, 0.8, 0.78823529, 0.79607843, 0.78823529, 0.78823529, 0.78039216])
+        expected_slice = np.array(
+            [0.77254902, 0.77647059, 0.78431373, 0.8, 0.78823529, 0.79607843, 0.78823529, 0.78823529, 0.78039216]
+        )
 
-        assert np.abs(image_slice.flatten()/128 - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() / 128 - expected_slice).max() < 1e-2
 
 
 @require_torch_gpu
@@ -184,7 +184,7 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
 
         for word, image in zip(prompt, images):
             expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
             )
             assert np.abs((expected_image - np.array(image)).max()) < 1e-2
 
@@ -202,6 +202,6 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
 
         for word, image in zip(prompt, images):
             expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_w_feedback.npy"
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_w_feedback.npy"
             )
             assert np.abs((expected_image - np.array(image)).max()) < 1e-2

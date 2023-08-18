@@ -1,12 +1,15 @@
 from dataclasses import dataclass
+from typing import List, Optional, Union
+
+import numpy as np
+import PIL
+
 from ...utils import (
     BaseOutput,
     OptionalDependencyNotAvailable,
     is_torch_available,
 )
-from typing import Union, Optional, List
-import numpy as np
-import PIL
+
 
 @dataclass
 class FabricPipelineOutput(BaseOutput):
@@ -25,6 +28,7 @@ class FabricPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 
+
 try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
@@ -32,4 +36,3 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
     from .pipeline_fabric import FabricPipeline
-

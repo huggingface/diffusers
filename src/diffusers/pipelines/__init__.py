@@ -52,8 +52,6 @@ else:
         StableDiffusionControlNetPipeline,
         StableDiffusionXLControlNetPipeline,
     )
-    from .fabric import FabricPipeline
-
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,
@@ -62,6 +60,7 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
     )
+    from .fabric import FabricPipeline
     from .kandinsky import (
         KandinskyCombinedPipeline,
         KandinskyImg2ImgCombinedPipeline,
