@@ -362,7 +362,9 @@ class UNet2DConditionLoadersMixin:
 
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
+                print(f"Self type: {type(self)}")
                 for sub_key in key.split("."):
+                    print(f"From UNet: {key}")
                     attn_processor = getattr(attn_processor, sub_key)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
