@@ -217,7 +217,8 @@ class FabricPipeline(DiffusionPipeline):
 
           prompt_embed_list.append(prompt_embd)
 
-        return torch.cat(prompt_embed_list, dim=0)
+        all_prompt_embed =  torch.cat(prompt_embed_list, dim=0)
+        return all_prompt_embed
 
     def get_unet_hidden_states(self, z_all, t, prompt_embd):
         cached_hidden_states = []
@@ -371,9 +372,9 @@ class FabricPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = "lowres, bad anatomy, bad hands, cropped, worst quality",
         liked: Optional[Union[List[str], List[Image.Image]]] = [],
         disliked: Optional[Union[List[str], List[Image.Image]]] = [],
-        random_seed: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         return_dict: bool = True,
-        n_images: int = 4,
+        num_images: int = 4,
         guidance_scale: float = 7.0,
         num_inference_steps: int = 20,
         feedback_start_ratio: float = 0.33,
@@ -384,6 +385,7 @@ class FabricPipeline(DiffusionPipeline):
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
         output_type: Optional[str] = "pil",
+        latents: Optional[torch.FloatTensor] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary feedback. The feedback can be given as a list of liked and disliked images.
@@ -400,10 +402,10 @@ class FabricPipeline(DiffusionPipeline):
                 Liked enables feedback through images, encourages images with liked features.
             disliked (`List[Image.Image]` or `List[str]`, *optional*):
                 Disliked enables feedback through images, discourages images with disliked features.
-            random_seed (`torch.Generator` or `List[torch.Generator]` or `int`, *optional*):
+            generator (`torch.Generator` or `List[torch.Generator]` or `int`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html), can be int.
                 to make generation deterministic.
-            n_images (`int`, *optional*, defaults to 1):
+            num_images (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
@@ -424,7 +426,7 @@ class FabricPipeline(DiffusionPipeline):
             >>> prompt = "a giant standing in a fantasy landscape best quality"
             >>> liked = []
             >>> disliked = []
-            >>> image = pipe(prompt, n_images=4, liked=liked,disliked=disliked).images
+            >>> image = pipe(prompt, num_images=4, liked=liked,disliked=disliked).images
 
         Returns:
             [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`:
@@ -435,28 +437,28 @@ class FabricPipeline(DiffusionPipeline):
         """
 
         device = self._execution_device
-        dtype = self.text_encoder.dtype
+        dtype = self.unet.dtype
 
-        latent_noise = torch.randn(n_images, 4, 64, 64, device=device, dtype=dtype)
+        latent_noise = torch.randn(num_images, 4, 64, 64, device=device, dtype=dtype)
 
         positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, dtype=dtype)
         negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=dtype)
 
         if isinstance(prompt, str):
-            prompt = [prompt] * n_images
+            prompt = [prompt] * num_images
         elif isinstance(prompt, list):
             prompt = prompt
         else:
-            assert len(prompt) == n_images
+            assert len(prompt) == num_images
         if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt] * n_images
+            negative_prompt = [negative_prompt] * num_images
         elif isinstance(negative_prompt, list):
             negative_prompt = negative_prompt
         else:
-            assert len(negative_prompt) == n_images
+            assert len(negative_prompt) == num_images
 
 
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([n_images, n_images, 1])
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([num_images, num_images, 1])
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
@@ -511,10 +513,10 @@ class FabricPipeline(DiffusionPipeline):
                         cached_pos, cached_neg = hs.split([n_pos, n_neg], dim=0)
                         cached_pos = cached_pos.view(
                             1, -1, *cached_pos.shape[2:]
-                        ).expand(n_images, -1, -1)
+                        ).expand(num_images, -1, -1)
                         cached_neg = cached_neg.view(
                             1, -1, *cached_neg.shape[2:]
-                        ).expand(n_images, -1, -1)
+                        ).expand(num_images, -1, -1)
                         cached_pos_hs.append(cached_pos)
                         cached_neg_hs.append(cached_neg)
 
