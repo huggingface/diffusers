@@ -1297,8 +1297,8 @@ class LoraLoaderMixin:
                 if patch_mlp:
                     for name, _ in text_encoder_mlp_modules(text_encoder):
                         print(f"MLP names: {name}")
-                        rank_key = f"{name}.lora_linear_layer.up.weight"
-                        rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+                        # rank_key = f"{name}.lora_linear_layer.up.weight"
+                        # rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
                 if network_alphas is not None:
                     alpha_keys = [
