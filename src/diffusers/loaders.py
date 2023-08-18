@@ -1286,6 +1286,11 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
+                print(f"Final rank: {rank}")
+                mismatching_rank = text_encoder_lora_state_dict[
+                    "text_model.encoder.layers.11.self_attn.out_proj.lora_linear_layer.up.weight"
+                ].shape[1]
+                print(f"Mismatched rank: {mismatching_rank}")
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 if network_alphas is not None:
