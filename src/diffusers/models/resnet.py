@@ -690,18 +690,14 @@ class MixingResidualBlock(nn.Module):
             nn.GELU(),
             nn.Linear(c_hidden, inp_channels),
         )
-
+        
         self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
-
-    @staticmethod
-    def _norm(x, norm):
-        return norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
     def forward(self, x):
         mods = self.gammas
-        x_temp = self._norm(x, self.norm1) * (1 + mods[0]) + mods[1]
+        x_temp = self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * (1 + mods[0]) + mods[1]
         x = x + self.depthwise(x_temp) * mods[2]
-        x_temp = self._norm(x, self.norm2) * (1 + mods[3]) + mods[4]
+        x_temp = self.norm2(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * (1 + mods[3]) + mods[4]
         x = x + self.channelwise(x_temp.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * mods[5]
         return x
 
