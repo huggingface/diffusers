@@ -1245,6 +1245,7 @@ class LoraLoaderMixin:
 
             if len(text_encoder_lora_state_dict) > 0:
                 logger.info(f"Loading {prefix}.")
+                ranks = {}
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
@@ -1257,7 +1258,6 @@ class LoraLoaderMixin:
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
                     for name, _ in text_encoder_attn_modules(text_encoder):
-                        print("Am I here in the old porting?")
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
@@ -1283,16 +1283,15 @@ class LoraLoaderMixin:
                         text_encoder_lora_state_dict[
                             f"{name}.out_proj.lora_linear_layer.down.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
+                        rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
+                        ranks.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
-                # print(f"Final rank: {rank}")
-                # mismatching_rank = text_encoder_lora_state_dict[
-                #     "text_model.encoder.layers.11.self_attn.out_proj.lora_linear_layer.up.weight"
-                # ].shape[1]
-                # print(f"Mismatched rank: {mismatching_rank}")
-                # patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                unique_ranks = {ranks[k] for k in ranks}
+                print(f"Fixing rank to: {rank} but actual ranks: {unique_ranks}")
+                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 if network_alphas is not None:
                     alpha_keys = [
