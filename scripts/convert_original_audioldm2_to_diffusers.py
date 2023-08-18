@@ -29,7 +29,7 @@ from transformers import (
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
     T5Config,
-    T5EncoderModel,
+    T5EncoderModel, GenerationConfig,
 )
 
 from diffusers import (
@@ -1026,6 +1026,10 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
     gpt2_config = GPT2Config.from_pretrained("gpt2")
     gpt2_model = GPT2Model(gpt2_config)
+    gpt2_model.generation_config = GenerationConfig.from_model_config(gpt2_config)
+    gpt2_model.generation_config.max_new_tokens = (
+        original_config.model.params.cond_stage_config.crossattn_audiomae_generated.params.sequence_gen_length
+    )
 
     converted_gpt2_checkpoint = extract_sub_model(checkpoint, key_prefix="cond_stage_models.0.model.")
     gpt2_model.load_state_dict(converted_gpt2_checkpoint)

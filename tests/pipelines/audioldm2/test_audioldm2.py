@@ -32,7 +32,7 @@ from transformers import (
     SpeechT5HifiGanConfig,
     T5Config,
     T5EncoderModel,
-    T5Tokenizer,
+    T5Tokenizer, GenerationConfig,
 )
 
 from diffusers import (
@@ -154,6 +154,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             n_positions=99,
         )
         language_model = GPT2Model(language_model_config)
+        language_model.generation_config = GenerationConfig.from_model_config(language_model_config)
+        language_model.generation_config.max_new_tokens = 8
 
         torch.manual_seed(0)
         projection_model = AudioLDM2ProjectionModel(text_encoder_dim=16, text_encoder_2_dim=32, langauge_model_dim=16)
