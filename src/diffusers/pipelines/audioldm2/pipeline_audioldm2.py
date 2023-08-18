@@ -17,9 +17,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from transformers import (
-    ClapTextModelWithProjection,
+    ClapFeatureExtractor,
+    ClapModel,
     GPT2Model,
     RobertaTokenizer,
     RobertaTokenizerFast,
@@ -31,10 +31,20 @@ from transformers import (
 
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
+    is_librosa_available,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
+
+if is_librosa_available():
+    import librosa
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -86,10 +96,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
-            First frozen text-encoder. AudioLDM2 uses the text portion of the joint audio-text embedding model
+        text_encoder ([`~transformers.ClapModel`]):
+            First frozen text-encoder. AudioLDM2 uses the joint audio-text embedding model
             [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.CLAPTextModelWithProjection),
-            specifically the [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
+            specifically the [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant. The
+            text branch is used to encode the text prompt to a prompt embedding. The full audio-text model is used to
+            rank generated waveforms against the text prompt by computing similarity scores.
         text_encoder_2 ([`~transformers.T5EncoderModel`]):
             Second frozen text-encoder. AudioLDM2 uses the encoder of
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
@@ -105,6 +117,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             Tokenizer to tokenize text for the first frozen text-encoder.
         tokenizer_2 ([`~transformers.T5Tokenizer`]):
             Tokenizer to tokenize text for the second frozen text-encoder.
+        feature_extractor ([`~transformers.ClapFeatureExtractor`]):
+            Feature extractor to pre-process generated audio waveforms to log-mel spectrograms for automatic scoring.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
@@ -117,12 +131,13 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: ClapTextModelWithProjection,
+        text_encoder: ClapModel,
         text_encoder_2: T5EncoderModel,
         projection_model: AudioLDM2ProjectionModel,
         language_model: GPT2Model,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         tokenizer_2: Union[T5Tokenizer, T5TokenizerFast],
+        feature_extractor: ClapFeatureExtractor,
         unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
@@ -137,6 +152,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             language_model=language_model,
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
+            feature_extractor=feature_extractor,
             unet=unet,
             scheduler=scheduler,
             vocoder=vocoder,
@@ -360,16 +376,21 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 text_input_ids = text_input_ids.to(device)
                 attention_mask = attention_mask.to(device)
 
-                prompt_embeds = text_encoder(
-                    text_input_ids,
-                    attention_mask=attention_mask,
-                )
-                prompt_embeds = prompt_embeds[0]
-                if text_encoder.config.model_type == "clap_text_model":
-                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
-                    prompt_embeds = F.normalize(prompt_embeds, dim=-1)[:, None, :]
+                if text_encoder.config.model_type == "clap":
+                    prompt_embeds = text_encoder.get_text_features(
+                        text_input_ids,
+                        attention_mask=attention_mask,
+                    )
+                    # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
+                    prompt_embeds = prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     attention_mask = attention_mask.new_ones((batch_size, 1))
+                else:
+                    prompt_embeds = text_encoder(
+                        text_input_ids,
+                        attention_mask=attention_mask,
+                    )
+                    prompt_embeds = prompt_embeds[0]
 
                 prompt_embeds_list.append(prompt_embeds)
                 attention_mask_list.append(attention_mask)
@@ -449,16 +470,21 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 uncond_input_ids = uncond_input.input_ids.to(device)
                 negative_attention_mask = uncond_input.attention_mask.to(device)
 
-                negative_prompt_embeds = text_encoder(
-                    uncond_input_ids,
-                    attention_mask=negative_attention_mask,
-                )
-                negative_prompt_embeds = negative_prompt_embeds[0]
-                if text_encoder.config.model_type == "clap_text_model":
-                    # CLAP requires additional L_2 normalization over the text embedding and extra seq-len dim
-                    negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)[:, None, :]
+                if text_encoder.config.model_type == "clap":
+                    negative_prompt_embeds = text_encoder.get_text_features(
+                        uncond_input_ids,
+                        attention_mask=negative_attention_mask,
+                    )
+                    # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
+                    negative_prompt_embeds = negative_prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     negative_attention_mask = negative_attention_mask.new_ones((batch_size, 1))
+                else:
+                    negative_prompt_embeds = text_encoder(
+                        uncond_input_ids,
+                        attention_mask=negative_attention_mask,
+                    )
+                    negative_prompt_embeds = negative_prompt_embeds[0]
 
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
                 negative_attention_mask_list.append(negative_attention_mask)
@@ -524,6 +550,30 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
         return waveform
+
+    def score_waveforms(self, text, audio, num_waveforms_per_prompt, device):
+        if not is_librosa_available():
+            logger.info(
+                "Automatic scoring of the generated audio waveforms against the input prompt text requires the "
+                "`librosa` package to resample the generated waveforms. Returning the audios in the order they were "
+                "generated. To enable automatic scoring, install `librosa` with: `pip install librosa`."
+            )
+            return audio
+        inputs = self.tokenizer(text, return_tensors="pt", padding=True)
+        resampled_audio = librosa.resample(
+            audio.numpy(), orig_sr=self.vocoder.config.sampling_rate, target_sr=self.feature_extractor.sampling_rate
+        )
+        inputs["input_features"] = self.feature_extractor(
+            list(resampled_audio), return_tensors="pt", sampling_rate=self.feature_extractor.sampling_rate
+        ).input_features.type(self.text_encoder.dtype)
+        inputs = inputs.to(device)
+
+        # compute the audio-text similarity score using the CLAP model
+        logits_per_text = self.text_encoder(**inputs).logits_per_text
+        # sort by the highest matching generations per prompt
+        indices = torch.argsort(logits_per_text, dim=1, descending=True)[:, :num_waveforms_per_prompt]
+        audio = torch.index_select(audio, 0, indices.reshape(-1).cpu())
+        return audio
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -699,7 +749,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
-                The number of waveforms to generate per prompt.
+                The number of waveforms to generate per prompt. If `num_waveforms_per_prompt > 1`, then automatic
+                scoring is performed between the generated outputs and the text prompt. This scoring ranks the
+                generated waveforms based on their cosine similarity with the text input in the joint text-audio
+                embedding space.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -761,7 +814,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
 
         if audio_length_in_s is None:
-            audio_length_in_s = 2 * self.unet.config.sample_size * self.vae_scale_factor * vocoder_upsample_factor
+            audio_length_in_s = self.unet.config.sample_size * self.vae_scale_factor * vocoder_upsample_factor
 
         height = int(audio_length_in_s / vocoder_upsample_factor)
 
@@ -879,6 +932,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
 
         audio = audio[:, :original_waveform_length]
+
+        # 9. Automatic scoring
+        if num_waveforms_per_prompt > 1 and prompt is not None:
+            audio = self.score_waveforms(
+                text=prompt, audio=audio, num_waveforms_per_prompt=num_waveforms_per_prompt, device=device
+            )
 
         if output_type == "np":
             audio = audio.numpy()

@@ -16,13 +16,14 @@
 
 import argparse
 import re
+from typing import List, Union
 
-from typing import Union, List
 import torch
 from transformers import (
+    AutoFeatureExtractor,
     AutoTokenizer,
-    ClapTextConfig,
-    ClapTextModelWithProjection,
+    ClapConfig,
+    ClapModel,
     GPT2Config,
     GPT2Model,
     SpeechT5HifiGan,
@@ -604,6 +605,7 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
 
 CLAP_KEYS_TO_MODIFY_MAPPING = {
     "text_branch": "text_model",
+    "audio_branch": "audio_model.audio_encoder",
     "attn": "attention.self",
     "self.proj": "output.dense",
     "attention.self_mask": "attn_mask",
@@ -614,7 +616,15 @@ CLAP_KEYS_TO_MODIFY_MAPPING = {
     "bn0": "batch_norm",
 }
 
-CLAP_KEYS_TO_IGNORE = ["text_transform"]
+CLAP_KEYS_TO_IGNORE = [
+    "text_transform",
+    "audio_transform",
+    "stft",
+    "logmel_extractor",
+    "tscam_conv",
+    "head",
+    "attn_mask",
+]
 
 CLAP_EXPECTED_MISSING_KEYS = ["text_model.embeddings.token_type_ids"]
 
@@ -625,11 +635,11 @@ def convert_open_clap_checkpoint(checkpoint):
     """
     # extract state dict for CLAP text embedding model, discarding the audio component
     model_state_dict = {}
-    model_key = "clap.model.text_"
+    model_key = "clap.model."
     keys = list(checkpoint.keys())
     for key in keys:
         if key.startswith(model_key):
-            model_state_dict[key.replace(model_key, "text_")] = checkpoint.get(key)
+            model_state_dict[key.replace(model_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
 
@@ -637,9 +647,10 @@ def convert_open_clap_checkpoint(checkpoint):
     text_projection_pattern = r".*_projection.(\d+).*"
 
     for key, value in model_state_dict.items():
-        # check if key should be ignored in mapping
-        if key.split(".")[0] in CLAP_KEYS_TO_IGNORE:
-            continue
+        # check if key should be ignored in mapping - if so map it to a key name that we'll filter out at the end
+        for key_to_ignore in CLAP_KEYS_TO_IGNORE:
+            if key_to_ignore in key:
+                key = "spectrogram"
 
         # check if any key needs to be modified
         for key_to_modify, new_key in CLAP_KEYS_TO_MODIFY_MAPPING.items():
@@ -671,7 +682,7 @@ def convert_open_clap_checkpoint(checkpoint):
             new_checkpoint[key.replace("qkv", "query")] = query_layer
             new_checkpoint[key.replace("qkv", "key")] = key_layer
             new_checkpoint[key.replace("qkv", "value")] = value_layer
-        else:
+        elif key != "spectrogram":
             new_checkpoint[key] = value
 
     return new_checkpoint
@@ -968,13 +979,21 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
 
-    # Convert the joint audio-text encoding model: AudioLDM2 uses the same configuration and
-    # tokenizer as the original CLAP model
-    clap_config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
+    # Convert the joint audio-text encoding model
+    clap_config = ClapConfig.from_pretrained("laion/clap-htsat-unfused")
+    clap_config.audio_config.update(
+        {
+            "patch_embeds_hidden_size": 128,
+            "hidden_size": 1024,
+            "depths": [2, 2, 12, 2],
+        }
+    )
+    # AudioLDM2 uses the same tokenizer and feature extractor as the original CLAP model
     clap_tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
+    clap_feature_extractor = AutoFeatureExtractor.from_pretrained("laion/clap-htsat-unfused")
 
     converted_clap_model = convert_open_clap_checkpoint(checkpoint)
-    clap_model = ClapTextModelWithProjection(clap_config)
+    clap_model = ClapModel(clap_config)
 
     missing_keys, unexpected_keys = clap_model.load_state_dict(converted_clap_model, strict=False)
     # we expect not to have token_type_ids in our original state dict so let's ignore them
@@ -1026,6 +1045,7 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
         language_model=gpt2_model,
         tokenizer=clap_tokenizer,
         tokenizer_2=t5_tokenizer,
+        feature_extractor=clap_feature_extractor,
         unet=unet,
         scheduler=scheduler,
         vocoder=vocoder,
@@ -1052,14 +1072,14 @@ if __name__ == "__main__":
         type=int,
         nargs="+",
         help="The dimension of the cross-attention layers. If `None`, the cross-attention dimension will be "
-             "automatically inferred. Set to `768+1024` for the base model, or `768+1024+640` for the large model",
+        "automatically inferred. Set to `768+1024` for the base model, or `768+1024+640` for the large model",
     )
     parser.add_argument(
         "--transformer_layers_per_block",
         default=None,
         type=int,
         help="The number of transformer layers in each transformer block. If `None`, number of layers will be "
-             "automatically inferred. Set to `1` for the base model, or `2` for the large model.",
+        "automatically inferred. Set to `1` for the base model, or `2` for the large model.",
     )
     parser.add_argument(
         "--scheduler_type",
