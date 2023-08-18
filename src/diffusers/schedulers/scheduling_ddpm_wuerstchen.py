@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 
@@ -136,14 +136,14 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: dict[float, int],
+        num_inference_steps: Dict[float, int],
         device: Union[str, torch.device] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            num_inference_steps (`dict[float, int]`):
+            num_inference_steps (`Dict[float, int]`):
                 the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, optional):
