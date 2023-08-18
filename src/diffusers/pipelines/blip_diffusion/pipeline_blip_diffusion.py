@@ -43,6 +43,10 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos)
+    
+    #TODO Complete this function
+    def check_inputs(self, prompt, reference_image, source_subject_category, target_subject_category):
+        pass
 
     # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
@@ -54,21 +58,20 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return rv
 
-
-    def _init_latent(self, latent, height, width, generator, batch_size):
-        if latent is None:
-            latent = torch.randn(
-                (1, self.unet.in_channels, height // 8, width // 8),
-                generator=generator,
-                device=generator.device,
+    def prepare_latents(self, batch_size, num_channels, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels, height, width)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        latent = latent.expand(
-            batch_size,
-            self.unet.in_channels,
-            height // 8,
-            width // 8,
-        )
-        return latent.to(self.device)
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
+
+        return latents
 
     def _forward_prompt_embeddings(self, input_image, src_subject, prompt):
         # 1. extract BLIP query features and proj to text space -> (bs, 32, 768)
@@ -123,7 +126,10 @@ class BlipDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        samples,
+        prompt,
+        reference_image,
+        source_subject_category,
+        target_subject_category,
         latents=None,
         guidance_scale=7.5,
         height=512,
@@ -136,21 +142,15 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         use_ddim=False,
     ):
 
-        cond_image = samples["cond_images"]  # reference image
-        cond_subject = samples["cond_subject"]  # source subject category
-        tgt_subject = samples["tgt_subject"]  # target subject category
-        prompt = samples["prompt"]
-        cldm_cond_image = samples.get("cldm_cond_image", None)  # conditional image
-
         prompt = self._build_prompt(
             prompts=prompt,
-            tgt_subjects=tgt_subject,
+            tgt_subjects=target_subject_category,
             prompt_strength=prompt_strength,
             prompt_reps=prompt_reps,
         )
 
         text_embeddings = self._forward_prompt_embeddings(
-            cond_image, cond_subject, prompt
+            reference_image, source_subject_category, prompt
         )
         # 3. unconditional embedding
         do_classifier_free_guidance = guidance_scale > 1.0
@@ -176,9 +176,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             generator = torch.Generator(device=self.device)
             generator = generator.manual_seed(seed)
 
-        latents = self._init_latent(latents, height, width, generator, batch_size=1)
-
-
+        #TODO - Handle batch size > 1
+        latents = self.prepare_latents(batch_size=1, num_channels=self.unet.in_channels, height=height//8, width=width//8, generator=generator, latents=latents)
         # set timesteps
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
