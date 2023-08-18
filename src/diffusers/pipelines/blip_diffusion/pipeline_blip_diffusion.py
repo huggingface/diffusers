@@ -84,18 +84,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return text_embeddings
 
-    @torch.no_grad()
-    def get_image_latents(self, image, sample=True, rng_generator=None):
-        assert isinstance(image, torch.Tensor)
-
-        encoding_dist = self.vae.encode(image).latent_dist
-        if sample:
-            encoding = encoding_dist.sample(generator=rng_generator)
-        else:
-            encoding = encoding_dist.mode()
-        latents = encoding * 0.18215
-        return latents
-
     def preprocess_caption(self, caption):
         caption = re.sub(
             r"([.!\"()*#:;~])",
@@ -198,89 +186,73 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         iterator = tqdm.tqdm(self.scheduler.timesteps)
 
         for i, t in enumerate(iterator):
-            latents = self._denoise_latent_step(
-                latents=latents,
-                t=t,
-                text_embeddings=text_embeddings,
-                cond_image=cldm_cond_image,
-                height=height,
-                width=width,
-                guidance_scale=guidance_scale,
-                use_inversion=use_ddim,
+            if use_ddim:
+                noise_placeholder = []
+
+            # expand the latents if we are doing classifier free guidance
+            do_classifier_free_guidance = guidance_scale > 1.0
+
+            latent_model_input = (
+                torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             )
+            # predict the noise residual
+            noise_pred = self.unet(
+                latent_model_input,
+                timestep=t,
+                encoder_hidden_states=text_embeddings,
+                down_block_additional_residuals=None,
+                mid_block_additional_residual=None,
+            )["sample"]
 
-        image = self._latent_to_image(latents)
-        
+            if use_ddim:
+                noise_placeholder.append(noise_pred[2].unsqueeze(0))
 
+            # perform guidance
+            if do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (
+                    noise_pred_text - noise_pred_uncond
+                )
+
+            if use_ddim:
+                noise_placeholder.append(noise_pred[-1].unsqueeze(0))
+                noise_pred = torch.cat(noise_placeholder)
+
+            # TODO - Handle ddim as well
+            # # compute the previous noisy sample x_t -> x_t-1
+            # scheduler = self.ddim_scheduler if use_inversion else self.pndm_scheduler
+
+            latents = self.scheduler.step(
+                noise_pred,
+                t,
+                latents,
+            )["prev_sample"]
+
+        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        image = self.postprocess_image(image, output_type="pil")
 
         return image
 
-    def _latent_to_image(self, latents):
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
-        print(torch.mean(image))
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-
-        image = numpy_to_pil(image)
-
-        return image
-
-    def _denoise_latent_step(
-        self,
-        latents,
-        t,
-        text_embeddings,
-        guidance_scale,
-        height,
-        width,
-        cond_image=None,
-        use_inversion=False,
-    ):
-        if use_inversion:
-            noise_placeholder = []
-
-        # expand the latents if we are doing classifier free guidance
-        do_classifier_free_guidance = guidance_scale > 1.0
-
-        latent_model_input = (
-            torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        )
-        # predict the noise residual
-        noise_pred = self.unet(
-            latent_model_input,
-            timestep=t,
-            encoder_hidden_states=text_embeddings,
-            down_block_additional_residuals=None,
-            mid_block_additional_residual=None,
-        )["sample"]
-
-        if use_inversion:
-            noise_placeholder.append(noise_pred[2].unsqueeze(0))
-
-        # perform guidance
-        if do_classifier_free_guidance:
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale * (
-                noise_pred_text - noise_pred_uncond
+    # Follows diffusers.VaeImageProcessor.postprocess
+    def postprocess_image(self, sample: torch.FloatTensor, output_type: str = "pil"):
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(
+                f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
             )
 
-        if use_inversion:
-            noise_placeholder.append(noise_pred[-1].unsqueeze(0))
-            noise_pred = torch.cat(noise_placeholder)
+        # Equivalent to diffusers.VaeImageProcessor.denormalize
+        sample = (sample / 2 + 0.5).clamp(0, 1)
+        if output_type == "pt":
+            return sample
 
-        # TODO - Handle ddim as well
-        # # compute the previous noisy sample x_t -> x_t-1
-        # scheduler = self.ddim_scheduler if use_inversion else self.pndm_scheduler
+        # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
+        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "np":
+            return sample
 
-        latents = self.scheduler.step(
-            noise_pred,
-            t,
-            latents,
-        )["prev_sample"]
-
-
-        return latents
+        # Output_type must be 'pil'
+        sample = numpy_to_pil(sample)
+        return sample
 
     def _tokenize_text(self, text_input, with_query=True):
         max_len = self.text_encoder.text_model.config.max_position_embeddings
