@@ -17,6 +17,7 @@
 import argparse
 import re
 
+from typing import Union, List
 import torch
 from transformers import (
     AutoTokenizer,
@@ -233,7 +234,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
     cross_attention_dim = list(unet_params.context_dim) if "context_dim" in unet_params else block_out_channels
     if len(cross_attention_dim) > 1:
-        # require two cross-attention layers per-block, each of different dimension
+        # require two or more cross-attention layers per-block, each of different dimension
         cross_attention_dim = [cross_attention_dim for _ in range(len(block_out_channels))]
 
     config = {
@@ -244,8 +245,8 @@ def create_unet_diffusers_config(original_config, image_size: int):
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
         "layers_per_block": unet_params.num_res_blocks,
+        "transformer_layers_per_block": unet_params.transformer_depth,
         "cross_attention_dim": tuple(cross_attention_dim),
-        "extra_self_attn_layer": True,
     }
 
     return config
@@ -763,7 +764,7 @@ DEFAULT_CONFIG = {
             "unet_config": {
                 "target": "audioldm2.latent_diffusion.openaimodel.UNetModel",
                 "params": {
-                    "context_dim": [768, 1024],
+                    "context_dim": [None, 768, 1024],
                     "in_channels": 8,
                     "out_channels": 8,
                     "model_channels": 128,
@@ -771,6 +772,7 @@ DEFAULT_CONFIG = {
                     "num_res_blocks": 2,
                     "channel_mult": [1, 2, 3, 5],
                     "num_head_channels": 32,
+                    "transformer_depth": 1,
                 },
             },
             "first_stage_config": {
@@ -821,9 +823,8 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     prediction_type: str = None,
     extract_ema: bool = False,
     scheduler_type: str = "ddim",
-    num_in_channels: int = None,
-    model_channels: int = None,
-    num_head_channels: int = None,
+    cross_attention_dim: Union[List, List[List]] = None,
+    transformer_layers_per_block: int = None,
     device: str = None,
     from_safetensors: bool = False,
 ) -> AudioLDM2Pipeline:
@@ -847,6 +848,12 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
         scheduler_type (`str`, *optional*, defaults to 'ddim'):
             Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
             "ddim"]`.
+        cross_attention_dim (`list`, *optional*, defaults to `None`):
+            The dimension of the cross-attention layers. If `None`, the cross-attention dimension will be
+            automatically inferred. Set to `[768, 1024]` for the base model, or `[768, 1024, None]` for the large model.
+        transformer_layers_per_block (`int`, *optional*, defaults to `None`):
+            The number of transformer layers in each transformer block. If `None`, number of layers will be "
+             "automatically inferred. Set to `1` for the base model, or `2` for the large model.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
             checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to
             `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for
@@ -892,14 +899,11 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     if image_size is not None:
         original_config["model"]["params"]["unet_config"]["params"]["image_size"] = image_size
 
-    if num_in_channels is not None:
-        original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    if cross_attention_dim is not None:
+        original_config["model"]["params"]["unet_config"]["params"]["context_dim"] = cross_attention_dim
 
-    if model_channels is not None:
-        original_config["model"]["params"]["unet_config"]["params"]["model_channels"] = model_channels
-
-    if num_head_channels is not None:
-        original_config["model"]["params"]["unet_config"]["params"]["num_head_channels"] = num_head_channels
+    if transformer_layers_per_block is not None:
+        original_config["model"]["params"]["unet_config"]["params"]["transformer_depth"] = transformer_layers_per_block
 
     if (
         "parameterization" in original_config["model"]["params"]
@@ -1043,24 +1047,19 @@ if __name__ == "__main__":
         help="The YAML config file corresponding to the original architecture.",
     )
     parser.add_argument(
-        "--num_in_channels",
+        "--cross_attention_dim",
         default=None,
         type=int,
-        help="The number of input channels. If `None` number of input channels will be automatically inferred.",
+        nargs="+",
+        help="The dimension of the cross-attention layers. If `None`, the cross-attention dimension will be "
+             "automatically inferred. Set to `768+1024` for the base model, or `768+1024+640` for the large model",
     )
     parser.add_argument(
-        "--model_channels",
+        "--transformer_layers_per_block",
         default=None,
         type=int,
-        help="The number of UNet model channels. If `None`, it will be automatically inferred from the config. Override"
-        " to 128 for the small checkpoints, 192 for the medium checkpoints and 256 for the large.",
-    )
-    parser.add_argument(
-        "--num_head_channels",
-        default=None,
-        type=int,
-        help="The number of UNet head channels. If `None`, it will be automatically inferred from the config. Override"
-        " to 32 for the small and medium checkpoints, and 64 for the large.",
+        help="The number of transformer layers in each transformer block. If `None`, number of layers will be "
+             "automatically inferred. Set to `1` for the base model, or `2` for the large model.",
     )
     parser.add_argument(
         "--scheduler_type",
@@ -1110,9 +1109,8 @@ if __name__ == "__main__":
         prediction_type=args.prediction_type,
         extract_ema=args.extract_ema,
         scheduler_type=args.scheduler_type,
-        num_in_channels=args.num_in_channels,
-        model_channels=args.model_channels,
-        num_head_channels=args.num_head_channels,
+        cross_attention_dim=args.cross_attention_dim,
+        transformer_layers_per_block=args.transformer_layers_per_block,
         from_safetensors=args.from_safetensors,
         device=args.device,
     )

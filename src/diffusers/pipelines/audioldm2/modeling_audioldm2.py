@@ -254,7 +254,6 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
-        extra_self_attn_layer: bool = False,
     ):
         super().__init__()
 
@@ -417,7 +416,6 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.down_blocks.append(down_block)
 
@@ -436,7 +434,6 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 resnet_groups=norm_num_groups,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
         else:
             raise ValueError(
@@ -487,7 +484,6 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                extra_self_attn_layer=extra_self_attn_layer,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -876,7 +872,6 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    extra_self_attn_layer=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -912,7 +907,6 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            extra_self_attn_layer=extra_self_attn_layer,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -935,7 +929,6 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    extra_self_attn_layer=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -971,7 +964,6 @@ def get_up_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            extra_self_attn_layer=extra_self_attn_layer,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -998,7 +990,6 @@ class CrossAttnDownBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
-        extra_self_attn_layer=False,
     ):
         super().__init__()
         resnets = []
@@ -1009,11 +1000,12 @@ class CrossAttnDownBlock2D(nn.Module):
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,)
-        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 2:
+        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 4:
             raise ValueError(
-                "Only up to 2 cross-attention layers are supported. Ensure that the length of cross-attention "
-                f"dims is less than or equal to 2. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
+                "Only up to 4 cross-attention layers are supported. Ensure that the length of cross-attention "
+                f"dims is less than or equal to 4. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
             )
+        self.cross_attention_dim = cross_attention_dim
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1031,19 +1023,6 @@ class CrossAttnDownBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            if extra_self_attn_layer:
-                attentions.append(
-                    Transformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
-                        in_channels=out_channels,
-                        num_layers=transformer_layers_per_block,
-                        norm_num_groups=resnet_groups,
-                        use_linear_projection=use_linear_projection,
-                        upcast_attention=upcast_attention,
-                        double_self_attention=True,
-                    )
-                )
             for j in range(len(cross_attention_dim)):
                 attentions.append(
                     Transformer2DModel(
@@ -1056,6 +1035,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1115,48 +1095,46 @@ class CrossAttnDownBlock2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
                     hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.attentions[j], return_dict=False),
+                        create_custom_forward(self.attentions[i * num_attention_per_layer + idx], return_dict=False),
                         hidden_states,
-                        encoder_hidden_states,
+                        forward_encoder_hidden_states,
                         None,  # timestep
                         None,  # class_labels
                         cross_attention_kwargs,
                         attention_mask,
-                        encoder_attention_mask,
+                        forward_encoder_attention_mask,
                         **ckpt_kwargs,
                     )[0]
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.attentions[(i + 1) * num_attention_per_layer - 1], return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states_1,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask_1,
-                    **ckpt_kwargs,
-                )[0]
             else:
                 hidden_states = self.resnets[i](hidden_states, temb)
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
-                    hidden_states = self.attentions[j](
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
+                    hidden_states = self.attentions[i * num_attention_per_layer + idx](
                         hidden_states,
                         attention_mask=attention_mask,
-                        encoder_hidden_states=encoder_hidden_states,
-                        encoder_attention_mask=encoder_attention_mask,
+                        encoder_hidden_states=forward_encoder_hidden_states,
+                        encoder_attention_mask=forward_encoder_attention_mask,
                         return_dict=False,
                     )[0]
-
-                # possibly use the second set of encoder hidden-states for the final Transformer block
-                hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_1,
-                    encoder_attention_mask=encoder_attention_mask_1,
-                    return_dict=False,
-                )[0]
 
             output_states = output_states + (hidden_states,)
 
@@ -1187,7 +1165,6 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         cross_attention_dim=1280,
         use_linear_projection=False,
         upcast_attention=False,
-        extra_self_attn_layer=False,
     ):
         super().__init__()
 
@@ -1197,11 +1174,12 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,)
-        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 2:
+        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 4:
             raise ValueError(
-                "Only up to 2 cross-attention layers are supported. Ensure that the length of cross-attention "
-                f"dims is less than or equal to 2. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
+                "Only up to 4 cross-attention layers are supported. Ensure that the length of cross-attention "
+                f"dims is less than or equal to 4. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
             )
+        self.cross_attention_dim = cross_attention_dim
 
         # there is always at least one resnet
         resnets = [
@@ -1220,31 +1198,19 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         ]
         attentions = []
 
-        for _ in range(num_layers):
-            if extra_self_attn_layer:
+        for i in range(num_layers):
+            for j in range(len(cross_attention_dim)):
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,
                         num_layers=transformer_layers_per_block,
+                        cross_attention_dim=cross_attention_dim[j],
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
-                        double_self_attention=True,
-                    )
-                )
-            for i in range(len(cross_attention_dim)):
-                attentions.append(
-                    Transformer2DModel(
-                        num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
-                        num_layers=transformer_layers_per_block,
-                        cross_attention_dim=cross_attention_dim[i],
-                        norm_num_groups=resnet_groups,
-                        use_linear_projection=use_linear_projection,
-                        upcast_attention=upcast_attention,
+                        double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
             resnets.append(
@@ -1301,30 +1267,27 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
                     hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.attentions[j], return_dict=False),
+                        create_custom_forward(self.attentions[i * num_attention_per_layer + idx], return_dict=False),
                         hidden_states,
-                        encoder_hidden_states,
+                        forward_encoder_hidden_states,
                         None,  # timestep
                         None,  # class_labels
                         cross_attention_kwargs,
                         attention_mask,
-                        encoder_attention_mask,
+                        forward_encoder_attention_mask,
                         **ckpt_kwargs,
                     )[0]
-                # possibly use the second set of encoder hidden-states for the final Transformer block
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.attentions[(i + 1) * num_attention_per_layer - 1], return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states_1,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask_1,
-                    **ckpt_kwargs,
-                )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(self.resnets[i + 1]),
                     hidden_states,
@@ -1332,23 +1295,23 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     **ckpt_kwargs,
                 )
             else:
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
-                    hidden_states = self.attentions[j](
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
+                    hidden_states = self.attentions[i * num_attention_per_layer + idx](
                         hidden_states,
                         attention_mask=attention_mask,
-                        encoder_hidden_states=encoder_hidden_states,
-                        encoder_attention_mask=encoder_attention_mask,
+                        encoder_hidden_states=forward_encoder_hidden_states,
+                        encoder_attention_mask=forward_encoder_attention_mask,
                         return_dict=False,
                     )[0]
-
-                # possibly use the second set of encoder hidden-states for the final Transformer block
-                hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_1,
-                    encoder_attention_mask=encoder_attention_mask_1,
-                    return_dict=False,
-                )[0]
 
                 hidden_states = self.resnets[i + 1](hidden_states, temb)
 
@@ -1377,7 +1340,6 @@ class CrossAttnUpBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
-        extra_self_attn_layer=False,
     ):
         super().__init__()
         resnets = []
@@ -1388,11 +1350,12 @@ class CrossAttnUpBlock2D(nn.Module):
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,)
-        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 2:
+        if isinstance(cross_attention_dim, (list, tuple)) and len(cross_attention_dim) > 4:
             raise ValueError(
-                "Only up to 2 cross-attention layers are supported. Ensure that the length of cross-attention "
-                f"dims is less than or equal to 2. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
+                "Only up to 4 cross-attention layers are supported. Ensure that the length of cross-attention "
+                f"dims is less than or equal to 4. Got cross-attention dims {cross_attention_dim} of length {len(cross_attention_dim)}"
             )
+        self.cross_attention_dim = cross_attention_dim
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1412,19 +1375,6 @@ class CrossAttnUpBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            if extra_self_attn_layer:
-                attentions.append(
-                    Transformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
-                        in_channels=out_channels,
-                        num_layers=transformer_layers_per_block,
-                        norm_num_groups=resnet_groups,
-                        use_linear_projection=use_linear_projection,
-                        upcast_attention=upcast_attention,
-                        double_self_attention=True,
-                    )
-                )
             for j in range(len(cross_attention_dim)):
                 attentions.append(
                     Transformer2DModel(
@@ -1437,6 +1387,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1496,48 +1447,46 @@ class CrossAttnUpBlock2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
                     hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.attentions[j], return_dict=False),
+                        create_custom_forward(self.attentions[i * num_attention_per_layer + idx], return_dict=False),
                         hidden_states,
-                        encoder_hidden_states,
+                        forward_encoder_hidden_states,
                         None,  # timestep
                         None,  # class_labels
                         cross_attention_kwargs,
                         attention_mask,
-                        encoder_attention_mask,
+                        forward_encoder_attention_mask,
                         **ckpt_kwargs,
                     )[0]
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.attentions[(i + 1) * num_attention_per_layer - 1], return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states_1,
-                    None,  # timestep
-                    None,  # class_labels
-                    cross_attention_kwargs,
-                    attention_mask,
-                    encoder_attention_mask_1,
-                    **ckpt_kwargs,
-                )[0]
             else:
                 hidden_states = self.resnets[i](hidden_states, temb)
-                for j in range(i * num_attention_per_layer, (i + 1) * num_attention_per_layer - 1):
-                    hidden_states = self.attentions[j](
+                for idx, cross_attention_dim in enumerate(self.cross_attention_dim):
+                    if cross_attention_dim is not None and idx <= 1:
+                        forward_encoder_hidden_states = encoder_hidden_states
+                        forward_encoder_attention_mask = encoder_attention_mask
+                    elif cross_attention_dim is not None and idx > 1:
+                        forward_encoder_hidden_states = encoder_hidden_states_1
+                        forward_encoder_attention_mask = encoder_attention_mask_1
+                    else:
+                        forward_encoder_hidden_states = None
+                        forward_encoder_attention_mask = None
+                    hidden_states = self.attentions[i * num_attention_per_layer + idx](
                         hidden_states,
                         attention_mask=attention_mask,
-                        encoder_hidden_states=encoder_hidden_states,
-                        encoder_attention_mask=encoder_attention_mask,
+                        encoder_hidden_states=forward_encoder_hidden_states,
+                        encoder_attention_mask=forward_encoder_attention_mask,
                         return_dict=False,
                     )[0]
-
-                # possibly use the second set of encoder hidden-states for the final Transformer block
-                hidden_states = self.attentions[(i + 1) * num_attention_per_layer - 1](
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    encoder_hidden_states=encoder_hidden_states_1,
-                    encoder_attention_mask=encoder_attention_mask_1,
-                    return_dict=False,
-                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
