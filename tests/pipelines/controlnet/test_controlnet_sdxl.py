@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import unittest
+from parameterized import parameterized_class
+import itertools
 
 import numpy as np
 import torch
@@ -46,6 +48,10 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
+@parameterized_class(
+    ("guess_mode", "guidance_scale"),
+    list(itertools.product([False, True], [1.0, 6.0]))
+)
 class ControlNetPipelineSDXLFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
@@ -54,6 +60,12 @@ class ControlNetPipelineSDXLFastTests(
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+
+    @classmethod
+    def setUpClass(cls):
+        if cls == ControlNetPipelineSDXLFastTests:
+            raise unittest.SkipTest("`parameterized_class` bug, see https://github.com/wolever/parameterized/issues/119")
+        super().setUpClass()
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -157,7 +169,8 @@ class ControlNetPipelineSDXLFastTests(
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
+            "guidance_scale": self.guidance_scale,
+            "guess_mode": self.guess_mode,
             "output_type": "numpy",
             "image": image,
         }
@@ -233,6 +246,9 @@ class ControlNetPipelineSDXLFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
+        if self.guidance_scale <= 1:  # negative prompt has no effect without CFG
+            return
+
         # manually set a negative_prompt
         inputs = self.get_dummy_inputs(torch_device)
         inputs["negative_prompt"] = "negative prompt"
@@ -297,20 +313,3 @@ class ControlNetPipelineSDXLFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
-
-
-class ControlNetPipelineSDXLGuessModeFastTests(ControlNetPipelineSDXLFastTests):
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed=seed)
-        inputs["guess_mode"] = True
-        return inputs
-
-
-class ControlNetPipelineSDXLNoCFGFastTests(ControlNetPipelineSDXLFastTests):
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed=seed)
-        inputs["guidance_scale"] = 1.0
-        return inputs
-
-    def test_stable_diffusion_xl_multi_prompts(self):
-        pass
