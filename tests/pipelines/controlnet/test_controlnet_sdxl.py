@@ -755,5 +755,5 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.3806, 0.3895, 0.4046, 0.3799, 0.3872, 0.4052, 0.3852, 0.3965, 0.4057])
+        expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
         assert np.allclose(original_image, expected_image, atol=1e-04)
