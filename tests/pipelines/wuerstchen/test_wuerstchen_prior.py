@@ -142,10 +142,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = pipe(**self.get_dummy_inputs(device))
         image = output.image_embeds
 
-        image_from_tuple = pipe(
-            **self.get_dummy_inputs(device),
-            return_dict=False,
-        )[0]
+        image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
 
         image_slice = image[0, 0, 0, -10:]
         image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]

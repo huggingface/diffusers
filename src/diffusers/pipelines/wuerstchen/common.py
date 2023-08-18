@@ -9,7 +9,9 @@ class LayerNorm2d(nn.LayerNorm):
         super().__init__(*args, **kwargs)
 
     def forward(self, x):
-        return super().forward(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        x = x.permute(0, 2, 3, 1)
+        x = super().forward(x)
+        return x.permute(0, 3, 1, 2)
 
 
 class TimestepBlock(nn.Module):

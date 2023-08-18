@@ -96,8 +96,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the text_encoder
-        have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only when
-        their specific submodule has its `forward` method called.
+        and the prior have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to
+        GPU only when their specific submodule has its `forward` method called.
         """
         if is_accelerate_available():
             from accelerate import cpu_offload
@@ -106,7 +106,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.text_encoder]:
+        for cpu_offloaded_model in [self.text_encoder, self.prior]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
