@@ -47,7 +47,24 @@ class WuerstchenPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        TODO
+        tokenizer (:class:`~transformers.CLIPTokenizer`):
+            The decoder tokenizer to be used for text inputs.
+        text_encoder (:class:`~transformers.CLIPTextModel`):
+            The decoder text encoder to be used for text inputs.
+        generator (:class:`~diffusions.models.DiffNeXt`):
+            The generator model to be used for decoder image generation pipeline.
+        scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
+            The scheduler to be used for decoder image generation pipeline.
+        vqgan (:class:`~diffusions.models.VQModelPaella`):
+            The VQGAN model to be used for decoder image generation pipeline.
+        prior_tokenizer (:class:`~transformers.CLIPTokenizer`):
+            The prior tokenizer to be used for text inputs.
+        prior_text_encoder (:class:`~transformers.CLIPTextModel`):
+            The prior text encoder to be used for text inputs.
+        prior_prior (:class:`~diffusions.pipelines.wuerstchen.wuerstchen_prior.WuerstchenPrior`):
+            The prior model to be used for prior pipeline.
+        prior_scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
+            The scheduler to be used for prior pipeline.
     """
 
     _load_connected_pipes = True
