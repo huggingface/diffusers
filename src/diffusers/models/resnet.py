@@ -690,7 +690,7 @@ class MixingResidualBlock(nn.Module):
             nn.GELU(),
             nn.Linear(c_hidden, inp_channels),
         )
-        
+
         self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
 
     def forward(self, x):
