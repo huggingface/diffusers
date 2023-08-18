@@ -24,7 +24,7 @@ from transformers import (
 )
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
-from diffusers.pipelines.wuerstchen import Prior
+from diffusers.pipelines.wuerstchen import WuerstchenPrior
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
 
@@ -85,7 +85,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config)
+        return CLIPTextModel(config).eval()
 
     @property
     def dummy_prior(self):
@@ -98,11 +98,10 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "c_cond": 32,
             "c_r": 8,
             "nhead": 2,
-            "latent_size": (2, 2),
         }
 
-        model = Prior(**model_kwargs)
-        return model
+        model = WuerstchenPrior(**model_kwargs)
+        return model.eval()
 
     def get_dummy_components(self):
         prior = self.dummy_prior
@@ -158,9 +157,19 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 2, 24, 24)
 
         expected_slice = np.array(
-            [-0.0532, 1.7120, 0.3656, -1.0852, -0.8946, -1.1756, 0.4348, 0.2482, 0.5146, -0.1156]
+            [
+                -7172.9814,
+                -3438.9731,
+                -1093.4564,
+                388.91516,
+                -7471.7383,
+                -7998.2944,
+                -5328.388,
+                218.0543,
+                -2731.6716,
+                -8056.8545,
+            ],
         )
-
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
