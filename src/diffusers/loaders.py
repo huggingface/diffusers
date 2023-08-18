@@ -497,7 +497,8 @@ class UNet2DConditionLoadersMixin:
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
+        **kwargs,
     ):
         r"""
         Save an attention processor to a directory so that it can be reloaded using the
@@ -514,7 +515,8 @@ class UNet2DConditionLoadersMixin:
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
@@ -1037,6 +1039,7 @@ class LoraLoaderMixin:
                     if not allow_pickle:
                         raise e
                     # try loading non-safetensors weights
+                    model_file = None
                     pass
             if model_file is None:
                 model_file = _get_model_file(
@@ -1413,7 +1416,7 @@ class LoraLoaderMixin:
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -1434,6 +1437,8 @@ class LoraLoaderMixin:
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         # Create a flat dictionary.
         state_dict = {}
@@ -1785,6 +1790,9 @@ class FromSingleFileMixin:
             tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
                 An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
                 of `CLIPTokenizer` by itself if needed.
+            original_config_file (`str`):
+                Path to `.yaml` config file corresponding to the original architecture. If `None`, will be
+                automatically inferred by looking for a key that only exists in SD2.0 models.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1815,6 +1823,7 @@ class FromSingleFileMixin:
         # import here to avoid circular dependency
         from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
+        original_config_file = kwargs.pop("original_config_file", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -1931,6 +1940,7 @@ class FromSingleFileMixin:
             text_encoder=text_encoder,
             vae=vae,
             tokenizer=tokenizer,
+            original_config_file=original_config_file,
         )
 
         if torch_dtype is not None:
