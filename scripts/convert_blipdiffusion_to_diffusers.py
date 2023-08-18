@@ -1,6 +1,6 @@
 from diffusers import (
     AutoencoderKL,
-    DDPMScheduler,
+    PNDMScheduler,
     UNet2DConditionModel,
 )
 from transformers import CLIPTokenizer
@@ -8,27 +8,19 @@ from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2VisionMod
 from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import CtxCLIPTextModel
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2Config, Blip2VisionConfig, Blip2QFormerConfig
 from src.diffusers.pipelines import BlipDiffusionPipeline
-from clip_vit_sample import create_clip_vit_L
 from LAVIS.lavis.models import load_model_and_preprocess
-import os
 import torch
-os.environ['TRANSFORMERS_CACHE'] = 'E:/diffusers/cache'
-
 
 model, vis_preprocess, txt_preprocess = load_model_and_preprocess("blip_diffusion", "base", device="cpu", is_eval=True)
-# exit()
-# print(model)
-
 text_input = "Hello this is a sample text"
 image_input = torch.ones((1, 3, 224, 224))
 
 blip_embeddings = model.blip.extract_features(
     {"image": image_input, "text_input": text_input}, mode="multimodal"
 ).multimodal_embeds
-# print(blip_embeddings.shape)
 
 tokenizer = CLIPTokenizer.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", subfolder="tokenizer", cache_dir='./cache'
+    "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
 )
 
 vision_config = {
@@ -48,9 +40,6 @@ qformer_config = {
     "vocab_size" : 30523,
 }
 
-# blip2_vision_config = Blip2VisionConfig(**vision_config)
-# qformer_config = Blip2QFormerConfig(cross_attention_frequency=1, encoder_hidden_size=1024, vocab_size=30523)
-
 blip2config = Blip2Config(vision_config=vision_config, qformer_config=qformer_config, num_query_tokens=16)
 qformer = Blip2QFormerModel(blip2config)
 
@@ -60,6 +49,16 @@ rename_keys.append(("embeddings.position_embeddings.weight", "blip.Qformer.bert.
 rename_keys.append(("embeddings.LayerNorm.weight", "blip.Qformer.bert.embeddings.LayerNorm.weight"))
 rename_keys.append(("embeddings.LayerNorm.bias", "blip.Qformer.bert.embeddings.LayerNorm.bias"))
 rename_keys.append(("query_tokens", "blip.query_tokens"))
+
+
+rename_keys.append(("proj_layer.dense1.weight", "proj_layer.dense1.weight"))
+rename_keys.append(("proj_layer.dense1.bias", "proj_layer.dense1.bias"))
+rename_keys.append(("proj_layer.dense2.weight", "proj_layer.dense2.weight"))
+rename_keys.append(("proj_layer.dense2.bias", "proj_layer.dense2.bias"))
+rename_keys.append(("proj_layer.LayerNorm.weight", "proj_layer.LayerNorm.weight"))
+rename_keys.append(("proj_layer.LayerNorm.bias", "proj_layer.LayerNorm.bias"))
+
+
 
 
 for i in range(blip2config.qformer_config.num_hidden_layers):
@@ -146,28 +145,35 @@ for name, param in qformer.named_parameters():
         pass
         print(f"{name} not found in qformer")
 
-# qformer.save_pretrained("./blip2diffusion")
 qformer.eval()
+text_encoder = CtxCLIPTextModel.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="text_encoder"
+)
+vae = AutoencoderKL.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="vae"
+)
 
-text = tokenizer(text_input, return_tensors="pt", padding=True)
-output = qformer(text_input, image_input).last_hidden_state[:, :16,:]
-print(torch.max(output-blip_embeddings))
+unet = UNet2DConditionModel.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="unet"
 
-qformer.save_pretrained("./blip2diffusion/qformer")
+)
 
-# text_encoder = CtxCLIPTextModel.from_pretrained(
-#     "runwayml/stable-diffusion-v1-5", subfolder="text_encoder", cache_dir='./cache'
-# )
-# vae = AutoencoderKL.from_pretrained(
-#     "runwayml/stable-diffusion-v1-5", subfolder="vae", cache_dir='./cache'
-# )
+vae.eval()
+text_encoder.eval()
 
-# unet = UNet2DConditionModel.from_pretrained(
-#     "runwayml/stable-diffusion-v1-5", subfolder="unet", cache_dir='./cache'
-# )
 
-# noise_scheduler = DDPMScheduler.from_config(
-#     "runwayml/stable-diffusion-v1-5", subfolder="scheduler", cache_dir='./cache'
-# )
+scheduler = PNDMScheduler(
+    beta_start=0.00085,
+    beta_end=0.012,
+    beta_schedule="scaled_linear",
+    set_alpha_to_one=False,
+    skip_prk_steps=True,
+)
+
+#TODO: Test this once
+tokenizer = CLIPTokenizer.from_pretrained(
+    "./runwayml/stable-diffusion-v1-5/", subfolder="tokenizer", cache_dir='./cache'
+)
+blipDiffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
 
 
