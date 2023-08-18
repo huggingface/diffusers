@@ -37,14 +37,14 @@ import re
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, ctx_begin_pos: int = 2):
         super().__init__()
 
-        self._CTX_BEGIN_POS = 2
 
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
-    
+        self.register_to_config(ctx_begin_pos=ctx_begin_pos)
 
+    # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
         rv = []
         for prompt, tgt_subject in zip(prompts, tgt_subjects):
@@ -54,27 +54,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return rv
 
-    def _predict_noise(
-        self,
-        t,
-        latent_model_input,
-        text_embeddings,
-        width=512,
-        height=512,
-        cond_image=None,
-    ):
- 
-        down_block_res_samples, mid_block_res_sample = None, None
-
-        noise_pred = self.unet(
-            latent_model_input,
-            timestep=t,
-            encoder_hidden_states=text_embeddings,
-            down_block_additional_residuals=down_block_res_samples,
-            mid_block_additional_residual=mid_block_res_sample,
-        )["sample"]
-
-        return noise_pred
 
     def _init_latent(self, latent, height, width, generator, batch_size):
         if latent is None:
@@ -100,7 +79,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         text_embeddings = self.text_encoder(
             input_ids=tokenized_prompt.input_ids,
             ctx_embeddings=query_embeds,
-            ctx_begin_pos=[self._CTX_BEGIN_POS],
+            ctx_begin_pos=[self.config.ctx_begin_pos],
         )[0]
 
         return text_embeddings
@@ -267,16 +246,14 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         latent_model_input = (
             torch.cat([latents] * 2) if do_classifier_free_guidance else latents
         )
-
         # predict the noise residual
-        noise_pred = self._predict_noise(
-            t=t,
-            latent_model_input=latent_model_input,
-            text_embeddings=text_embeddings,
-            width=width,
-            height=height,
-            cond_image=cond_image,
-        )
+        noise_pred = self.unet(
+            latent_model_input,
+            timestep=t,
+            encoder_hidden_states=text_embeddings,
+            down_block_additional_residuals=None,
+            mid_block_additional_residual=None,
+        )["sample"]
 
         if use_inversion:
             noise_placeholder.append(noise_pred[2].unsqueeze(0))
