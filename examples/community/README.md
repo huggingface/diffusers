@@ -1566,6 +1566,7 @@ images
 ```
 
 In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result. 
+![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
 
 ## Example Images Mixing (with CoCa)
 ```python
