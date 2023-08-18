@@ -193,7 +193,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    def generate(
+    def generate_language_model(
         self,
         inputs_embeds: torch.Tensor = None,
         max_new_tokens: int = 8,
@@ -383,7 +383,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             projected_prompt_embeds = projection_output.hidden_states
             projected_attention_mask = projection_output.attention_mask
 
-            generated_prompt_embeds = self.generate(
+            generated_prompt_embeds = self.generate_language_model(
                 projected_prompt_embeds, attention_mask=projected_attention_mask, max_new_tokens=max_new_tokens
             )
 
@@ -472,7 +472,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_projected_prompt_embeds = projection_output.hidden_states
             negative_projected_attention_mask = projection_output.attention_mask
 
-            negative_generated_prompt_embeds = self.generate(
+            negative_generated_prompt_embeds = self.generate_language_model(
                 negative_projected_prompt_embeds,
                 attention_mask=negative_projected_attention_mask,
                 max_new_tokens=max_new_tokens,

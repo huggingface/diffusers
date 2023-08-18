@@ -247,7 +247,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         t5_prompt_embeds = t5_prompt_embeds[0]
 
         projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
-        generated_prompt_embeds = audioldm_pipe.generate(projection_embeds, max_new_tokens=8)
+        generated_prompt_embeds = audioldm_pipe.generate_language_model(projection_embeds, max_new_tokens=8)
 
         inputs["prompt_embeds"] = t5_prompt_embeds
         inputs["generated_prompt_embeds"] = generated_prompt_embeds
@@ -311,7 +311,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             t5_prompt_embeds = t5_prompt_embeds[0]
 
             projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
-            generated_prompt_embeds = audioldm_pipe.generate(projection_embeds, max_new_tokens=8)
+            generated_prompt_embeds = audioldm_pipe.generate_language_model(projection_embeds, max_new_tokens=8)
 
             embeds.append(t5_prompt_embeds)
             generated_embeds.append(generated_prompt_embeds)
