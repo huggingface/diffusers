@@ -1257,6 +1257,7 @@ class LoraLoaderMixin:
                     # existing module. We want to be able to load them via their actual state dict.
                     # They're in `PatchedLoraProjection.lora_linear_layer` now.
                     for name, _ in text_encoder_attn_modules(text_encoder):
+                        print("Am I here in the old porting?")
                         text_encoder_lora_state_dict[
                             f"{name}.q_proj.lora_linear_layer.up.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
@@ -1286,12 +1287,12 @@ class LoraLoaderMixin:
                 rank = text_encoder_lora_state_dict[
                     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
                 ].shape[1]
-                print(f"Final rank: {rank}")
-                mismatching_rank = text_encoder_lora_state_dict[
-                    "text_model.encoder.layers.11.self_attn.out_proj.lora_linear_layer.up.weight"
-                ].shape[1]
-                print(f"Mismatched rank: {mismatching_rank}")
-                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                # print(f"Final rank: {rank}")
+                # mismatching_rank = text_encoder_lora_state_dict[
+                #     "text_model.encoder.layers.11.self_attn.out_proj.lora_linear_layer.up.weight"
+                # ].shape[1]
+                # print(f"Mismatched rank: {mismatching_rank}")
+                # patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
 
                 if network_alphas is not None:
                     alpha_keys = [
