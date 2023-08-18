@@ -27,17 +27,12 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
     FabricPipeline,
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -48,7 +43,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()

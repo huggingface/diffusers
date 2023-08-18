@@ -364,6 +364,30 @@ class FabricPipeline(DiffusionPipeline):
         # we always cast to float32 as this does not cause significant overhead and is compatible             with bfloat16
         return image
 
+    def check_inputs(
+        self,
+        prompt,
+        negative_prompt=None,
+        liked = None,
+        disliked = None,
+    ):
+        if prompt is None:
+            raise ValueError(
+                "Provide `prompt`. Cannot leave both `prompt` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and (not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+        if liked is not None and not isinstance(liked, list):
+            raise ValueError(f"`liked` has to be of type `list` but is {type(liked)}")
+
+        if disliked is not None and not isinstance(disliked, list):
+            raise ValueError(f"`disliked` has to be of type `list` but is {type(disliked)}")
+
+
     @torch.no_grad()
 
     def __call__(
@@ -436,6 +460,13 @@ class FabricPipeline(DiffusionPipeline):
 
         """
 
+        self.check_inputs(
+            prompt,
+            negative_prompt,
+            liked,
+            disliked
+        )
+
         device = self._execution_device
         dtype = self.unet.dtype
 
@@ -444,12 +475,15 @@ class FabricPipeline(DiffusionPipeline):
         positive_latents = self.preprocess_feedback_images(liked,self.vae,device, dtype) if liked and len(liked)>0 else torch.tensor([], device=device, dtype=dtype)
         negative_latents =  self.preprocess_feedback_images(disliked,self.vae,device, dtype) if disliked and len(disliked)>0 else torch.tensor([], device=device, dtype=dtype)
 
-        if isinstance(prompt, str):
-            prompt = [prompt] * num_images
-        elif isinstance(prompt, list):
-            prompt = prompt
+        if isinstance(prompt, str) and prompt is not None:
+            batch_size = 1
+        elif isinstance(prompt, list) and prompt is not None:
+            batch_size = len(prompt)
         else:
-            assert len(prompt) == num_images
+            batch_size = None
+
+        prompt = [prompt] * num_images
+
         if isinstance(negative_prompt, str):
             negative_prompt = [negative_prompt] * num_images
         elif isinstance(negative_prompt, list):
@@ -458,7 +492,7 @@ class FabricPipeline(DiffusionPipeline):
             assert len(negative_prompt) == num_images
 
 
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([num_images, num_images, 1])
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(prompt + negative_prompt + [""], device).split([num_images, num_images, batch_size*num_images])
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
