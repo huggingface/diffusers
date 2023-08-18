@@ -24,12 +24,13 @@ from transformers import (
     AutoTokenizer,
     ClapConfig,
     ClapModel,
+    GenerationConfig,
     GPT2Config,
     GPT2Model,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
     T5Config,
-    T5EncoderModel, GenerationConfig,
+    T5EncoderModel,
 )
 
 from diffusers import (

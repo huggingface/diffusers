@@ -25,6 +25,7 @@ from transformers import (
     ClapFeatureExtractor,
     ClapModel,
     ClapTextConfig,
+    GenerationConfig,
     GPT2Config,
     GPT2Model,
     RobertaTokenizer,
@@ -32,7 +33,7 @@ from transformers import (
     SpeechT5HifiGanConfig,
     T5Config,
     T5EncoderModel,
-    T5Tokenizer, GenerationConfig,
+    T5Tokenizer,
 )
 
 from diffusers import (
