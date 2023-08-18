@@ -107,7 +107,7 @@ The original codebase, as well as experimental ideas, can be found at [dome272/W
 
 ## WuerstchenPriorPipelineOutput
 
-[[autodoc]] WuerstchenPriorPipelineOutput
+[[autodoc]] pipelines.wuerstchen.pipeline_wuerstchen_prior.WuerstchenPriorPipelineOutput
 
 ## WuerstchenDecoderPipeline
 
