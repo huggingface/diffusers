@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -209,7 +209,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: dict[float, int] = {2 / 3: 20, 0.0: 10},
+        num_inference_steps: Dict[float, int] = {2 / 3: 20, 0.0: 10},
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
