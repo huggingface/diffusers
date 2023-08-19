@@ -1588,16 +1588,29 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
             )
 
-            pipe = pipeline_class(
-                vae=vae,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                text_encoder_2=text_encoder_2,
-                tokenizer_2=tokenizer_2,
-                unet=unet,
-                scheduler=scheduler,
-                force_zeros_for_empty_prompt=True,
-            )
+            if controlnet:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    controlnet=controlnet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
+            else:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
         else:
             tokenizer = None
             text_encoder = None
