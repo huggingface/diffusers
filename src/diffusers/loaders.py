@@ -1283,12 +1283,7 @@ class LoraLoaderMixin:
                         text_encoder_lora_state_dict[
                             f"{name}.out_proj.lora_linear_layer.down.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
-                        # rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
-                        # ranks.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
-                # rank = text_encoder_lora_state_dict[
-                #     "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
-                # ].shape[1]
                 for name, _ in text_encoder_attn_modules(text_encoder):
                     rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
                     rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
@@ -1357,7 +1352,7 @@ class LoraLoaderMixin:
         text_encoder,
         lora_scale=1,
         network_alphas=None,
-        rank={},
+        rank: Union[Dict[str, int], int] = 4,
         dtype=None,
         patch_mlp=False,
     ):
@@ -1377,7 +1372,11 @@ class LoraLoaderMixin:
             key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
             value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
             out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
-            current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
+
+            if isinstance(rank, dict):
+                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
+            else:
+                current_rank = rank
 
             attn_module.q_proj = PatchedLoraProjection(
                 attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
