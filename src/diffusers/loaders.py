@@ -1790,6 +1790,9 @@ class FromSingleFileMixin:
             tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
                 An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
                 of `CLIPTokenizer` by itself if needed.
+            original_config_file (`str`):
+                Path to `.yaml` config file corresponding to the original architecture. If `None`, will be
+                automatically inferred by looking for a key that only exists in SD2.0 models.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -1820,6 +1823,7 @@ class FromSingleFileMixin:
         # import here to avoid circular dependency
         from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
+        original_config_file = kwargs.pop("original_config_file", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -1936,6 +1940,7 @@ class FromSingleFileMixin:
             text_encoder=text_encoder,
             vae=vae,
             tokenizer=tokenizer,
+            original_config_file=original_config_file,
         )
 
         if torch_dtype is not None:
