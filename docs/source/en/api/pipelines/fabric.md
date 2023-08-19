@@ -15,10 +15,12 @@ specific language governing permissions and limitations under the License.
 
 ## FabricPipeline
 
+[FABRIC: Personalizing Diffusion Models with Iterative Feedback](https://huggingface.co/papers/2307.10159) (FABRIC) is by Dimitri von Rütte, Elisabetta Fedele, Jonathan Thomm and Lukas Wolf
+
 FABRIC is training-free approach that conditions the diffusion process on a set of feedback images, applicable to a wide range of popular diffusion models, created by the researchers and engineers from [ETH Zürich, Switzerland](https://github.com/sd-fabric). The [`FabricPipeline`] is capable of generating photo-realistic images given any text input using Stable Diffusion and finetune them on the basis of feedback.
 
 The original codebase can be found here: 
-- *Stable Diffusion V1*: [sd-fabric/fabric](https://github.com/sd-fabric/fabric)
+- *FABRIC*: [sd-fabric/fabric](https://github.com/sd-fabric/fabric)
 
 Available Checkpoints are:
 - *dreamlike-photoreal-2.0 (512x512 resolution)* [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0)
