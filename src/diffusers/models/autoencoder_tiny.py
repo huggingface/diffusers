@@ -312,9 +312,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             output = torch.cat(output)
         else:
             output = self._tiled_decode(x) if self.use_tiling else self.decoder(x)
-        # Refer to the following discussion to know why this is needed.
-        # https://github.com/huggingface/diffusers/pull/4384#discussion_r1279401854
-        output = output.mul_(2).sub_(1)
 
         if not return_dict:
             return (output,)
@@ -334,7 +331,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         """
         enc = self.encode(sample).latents
         scaled_enc = self.scale_latents(enc).mul_(255).round_().byte()
-        unscaled_enc = self.unscale_latents(scaled_enc)
+        unscaled_enc = self.unscale_latents(scaled_enc / 255.0)
         dec = self.decode(unscaled_enc)
 
         if not return_dict:

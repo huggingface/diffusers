@@ -270,14 +270,6 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_file_format(self, seed, shape):
-        return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
-
-    def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
-        dtype = torch.float16 if fp16 else torch.float32
-        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
-        return image
-
     def get_sd_vae_model(self, model_id="hf-internal-testing/taesd-diffusers", fp16=False):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
@@ -302,19 +294,27 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
             dec = model.decode(zeros).sample
             assert dec.shape == out_shape
 
-    def test_stable_diffusion(self):
+    @parameterized.expand([(True,), (False,)])
+    def test_tae_roundtrip(self, enable_tiling):
+        # load the autoencoder
         model = self.get_sd_vae_model()
-        image = self.get_sd_image(seed=33)
+        if enable_tiling:
+            model.enable_tiling()
 
+        # make a black image with a white square in the middle,
+        # which is large enough to split across multiple tiles
+        image = -torch.ones(1, 3, 1024, 1024, device=torch_device)
+        image[..., 256:768, 256:768] = 1.0
+
+        # round-trip the image through the autoencoder
         with torch.no_grad():
             sample = model(image).sample
 
-        assert sample.shape == image.shape
+        # the autoencoder reconstruction should match original image, sorta
+        def downscale(x):
+            return torch.nn.functional.avg_pool2d(x, model.spatial_scale_factor)
 
-        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor([0.9858, 0.9262, 0.8629, 1.0974, -0.091, -0.2485, 0.0936, 0.0604])
-
-        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
+        assert torch_all_close(downscale(sample), downscale(image), atol=0.125)
 
 
 @slow
