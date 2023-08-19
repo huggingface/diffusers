@@ -50,7 +50,6 @@ class CrossAttnProcessor:
         weights=None,  # shape: (batch_size, sequence_length)
         lora_scale=1.0,
     ):
-        print("in")
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
@@ -487,7 +486,6 @@ class FabricPipeline(DiffusionPipeline):
                     noise = torch.randn_like(z_ref)
                     if isinstance(self.scheduler, EulerAncestralDiscreteScheduler):
                         z_ref_noised = (alpha_hat**0.5 * z_ref + (1 - alpha_hat) ** 0.5 * noise).type(dtype)
-                        print("here")
                     else:
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
