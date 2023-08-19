@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 import PIL
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet2DConditionModel, ControlNetModel
 from .modeling_ctx_clip import CtxCLIPTextModel
 from transformers import CLIPTokenizer
 from ...pipelines import DiffusionPipeline
@@ -18,7 +18,7 @@ from ...utils import (
     replace_example_docstring,
     numpy_to_pil
 )
-
+from ...utils.pil_utils import PIL_INTERPOLATION
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
 from .modeling_blip2 import Blip2QFormerModel
@@ -30,18 +30,63 @@ from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
 
+def prepare_cond_image(
+        image, width, height, batch_size, device, do_classifier_free_guidance=True
+    ):
+        if not isinstance(image, torch.Tensor):
+            if isinstance(image, Image.Image):
+                image = [image]
 
+            if isinstance(image[0], Image.Image):
+                images = []
+
+                for image_ in image:
+                    image_ = image_.convert("RGB")
+                    image_ = image_.resize(
+                        (width, height), resample=PIL_INTERPOLATION["lanczos"]
+                    )
+                    image_ = np.array(image_)
+                    image_ = image_[None, :]
+                    images.append(image_)
+
+                image = images
+
+                image = np.concatenate(image, axis=0)
+                image = np.array(image).astype(np.float32) / 255.0
+                image = image.transpose(0, 3, 1, 2)
+                image = torch.from_numpy(image)
+            elif isinstance(image[0], torch.Tensor):
+                image = torch.cat(image, dim=0)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            # repeat_by = num_images_per_prompt
+            raise NotImplementedError
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        # image = image.to(device=self.device, dtype=dtype)
+        image = image.to(device=device)
+
+        if do_classifier_free_guidance:
+            image = torch.cat([image] * 2)
+
+        return image
 
 
 
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, ctx_begin_pos: int = 2):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel=None, ctx_begin_pos: int = 2):
         super().__init__()
 
 
-        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
+        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos)
     
     #TODO Complete this function
@@ -130,6 +175,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         reference_image,
         source_subject_category,
         target_subject_category,
+        condtioning_image,
         latents=None,
         guidance_scale=7.5,
         height=512,
@@ -177,7 +223,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             generator = generator.manual_seed(seed)
 
         #TODO - Handle batch size > 1
-        latents = self.prepare_latents(batch_size=1, num_channels=self.unet.in_channels, height=height//8, width=width//8, generator=generator, latents=latents)
+        latents = self.prepare_latents(batch_size=1, num_channels=self.unet.in_channels, height=height//8, width=width//8, generator=generator, latents=latents, dtype=self.unet.dtype,device=self.device)
         # set timesteps
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
@@ -194,13 +240,28 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             latent_model_input = (
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             )
-            # predict the noise residual
+
+            if self.controlnet is not None:
+                cond_image = prepare_cond_image(
+                    condtioning_image, width, height, batch_size=1, device=self.device
+                )
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=text_embeddings,
+                    controlnet_cond=cond_image,
+                    # conditioning_scale=controlnet_condition_scale,
+                    return_dict=False,
+                )
+            else:
+                down_block_res_samples, mid_block_res_sample = None, None
+
             noise_pred = self.unet(
                 latent_model_input,
                 timestep=t,
                 encoder_hidden_states=text_embeddings,
-                down_block_additional_residuals=None,
-                mid_block_additional_residual=None,
+                down_block_additional_residuals=down_block_res_samples,
+                mid_block_additional_residual=mid_block_res_sample,
             )["sample"]
 
             if use_ddim:
