@@ -117,6 +117,12 @@
     title: Token Merging
   title: 최적화/특수 하드웨어
 - sections:
+  - local: using-diffusers/controlling_generation
+    title: 제어된 생성
+  - local: in_translation
+    title: Diffusion Models 평가하기
+  title: 개념 가이드
+- sections:
   - sections:
     - sections:
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
