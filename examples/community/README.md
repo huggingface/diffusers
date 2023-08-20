@@ -39,7 +39,8 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
-|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) 
+|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
+Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -1528,6 +1529,44 @@ print("Latency of StableDiffusionPipeline--fp32",latency)
 CLIP guided stable diffusion images mixing pipline allows to combine two images using standard diffusion models.  
 This approach is using (optional) CoCa model to avoid writing image description.  
 [More code examples](https://github.com/TheDenk/images_mixing)
+
+
+### Stable Diffusion XL Long Weighted Prompt Pipeline
+
+This SDXL pipeline support unlimted length prompt and negative prompt, compatible with A1111 prompt weighted style. 
+
+You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0"
+    , torch_dtype       = torch.float16
+    , use_safetensors   = True
+    , variant           = "fp16"
+    , custom_pipeline   = "lpw_stable_diffusion_xl",
+)
+
+prompt = "photo of a cute (white) cat running on the grass"*20
+prompt2 = "chasing (birds:1.5)"*20
+prompt = f"{prompt},{prompt2}"
+neg_prompt = "blur, low quality, carton, animate"
+
+pipe.to("cuda")
+images = pipe(
+    prompt                  = prompt 
+    , negative_prompt       = neg_prompt 
+).images[0]
+
+pipe.to("cpu")
+torch.cuda.empty_cache()
+images
+```
+
+In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result. 
+![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
 
 ## Example Images Mixing (with CoCa)
 ```python
