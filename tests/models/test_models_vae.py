@@ -270,6 +270,14 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    def get_file_format(self, seed, shape):
+        return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
+
+    def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
+        dtype = torch.float16 if fp16 else torch.float32
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        return image
+
     def get_sd_vae_model(self, model_id="hf-internal-testing/taesd-diffusers", fp16=False):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
@@ -293,6 +301,20 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
             zeros = torch.zeros(in_shape).to(torch_device)
             dec = model.decode(zeros).sample
             assert dec.shape == out_shape
+
+    def test_stable_diffusion(self):
+        model = self.get_sd_vae_model()
+        image = self.get_sd_image(seed=33)
+
+        with torch.no_grad():
+            sample = model(image).sample
+
+        assert sample.shape == image.shape
+
+        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        expected_output_slice = torch.tensor([0.0093, 0.6385, -0.1274, 0.1631, -0.1762, 0.5232, -0.3108, -0.0382])
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
     @parameterized.expand([(True,), (False,)])
     def test_tae_roundtrip(self, enable_tiling):
