@@ -3,7 +3,7 @@
     title: "🧨 Diffusers"
   - local: quicktour
     title: "훑어보기"
-  - local: in_translation
+  - local: stable_diffusion
     title: Stable Diffusion
   - local: installation
     title: "설치"
@@ -56,7 +56,7 @@
       title: Distilled Stable Diffusion 추론
     - local: using-diffusers/reusing_seeds
       title: Deterministic 생성으로 이미지 퀄리티 높이기
-    - local: in_translation
+    - local: using-diffusers/control_brightness
       title: 이미지 밝기 조정하기
     - local: using-diffusers/reproducibility
       title: 재현 가능한 파이프라인 생성하기
