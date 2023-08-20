@@ -202,6 +202,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt,
@@ -406,15 +407,8 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        return timesteps, num_inference_steps - t_start
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.check_inputs
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
@@ -452,6 +446,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -485,9 +480,9 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             image_latents = image
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
-            if self.vae.config.force_upcast:
-                image = image.float()
-                self.vae.to(dtype=torch.float32)
+            if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
+                self.upcast_vae()
+                image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
@@ -525,6 +520,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
     ):
@@ -587,6 +583,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        prompt_2: Optional[Union[str, List[str]]] = None,
         image: Union[
             torch.FloatTensor,
             PIL.Image.Image,
@@ -616,8 +613,6 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
         original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = None,
-        aesthetic_score: float = 6.0,
-        negative_aesthetic_score: float = 2.5,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -694,15 +689,19 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
                 [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
                 Guidance rescale factor should fix overexposure when using zero terminal SNR.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                TODO
+                If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
+                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
+                explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                TODO
+                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
+                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
+                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                TODO
-            aesthetic_score (`float`, *optional*, defaults to 6.0):
-                TODO
-            negative_aesthetic_score (`float`, *optional*, defaults to 2.5):
-                TDOO
+                For most cases, `target_size` should be set to the desired height and width of the generated image. If
+                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
+                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
 
         Examples:
 
