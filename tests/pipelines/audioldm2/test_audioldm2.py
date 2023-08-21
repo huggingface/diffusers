@@ -25,7 +25,6 @@ from transformers import (
     ClapFeatureExtractor,
     ClapModel,
     ClapTextConfig,
-    GenerationConfig,
     GPT2Config,
     GPT2Model,
     RobertaTokenizer,
