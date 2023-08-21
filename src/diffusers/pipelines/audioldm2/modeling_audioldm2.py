@@ -76,59 +76,60 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
 class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
     """
     A simple linear projection model to map two text embeddings to a shared latent space. It also inserts learned
-    embedding vectors at the start and end of each text embedding sequence respectively.
+    embedding vectors at the start and end of each text embedding sequence respectively. Each variable appended with
+    `_1` refers to that corresponding to the second text encoder. Otherwise, it is from the first.
 
     Args:
         text_encoder_dim (`int`):
             Dimensionality of the text embeddings from the first text encoder (CLAP).
-        text_encoder_2_dim (`int`):
-            Dimensionality of the text embeddings from the second text encoder (T5).
+        text_encoder_1_dim (`int`):
+            Dimensionality of the text embeddings from the second text encoder (T5 or VITS).
         langauge_model_dim (`int`):
             Dimensionality of the text embeddings from the language model (GPT2).
     """
 
     @register_to_config
-    def __init__(self, text_encoder_dim, text_encoder_2_dim, langauge_model_dim):
+    def __init__(self, text_encoder_dim, text_encoder_1_dim, langauge_model_dim):
         super().__init__()
-        # additional projection layers
-        self.clap_projection = nn.Linear(text_encoder_dim, langauge_model_dim)
-        self.t5_projection = nn.Linear(text_encoder_2_dim, langauge_model_dim)
+        # additional projection layers for each text encoder
+        self.projection = nn.Linear(text_encoder_dim, langauge_model_dim)
+        self.projection_1 = nn.Linear(text_encoder_1_dim, langauge_model_dim)
 
-        # learnable SOS / EOS token embeddings
-        self.clap_sos_embed = nn.Parameter(torch.ones(langauge_model_dim))
-        self.clap_eos_embed = nn.Parameter(torch.ones(langauge_model_dim))
+        # learnable SOS / EOS token embeddings for each text encoder
+        self.sos_embed = nn.Parameter(torch.ones(langauge_model_dim))
+        self.eos_embed = nn.Parameter(torch.ones(langauge_model_dim))
 
-        self.t5_sos_embed = nn.Parameter(torch.ones(langauge_model_dim))
-        self.t5_eos_embed = nn.Parameter(torch.ones(langauge_model_dim))
+        self.sos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
+        self.eos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
 
     def forward(
         self,
-        clap_hidden_states: Optional[torch.FloatTensor] = None,
-        t5_hidden_states: Optional[torch.FloatTensor] = None,
-        clap_attention_mask: Optional[torch.LongTensor] = None,
-        t5_attention_mask: Optional[torch.LongTensor] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states_1: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask_1: Optional[torch.LongTensor] = None,
     ):
-        clap_hidden_states = self.clap_projection(clap_hidden_states)
-        clap_hidden_states, clap_attention_mask = add_special_tokens(
-            clap_hidden_states, clap_attention_mask, sos_token=self.clap_sos_embed, eos_token=self.clap_eos_embed
+        hidden_states = self.projection(hidden_states)
+        hidden_states, attention_mask = add_special_tokens(
+            hidden_states, attention_mask, sos_token=self.sos_embed, eos_token=self.eos_embed
         )
 
-        t5_hidden_states = self.t5_projection(t5_hidden_states)
-        t5_hidden_states, t5_attention_mask = add_special_tokens(
-            t5_hidden_states, t5_attention_mask, sos_token=self.t5_sos_embed, eos_token=self.t5_eos_embed
+        hidden_states_1 = self.projection_1(hidden_states_1)
+        hidden_states_1, attention_mask_1 = add_special_tokens(
+            hidden_states_1, attention_mask_1, sos_token=self.sos_embed_1, eos_token=self.eos_embed_1
         )
 
         # concatenate clap and t5 text encoding
-        hidden_states = torch.cat([clap_hidden_states, t5_hidden_states], dim=1)
+        hidden_states = torch.cat([hidden_states, hidden_states_1], dim=1)
 
         # concatenate attention masks
-        if clap_attention_mask is None and t5_attention_mask is not None:
-            clap_attention_mask = t5_attention_mask.new_ones((clap_hidden_states[:2]))
-        elif clap_attention_mask is not None and t5_attention_mask is None:
-            t5_attention_mask = clap_attention_mask.new_ones((t5_hidden_states[:2]))
+        if attention_mask is None and attention_mask_1 is not None:
+            attention_mask = attention_mask_1.new_ones((hidden_states[:2]))
+        elif attention_mask is not None and attention_mask_1 is None:
+            attention_mask_1 = attention_mask.new_ones((hidden_states_1[:2]))
 
-        if clap_attention_mask is not None and t5_attention_mask is not None:
-            attention_mask = torch.cat([clap_attention_mask, t5_attention_mask], dim=-1)
+        if attention_mask is not None and attention_mask_1 is not None:
+            attention_mask = torch.cat([attention_mask, attention_mask_1], dim=-1)
         else:
             attention_mask = None
 

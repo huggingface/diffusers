@@ -24,7 +24,6 @@ from transformers import (
     AutoTokenizer,
     ClapConfig,
     ClapModel,
-    GenerationConfig,
     GPT2Config,
     GPT2Model,
     SpeechT5HifiGan,
@@ -749,17 +748,17 @@ def convert_projection_checkpoint(checkpoint):
     projection_state_dict = {}
     conditioner_state_dict = extract_sub_model(checkpoint, key_prefix="cond_stage_models.0.")
 
-    projection_state_dict["clap_sos_embed"] = conditioner_state_dict["start_of_sequence_tokens.weight"][0]
-    projection_state_dict["t5_sos_embed"] = conditioner_state_dict["start_of_sequence_tokens.weight"][1]
+    projection_state_dict["sos_embed"] = conditioner_state_dict["start_of_sequence_tokens.weight"][0]
+    projection_state_dict["sos_embed_1"] = conditioner_state_dict["start_of_sequence_tokens.weight"][1]
 
-    projection_state_dict["clap_eos_embed"] = conditioner_state_dict["end_of_sequence_tokens.weight"][0]
-    projection_state_dict["t5_eos_embed"] = conditioner_state_dict["end_of_sequence_tokens.weight"][1]
+    projection_state_dict["eos_embed"] = conditioner_state_dict["end_of_sequence_tokens.weight"][0]
+    projection_state_dict["eos_embed_1"] = conditioner_state_dict["end_of_sequence_tokens.weight"][1]
 
-    projection_state_dict["clap_projection.weight"] = conditioner_state_dict["input_sequence_embed_linear.0.weight"]
-    projection_state_dict["clap_projection.bias"] = conditioner_state_dict["input_sequence_embed_linear.0.bias"]
+    projection_state_dict["projection.weight"] = conditioner_state_dict["input_sequence_embed_linear.0.weight"]
+    projection_state_dict["projection.bias"] = conditioner_state_dict["input_sequence_embed_linear.0.bias"]
 
-    projection_state_dict["t5_projection.weight"] = conditioner_state_dict["input_sequence_embed_linear.1.weight"]
-    projection_state_dict["t5_projection.bias"] = conditioner_state_dict["input_sequence_embed_linear.1.bias"]
+    projection_state_dict["projection_1.weight"] = conditioner_state_dict["input_sequence_embed_linear.1.weight"]
+    projection_state_dict["projection_1.bias"] = conditioner_state_dict["input_sequence_embed_linear.1.bias"]
 
     return projection_state_dict
 
@@ -1027,8 +1026,7 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
     gpt2_config = GPT2Config.from_pretrained("gpt2")
     gpt2_model = GPT2Model(gpt2_config)
-    gpt2_model.generation_config = GenerationConfig.from_model_config(gpt2_config)
-    gpt2_model.generation_config.max_new_tokens = (
+    gpt2_model.config.max_new_tokens = (
         original_config.model.params.cond_stage_config.crossattn_audiomae_generated.params.sequence_gen_length
     )
 

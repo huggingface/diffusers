@@ -516,7 +516,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_audioldm2(self):
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -534,7 +534,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm2_lms(self):
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -554,7 +554,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm2_large(self):
-        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2-large")
+        audioldm_pipe = AudioLDM2Pipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2-large")
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 

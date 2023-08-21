@@ -232,9 +232,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             `inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
-        max_new_tokens = (
-            max_new_tokens if max_new_tokens is not None else self.language_model.generation_config.max_new_tokens
-        )
+        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
         for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
@@ -265,6 +263,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
+        max_new_tokens: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -303,6 +302,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_attention_mask (`torch.LongTensor`, *optional*):
                 Pre-computed attention mask to be applied to the `negative_prompt_embeds`. If not provided, attention
                 mask will be computed from `negative_prompt` input argument.
+            max_new_tokens (`int`, *optional*, defaults to None):
+                The number of new tokens to generate with the GPT2 language model.
         Returns:
             prompt_embeds (`torch.FloatTensor`):
                 Text embeddings from the Flan T5 model.
@@ -396,16 +397,18 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 attention_mask_list.append(attention_mask)
 
             projection_output = self.projection_model(
-                clap_hidden_states=prompt_embeds_list[0],
-                t5_hidden_states=prompt_embeds_list[1],
-                clap_attention_mask=attention_mask_list[0],
-                t5_attention_mask=attention_mask_list[1],
+                hidden_states=prompt_embeds_list[0],
+                hidden_states_1=prompt_embeds_list[1],
+                attention_mask=attention_mask_list[0],
+                attention_mask_1=attention_mask_list[1],
             )
             projected_prompt_embeds = projection_output.hidden_states
             projected_attention_mask = projection_output.attention_mask
 
             generated_prompt_embeds = self.generate_language_model(
-                projected_prompt_embeds, attention_mask=projected_attention_mask
+                projected_prompt_embeds,
+                attention_mask=projected_attention_mask,
+                max_new_tokens=max_new_tokens,
             )
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
@@ -490,10 +493,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 negative_attention_mask_list.append(negative_attention_mask)
 
             projection_output = self.projection_model(
-                clap_hidden_states=negative_prompt_embeds_list[0],
-                t5_hidden_states=negative_prompt_embeds_list[1],
-                clap_attention_mask=negative_attention_mask_list[0],
-                t5_attention_mask=negative_attention_mask_list[1],
+                hidden_states=negative_prompt_embeds_list[0],
+                hidden_states_1=negative_prompt_embeds_list[1],
+                attention_mask=negative_attention_mask_list[0],
+                attention_mask_1=negative_attention_mask_list[1],
             )
             negative_projected_prompt_embeds = projection_output.hidden_states
             negative_projected_attention_mask = projection_output.attention_mask
@@ -501,6 +504,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_generated_prompt_embeds = self.generate_language_model(
                 negative_projected_prompt_embeds,
                 attention_mask=negative_projected_attention_mask,
+                max_new_tokens=max_new_tokens,
             )
 
         if do_classifier_free_guidance:
@@ -723,6 +727,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
+        max_new_tokens: Optional[int] = None,
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -781,6 +786,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_attention_mask (`torch.LongTensor`, *optional*):
                 Pre-computed attention mask to be applied to the `negative_prompt_embeds`. If not provided, attention
                 mask will be computed from `negative_prompt` input argument.
+            max_new_tokens (`int`, *optional*, defaults to None):
+                Number of new tokens to generate with the GPT2 language model. If not provided, number of tokens will
+                be taken from the config of the model.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -864,6 +872,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             negative_generated_prompt_embeds=negative_generated_prompt_embeds,
             attention_mask=attention_mask,
             negative_attention_mask=negative_attention_mask,
+            max_new_tokens=max_new_tokens,
         )
 
         # 4. Prepare timesteps
