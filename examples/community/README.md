@@ -1859,7 +1859,8 @@ This pipeline uses the Reference . Refer to the [stable_diffusion_reference](htt
 import torch
 from PIL import Image
 from diffusers.utils import load_image
-
+from diffusers import DiffusionPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
 input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
 
 pipe = StableDiffusionXLReferencePipeline.from_pretrained(
