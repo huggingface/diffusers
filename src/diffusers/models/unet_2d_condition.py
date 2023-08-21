@@ -986,7 +986,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
-        print(f" - unet out (sample): {sample.shape},{sample[0,0,:3,:3]}")
 
         if not return_dict:
             return (sample,)

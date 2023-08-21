@@ -258,14 +258,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
         clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
         last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
-        print(f" - last_timestep: {last_timestep}")
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
             timesteps = (
                 np.linspace(0, last_timestep - 1, num_inference_steps, dtype=float).round()[::-1].copy()
             )
-            print(f" - timesteps: {len(timesteps)},{timesteps[0]}:{timesteps[-1]}")
         elif self.config.timestep_spacing == "leading":
             step_ratio = last_timestep // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
@@ -286,19 +284,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         log_sigmas = np.log(sigmas)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        print(f" sigmas: {sigmas[0]}: {sigmas[-1]}")
 
         if self.config.use_karras_sigmas:
-            print(f" sigmas (k): {sigmas[0]}, {sigmas[-1]}")
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-
-        print(" set_timesteps")
-        print(f" - sigmas: {sigmas[0]}: {sigmas[-1]}")
-        print(sigmas)
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
@@ -308,9 +300,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             None,
         ] * self.config.solver_order
         self.lower_order_nums = 0
-        print(f" - timesteps: {timesteps}")
-        print(f" - model_outputs: {self.model_outputs}")
-        print(f" - lower_order_nums: {self.lower_order_nums}")
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
@@ -412,17 +401,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
 
         # DPM-Solver++ needs to solve an integral of the data prediction model.
-        print(f" -algo_type: {self.config.algorithm_type}, pred_type: {self.config.prediction_type}, variance_type: {self.config.variance_type}")
         if self.config.algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
             if self.config.prediction_type == "epsilon":
                 # DPM-Solver and DPM-Solver++ only need the "mean" output.
                 if self.config.variance_type in ["learned", "learned_range"]:
                     model_output = model_output[:, :3]
-                # yiyi update/testing here:
                 sigma = self.sigmas[self.step_index]
                 x0_pred = sample - sigma * model_output
-                print(f" - sigma: {sigma}")
-                print(f" - x0_pred: {x0_pred.shape},{x0_pred[0,0,:3,:3]}")
             elif self.config.prediction_type == "sample":
                 x0_pred = model_output
             elif self.config.prediction_type == "v_prediction":
@@ -435,7 +420,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if self.config.thresholding:
-                print(f" threhold? ")
                 x0_pred = self._threshold_sample(x0_pred)
 
             return x0_pred
@@ -494,15 +478,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         def t_fn(_sigma):
             return -torch.log(_sigma)
 
-        print(f" - sample: {sample[0,0,:3,:3]}")
-
         sigma_t, sigma_s = self.sigmas[self.step_index +1], self.sigmas[self.step_index]
-        print(f" - sigma_t: {sigma_t}, sigma_s: {sigma_s}")
         h = t_fn(sigma_t) - t_fn(sigma_s)
-        print(f" - h: {h}")
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (torch.exp(-h) - 1.0) * model_output
-            print(f" -> prev_sample: {x_t[0,0,:3,:3]}")
         elif self.config.algorithm_type == "dpmsolver":
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
         elif self.config.algorithm_type == "sde-dpmsolver++":
@@ -553,22 +532,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         h, h_0 = t_fn(sigma_t) - t_fn(sigma_s0), t_fn(sigma_s0) - t_fn(sigma_s1)
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
-        print(f" sigma_t (current), sigma_s0 (prev), sigma_s1 (next): {sigma_t}, {sigma_s0}, {sigma_s1}")
-        # print(f" sigma_t, sigma_s0, {sigma_t},{sigma_s0}")
-        # print(f" sigma_s1: {self.sigma_t[s1]}")
-        # print(f" alpha_bar = {self.alphas_cumprod[s1]}")
-        print(f" sample: {sample[0,0,:3,:3]}")
-        # print(" -----")
+
         if self.config.algorithm_type == "dpmsolver++":
             # See https://arxiv.org/abs/2211.01095 for detailed derivations
             if self.config.solver_type == "midpoint":
-                print(f" dpmsolver++ /midpoint ")
                 x_t = (
                     (sigma_t / sigma_s0) * sample
                     - (torch.exp(-h) - 1.0) * D0
                     - 0.5 * (torch.exp(-h) - 1.0) * D1
                 )
-                print(f" -> prev_sample: {x_t.shape}, {x_t[0,0,:3,:3]}")
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
@@ -725,24 +697,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.step_index is None:
             self._init_step_index(timestep)
-        print(" ")
-        print(" ** inside step ***** ")    
-
-        print(f" - timestep, step_index: {timestep}, {self.step_index}")
-        print(f" - sample/latents: {sample.shape},{sample[0,0,:3,:3]}")
-        print(f" - model_output (noise): {model_output.shape}, {model_output[0,0,:3,:3]}")
 
         prev_timestep = 0 if self.step_index == len(self.timesteps) - 1 else self.timesteps[self.step_index + 1]
         lower_order_final = (self.step_index == len(self.timesteps) - 1) 
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
-        print(f" - prev_timestep: {prev_timestep}")
 
         model_output = self.convert_model_output(model_output, timestep, sample)
-        print(f" - model_output (x0): {model_output.shape}, {model_output[0,0,:3,:3]}")
         for i in range(self.config.solver_order - 1):
-            print(f" move outputs {i+1} -> {i}")
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
@@ -754,18 +717,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             noise = None
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
-            print(f" 1st order update: {self.config.solver_order}, {self.lower_order_nums}, {lower_order_final}")
             prev_sample = self.dpm_solver_first_order_update(
                 model_output, timestep, prev_timestep, sample, noise=noise
             )
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
-            print(f" 2nd order update")
             timestep_list = [self.timesteps[self.step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_second_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample, noise=noise
             )
         else:
-            print(f" 3rd order update")
             timestep_list = [self.timesteps[step_index - 2], self.timesteps[step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_third_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample
@@ -773,7 +733,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
-            print(f" lower_order_nums +1 -> {self.lower_order_nums}")
         
         # upon completion increase step index by one
         self._step_index += 1
