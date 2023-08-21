@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 FABRIC authors and the HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -183,60 +183,7 @@ class FabricPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    def initialize_prompts(self, prompts: List[str], device):
-        # Breaking into individual prompts feels memory efficient
-        prompt_embed_list = []
-        for prompt in prompts:
-            prompt_tokens = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                max_length=self.tokenizer.model_max_length,
-                padding="max_length",
-                truncation=True,
-            )
-
-            attention_mask = (
-                prompt_tokens.attention_mask.to(device)
-                if (
-                    hasattr(self.text_encoder.config, "use_attention_mask")
-                    and self.text_encoder.config.use_attention_mask
-                )
-                else None
-            )
-
-            prompt_embd = self.text_encoder(
-                input_ids=prompt_tokens.input_ids.to(device),
-                attention_mask=attention_mask,
-            ).last_hidden_state
-
-            prompt_embed_list.append(prompt_embd)
-
-        all_prompt_embed = torch.cat(prompt_embed_list, dim=0)
-        return all_prompt_embed
-
-    def get_unet_hidden_states(self, z_all, t, prompt_embd):
-        cached_hidden_states = []
-        for module in self.unet.modules():
-            if isinstance(module, BasicTransformerBlock):
-
-                def new_forward(self, hidden_states, *args, **kwargs):
-                    cached_hidden_states.append(hidden_states.clone().detach().cpu())
-                    return self.old_forward(hidden_states, *args, **kwargs)
-
-                module.attn1.old_forward = module.attn1.forward
-                module.attn1.forward = new_forward.__get__(module.attn1)
-
-        # run forward pass to cache hidden states, output can be discarded
-        _ = self.unet(z_all, t, encoder_hidden_states=prompt_embd)
-
-        # restore original forward pass
-        for module in self.unet.modules():
-            if isinstance(module, BasicTransformerBlock):
-                module.attn1.forward = module.attn1.old_forward
-                del module.attn1.old_forward
-
-        return cached_hidden_states
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -333,9 +280,6 @@ class FabricPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -348,7 +292,7 @@ class FabricPipeline(DiffusionPipeline):
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt] + [""]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -356,7 +300,7 @@ class FabricPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
             else:
-                uncond_tokens = negative_prompt
+                uncond_tokens = negative_prompt + [""]
 
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
@@ -384,19 +328,39 @@ class FabricPipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds.shape[1]
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
 
         return prompt_embeds
+
+    def get_unet_hidden_states(self, z_all, t, prompt_embd):
+        cached_hidden_states = []
+        for module in self.unet.modules():
+            if isinstance(module, BasicTransformerBlock):
+
+                def new_forward(self, hidden_states, *args, **kwargs):
+                    cached_hidden_states.append(hidden_states.clone().detach().cpu())
+                    return self.old_forward(hidden_states, *args, **kwargs)
+
+                module.attn1.old_forward = module.attn1.forward
+                module.attn1.forward = new_forward.__get__(module.attn1)
+
+        # run forward pass to cache hidden states, output can be discarded
+        _ = self.unet(z_all, t, encoder_hidden_states=prompt_embd)
+
+        # restore original forward pass
+        for module in self.unet.modules():
+            if isinstance(module, BasicTransformerBlock):
+                module.attn1.forward = module.attn1.old_forward
+                del module.attn1.old_forward
+
+        return cached_hidden_states
 
     def unet_forward_with_cached_hidden_states(
         self,
@@ -612,7 +576,8 @@ class FabricPipeline(DiffusionPipeline):
             assert len(negative_prompt) == num_images
 
         do_classifier_free_guidance = guidance_scale > 1.0
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self._encode_prompt(
+
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(
             prompt,
             device,
             num_images,
