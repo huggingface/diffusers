@@ -1863,13 +1863,19 @@ from diffusers import DiffusionPipeline
 from diffusers.schedulers import UniPCMultistepScheduler
 input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
 
-pipe = DiffusionPipeline.from_pretrained(
+# pipe = DiffusionPipeline.from_pretrained(
+#     "stabilityai/stable-diffusion-xl-base-1.0",
+#     custom_pipeline="stable_diffusion_xl_reference",
+#     torch_dtype=torch.float16,
+#     use_safetensors=True,
+#     variant="fp16").to('cuda:0')
+
+pipe = StableDiffusionXLReferencePipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    custom_pipeline="stable_diffusion_xl_reference",
     torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16").to('cuda:0')
-    
+
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,

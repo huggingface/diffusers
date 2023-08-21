@@ -29,7 +29,11 @@ EXAMPLE_DOC_STRING = """
 
         >>> input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
 
-        >>> pipe = StableDiffusionXLReferencePipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",torch_dtype=torch.float16,use_safetensors=True, variant="fp16")
+        >>> pipe = StableDiffusionXLReferencePipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            torch_dtype=torch.float16,
+            use_safetensors=True, 
+            variant="fp16").to('cuda:0')
 
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         >>> result_img = pipe(ref_image=input_image,
