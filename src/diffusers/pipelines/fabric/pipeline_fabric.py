@@ -11,22 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import warnings
 from typing import List, Optional, Union
 
-import numpy as np
 import torch
 from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import BasicTransformerBlock
 from ...models.attention_processor import LoRAAttnProcessor
-from ...schedulers import KarrasDiffusionSchedulers,EulerAncestralDiscreteScheduler
+from ...schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     deprecate,
     logging,
@@ -41,17 +39,20 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import FabricPipeline 
-        >>> import torch 
-        >>> model_id = "dreamlike-art/dreamlike-photoreal-2.0" 
-        >>> pipe = FabricPipeline(model_id, torch_dtype = torch.float16)
-        >>> pipe = pipe.to("cuda") 
-        >>> prompt = "a giant standing in a fantasy landscape best quality" 
-        >>> liked = [] 
-        >>> disliked = [] 
-        >>> image = pipe(prompt, num_images=4, liked=liked,disliked=disliked).images[0]
+        >>> from diffusers import FabricPipeline
+        >>> import torch
+
+        >>> model_id = "dreamlike-art/dreamlike-photoreal-2.0"
+        >>> pipe = FabricPipeline(model_id, torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+        >>> prompt = "a giant standing in a fantasy landscape best quality"
+        >>> liked = []
+        >>> disliked = []
+        >>> image = pipe(prompt, num_images=4, liked=liked, disliked=disliked).images[0]
         ```
 """
+
+
 class FabricCrossAttnProcessor:
     def __init__(self):
         self.attntion_probs = None
@@ -145,7 +146,7 @@ class FabricPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers, 
+        scheduler: KarrasDiffusionSchedulers,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -235,7 +236,7 @@ class FabricPipeline(DiffusionPipeline):
                 del module.attn1.old_forward
 
         return cached_hidden_states
-    
+
     def _encode_prompt(
         self,
         prompt,
@@ -397,7 +398,6 @@ class FabricPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-
     def unet_forward_with_cached_hidden_states(
         self,
         z_all,
@@ -513,7 +513,7 @@ class FabricPipeline(DiffusionPipeline):
             raise ValueError(f"`disliked` has to be of type `list` but is {type(disliked)}")
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING) 
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = "",
@@ -534,8 +534,8 @@ class FabricPipeline(DiffusionPipeline):
         neg_bottleneck_scale: float = 1.0,
         output_type: Optional[str] = "pil",
         latents: Optional[torch.FloatTensor] = None,
-        pos_weights: Optional[tuple] = (.8,.8),
-        neg_weights: Optional[tuple] = (.5,.5),
+        pos_weights: Optional[tuple] = (0.8, 0.8),
+        neg_weights: Optional[tuple] = (0.5, 0.5),
     ):
         r"""
         Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary
@@ -569,7 +569,7 @@ class FabricPipeline(DiffusionPipeline):
                 expense of slower inference.
 
         Examples:
-            
+
         Returns:
             [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`: When returning a tuple, the first element is a list
             with the generated images, and the second element is a list of `bool`s denoting whether the corresponding
@@ -596,11 +596,11 @@ class FabricPipeline(DiffusionPipeline):
         )
 
         if isinstance(prompt, str) and prompt is not None:
-            batch_size = 1
+            pass
         elif isinstance(prompt, list) and prompt is not None:
-            batch_size = len(prompt)
+            len(prompt)
         else:
-            batch_size = None
+            pass
 
         prompt = [prompt] * num_images
 
@@ -611,9 +611,10 @@ class FabricPipeline(DiffusionPipeline):
         else:
             assert len(negative_prompt) == num_images
 
-        do_classifier_free_guidance = guidance_scale > 1.
+        do_classifier_free_guidance = guidance_scale > 1.0
         (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self._encode_prompt(
-            prompt, device,
+            prompt,
+            device,
             num_images,
             do_classifier_free_guidance,
             negative_prompt,
@@ -712,6 +713,5 @@ class FabricPipeline(DiffusionPipeline):
             image = Image.open(image)
         if not image.mode == "RGB":
             image = image.convert("RGB")
-        image = self.image_processor.preprocess(image,height=512,width=512)[0]
+        image = self.image_processor.preprocess(image, height=512, width=512)[0]
         return image.type(dtype)
-
