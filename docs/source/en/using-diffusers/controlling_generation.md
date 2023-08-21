@@ -236,7 +236,7 @@ See [here](../api/pipelines/stable_diffusion/adapter) for more information on ho
 
 [Paper](https://arxiv.org/abs/2307.10159)
 
-[DiffEdit](../api/pipelines/fabric) is a training-free
+[Fabric](../api/pipelines/fabric) is a training-free
 approach applicable to a wide range of popular diffusion models, which exploits
 the self-attention layer present in the most widely used architectures to condition
 the diffusion process on a set of feedback images.
