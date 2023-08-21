@@ -24,11 +24,8 @@ The original codebase can be found here:
 - *FABRIC*: [sd-fabric/fabric](https://github.com/sd-fabric/fabric)
 
 Available Checkpoints are:
-- *dreamlike-photoreal-2.0 (512x512 resolution)* [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0)
+- *dreamlike-photoreal-2.0* [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0)
 
-[[autodoc]] FabricPipeline
-	- all
-	- __call__
 
 ## Usage Example
 
@@ -75,9 +72,13 @@ disliked = ["path/to/image"]
 image = pipe(prompt=prompt, negative_prompt=neg_prompt,liked=liked,disliked=disliked).images[0]
 ```
 
-Let's have a look at the images
+Let's have a look at the images (*512X512*)
 
 | Without Feedback            | With Feedback  (1st image)          |
 |---------------------|---------------------|
 | ![Image 1](https://drive.google.com/uc?export=view&id=12wxbikt7834eRTK40legR5PtJmFLNH34) | ![Feedback Image 1](https://drive.google.com/uc?export=view&id=1YcFPDHSRr2OE3hy-5lvr8An21Jum85D5) | 
 
+
+[[autodoc]] FabricPipeline
+	- all
+	- __call__
