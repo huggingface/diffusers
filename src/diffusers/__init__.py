@@ -133,6 +133,9 @@ else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
+        AudioLDM2Pipeline,
+        AudioLDM2ProjectionModel,
+        AudioLDM2UNet2DConditionModel,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,
