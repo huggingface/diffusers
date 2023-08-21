@@ -28,6 +28,7 @@ from ...schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedu
 from ...utils import (
     deprecate,
     logging,
+    randn_tensor,
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
@@ -397,7 +398,6 @@ class FabricPipeline(DiffusionPipeline):
                         device, dtype = hidden_states.device, hidden_states.dtype
 
                         weights = torch.ones(batch_size, d_model, device=device, dtype=dtype)
-                        print(weights.shape)
                         out_pos = self.old_forward(hidden_states)
                         out_neg = self.old_forward(hidden_states)
 
@@ -447,11 +447,12 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(self, images, vae, device, dtype) -> torch.tensor:
-        images_t = [self.image_to_tensor(img, dtype) for img in images]
+    def preprocess_feedback_images(self, images, vae, dim, device, dtype) -> torch.tensor:
+        images_t = [self.image_to_tensor(img, dim, dtype) for img in images]
         images_t = torch.stack(images_t).to(device)
         latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample()
-        return latents
+
+        return torch.cat([latents], dim=0)
 
     def check_inputs(
         self,
@@ -459,6 +460,8 @@ class FabricPipeline(DiffusionPipeline):
         negative_prompt=None,
         liked=None,
         disliked=None,
+        height=None,
+        width=None,
     ):
         if prompt is None:
             raise ValueError("Provide `prompt`. Cannot leave both `prompt` undefined.")
@@ -476,6 +479,12 @@ class FabricPipeline(DiffusionPipeline):
         if disliked is not None and not isinstance(disliked, list):
             raise ValueError(f"`disliked` has to be of type `list` but is {type(disliked)}")
 
+        if height is not None and not isinstance(height, int):
+            raise ValueError(f"`height` has to be of type `int` but is {type(height)}")
+
+        if width is not None and not isinstance(width, int):
+            raise ValueError(f"`width` has to be of type `int` but is {type(width)}")
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -485,6 +494,8 @@ class FabricPipeline(DiffusionPipeline):
         liked: Optional[Union[List[str], List[Image.Image]]] = [],
         disliked: Optional[Union[List[str], List[Image.Image]]] = [],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        height: int = 512,
+        width: int = 512,
         return_dict: bool = True,
         num_images: int = 4,
         guidance_scale: float = 7.0,
@@ -498,8 +509,6 @@ class FabricPipeline(DiffusionPipeline):
         neg_bottleneck_scale: float = 1.0,
         output_type: Optional[str] = "pil",
         latents: Optional[torch.FloatTensor] = None,
-        pos_weights: Optional[tuple] = (0.8, 0.8),
-        neg_weights: Optional[tuple] = (0.5, 0.5),
     ):
         r"""
         Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary
@@ -520,6 +529,10 @@ class FabricPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]` or `int`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html),
                 can be int. to make generation deterministic.
+            height (`int`, *optional*, defaults to 512):
+                height of the generated image
+            width (`int`, *optional*, defaults to 512):
+                width of the generated image
             num_images (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             guidance_scale (`float`, *optional*, defaults to 7.5):
@@ -531,6 +544,8 @@ class FabricPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            output_type (`str`, *optional*, defaults to "pil"):
+                defines the output type of generated image supports "np","pil"
 
         Examples:
 
@@ -545,16 +560,28 @@ class FabricPipeline(DiffusionPipeline):
 
         device = self._execution_device
         dtype = self.unet.dtype
-
-        latent_noise = torch.randn(num_images, 4, 64, 64, device=device, dtype=dtype)
+        if generator is None:
+            generator = torch.manual_seed(42)
+        shape = [
+            num_images,
+            self.unet.config.in_channels,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        ]
+        latent_noise = randn_tensor(
+            shape,
+            generator=generator,
+            device=device,
+            dtype=dtype,
+        )
 
         positive_latents = (
-            self.preprocess_feedback_images(liked, self.vae, device, dtype)
+            self.preprocess_feedback_images(liked, self.vae, (height, width), device, dtype)
             if liked and len(liked) > 0
             else torch.tensor([], device=device, dtype=dtype)
         )
         negative_latents = (
-            self.preprocess_feedback_images(disliked, self.vae, device, dtype)
+            self.preprocess_feedback_images(disliked, self.vae, (height, width), device, dtype)
             if disliked and len(disliked) > 0
             else torch.tensor([], device=device, dtype=dtype)
         )
@@ -577,7 +604,7 @@ class FabricPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self._encode_prompt(
             prompt,
             device,
             num_images,
@@ -589,7 +616,6 @@ class FabricPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-
         latent_noise = latent_noise * self.scheduler.init_noise_sigma
 
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -670,7 +696,7 @@ class FabricPipeline(DiffusionPipeline):
 
         return FabricPipelineOutput(imgs, False)
 
-    def image_to_tensor(self, image: Union[str, Image.Image], dtype):
+    def image_to_tensor(self, image: Union[str, Image.Image], dim: tuple, dtype):
         """
         Convert latent PIL image to a torch tensor for further processing.
         """
@@ -678,5 +704,5 @@ class FabricPipeline(DiffusionPipeline):
             image = Image.open(image)
         if not image.mode == "RGB":
             image = image.convert("RGB")
-        image = self.image_processor.preprocess(image, height=512, width=512)[0]
+        image = self.image_processor.preprocess(image, height=dim[0], width=dim[1])[0]
         return image.type(dtype)
