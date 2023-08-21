@@ -30,3 +30,4 @@ else:
     from .pipeline_text_to_video_synth import TextToVideoSDPipeline
     from .pipeline_text_to_video_synth_img2img import VideoToVideoSDPipeline  # noqa: F401
     from .pipeline_text_to_video_zero import TextToVideoZeroPipeline
+    from .pipeline_text_to_video_zero_sdxl import TextToVideoZeroSDXLPipeline

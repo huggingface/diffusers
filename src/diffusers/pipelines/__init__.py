@@ -115,7 +115,12 @@ else:
         StableDiffusionXLPipeline,
     )
     from .t2i_adapter import StableDiffusionAdapterPipeline
-    from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
+    from .text_to_video_synthesis import (
+        TextToVideoSDPipeline,
+        TextToVideoZeroPipeline,
+        TextToVideoZeroSDXLPipeline,
+        VideoToVideoSDPipeline,
+    )
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
     from .versatile_diffusion import (
