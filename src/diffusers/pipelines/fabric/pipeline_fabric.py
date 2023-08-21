@@ -562,12 +562,12 @@ class FabricPipeline(DiffusionPipeline):
         dtype = self.unet.dtype
         if generator is None:
             generator = torch.manual_seed(42)
-        shape = [
+        shape = (
             num_images,
             self.unet.config.in_channels,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
-        ]
+        )
         latent_noise = randn_tensor(
             shape,
             generator=generator,
