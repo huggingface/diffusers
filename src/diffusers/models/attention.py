@@ -21,6 +21,39 @@ from ..utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
+from .lora import LoRACompatibleLinear
+
+
+@maybe_allow_in_graph
+class GatedSelfAttentionDense(nn.Module):
+    def __init__(self, query_dim, context_dim, n_heads, d_head):
+        super().__init__()
+
+        # we need a linear projection since we need cat visual feature and obj feature
+        self.linear = nn.Linear(context_dim, query_dim)
+
+        self.attn = Attention(query_dim=query_dim, heads=n_heads, dim_head=d_head)
+        self.ff = FeedForward(query_dim, activation_fn="geglu")
+
+        self.norm1 = nn.LayerNorm(query_dim)
+        self.norm2 = nn.LayerNorm(query_dim)
+
+        self.register_parameter("alpha_attn", nn.Parameter(torch.tensor(0.0)))
+        self.register_parameter("alpha_dense", nn.Parameter(torch.tensor(0.0)))
+
+        self.enabled = True
+
+    def forward(self, x, objs):
+        if not self.enabled:
+            return x
+
+        n_visual = x.shape[1]
+        objs = self.linear(objs)
+
+        x = x + self.alpha_attn.tanh() * self.attn(self.norm1(torch.cat([x, objs], dim=1)))[:, :n_visual, :]
+        x = x + self.alpha_dense.tanh() * self.ff(self.norm2(x))
+
+        return x
 
 
 @maybe_allow_in_graph
@@ -61,6 +94,7 @@ class BasicTransformerBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
+        attention_type: str = "default",
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -119,6 +153,10 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
+        # 4. Fuser
+        if attention_type == "gated":
+            self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
+
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
@@ -149,7 +187,9 @@ class BasicTransformerBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
-        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        # 0. Prepare GLIGEN inputs
+        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
+        gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
         attn_output = self.attn1(
             norm_hidden_states,
@@ -160,6 +200,11 @@ class BasicTransformerBlock(nn.Module):
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
+
+        # 1.5 GLIGEN Control
+        if gligen_kwargs is not None:
+            hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
+        # 1.5 ends
 
         # 2. Cross-Attention
         if self.attn2 is not None:
@@ -245,7 +290,7 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(nn.Linear(inner_dim, dim_out))
+        self.net.append(LoRACompatibleLinear(inner_dim, dim_out))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
@@ -289,7 +334,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = LoRACompatibleLinear(dim_in, dim_out * 2)
 
     def gelu(self, gate):
         if gate.device.type != "mps":

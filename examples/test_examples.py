@@ -23,7 +23,7 @@ import tempfile
 import unittest
 from typing import List
 
-import torch
+import safetensors
 from accelerate.utils import write_basic_config
 
 from diffusers import DiffusionPipeline, UNet2DConditionModel
@@ -93,7 +93,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_textual_inversion(self):
@@ -144,7 +144,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_if(self):
@@ -170,7 +170,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_checkpointing(self):
@@ -272,10 +272,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -305,10 +305,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # check `text_encoder` is present at all.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             keys = lora_state_dict.keys()
             is_text_encoder_present = any(k.startswith("text_encoder") for k in keys)
             self.assertTrue(is_text_encoder_present)
@@ -341,10 +341,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
@@ -373,16 +373,52 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
+            self.assertTrue(starts_with_unet)
+
+    def test_dreambooth_lora_sdxl_with_text_encoder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --train_text_encoder
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
+            keys = lora_state_dict.keys()
+            starts_with_unet = all(
+                k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
+            )
             self.assertTrue(starts_with_unet)
 
     def test_custom_diffusion(self):
@@ -401,6 +437,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --modifier_token <new1>
+                --no_safe_serialization
                 --output_dir {tmpdir}
                 """.split()
 
@@ -430,7 +467,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_text_to_image_checkpointing(self):
@@ -720,6 +757,30 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
+
+    def test_text_to_image_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
@@ -1296,6 +1357,25 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
             )
 
+    def test_controlnet_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+            examples/controlnet/train_controlnet_sdxl.py
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
+            --dataset_name=hf-internal-testing/fill10
+            --output_dir={tmpdir}
+            --resolution=64
+            --train_batch_size=1
+            --gradient_accumulation_steps=1
+            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet-sdxl
+            --max_train_steps=9
+            --checkpointing_steps=2
+            """.split()
+
+            run_command(self._launch_args + test_args)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -1311,6 +1391,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --max_train_steps=6
             --checkpoints_total_limit=2
             --checkpointing_steps=2
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + test_args)
@@ -1334,6 +1415,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --dataloader_num_workers=0
             --max_train_steps=9
             --checkpointing_steps=2
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + test_args)
@@ -1357,6 +1439,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             --checkpointing_steps=2
             --resume_from_checkpoint=checkpoint-8
             --checkpoints_total_limit=3
+            --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + resume_run_args)
@@ -1365,3 +1448,64 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
+
+    def test_text_to_image_lora_sdxl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+    def test_text_to_image_lora_sdxl_with_text_encoder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image_lora_sdxl.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --train_text_encoder
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
+            keys = lora_state_dict.keys()
+            starts_with_unet = all(
+                k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
+            )
+            self.assertTrue(starts_with_unet)

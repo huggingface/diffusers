@@ -50,7 +50,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -58,20 +58,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step):
@@ -84,7 +73,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         vae=vae,
         unet=unet,
         controlnet=controlnet,
-        safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
@@ -125,7 +113,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         for _ in range(args.num_validation_images):
             with torch.autocast("cuda"):
                 image = pipeline(
-                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                    prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
             images.append(image)
 
@@ -179,7 +167,7 @@ def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -206,12 +194,12 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
 ---
-license: creativeml-openrail-m
+license: openrail++
 base_model: {base_model}
 tags:
 - stable-diffusion-xl
@@ -228,6 +216,7 @@ inference: true
 These are controlnet weights trained on {base_model} with new type of conditioning.
 {img_str}
 """
+
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
@@ -799,10 +788,7 @@ def main(args):
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name,
-                exist_ok=True,
-                token=args.hub_token,
-                private=True,
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
     # Load the tokenizers
@@ -840,7 +826,7 @@ def main(args):
         revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     if args.controlnet_model_name_or_path:
@@ -902,6 +888,7 @@ def main(args):
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
+        unet.enable_gradient_checkpointing()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
@@ -1002,7 +989,12 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
     )
     with accelerator.main_process_first():
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
+        from datasets.fingerprint import Hasher
+
+        # fingerprint used by the cache for the other processes to load the result
+        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+        new_fingerprint = Hasher.hash(args)
+        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
 
     del text_encoders, tokenizers
     gc.collect()
@@ -1114,8 +1106,6 @@ def main(args):
                 # Convert images to latent space
                 if args.pretrained_vae_model_name_or_path is not None:
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
-                    if vae.dtype != weight_dtype:
-                        vae.to(dtype=weight_dtype)
                 else:
                     pixel_values = batch["pixel_values"]
                 latents = vae.encode(pixel_values).latent_dist.sample()

@@ -28,14 +28,14 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 @dataclass
 class SdeVeOutput(BaseOutput):
     """
-    Output class for the ScoreSdeVeScheduler's step function output.
+    Output class for the scheduler's `step` function output.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         prev_sample_mean (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Mean averaged `prev_sample`. Same as `prev_sample`, only mean-averaged over previous timesteps.
+            Mean averaged `prev_sample` over previous timesteps.
     """
 
     prev_sample: torch.FloatTensor
@@ -44,26 +44,25 @@ class SdeVeOutput(BaseOutput):
 
 class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
-    The variance exploding stochastic differential equation (SDE) scheduler.
+    `ScoreSdeVeScheduler` is a variance exploding stochastic differential equation (SDE) scheduler.
 
-    For more information, see the original paper: https://arxiv.org/abs/2011.13456
-
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        snr (`float`):
-            coefficient weighting the step from the model_output sample (from the network) to the random noise.
-        sigma_min (`float`):
-                initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
-                distribution of the data.
-        sigma_max (`float`): maximum value used for the range of continuous timesteps passed into the model.
-        sampling_eps (`float`): the end value of sampling, where timesteps decrease progressively from 1 to
-        epsilon.
-        correct_steps (`int`): number of correction steps performed on a produced sample.
+        num_train_timesteps (`int`, defaults to 1000):
+            The number of diffusion steps to train the model.
+        snr (`float`, defaults to 0.15):
+            A coefficient weighting the step from the `model_output` sample (from the network) to the random noise.
+        sigma_min (`float`, defaults to 0.01):
+            The initial noise scale for the sigma sequence in the sampling procedure. The minimum sigma should mirror
+            the distribution of the data.
+        sigma_max (`float`, defaults to 1348.0):
+            The maximum value used for the range of continuous timesteps passed into the model.
+        sampling_eps (`float`, defaults to 1e-5):
+            The end value of sampling where timesteps decrease progressively from 1 to epsilon.
+        correct_steps (`int`, defaults to 1):
+            The number of correction steps performed on a produced sample.
     """
 
     order = 1
@@ -92,11 +91,14 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
@@ -104,13 +106,15 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None
     ):
         """
-        Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the continuous timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
-            sampling_eps (`float`, optional):
-                final timestep value (overrides value given at Scheduler instantiation).
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            sampling_eps (`float`, *optional*):
+                The final timestep value (overrides value given during scheduler instantiation).
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
 
         """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
@@ -121,19 +125,18 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None
     ):
         """
-        Sets the noise scales used for the diffusion chain. Supporting function to be run before inference.
-
-        The sigmas control the weight of the `drift` and `diffusion` components of sample update.
+        Sets the noise scales used for the diffusion chain (to be run before inference). The sigmas control the weight
+        of the `drift` and `diffusion` components of the sample update.
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+                The number of diffusion steps used when generating samples with a pre-trained model.
             sigma_min (`float`, optional):
-                initial noise scale value (overrides value given at Scheduler instantiation).
+                The initial noise scale value (overrides value given during scheduler instantiation).
             sigma_max (`float`, optional):
-                final noise scale value (overrides value given at Scheduler instantiation).
+                The final noise scale value (overrides value given during scheduler instantiation).
             sampling_eps (`float`, optional):
-                final timestep value (overrides value given at Scheduler instantiation).
+                The final timestep value (overrides value given during scheduler instantiation).
 
         """
         sigma_min = sigma_min if sigma_min is not None else self.config.sigma_min
@@ -162,20 +165,25 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[SdeVeOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
+            timestep (`int`):
+                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
-            generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+                A current instance of a sample created by the diffusion process.
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_sde_ve.SdeVeOutput`] is returned, otherwise a tuple
+                is returned where the first element is the sample tensor.
 
         """
         if self.timesteps is None:
@@ -224,19 +232,23 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
-        Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
-        after making the prediction for the previous timestep.
+        Correct the predicted sample based on the `model_output` of the network. This is often run repeatedly after
+        making the prediction for the previous timestep.
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
-            generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+                A current instance of a sample created by the diffusion process.
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_sde_ve.SdeVeOutput`] is returned, otherwise a tuple
+                is returned where the first element is the sample tensor.
 
         """
         if self.timesteps is None:
