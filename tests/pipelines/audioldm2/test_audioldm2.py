@@ -159,11 +159,10 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             n_positions=99,
         )
         language_model = GPT2Model(language_model_config)
-        language_model.generation_config = GenerationConfig.from_model_config(language_model_config)
-        language_model.generation_config.max_new_tokens = 8
+        language_model.config.max_new_tokens = 8
 
         torch.manual_seed(0)
-        projection_model = AudioLDM2ProjectionModel(text_encoder_dim=16, text_encoder_2_dim=32, langauge_model_dim=16)
+        projection_model = AudioLDM2ProjectionModel(text_encoder_dim=16, text_encoder_1_dim=32, langauge_model_dim=16)
 
         vocoder_config = SpeechT5HifiGanConfig(
             model_in_dim=8,
