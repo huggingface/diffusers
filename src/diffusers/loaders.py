@@ -1185,6 +1185,7 @@ class LoraLoaderMixin:
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
+        assert not unet.requires_grad_, "U-Net's attention should be frozen before LoRA"
         keys = list(state_dict.keys())
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
@@ -1207,6 +1208,7 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
         # load loras into unet
+        assert not unet.requires_grad_
         unet.load_attn_procs(state_dict, network_alphas=network_alphas)
 
     @classmethod
