@@ -238,7 +238,7 @@ Now you can load the fine-tuned model for inference by passing the model path or
 from diffusers import StableDiffusionPipeline
 
 model_path = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, use_safetensors=True)
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
@@ -275,3 +275,9 @@ image.save("yoda-pokemon.png")
 ```
 </jax>
 </frameworkcontent>
+
+
+## Stable Diffusion XL
+
+* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
+* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 

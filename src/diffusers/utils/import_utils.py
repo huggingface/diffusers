@@ -306,10 +306,6 @@ def is_torch_available():
     return _torch_available
 
 
-def is_safetensors_available():
-    return _safetensors_available
-
-
 def is_tf_available():
     return _tf_available
 

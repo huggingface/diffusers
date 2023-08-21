@@ -30,14 +30,14 @@ from diffusers.utils import BaseOutput, deprecate
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
 class DDIMSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the scheduler's `step` function output.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
@@ -129,47 +129,45 @@ def rescale_zero_terminal_snr(betas):
 
 class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
     """
-    DDIMInverseScheduler is the reverse scheduler of [`DDIMScheduler`].
+    `DDIMInverseScheduler` is the reverse scheduler of [`DDIMScheduler`].
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
-
-    For more details, see the original paper: https://arxiv.org/abs/2010.02502
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+        num_train_timesteps (`int`, defaults to 1000):
+            The number of diffusion steps to train the model.
+        beta_start (`float`, defaults to 0.0001):
+            The starting `beta` value of inference.
+        beta_end (`float`, defaults to 0.02):
+            The final `beta` value.
+        beta_schedule (`str`, defaults to `"linear"`):
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        clip_sample (`bool`, default `True`):
-            option to clip predicted sample for numerical stability.
-        clip_sample_range (`float`, default `1.0`):
-            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
-        set_alpha_to_zero (`bool`, default `True`):
-            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
-            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `0`,
-            otherwise it uses the value of alpha at step `num_train_timesteps - 1`.
-        steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1` for the previous alpha
+        trained_betas (`np.ndarray`, *optional*):
+            Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
+        clip_sample (`bool`, defaults to `True`):
+            Clip the predicted sample for numerical stability.
+        clip_sample_range (`float`, defaults to 1.0):
+            The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
+        set_alpha_to_one (`bool`, defaults to `True`):
+            Each diffusion step uses the alphas product value at that step and at the previous one. For the final step
+            there is no previous alpha. When this option is `True` the previous alpha product is fixed to 0, otherwise
+            it uses the alpha value at step `num_train_timesteps - 1`.
+        steps_offset (`int`, defaults to 0):
+            An offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False` to make the last step use `num_train_timesteps - 1` for the previous alpha
             product.
-        prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
-        timestep_spacing (`str`, default `"leading"`):
-            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
-            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
-        rescale_betas_zero_snr (`bool`, default `False`):
-            whether to rescale the betas to have zero terminal SNR (proposed by https://arxiv.org/pdf/2305.08891.pdf).
-            This can enable the model to generate very bright and dark samples instead of limiting it to samples with
-            medium brightness. Loosely related to
+        prediction_type (`str`, defaults to `epsilon`, *optional*):
+            Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
+            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
+            Video](https://imagen.research.google/video/paper.pdf) paper).
+        timestep_spacing (`str`, defaults to `"leading"`):
+            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
+            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
@@ -243,21 +241,24 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+                The number of diffusion steps used when generating samples with a pre-trained model.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:
@@ -302,6 +303,37 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
+        """
+        Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
+            timestep (`float`):
+                The current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor`):
+                A current instance of a sample created by the diffusion process.
+            eta (`float`):
+                The weight of noise for added noise in diffusion step.
+            use_clipped_model_output (`bool`, defaults to `False`):
+                If `True`, computes "corrected" `model_output` from the clipped predicted original sample. Necessary
+                because predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
+                clipping has happened, "corrected" `model_output` would coincide with the one provided as input and
+                `use_clipped_model_output` has no effect.
+            variance_noise (`torch.FloatTensor`):
+                Alternative to generating noise with `generator` by directly providing the noise for the variance
+                itself. Useful for methods such as [`CycleDiffusion`].
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_ddim_inverse.DDIMInverseSchedulerOutput`] or
+                `tuple`.
+
+        Returns:
+            [`~schedulers.scheduling_ddim_inverse.DDIMInverseSchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_ddim_inverse.DDIMInverseSchedulerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
+
+        """
         # 1. get previous step value (=t+1)
         prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 

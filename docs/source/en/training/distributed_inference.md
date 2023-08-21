@@ -16,7 +16,9 @@ Now use the [`~accelerate.PartialState.split_between_processes`] utility as a co
 from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
 
@@ -50,7 +52,9 @@ import torch.multiprocessing as mp
 
 from diffusers import DiffusionPipeline
 
-sd = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+sd = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
 ```
 
 You'll want to create a function to run inference; [`init_process_group`](https://pytorch.org/docs/stable/distributed.html?highlight=init_process_group#torch.distributed.init_process_group) handles creating a distributed environment with the type of backend to use, the `rank` of the current process, and the `world_size` or the number of processes participating. If you're running inference in parallel over 2 GPUs, then the `world_size` is 2.
