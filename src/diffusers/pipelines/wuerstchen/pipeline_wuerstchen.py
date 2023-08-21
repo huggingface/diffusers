@@ -233,7 +233,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         image_embeds: torch.Tensor,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_inference_steps: Dict[float, int] = {0.0: 12},
+        num_inference_steps: Union[Dict[float, int], int] = 12,
         guidance_scale: float = 0.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -147,13 +147,13 @@ class WuerstchenPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_inference_steps: int = 100,
+        num_inference_steps: int = 12,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         height: int = 512,
         width: int = 512,
         prior_guidance_scale: float = 4.0,
-        prior_num_inference_steps: int = 25,
+        prior_num_inference_steps: Union[int, Dict[float, int]] = {2 / 3: 20, 0.0: 10},
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -172,7 +172,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             height (`int`, *optional*, defaults to 512):
@@ -185,7 +185,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            prior_num_inference_steps (`int`, *optional*, defaults to 100):
+            prior_num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 4.0):
