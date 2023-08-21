@@ -1869,10 +1869,6 @@ pipe = DiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16").to('cuda:0')
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
-    use_safetensors=True, 
-    variant="fp16").to('cuda:0')
     
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
