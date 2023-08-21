@@ -20,15 +20,17 @@ from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import BasicTransformerBlock
 from ...models.attention_processor import LoRAAttnProcessor
-from ...schedulers import EulerAncestralDiscreteScheduler
+from ...schedulers import KarrasDiffusionSchedulers,EulerAncestralDiscreteScheduler
 from ...utils import (
     deprecate,
     logging,
+    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import FabricPipelineOutput
@@ -36,8 +38,21 @@ from . import FabricPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-class CrossAttnProcessor:
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import FabricPipeline 
+        >>> import torch 
+        >>> model_id = "dreamlike-art/dreamlike-photoreal-2.0" 
+        >>> pipe = FabricPipeline(model_id, torch_dtype = torch.float16)
+        >>> pipe = pipe.to("cuda") 
+        >>> prompt = "a giant standing in a fantasy landscape best quality" 
+        >>> liked = [] 
+        >>> disliked = [] 
+        >>> image = pipe(prompt, num_images=4, liked=liked,disliked=disliked).images[0]
+        ```
+"""
+class FabricCrossAttnProcessor:
     def __init__(self):
         self.attntion_probs = None
 
@@ -130,7 +145,7 @@ class FabricPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: EulerAncestralDiscreteScheduler,
+        scheduler: KarrasDiffusionSchedulers, 
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -220,6 +235,168 @@ class FabricPipeline(DiffusionPipeline):
                 del module.attn1.old_forward
 
         return cached_hidden_states
+    
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+             prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+        """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
+            text_inputs = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                )
+                logger.warning(
+                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                )
+
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                attention_mask = text_inputs.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            prompt_embeds = self.text_encoder(
+                text_input_ids.to(device),
+                attention_mask=attention_mask,
+            )
+            prompt_embeds = prompt_embeds[0]
+
+        if self.text_encoder is not None:
+            prompt_embeds_dtype = self.text_encoder.dtype
+        elif self.unet is not None:
+            prompt_embeds_dtype = self.unet.dtype
+        else:
+            prompt_embeds_dtype = prompt_embeds.dtype
+
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt]
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
+
+            max_length = prompt_embeds.shape[1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                attention_mask = uncond_input.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            negative_prompt_embeds = self.text_encoder(
+                uncond_input.input_ids.to(device),
+                attention_mask=attention_mask,
+            )
+            negative_prompt_embeds = negative_prompt_embeds[0]
+
+        if do_classifier_free_guidance:
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            seq_len = negative_prompt_embeds.shape[1]
+
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+
+        return prompt_embeds
+
 
     def unet_forward_with_cached_hidden_states(
         self,
@@ -256,7 +433,7 @@ class FabricPipeline(DiffusionPipeline):
                         device, dtype = hidden_states.device, hidden_states.dtype
 
                         weights = torch.ones(batch_size, d_model, device=device, dtype=dtype)
-
+                        print(weights.shape)
                         out_pos = self.old_forward(hidden_states)
                         out_neg = self.old_forward(hidden_states)
 
@@ -265,7 +442,7 @@ class FabricPipeline(DiffusionPipeline):
                             cond_pos_hs = torch.cat([cond_hiddens, cached_pos_hs], dim=1)
                             pos_weights = weights.clone().repeat(1, 1 + cached_pos_hs.shape[1] // d_model)
                             pos_weights[:, d_model:] = pos_weight
-                            attn_with_weights = CrossAttnProcessor()
+                            attn_with_weights = FabricCrossAttnProcessor()
                             out_pos = attn_with_weights(
                                 self,
                                 cond_hiddens,
@@ -280,7 +457,7 @@ class FabricPipeline(DiffusionPipeline):
                             uncond_neg_hs = torch.cat([uncond_hiddens, cached_neg_hs], dim=1)
                             neg_weights = weights.clone().repeat(1, 1 + cached_neg_hs.shape[1] // d_model)
                             neg_weights[:, d_model:] = neg_weight
-                            attn_with_weights = CrossAttnProcessor()
+                            attn_with_weights = FabricCrossAttnProcessor()
                             out_neg = attn_with_weights(
                                 self,
                                 uncond_hiddens,
@@ -312,17 +489,6 @@ class FabricPipeline(DiffusionPipeline):
         latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample()
         return latents
 
-    def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        # we always cast to float32 as this does not cause significant overhead and is compatible             with bfloat16
-        return image
-
     def check_inputs(
         self,
         prompt,
@@ -347,6 +513,7 @@ class FabricPipeline(DiffusionPipeline):
             raise ValueError(f"`disliked` has to be of type `list` but is {type(disliked)}")
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING) 
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = "",
@@ -367,6 +534,8 @@ class FabricPipeline(DiffusionPipeline):
         neg_bottleneck_scale: float = 1.0,
         output_type: Optional[str] = "pil",
         latents: Optional[torch.FloatTensor] = None,
+        pos_weights: Optional[tuple] = (.8,.8),
+        neg_weights: Optional[tuple] = (.5,.5),
     ):
         r"""
         Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary
@@ -400,11 +569,7 @@ class FabricPipeline(DiffusionPipeline):
                 expense of slower inference.
 
         Examples:
-            >>> from diffusers import FabricPipeline >>> import torch >>> model_id =
-            "dreamlike-art/dreamlike-photoreal-2.0" >>> pipe = FabricPipeline(model_id, torch_dtype = torch.float16)
-            >>> pipe = pipe.to("cuda") >>> prompt = "a giant standing in a fantasy landscape best quality" >>> liked =
-            [] >>> disliked = [] >>> image = pipe(prompt, num_images=4, liked=liked,disliked=disliked).images
-
+            
         Returns:
             [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`: When returning a tuple, the first element is a list
             with the generated images, and the second element is a list of `bool`s denoting whether the corresponding
@@ -446,9 +611,13 @@ class FabricPipeline(DiffusionPipeline):
         else:
             assert len(negative_prompt) == num_images
 
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self.initialize_prompts(
-            prompt + negative_prompt + [""], device
-        ).split([num_images, num_images, batch_size * num_images])
+        do_classifier_free_guidance = guidance_scale > 1.
+        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self._encode_prompt(
+            prompt, device,
+            num_images,
+            do_classifier_free_guidance,
+            negative_prompt,
+        ).split([num_images, num_images, 1])
 
         batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
 
@@ -509,7 +678,6 @@ class FabricPipeline(DiffusionPipeline):
                         cached_neg_hs = None
                 else:
                     cached_pos_hs, cached_neg_hs = None, None
-
                 unet_out = self.unet_forward_with_cached_hidden_states(
                     z_all,
                     t,
@@ -528,7 +696,7 @@ class FabricPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     pbar.update()
 
-        y = self.decode_latents(latent_noise)
+        y = self.vae.decode(latent_noise / self.vae.config.scaling_factor, return_dict=False)[0]
         imgs = self.image_processor.postprocess(y, output_type=output_type)
 
         if not return_dict:
@@ -536,8 +704,7 @@ class FabricPipeline(DiffusionPipeline):
 
         return FabricPipelineOutput(imgs, False)
 
-    @staticmethod
-    def image_to_tensor(image: Union[str, Image.Image], dtype):
+    def image_to_tensor(self, image: Union[str, Image.Image], dtype):
         """
         Convert latent PIL image to a torch tensor for further processing.
         """
@@ -545,8 +712,6 @@ class FabricPipeline(DiffusionPipeline):
             image = Image.open(image)
         if not image.mode == "RGB":
             image = image.convert("RGB")
-        image = image.resize((512, 512))
-        image = np.array(image).astype(np.uint8)
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        image = torch.from_numpy(image).permute(2, 0, 1)
+        image = self.image_processor.preprocess(image,height=512,width=512)[0]
         return image.type(dtype)
+
