@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 import math
-from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -222,12 +221,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
- 
+
         self.timesteps = torch.from_numpy(timesteps)
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
         self._step_index = None
-   
+
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
@@ -235,14 +234,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return self.sigmas.max()
 
         return (self.sigmas.max() ** 2 + 1) ** 0.5
-    
+
     @property
     def step_index(self):
         """
         TODO: Nice docstring
         """
         return self._step_index
-
 
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
@@ -261,20 +259,18 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = (
-                np.linspace(0, last_timestep - 1, num_inference_steps, dtype=float).round()[::-1].copy()
-            )
+            timesteps = np.linspace(0, last_timestep - 1, num_inference_steps).round()[::-1].copy().astype(np.float32)
         elif self.config.timestep_spacing == "leading":
             step_ratio = last_timestep // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(float)
+            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.float32)
             timesteps -= 1
         else:
             raise ValueError(
@@ -288,10 +284,11 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-        
+
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
+        timesteps = timesteps.astype(np.int32)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
         self.num_inference_steps = len(timesteps)
@@ -475,10 +472,14 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: the sample tensor at the previous timestep.
         """
+
         def t_fn(_sigma):
             return -torch.log(_sigma)
 
-        sigma_t, sigma_s = self.sigmas[self.step_index +1], self.sigmas[self.step_index]
+        # YiYi notes: keep these for now so don't get an error, don't need once fully refactored
+        alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
+
+        sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         h = t_fn(sigma_t) - t_fn(sigma_s)
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (torch.exp(-h) - 1.0) * model_output
@@ -525,8 +526,16 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         def t_fn(_sigma):
             return -torch.log(_sigma)
-        
-        sigma_t, sigma_s0, sigma_s1 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
+
+        # YiYi notes: keep these for now so don't get an error, not needed once fully refactored
+        t, s0 = prev_timestep, timestep_list[-1]
+        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
+
+        sigma_t, sigma_s0, sigma_s1 = (
+            self.sigmas[self.step_index + 1],
+            self.sigmas[self.step_index],
+            self.sigmas[self.step_index - 1],
+        )
         m0, m1 = model_output_list[-1], model_output_list[-2]
 
         h, h_0 = t_fn(sigma_t) - t_fn(sigma_s0), t_fn(sigma_s0) - t_fn(sigma_s1)
@@ -536,11 +545,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.config.algorithm_type == "dpmsolver++":
             # See https://arxiv.org/abs/2211.01095 for detailed derivations
             if self.config.solver_type == "midpoint":
-                x_t = (
-                    (sigma_t / sigma_s0) * sample
-                    - (torch.exp(-h) - 1.0) * D0
-                    - 0.5 * (torch.exp(-h) - 1.0) * D1
-                )
+                x_t = (sigma_t / sigma_s0) * sample - (torch.exp(-h) - 1.0) * D0 - 0.5 * (torch.exp(-h) - 1.0) * D1
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
@@ -699,7 +704,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         prev_timestep = 0 if self.step_index == len(self.timesteps) - 1 else self.timesteps[self.step_index + 1]
-        lower_order_final = (self.step_index == len(self.timesteps) - 1) 
+        lower_order_final = self.step_index == len(self.timesteps) - 1
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
@@ -726,14 +731,14 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 self.model_outputs, timestep_list, prev_timestep, sample, noise=noise
             )
         else:
-            timestep_list = [self.timesteps[step_index - 2], self.timesteps[step_index - 1], timestep]
+            timestep_list = [self.timesteps[self.step_index - 2], self.timesteps[self.step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_third_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample
             )
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
-        
+
         # upon completion increase step index by one
         self._step_index += 1
 
@@ -741,7 +746,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample,)
 
         return SchedulerOutput(prev_sample=prev_sample)
-    
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.scale_model_input
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
