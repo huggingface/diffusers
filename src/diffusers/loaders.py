@@ -1667,11 +1667,12 @@ class LoraLoaderMixin:
     @classmethod
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_state_dict = {}
+        exceptional_keys = {"time_embedding", "add_embedding"}
 
         # every down weight has a corresponding up weight
         lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
         for key in lora_keys:
-            if "time_embedding" not in key:
+            if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
                 diffusers_name = key.replace("_", ".")
@@ -1679,8 +1680,8 @@ class LoraLoaderMixin:
                 lora_name_up = key.replace("lora_down", "lora_up")
                 diffusers_name = key
 
-            if "time" in key:
-                print(f"Diffusers name: {diffusers_name} actual key: {key} up: {lora_name_up}")
+            # if "time" in key:
+            #     print(f"Diffusers name: {diffusers_name} actual key: {key} up: {lora_name_up}")
 
             if "input.blocks" in diffusers_name:
                 diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
