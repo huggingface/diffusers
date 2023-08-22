@@ -408,7 +408,7 @@ class MusicLDMPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
-            audio_length_in_s (`int`, *optional*, defaults to 5.12):
+            audio_length_in_s (`int`, *optional*, defaults to 10.24):
                 The length of the generated audio sample in seconds.
             num_inference_steps (`int`, *optional*, defaults to 200):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
