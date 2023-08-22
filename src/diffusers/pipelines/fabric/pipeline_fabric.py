@@ -64,7 +64,7 @@ class FabricCrossAttnProcessor:
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        weights=None,  # shape: (batch_size, sequence_length)
+        weights=None,
         lora_scale=1.0,
     ):
         batch_size, sequence_length, _ = (
