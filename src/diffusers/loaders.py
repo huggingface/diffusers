@@ -1671,9 +1671,9 @@ class LoraLoaderMixin:
         print(f"Total state_dict: {len(state_dict)}")
 
         # every down weight has a corresponding up weight
-        lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
-        print(f"Total LoRA state_dict: {len(lora_keys)}")
-        for key in lora_keys:
+        lora_state_dict = {k: v for k, v in state_dict.items() if k.endswith("lora_down.weight")}
+        print(f"Total LoRA state_dict: {len(lora_state_dict)}")
+        for key in lora_state_dict:
             if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
@@ -1725,17 +1725,19 @@ class LoraLoaderMixin:
                 if "attn1" in diffusers_name or "attn2" in diffusers_name:
                     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
                     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-                    controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                    controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
                 elif "ff" in diffusers_name:
-                    controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                    controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
-                controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
             else:
-                controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
+
+        print(f"Remaining keys in the LoRA state dict: {lora_state_dict.keys()}")
 
         logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
 
