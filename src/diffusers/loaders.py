@@ -1668,9 +1668,11 @@ class LoraLoaderMixin:
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_lora_state_dict = {}
         exceptional_keys = {"time_embedding", "add_embedding"}
+        print(f"Total state_dict: {len(state_dict)}")
 
         # every down weight has a corresponding up weight
         lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
+        print(f"Total LoRA state_dict: {len(lora_keys)}")
         for key in lora_keys:
             if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
