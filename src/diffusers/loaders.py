@@ -1745,6 +1745,7 @@ class LoraLoaderMixin:
                 )
 
         print(f"Remaining keys in the LoRA state dict: {lora_state_dict.keys()}")
+        assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
         logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
 
