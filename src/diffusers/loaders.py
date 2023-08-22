@@ -1678,7 +1678,6 @@ class LoraLoaderMixin:
                 diffusers_name = key.replace("_", ".")
             else:
                 lora_name_up = key.replace("lora_down", "lora_up")
-                print(lora_name_up)
                 diffusers_name = key
 
             if "input.blocks" in diffusers_name:
