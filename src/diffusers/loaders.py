@@ -1730,6 +1730,9 @@ class LoraLoaderMixin:
                 controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             else:
                 print(f"Actual key: {key}, Diffusers name: {diffusers_name}")
+                print(
+                    f"diffusers_name (replaced): {diffusers_name.replace('.down.', '.up.')}, lora_name_up: {lora_name_up}"
+                )
                 controlnet_state_dict[diffusers_name] = state_dict.pop(key)
                 controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
