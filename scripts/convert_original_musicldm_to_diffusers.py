@@ -39,7 +39,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_omegaconf_available, is_safetensors_available
+from diffusers.utils import is_omegaconf_available
 from diffusers.utils.import_utils import BACKENDS_MAPPING
 
 
@@ -776,7 +776,7 @@ DEFAULT_CONFIG = {
 def load_pipeline_from_original_MusicLDM_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 512,
+    image_size: int = 1024,
     prediction_type: str = None,
     extract_ema: bool = False,
     scheduler_type: str = "ddim",
@@ -798,7 +798,7 @@ def load_pipeline_from_original_MusicLDM_ckpt(
         original_config_file (`str`):
             Path to `.yaml` config file corresponding to the original architecture. If `None`, will be automatically
             set to the MusicLDM-s-full-v2 config.
-        image_size (`int`, *optional*, defaults to 512):
+        image_size (`int`, *optional*, defaults to 1024):
             The image size that the model was trained on.
         prediction_type (`str`, *optional*):
             The prediction type that the model was trained on. If `None`, will be automatically
@@ -831,9 +831,6 @@ def load_pipeline_from_original_MusicLDM_ckpt(
     from omegaconf import OmegaConf
 
     if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
-
         from safetensors import safe_open
 
         checkpoint = {}
@@ -982,13 +979,8 @@ def load_pipeline_from_original_MusicLDM_ckpt(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # TODO(SG): revert these args
     parser.add_argument(
-        "--checkpoint_path",
-        default="/Users/sanchitgandhi/convert-musicldm/musicldm-ckpt.ckpt",
-        type=str,
-        required=False,
-        help="Path to the checkpoint to convert.",
+        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
         "--original_config_file",
@@ -1053,12 +1045,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument(
-        "--dump_path",
-        default="/Users/sanchitgandhi/convert-musicldm/diffusers_out",
-        type=str,
-        help="Path to the output model.",
-    )
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 

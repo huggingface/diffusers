@@ -188,7 +188,7 @@ class MusicLDMPipeline(DiffusionPipeline):
                 attention_mask=attention_mask.to(device),
             )
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.text_model.dtype, device=device)
 
         (
             bs_embed,
@@ -240,7 +240,7 @@ class MusicLDMPipeline(DiffusionPipeline):
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.text_model.dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len)
