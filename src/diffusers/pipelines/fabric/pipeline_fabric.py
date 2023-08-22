@@ -229,11 +229,12 @@ class FabricPipeline(DiffusionPipeline):
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
+            prompt = [prompt]
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-
+        # prompt = [prompt] * num_images_per_prompt
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
@@ -281,7 +282,9 @@ class FabricPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
-
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
@@ -329,15 +332,23 @@ class FabricPipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            negative_prompt_embeds.shape[1]
+            seq_len = negative_prompt_embeds.shape[1]
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds, null_embed = (
+                negative_prompt_embeds[:batch_size],
+                negative_prompt_embeds[batch_size:],
+            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            print(null_embed.shape)
+            print(negative_prompt_embeds.shape)
+            print(prompt_embeds.shape)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
-
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds, null_embed])
         return prompt_embeds
 
     def get_unet_hidden_states(self, z_all, t, prompt_embd):
@@ -447,10 +458,10 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(self, images, vae, dim, device, dtype) -> torch.tensor:
+    def preprocess_feedback_images(self, images, vae, dim, device, dtype, generator) -> torch.tensor:
         images_t = [self.image_to_tensor(img, dim, dtype) for img in images]
         images_t = torch.stack(images_t).to(device)
-        latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample()
+        latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample(generator)
 
         return torch.cat([latents], dim=0)
 
@@ -560,59 +571,64 @@ class FabricPipeline(DiffusionPipeline):
 
         device = self._execution_device
         dtype = self.unet.dtype
-        if generator is None:
-            generator = torch.manual_seed(42)
+
+        if isinstance(prompt, str) and prompt is not None:
+            batch_size = 1
+        elif isinstance(prompt, list) and prompt is not None:
+            batch_size = len(prompt)
+        else:
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if isinstance(negative_prompt, str):
+            negative_prompt = [negative_prompt]
+        elif isinstance(negative_prompt, list):
+            negative_prompt = negative_prompt
+        else:
+            assert len(negative_prompt) == batch_size
+
         shape = (
-            num_images,
+            batch_size * num_images,
             self.unet.config.in_channels,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
         latent_noise = randn_tensor(
             shape,
-            generator=generator,
             device=device,
             dtype=dtype,
+            generator=generator,
         )
 
         positive_latents = (
-            self.preprocess_feedback_images(liked, self.vae, (height, width), device, dtype)
+            self.preprocess_feedback_images(liked, self.vae, (height, width), device, dtype, generator)
             if liked and len(liked) > 0
-            else torch.tensor([], device=device, dtype=dtype)
+            else torch.tensor(
+                [],
+                device=device,
+                dtype=dtype,
+            )
         )
         negative_latents = (
-            self.preprocess_feedback_images(disliked, self.vae, (height, width), device, dtype)
+            self.preprocess_feedback_images(disliked, self.vae, (height, width), device, dtype, generator)
             if disliked and len(disliked) > 0
-            else torch.tensor([], device=device, dtype=dtype)
+            else torch.tensor(
+                [],
+                device=device,
+                dtype=dtype,
+            )
         )
 
-        if isinstance(prompt, str) and prompt is not None:
-            pass
-        elif isinstance(prompt, list) and prompt is not None:
-            len(prompt)
-        else:
-            pass
+        do_classifier_free_guidance = guidance_scale > 0.1
 
-        prompt = [prompt] * num_images
-
-        if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt] * num_images
-        elif isinstance(negative_prompt, list):
-            negative_prompt = negative_prompt
-        else:
-            assert len(negative_prompt) == num_images
-
-        do_classifier_free_guidance = guidance_scale > 1.0
-
-        (cond_prompt_embs, uncond_prompt_embs, null_prompt_emb) = self._encode_prompt(
+        (prompt_embs, null_prompt_emb) = self._encode_prompt(
             prompt,
             device,
             num_images,
             do_classifier_free_guidance,
             negative_prompt,
-        ).split([num_images, num_images, 1])
+        ).split([(num_images + num_images) * batch_size, 1])
 
-        batched_prompt_embd = torch.cat([cond_prompt_embs, uncond_prompt_embs], dim=0)
+        batched_prompt_embd = torch.cat([prompt_embs], dim=0)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -678,18 +694,21 @@ class FabricPipeline(DiffusionPipeline):
                     cached_neg_hiddens=cached_neg_hs,
                     pos_weights=pos_ws,
                     neg_weights=neg_ws,
-                ).sample
+                )[0]
 
                 noise_cond, noise_uncond = unet_out.chunk(2)
                 guidance = noise_cond - noise_uncond
                 noise_pred = noise_uncond + guidance_scale * guidance
-                latent_noise = self.scheduler.step(noise_pred, t, latent_noise).prev_sample
+                latent_noise = self.scheduler.step(noise_pred, t, latent_noise)[0]
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     pbar.update()
 
         y = self.vae.decode(latent_noise / self.vae.config.scaling_factor, return_dict=False)[0]
-        imgs = self.image_processor.postprocess(y, output_type=output_type)
+        imgs = self.image_processor.postprocess(
+            y,
+            output_type=output_type,
+        )
 
         if not return_dict:
             return imgs

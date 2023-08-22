@@ -27,9 +27,10 @@ from diffusers import (
     FabricPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_numpy, slow
+from diffusers.utils import load_numpy
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    nightly,
     require_torch_gpu,
 )
 
@@ -44,10 +45,8 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = FabricPipeline
     params = TEXT_TO_IMAGE_PARAMS - {
         "negative_prompt_embeds",
-        "width",
         "prompt_embeds",
         "cross_attention_kwargs",
-        "height",
         "callback",
         "callback_steps",
     }
@@ -108,7 +107,10 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        generator = torch.manual_seed(seed)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "negative_prompt": "lowres, dark, cropped",
@@ -116,8 +118,8 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_images": 1,
             "num_inference_steps": 2,
             "output_type": "np",
-            "height":128,
-            "width":128,
+            "height": 128,
+            "width": 128,
         }
         return inputs
 
@@ -160,15 +162,18 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 128, 128, 3)
         print(image_slice)
         expected_slice = np.array(
-          [[0.46259943, 0.45826188, 0.4768875],
-           [0.4880805, 0.46087098, 0.5162324],
-           [0.5224824, 0.5005106, 0.46634308]]).flatten()
+            [
+                [0.46259943, 0.45826188, 0.4768875],
+                [0.4880805, 0.46087098, 0.5162324],
+                [0.5224824, 0.5005106, 0.46634308],
+            ]
+        ).flatten()
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
+@nightly
 @require_torch_gpu
-@slow
 class FABRICPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -178,34 +183,36 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
     def test_fabric(self):
         generator = torch.manual_seed(0)
 
-        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0",torch_dtype=torch.float16)
+        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16)
         pipe.to("cuda")
 
         prompt = "a photograph of an astronaut riding a horse"
+        images = pipe(prompt, output_type="np", generator=generator, num_inference_steps=2).images
 
-        images = pipe(prompt, random_seed=generator).images[0]
+        images = images[0, -3:, -3:, -1].flatten()
 
-        for word, image in zip(prompt, images):
-            expected_image = load_numpy(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
-            )
-            assert np.abs((expected_image - np.array(image)).max()) < 1e-2
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
+        )
+
+        self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
 
     def test_fabric_feedback(self):
         generator = torch.manual_seed(0)
 
-        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0",torch_dtype=float16)
+        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16)
         pipe.to("cuda")
 
         prompt = "a photograph of an astronaut riding a horse"
-        images = pipe(prompt, random_seed=generator).images[0]
+        images = pipe(prompt, output_type="pil", generator=generator, num_inference_steps=2).images
 
-        liked = [images]
-        images = pipe(prompt, random_seed=generator, liked=liked).images[0]
+        liked = [images[0]]
+        images = pipe(prompt, output_type="np", generator=generator, num_inference_steps=2, liked=liked).images
 
-        for word, image in zip(prompt, images):
-            expected_image = load_numpy(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_w_feedback.npy"
-            )
-            assert np.abs((expected_image - np.array(image)).max()) < 1e-2
+        images = images[0, -3:, -3:, -1].flatten()
 
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
+        )
+
+        self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
