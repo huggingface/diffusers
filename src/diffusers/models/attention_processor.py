@@ -551,6 +551,7 @@ class LoRAAttnProcessor(nn.Module):
     def __call__(
         self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
     ):
+        """Weights in attn must be frozen during training, so only weights in self.to_q/k/v/out_lora are learned."""
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -849,6 +850,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        """Weights in attn must be frozen during training, so only weights in self.to_q/k/v/out_lora are learned."""
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -1197,6 +1199,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
     def __call__(
         self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
     ):
+        """Weights in attn must be frozen during training, so only weights in self.to_q/k/v/out_lora are learned."""
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -1297,6 +1300,7 @@ class LoRAAttnProcessor2_0(nn.Module):
         self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        """Weights in attn must be frozen during training, so only weights in self.to_q/k/v/out_lora are learned."""
         residual = hidden_states
 
         input_ndim = hidden_states.ndim
