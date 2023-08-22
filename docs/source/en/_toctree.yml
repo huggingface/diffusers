@@ -36,6 +36,8 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/diffedit
+      title: DiffEdit
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
