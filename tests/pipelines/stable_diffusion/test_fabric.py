@@ -27,7 +27,6 @@ from diffusers import (
     FabricPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_numpy
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
@@ -136,13 +135,12 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print(image_slice.flatten())
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array(
             [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        self.assertTrue(np.allclose(image_slice.flatten(), expected_slice, atol=1e-2))
 
     def test_fabric_w_fb(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -160,7 +158,6 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = output.images[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        print(image_slice)
         expected_slice = np.array(
             [
                 [0.46259943, 0.45826188, 0.4768875],
@@ -169,7 +166,7 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             ]
         ).flatten()
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        self.assertTrue(np.allclose(image_slice.flatten(), expected_slice, atol=1e-2))
 
 
 @nightly
@@ -191,8 +188,8 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
 
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
+        expected_image = np.array(
+            [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
         )
 
         self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
@@ -211,8 +208,8 @@ class FABRICPipelineIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
 
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/fabric_wo_feedback.npy"
+        expected_image = np.array(
+            [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
         )
 
         self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
