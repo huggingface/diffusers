@@ -1511,7 +1511,7 @@ class LoraLoaderMixin:
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
     @classmethod
-    def _convert_kohya_lora_to_diffusers(cls, state_dict, is_sai_controlnet=False, strict=True):
+    def _convert_kohya_lora_to_diffusers(cls, state_dict):
         unet_state_dict = {}
         te_state_dict = {}
         te2_state_dict = {}
@@ -1524,7 +1524,7 @@ class LoraLoaderMixin:
             lora_name_up = lora_name + ".lora_up.weight"
             lora_name_alpha = lora_name + ".alpha"
 
-            if lora_name.startswith("lora_unet_") or is_sai_controlnet:
+            if lora_name.startswith("lora_unet_"):
                 diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
                 if "input.blocks" in diffusers_name:
@@ -1647,7 +1647,7 @@ class LoraLoaderMixin:
                 new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
                 network_alphas.update({new_name: alpha})
 
-        if strict and len(state_dict) > 0:
+        if len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
             )
@@ -1667,10 +1667,79 @@ class LoraLoaderMixin:
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
-        if strict:
-            return new_state_dict, network_alphas
-        else:
-            return state_dict, new_state_dict, network_alphas
+        return new_state_dict, network_alphas
+
+    @classmethod
+    def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
+        controlnet_state_dict = {}
+
+        # every down weight has a corresponding up weight and potentially an alpha weight
+        lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
+        for key in lora_keys:
+            lora_name = key.split(".")[0]
+            lora_name_up = lora_name + ".lora_up.weight"
+            diffusers_name = key.replace("_", ".")
+
+            if "input.blocks" in diffusers_name:
+                diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
+            else:
+                diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+
+            if "middle.block" in diffusers_name:
+                diffusers_name = diffusers_name.replace("middle.block", "mid_block")
+            else:
+                diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+            if "output.blocks" in diffusers_name:
+                diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+            else:
+                diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+
+            diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
+            diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
+            diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
+            diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
+            diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+            diffusers_name = diffusers_name.replace("proj.in", "proj_in")
+            diffusers_name = diffusers_name.replace("proj.out", "proj_out")
+            diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+
+            # SDXL specificity.
+            if "emb" in diffusers_name:
+                pattern = r"\.\d+(?=\D*$)"
+                diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
+            if ".in." in diffusers_name:
+                diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
+            if ".out." in diffusers_name:
+                diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
+            if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
+                diffusers_name = diffusers_name.replace("op", "conv")
+            if "skip" in diffusers_name:
+                diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+
+            if "transformer_blocks" in diffusers_name:
+                if "attn1" in diffusers_name or "attn2" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
+                    diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+                    controlnet_state_dict[diffusers_name] = state_dict.pop(key)
+                    controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                elif "ff" in diffusers_name:
+                    controlnet_state_dict[diffusers_name] = state_dict.pop(key)
+                    controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+            elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
+                controlnet_state_dict[diffusers_name] = state_dict.pop(key)
+                controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+            else:
+                controlnet_state_dict[diffusers_name] = state_dict.pop(key)
+                controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+        if len(state_dict) > 0:
+            raise ValueError(
+                f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
+            )
+
+        logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
+
+        return controlnet_state_dict
 
     def unload_lora_weights(self):
         """
