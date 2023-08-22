@@ -1669,9 +1669,9 @@ class LoraLoaderMixin:
         new_state_dict = {**unet_state_dict, **te_state_dict}
         
         if strict: 
-            return state_dict, new_state_dict, network_alphas
-        else:
             return new_state_dict, network_alphas
+        else:
+            return state_dict, new_state_dict, network_alphas
 
     def unload_lora_weights(self):
         """
