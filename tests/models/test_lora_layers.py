@@ -113,7 +113,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        unet.requires_grad_ = False
         scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -244,7 +243,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet = sd_pipe.unet
-            unet.requires_grad_ = False
             unet.set_attn_processor(unet_lora_attn_procs)
             unet.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
@@ -506,7 +504,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
-        unet.requires_grad_ = False
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
             beta_end=0.012,
