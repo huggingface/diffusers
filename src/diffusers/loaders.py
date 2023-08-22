@@ -1676,7 +1676,7 @@ class LoraLoaderMixin:
         lora_keys = [k for k in lora_state_dict.keys() if "lora_down.weight" in k]
         print(f"Total LoRA state_dict: {len(lora_keys) * 2}")
         assert len(lora_state_dict) == 2 * len(lora_keys)
-        for totality, key in enumerate(tqdm(lora_keys)):
+        for totality, key in enumerate(lora_keys):
             if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
@@ -1740,11 +1740,12 @@ class LoraLoaderMixin:
                     lora_name_up
                 )
             else:
+                print(key)
                 controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
                 controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
                     lora_name_up
                 )
-        # print(f"Total traversed: {lora_keys[totality:]}.")
+        print(f"Total traversed: {lora_keys[totality - 1:]}.")
         # print(f"Remaining keys in the LoRA state dict: {lora_state_dict.keys()}")
         # assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
