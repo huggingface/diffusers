@@ -129,7 +129,7 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         if adapter_type == "full_adapter":
             self.adapter = FullAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         elif adapter_type == "full_adapter_xl":
-            self.adapter = FullAdapter_XL(in_channels, channels, num_res_blocks, downscale_factor)
+            self.adapter = FullAdapterXL(in_channels, channels, num_res_blocks, downscale_factor)
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
@@ -186,7 +186,7 @@ class FullAdapter(nn.Module):
         return features
 
 
-class FullAdapter_XL(nn.Module):
+class FullAdapterXL(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
