@@ -1672,8 +1672,9 @@ class LoraLoaderMixin:
 
         # every down weight has a corresponding up weight
         lora_state_dict = {k: v for k, v in state_dict.items() if k.endswith(("lora_down.weight", "lora_up.weight"))}
-        print(f"Total LoRA state_dict: {len(lora_state_dict)}")
         lora_keys = [k for k in lora_state_dict.keys() if "lora_down.weight" in k]
+        print(f"Total LoRA state_dict: {len(lora_keys) * 2}")
+        assert len(lora_state_dict) == 2 * len(lora_keys)
         for key in lora_keys:
             if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
