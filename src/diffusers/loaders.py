@@ -1671,9 +1671,13 @@ class LoraLoaderMixin:
         # every down weight has a corresponding up weight
         lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
         for key in lora_keys:
-            lora_name = key.split(".")[0]
-            lora_name_up = lora_name + ".lora_up.weight"
-            diffusers_name = key.replace("_", ".")
+            if "linear_1" not in key:
+                lora_name = key.split(".")[0]
+                lora_name_up = lora_name + ".lora_up.weight"
+                diffusers_name = key.replace("_", ".")
+            else:
+                lora_name_up = key.replace("lora_down", ".lora_up")
+                diffusers_name = key
 
             if "input.blocks" in diffusers_name:
                 diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
@@ -1724,10 +1728,6 @@ class LoraLoaderMixin:
                 controlnet_state_dict[diffusers_name] = state_dict.pop(key)
                 controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             else:
-                print(f"Actual key: {key}, Diffusers name: {diffusers_name}")
-                print(
-                    f"diffusers_name (replaced): {diffusers_name.replace('.down.', '.up.')}, lora_name_up: {lora_name_up}"
-                )
                 controlnet_state_dict[diffusers_name] = state_dict.pop(key)
                 controlnet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
