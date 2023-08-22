@@ -16,14 +16,12 @@
 """Fine-tuning script for Stable Diffusion XL for text2image."""
 
 import argparse
-import functools
-import gc
 import logging
-import math
 import os
 import random
 import shutil
 from pathlib import Path
+from typing import Optional
 
 import accelerate
 import datasets
@@ -32,16 +30,22 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+import webdataset as wds
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from torch.utils.data import default_collate
 from torchvision import transforms
-from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from webdataset.tariterators import (
+    base_plus_ext,
+    tar_file_expander,
+    url_opener,
+    valid_sample,
+)
 
 import diffusers
 from diffusers import (
@@ -60,11 +64,6 @@ from diffusers.utils.import_utils import is_xformers_available
 check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
-
-
-DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
-}
 
 
 def save_model_card(
@@ -434,58 +433,135 @@ def parse_args(input_args=None):
     return args
 
 
-# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, caption_column, is_train=True):
-    prompt_embeds_list = []
-    prompt_batch = batch[caption_column]
+def group_by_keys_nothrow(data, keys=base_plus_ext, lcase=True, suffixes=None, handler=None):
+    """Return function over iterator that groups key, value pairs into samples.
 
-    captions = []
-    for caption in prompt_batch:
+    :param keys: function that splits the key into key and extension (base_plus_ext)
+    :param lcase: convert suffixes to lower case (Default value = True)
+    """
+    current_sample = None
+    for filesample in data:
+        assert isinstance(filesample, dict)
+        fname, value = filesample["fname"], filesample["data"]
+        prefix, suffix = keys(fname)
+        if prefix is None:
+            continue
+        if lcase:
+            suffix = suffix.lower()
+        # FIXME webdataset version throws if suffix in current_sample, but we have a potential for
+        #  this happening in the current LAION400m dataset if a tar ends with same prefix as the next
+        #  begins, rare, but can happen since prefix aren't unique across tar files in that dataset
+        if current_sample is None or prefix != current_sample["__key__"] or suffix in current_sample:
+            if valid_sample(current_sample):
+                yield current_sample
+            current_sample = {"__key__": prefix, "__url__": filesample["__url__"]}
+        if suffixes is None or suffix in suffixes:
+            current_sample[suffix] = value
+    if valid_sample(current_sample):
+        yield current_sample
+
+
+def tarfile_to_samples_nothrow(src, handler=wds.warn_and_continue):
+    # NOTE this is a re-impl of the webdataset impl with group_by_keys that doesn't throw
+    streams = url_opener(src, handler=handler)
+    files = tar_file_expander(streams, handler=handler)
+    samples = group_by_keys_nothrow(files, handler=handler)
+    return samples
+
+
+def make_wds_inpainting_dataset(
+    wds_dataset_url: str,
+    tokenizer_one,
+    tokenizer_two,
+    proportion_empty_prompts: float,
+    per_gpu_batch_size: int,
+    resolution: int = 256,
+    min_resolution: Optional[int] = None,
+    shuffle_buffer_size: int = 1000,
+):
+    crop_transform = transforms.RandomCrop(resolution)
+
+    pixel_values_transform = transforms.Compose(
+        [
+            *(
+                [transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR)]
+                if min_resolution is None
+                else []
+            ),
+            crop_transform,
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ]
+    )
+
+    def mapper(d):
+        pixel_values = pixel_values_transform(d["image"])
+
+        metadata = d["metadata"]
+
+        original_width = int(metadata.get("original_width", 0.0))
+        original_height = int(metadata.get("original_height", 0.0))
+
+        crop_top_left_y, crop_top_left_x, crop_height, crop_width = crop_transform.get_params(
+            d["image"], (resolution, resolution)
+        )
+
+        time_ids = torch.tensor(
+            [original_width, original_height, crop_top_left_y, crop_top_left_x, resolution, resolution]
+        )
+
         if random.random() < proportion_empty_prompts:
-            captions.append("")
-        elif isinstance(caption, str):
-            captions.append(caption)
-        elif isinstance(caption, (list, np.ndarray)):
-            # take a random caption if there are multiple
-            captions.append(random.choice(caption) if is_train else caption[0])
+            text = ""
+        else:
+            text = d["text"]
 
-    with torch.no_grad():
-        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-            text_inputs = tokenizer(
-                captions,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            prompt_embeds = text_encoder(
-                text_input_ids.to(text_encoder.device),
-                output_hidden_states=True,
-            )
+        tokenzier_one_text_input_ids = tokenizer_one(
+            text,
+            padding="max_length",
+            max_length=tokenizer_one.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
 
-            # We are only ALWAYS interested in the pooled output of the final text encoder
-            pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-            bs_embed, seq_len, _ = prompt_embeds.shape
-            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-            prompt_embeds_list.append(prompt_embeds)
+        tokenzier_two_text_input_ids = tokenizer_two(
+            text,
+            padding="max_length",
+            max_length=tokenizer_two.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
 
-    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    return {"prompt_embeds": prompt_embeds.cpu(), "pooled_prompt_embeds": pooled_prompt_embeds.cpu()}
+        return {
+            "pixel_values": pixel_values,
+            "time_ids": time_ids,
+            "tokenizer_one_text_input_ids": tokenzier_one_text_input_ids,
+            "tokenizer_two_text_input_ids": tokenzier_two_text_input_ids,
+        }
 
+    def select_only_images_greater_than(d):
+        width, height = d["image"].size
 
-def compute_vae_encodings(batch, vae):
-    images = batch.pop("pixel_values")
-    pixel_values = torch.stack(list(images))
-    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-    pixel_values = pixel_values.to(vae.device, dtype=vae.dtype)
+        return width >= min_resolution and height >= min_resolution
 
-    with torch.no_grad():
-        model_input = vae.encode(pixel_values).latent_dist.sample()
-    model_input = model_input * vae.config.scaling_factor
-    return {"model_input": model_input.cpu()}
+    pipeline = [
+        wds.ResampledShards(wds_dataset_url),
+        tarfile_to_samples_nothrow,
+        wds.shuffle(shuffle_buffer_size),
+        wds.decode("pil", handler=wds.ignore_and_continue),
+        wds.rename(
+            image="jpg;png;jpeg;webp",
+            text="text;txt;caption",
+            metadata="json",
+            handler=wds.warn_and_continue,
+        ),
+        *([] if min_resolution is None else [wds.select(select_only_images_greater_than)]),
+        wds.map(mapper),
+        wds.batched(per_gpu_batch_size, partial=False, collation_fn=default_collate),
+    ]
+
+    dataset = wds.DataPipeline(*pipeline)
+
+    return dataset
 
 
 def main(args):
@@ -566,6 +642,10 @@ def main(args):
             "When this configuration is present, the parameter --snr_gamma may not be used without parameter --force_snr_gamma.\n"
             "This is due to a mathematical incompatibility between our current SNR gamma implementation, and a sigma value of zero."
         )
+    if args.prediction_type is not None:
+        # set prediction_type of scheduler if defined
+        noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -717,156 +797,24 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
-    if args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
-        )
-    else:
-        data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
-
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
-
-    # 6. Get the column names for input/target.
-    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    if args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-    else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-            )
-    if args.caption_column is None:
-        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    else:
-        caption_column = args.caption_column
-        if caption_column not in column_names:
-            raise ValueError(
-                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
-            )
-
-    # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
-
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        # image aug
-        original_sizes = []
-        all_images = []
-        crop_top_lefts = []
-        for image in images:
-            original_sizes.append((image.height, image.width))
-            image = train_resize(image)
-            if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                image = train_crop(image)
-            else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                image = crop(image, y1, x1, h, w)
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                x1 = image.width - x1
-                image = train_flip(image)
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            image = train_transforms(image)
-            all_images.append(image)
-
-        examples["original_sizes"] = original_sizes
-        examples["crop_top_lefts"] = crop_top_lefts
-        examples["pixel_values"] = all_images
-        return examples
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
-
-    # Let's first compute all the embeddings so that we can free up the text encoders
-    # from memory. We will pre-compute the VAE encodings too.
-    text_encoders = [text_encoder_one, text_encoder_two]
-    tokenizers = [tokenizer_one, tokenizer_two]
-    compute_embeddings_fn = functools.partial(
-        encode_prompt,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
+    train_dataset = make_wds_inpainting_dataset(
+        wds_dataset_url=args.wds_dataset_url,
+        tokenizer_one=tokenizer_one,
+        tokenizer_two=tokenizer_two,
         proportion_empty_prompts=args.proportion_empty_prompts,
-        caption_column=args.caption_column,
+        per_gpu_batch_size=args.train_batch_size,
+        resolution=args.resolution,
+        min_resolution=args.min_resolution,
     )
-    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
-    with accelerator.main_process_first():
-        from datasets.fingerprint import Hasher
 
-        # fingerprint used by the cache for the other processes to load the result
-        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
-        new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash("vae")
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(
-            compute_vae_encodings_fn,
-            batched=True,
-            batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
-            new_fingerprint=new_fingerprint_for_vae,
-        )
-
-    del text_encoders, tokenizers, vae
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    def collate_fn(examples):
-        model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
-        original_sizes = [example["original_sizes"] for example in examples]
-        crop_top_lefts = [example["crop_top_lefts"] for example in examples]
-        prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
-        pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
-
-        return {
-            "model_input": model_input,
-            "prompt_embeds": prompt_embeds,
-            "pooled_prompt_embeds": pooled_prompt_embeds,
-            "original_sizes": original_sizes,
-            "crop_top_lefts": crop_top_lefts,
-        }
-
-    # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        shuffle=True,
-        collate_fn=collate_fn,
-        batch_size=args.train_batch_size,
+        shuffle=False,
+        batch_size=None,
         num_workers=args.dataloader_num_workers,
+        pin_memory=True,
+        persistent_workers=True,
     )
-
-    # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
@@ -876,16 +824,7 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
-
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    unet, optimizer, lr_scheduler = accelerator.prepare(unet, optimizer, lr_scheduler)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -896,14 +835,11 @@ def main(args):
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
-    first_epoch = 0
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
@@ -926,27 +862,44 @@ def main(args):
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            resume_global_step = global_step * args.gradient_accumulation_steps
-            first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
-
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    for epoch in range(first_epoch, args.num_train_epochs):
+    for epoch in range(0, 1):
         unet.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
+            tokenizer_one_text_input_ids = batch["tokenizer_one_text_input_ids"].to(accelerator.device)
+            tokenizer_two_text_input_ids = batch["tokenizer_two_text_input_ids"].to(accelerator.device)
 
-            with accelerator.accumulate(unet):
-                # Sample noise that we'll add to the latents
-                model_input = batch["model_input"].to(accelerator.device)
+            pixel_values = batch["pixel_values"].to(accelerator.device, dtype=vae.dtype)
+
+            time_ids = batch["time_ids"].to(accelerator.device, dtype=weight_dtype)
+
+            bsz = pixel_values.shape[0]
+
+            with torch.no_grad():
+                prompt_embeds_one = text_encoder_one(
+                    tokenizer_one_text_input_ids,
+                    output_hidden_states=True,
+                )
+                prompt_embeds_one = prompt_embeds_one.hidden_states[-2]
+
+                prompt_embeds_two = text_encoder_two(
+                    tokenizer_two_text_input_ids,
+                    output_hidden_states=True,
+                )
+                pooled_prompt_embeds = prompt_embeds_two[0]
+                prompt_embeds_two = prompt_embeds_two.hidden_states[-2]
+
+                pooled_prompt_embeds = pooled_prompt_embeds.view(bsz, -1)
+
+                prompt_embeds = torch.concat((prompt_embeds_one, prompt_embeds_two), dim=-1)
+
+                model_input = vae.encode(pixel_values).laent_dist.sample()
+                model_input = model_input * vae.config.scaling_factor
+
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
@@ -954,44 +907,20 @@ def main(args):
                         (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
                     )
 
-                bsz = model_input.shape[0]
-                # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                 )
                 timesteps = timesteps.long()
 
-                # Add noise to the model input according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
-                # time ids
-                def compute_time_ids(original_size, crops_coords_top_left):
-                    # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-                    target_size = (args.resolution, args.resolution)
-                    add_time_ids = list(original_size + crops_coords_top_left + target_size)
-                    add_time_ids = torch.tensor([add_time_ids])
-                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-                    return add_time_ids
-
-                add_time_ids = torch.cat(
-                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
-                )
-
-                # Predict the noise residual
-                unet_added_conditions = {"time_ids": add_time_ids}
-                prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
-                pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
-                unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
-                prompt_embeds = prompt_embeds
+            with accelerator.accumulate(unet):
                 model_pred = unet(
-                    noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
+                    noisy_model_input,
+                    timesteps,
+                    prompt_embeds,
+                    added_cond_kwargs={"time_ids", time_ids, "text_embeds", pooled_prompt_embeds},
                 ).sample
-
-                # Get the target for loss depending on the prediction type
-                if args.prediction_type is not None:
-                    # set prediction_type of scheduler if defined
-                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
 
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -1000,22 +929,7 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                    # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(timesteps)
-                    mse_loss_weights = (
-                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
-                    )
-                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
-                    # rebalance the sample-wise losses with their respective loss weights.
-                    # Finally, we take the mean of the rebalanced loss.
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
-                    loss = loss.mean()
+                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
