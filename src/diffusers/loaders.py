@@ -38,7 +38,6 @@ from .utils import (
     is_transformers_available,
     logging,
 )
-from tqdm import tqdm
 from .utils.import_utils import BACKENDS_MAPPING
 
 
@@ -1755,8 +1754,9 @@ class LoraLoaderMixin:
         assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
         logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
+        non_lora_state_dict = {k: v for k, v in state_dict.items() if k not in controlnet_lora_state_dict}
 
-        return controlnet_lora_state_dict, state_dict
+        return controlnet_lora_state_dict, non_lora_state_dict
 
     def unload_lora_weights(self):
         """
