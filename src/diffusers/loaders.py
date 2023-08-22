@@ -1387,8 +1387,8 @@ class LoraLoaderMixin:
 
         if patch_mlp:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
+                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
+                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
 
                 mlp_module.fc1 = PatchedLoraProjection(
                     mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
