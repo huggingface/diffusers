@@ -1167,6 +1167,152 @@ class LoraLoaderMixin:
 
         return new_state_dict
 
+    # A weird mix of `convert_ldm_unet_checkpoint()` and `_map_sgm_blocks_to_diffusers()`.
+    @classmethod
+    def _map_sai_controlnet_blocks_to_diffusers(
+        cls, state_dict, model_config, delimiter=".", join_delimiter="_", block_slice_pos=2
+    ):
+        new_state_dict = {}
+        # safe to pop it out as it's blank.
+        if "lora_controlnet" in state_dict:
+            _ = state_dict.pop("lora_controlnet")
+
+        inner_block_map = ["resnets", "attentions", "upsamplers"]
+
+        # examples: 'input_blocks.0.0.bias', 'input_hint_block.0.bias' respectively.
+        indirect_patterns = [r"^\w+\.\d+\.\d+\.\w+$", r"^\w+\.\d+\.\w+$"]
+
+        new_state_dict["conv_in.down.weight"] = state_dict.pop("input_blocks.0.0.down")
+        new_state_dict["conv_in.up.bias"] = state_dict.pop("input_blocks.0.0.bias")
+        new_state_dict["conv_in.up.weight"] = state_dict.pop("input_blocks.0.0.up")
+
+        # Retrieves # of down, mid and up blocks
+        input_block_ids, middle_block_ids = set(), set()
+        for layer in state_dict:
+            if not re.match(indirect_patterns[0], layer) and not re.match(indirect_patterns[1], layer):
+                if "text" not in layer:
+                    layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+                    if "input_blocks" in layer:
+                        input_block_ids.add(layer_id)
+                    elif "middle_block" in layer:
+                        middle_block_ids.add(layer_id)
+                    else:
+                        raise ValueError("Checkpoint not supported")
+
+        num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
+        input_blocks = {
+            layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
+            for layer_id in input_block_ids
+        }
+        middle_blocks = {
+            layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
+            for layer_id in middle_block_ids
+        }
+
+        # Rename keys accordingly
+        for i in input_block_ids:
+            block_id = (i - 1) // (model_config.layers_per_block + 1)
+            layer_in_block_id = (i - 1) % (model_config.layers_per_block + 1)
+
+            for key in input_blocks[i]:
+                inner_block_id = int(key.split(delimiter)[block_slice_pos])
+                inner_block_key = inner_block_map[inner_block_id] if "op" not in key else "downsamplers"
+                inner_layers_in_block = str(layer_in_block_id) if "op" not in key else "0"
+                new_key = join_delimiter.join(
+                    key.split(delimiter)[: block_slice_pos - 1]
+                    + [str(block_id), inner_block_key, inner_layers_in_block]
+                    + key.split(delimiter)[block_slice_pos + 1 :]
+                )
+
+                new_key = new_key.replace("_bias", ".bias")
+                if "norm" in key:
+                    new_key = new_key.replace("_weight", ".weight")
+                else:
+                    down_pattern = r"_down\b"
+                    up_pattern = r"_up\b"
+                    new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
+                    new_key = re.sub(up_pattern, ".lora_up.weight", new_key)
+
+                new_state_dict[new_key] = state_dict.pop(key)
+
+        for i in middle_block_ids:
+            key_part = None
+            if i == 0:
+                key_part = [inner_block_map[0], "0"]
+            elif i == 1:
+                key_part = [inner_block_map[1], "0"]
+            elif i == 2:
+                key_part = [inner_block_map[0], "1"]
+            else:
+                raise ValueError(f"Invalid middle block id {i}.")
+
+            for key in middle_blocks[i]:
+                new_key = join_delimiter.join(
+                    key.split(delimiter)[: block_slice_pos - 1] + key_part + key.split(delimiter)[block_slice_pos:]
+                )
+                new_key = new_key.replace("_bias", ".bias")
+                if "norm" in key:
+                    new_key = new_key.replace("_weight", ".weight")
+                else:
+                    down_pattern = r"_down\b"
+                    up_pattern = r"_up\b"
+                    new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
+                    new_key = re.sub(up_pattern, ".lora_up.weight", new_key)
+
+                new_state_dict[new_key] = state_dict.pop(key)
+
+        # conditioning embedding
+        orig_index = 0
+
+        new_state_dict["controlnet_cond_embedding.conv_in.weight"] = state_dict.pop(
+            f"input_hint_block.{orig_index}.weight"
+        )
+        new_state_dict["controlnet_cond_embedding.conv_in.bias"] = state_dict.pop(
+            f"input_hint_block.{orig_index}.bias"
+        )
+
+        orig_index += 2
+        diffusers_index = 0
+
+        while diffusers_index < 7:
+            new_state_dict[f"controlnet_cond_embedding.blocks.{diffusers_index}.weight"] = state_dict.pop(
+                f"input_hint_block.{orig_index}.weight"
+            )
+            new_state_dict[f"controlnet_cond_embedding.blocks.{diffusers_index}.bias"] = state_dict.pop(
+                f"input_hint_block.{orig_index}.bias"
+            )
+            diffusers_index += 1
+            orig_index += 2
+
+        # down blocks
+        for i in range(num_input_blocks + 1):
+            new_state_dict[f"controlnet_down_blocks.{i}.weight"] = state_dict.pop(f"zero_convs.{i}.0.weight")
+            new_state_dict[f"controlnet_down_blocks.{i}.bias"] = state_dict.pop(f"zero_convs.{i}.0.bias")
+
+        # mid block
+        new_state_dict["controlnet_mid_block.weight"] = state_dict.pop("middle_block_out.0.weight")
+        new_state_dict["controlnet_mid_block.bias"] = state_dict.pop("middle_block_out.0.bias")
+
+        # time embeddings
+        new_state_dict["time_embedding.linear_1.lora_down.weight"] = state_dict.pop("time_embed.0.down")
+        new_state_dict["time_embedding.linear_1.lora_up.weight"] = state_dict.pop("time_embed.0.up")
+        new_state_dict["time_embedding.linear_1.bias"] = state_dict.pop("time_embed.0.bias")
+        new_state_dict["time_embedding.linear_2.lora_down.weight"] = state_dict.pop("time_embed.2.down")
+        new_state_dict["time_embedding.linear_2.lora_up.weight"] = state_dict.pop("time_embed.2.up")
+        new_state_dict["time_embedding.linear_2.bias"] = state_dict.pop("time_embed.2.bias")
+
+        # additional embeddings.
+        new_state_dict["add_embedding.linear_1.lora_down.weight"] = state_dict.pop("label_emb.0.0.down")
+        new_state_dict["add_embedding.linear_1.lora_up.weight"] = state_dict.pop("label_emb.0.0.up")
+        new_state_dict["add_embedding.linear_1.bias"] = state_dict.pop("label_emb.0.0.bias")
+        new_state_dict["add_embedding.linear_2.lora_down.weight"] = state_dict.pop("label_emb.0.2.down")
+        new_state_dict["add_embedding.linear_2.lora_up.weight"] = state_dict.pop("label_emb.0.2.up")
+        new_state_dict["add_embedding.linear_2.bias"] = state_dict.pop("label_emb.0.2.bias")
+
+        assert len(state_dict) == 0, "All keys should have been popped at this point."
+
+        return new_state_dict
+
     @classmethod
     def load_lora_into_unet(cls, state_dict, network_alphas, unet):
         """
@@ -1721,30 +1867,20 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
                     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
                     controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
-                        lora_name_up
-                    )
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 elif "ff" in diffusers_name:
                     controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
-                        lora_name_up
-                    )
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
                 controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
-                    lora_name_up
-                )
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             elif any(k in diffusers_name for k in exceptional_keys):
                 diffusers_name = diffusers_name.replace("lora_down", "lora.down")
                 controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
-                    lora_name_up
-                )
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             else:
                 controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
-                    lora_name_up
-                )
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
         assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
