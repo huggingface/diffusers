@@ -1668,13 +1668,9 @@ class LoraLoaderMixin:
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_lora_state_dict = {}
         exceptional_keys = {"time_embedding", "add_embedding"}
-        print(f"Total state_dict: {len(state_dict)}")
 
         # every down weight has a corresponding up weight
-        lora_state_dict = {k: v for k, v in state_dict.items() if k.endswith(("lora_down.weight", "lora_up.weight"))}
-        lora_keys = [k for k in lora_state_dict.keys() if "lora_down.weight" in k]
-        print(f"Total LoRA state_dict: {len(lora_keys) * 2}")
-        assert len(lora_state_dict) == 2 * len(lora_keys)
+        lora_keys = [k for k in state_dict.keys() if "lora_down.weight" in k]
         for key in lora_keys:
             if not any(k in key for k in exceptional_keys):
                 lora_name = key.split(".")[0]
@@ -1725,38 +1721,37 @@ class LoraLoaderMixin:
                 if "attn1" in diffusers_name or "attn2" in diffusers_name:
                     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
                     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-                    controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                    controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
                         lora_name_up
                     )
                 elif "ff" in diffusers_name:
-                    controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                    controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
                         lora_name_up
                     )
             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
-                controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
                     lora_name_up
                 )
             elif any(k in diffusers_name for k in exceptional_keys):
                 diffusers_name = diffusers_name.replace("lora_down", "lora.down")
-                controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
                     lora_name_up
                 )
             else:
-                controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(
                     lora_name_up
                 )
 
         assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
         logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
-        non_lora_state_dict = {k: v for k, v in state_dict.items() if k not in controlnet_lora_state_dict}
 
-        return controlnet_lora_state_dict, non_lora_state_dict
+        return controlnet_lora_state_dict, state_dict
 
     def unload_lora_weights(self):
         """
