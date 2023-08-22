@@ -1559,6 +1559,9 @@ class LoraLoaderMixin:
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
+                if "op" in key:
+                    print(f"Actual key: {key} Diffusers name: {diffusers_name} lora_name_up: {lora_name_up}")
+
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
                         diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
@@ -1572,8 +1575,6 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 else:
-                    if "op" in key:
-                        print(f"Actual key: {key} Diffusers name: {diffusers_name} lora_name_up: {lora_name_up}")
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
