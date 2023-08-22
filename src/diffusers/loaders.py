@@ -1124,10 +1124,6 @@ class LoraLoaderMixin:
                     + [str(block_id), inner_block_key, inner_layers_in_block]
                     + key.split(delimiter)[block_slice_pos + 1 :]
                 )
-                if "op" in key:
-                    print(key.split(delimiter)[: block_slice_pos - 1], 
-                            [str(block_id), inner_block_key, inner_layers_in_block],
-                            key.split(delimiter)[block_slice_pos + 1 :])
                 new_state_dict[new_key] = state_dict.pop(key)
 
         for i in middle_block_ids:
