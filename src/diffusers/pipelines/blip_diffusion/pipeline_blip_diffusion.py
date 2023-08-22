@@ -93,6 +93,9 @@ class BlipDiffusionPipeline(DiffusionPipeline):
     def check_inputs(self, prompt, reference_image, source_subject_category, target_subject_category):
         pass
 
+    def get_query_embeddings(self, input_image, src_subject):
+        return self.forward_ctx_embeddings(input_image, src_subject)
+
     # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
         rv = []
@@ -118,11 +121,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return latents
 
-    def _forward_prompt_embeddings(self, input_image, src_subject, prompt):
-        # 1. extract BLIP query features and proj to text space -> (bs, 32, 768)
-        query_embeds = self.forward_ctx_embeddings(input_image, src_subject)
-
-        # 2. embeddings for prompt, with query_embeds as context
+    def encode_prompt(self, query_embeds, prompt):
+        #embeddings for prompt, with query_embeds as context
         tokenized_prompt = self._tokenize_text(prompt).to(self.device)
         text_embeddings = self.text_encoder(
             input_ids=tokenized_prompt.input_ids,
@@ -194,8 +194,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             prompt_strength=prompt_strength,
             prompt_reps=prompt_reps,
         )
-
-        text_embeddings = self._forward_prompt_embeddings(
+        query_embeds = self.get_query_embeddings(reference_image, source_subject_category)
+        text_embeddings = self.encode_prompt(
             reference_image, source_subject_category, prompt
         )
         # 3. unconditional embedding
@@ -223,7 +223,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             generator = generator.manual_seed(seed)
 
         #TODO - Handle batch size > 1
-        latents = self.prepare_latents(batch_size=1, num_channels=self.unet.in_channels, height=height//8, width=width//8, generator=generator, latents=latents, dtype=self.unet.dtype,device=self.device)
+        latents = self.prepare_latents(batch_size=1, num_channels=self.unet.in_channels, height=height//8, width=width//8, generator=generator, latents=latents, dtype=self.unet.dtype, device=self.device)
         # set timesteps
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
