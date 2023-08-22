@@ -12,16 +12,6 @@ from LAVIS.lavis.models import load_model_and_preprocess
 import torch
 
 model, vis_preprocess, txt_preprocess = load_model_and_preprocess("blip_diffusion", "base", device="cpu", is_eval=True)
-text_input = "Hello this is a sample text"
-image_input = torch.ones((1, 3, 224, 224))
-
-blip_embeddings = model.blip.extract_features(
-    {"image": image_input, "text_input": text_input}, mode="multimodal"
-).multimodal_embeds
-
-tokenizer = CLIPTokenizer.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
-)
 
 vision_config = {
     "hidden_size" : 1024,
@@ -175,5 +165,5 @@ tokenizer = CLIPTokenizer.from_pretrained(
     "./runwayml/stable-diffusion-v1-5/", subfolder="tokenizer", cache_dir='./cache'
 )
 blipDiffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
-
+blipDiffusion.save_pretrained("blip_diffusion")
 
