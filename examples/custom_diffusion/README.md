@@ -63,7 +63,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="path-to-save-model"
 export INSTANCE_DIR="./data/cat"
 
-accelerate launch train_custom_diffusion.py \
+!accelerate launch train_custom_diffusion.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -72,12 +72,17 @@ accelerate launch train_custom_diffusion.py \
   --class_prompt="cat" --num_class_images=200 \
   --instance_prompt="photo of a <new1> cat"  \
   --resolution=512  \
-  --train_batch_size=2  \
+  --train_batch_size=1  \
   --learning_rate=1e-5  \
-  --lr_warmup_steps=0 \
+  --lr_warmup_steps=80 \
+  --num_validation_images=5 \
+  --validation_prompt="<new1> cat sitting in a bucket" \
   --max_train_steps=250 \
+  --no_safe_serialization \
+  --enable_xformers_memory_efficient_attention\
   --scale_lr --hflip  \
-  --modifier_token "<new1>" 
+  --modifier_token "<new1>" \
+  --push_to_hub
 ```
 
 **Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
@@ -105,6 +110,7 @@ accelerate launch train_custom_diffusion.py \
   --train_batch_size=2  \
   --learning_rate=1e-5  \
   --lr_warmup_steps=0 \
+  --no_safe_serialization \
   --max_train_steps=250 \
   --scale_lr --hflip  \
   --modifier_token "<new1>" \
@@ -143,6 +149,7 @@ accelerate launch train_custom_diffusion.py \
   --learning_rate=1e-5  \
   --lr_warmup_steps=0 \
   --max_train_steps=500 \
+  --no_safe_serialization \
   --num_class_images=200 \
   --scale_lr --hflip  \
   --modifier_token "<new1>+<new2>" 
@@ -177,6 +184,7 @@ accelerate launch train_custom_diffusion.py \
   --class_prompt="person" --num_class_images=200 \
   --instance_prompt="photo of a <new1> person"  \
   --resolution=512  \
+  --no_safe_serialization \
   --train_batch_size=2  \
   --learning_rate=5e-6  \
   --lr_warmup_steps=0 \
