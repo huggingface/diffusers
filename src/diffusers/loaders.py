@@ -1511,7 +1511,7 @@ class LoraLoaderMixin:
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
     @classmethod
-    def _convert_kohya_lora_to_diffusers(cls, state_dict):
+    def _convert_kohya_lora_to_diffusers(cls, state_dict, strict=True):
         unet_state_dict = {}
         te_state_dict = {}
         te2_state_dict = {}
@@ -1647,10 +1647,11 @@ class LoraLoaderMixin:
                 new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
                 network_alphas.update({new_name: alpha})
 
-        if len(state_dict) > 0:
+        if strict and len(state_dict) > 0:
             raise ValueError(
                 f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
             )
+
 
         logger.info("Kohya-style checkpoint detected.")
         unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
@@ -1666,7 +1667,11 @@ class LoraLoaderMixin:
             te_state_dict.update(te2_state_dict)
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
-        return new_state_dict, network_alphas
+        
+        if strict: 
+            return state_dict, new_state_dict, network_alphas
+        else:
+            return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
         """
