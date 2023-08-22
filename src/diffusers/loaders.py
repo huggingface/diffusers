@@ -1741,7 +1741,6 @@ class LoraLoaderMixin:
                     lora_name_up
                 )
             else:
-                print(key)
                 controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
                 controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
                     lora_name_up
