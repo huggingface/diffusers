@@ -1124,6 +1124,10 @@ class LoraLoaderMixin:
                     + [str(block_id), inner_block_key, inner_layers_in_block]
                     + key.split(delimiter)[block_slice_pos + 1 :]
                 )
+                if "op" in key:
+                    print(key.split(delimiter)[: block_slice_pos - 1], 
+                            [str(block_id), inner_block_key, inner_layers_in_block],
+                            key.split(delimiter)[block_slice_pos + 1 :])
                 new_state_dict[new_key] = state_dict.pop(key)
 
         for i in middle_block_ids:
@@ -1527,7 +1531,6 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
                 else:
                     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
-
                 if "middle.block" in diffusers_name:
                     diffusers_name = diffusers_name.replace("middle.block", "mid_block")
                 else:
@@ -1558,9 +1561,6 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("op", "conv")
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
-
-                if "op" in key:
-                    print(f"Actual key: {key} Diffusers name: {diffusers_name} lora_name_up: {lora_name_up}")
 
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
