@@ -1400,8 +1400,9 @@ class LoraLoaderMixin:
 
         if patch_mlp:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
+                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
+                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
+
                 current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
                 current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
