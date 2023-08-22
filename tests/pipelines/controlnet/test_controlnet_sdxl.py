@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -27,9 +28,9 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-from diffusers.utils import randn_tensor, torch_device
+from diffusers.utils import load_image, randn_tensor, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -678,3 +679,81 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+
+@slow
+@require_torch_gpu
+class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_canny(self):
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
+
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
+        )
+        pipe.enable_sequential_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "bird"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        original_image = images[0, -3:, -3:, -1].flatten()
+        expected_image = np.array([0.4185, 0.4127, 0.4089, 0.4046, 0.4115, 0.4096, 0.4081, 0.4112, 0.3913])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
+
+    def test_depth(self):
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0")
+
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
+        )
+        pipe.enable_sequential_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (512, 512, 3)
+
+        original_image = images[0, -3:, -3:, -1].flatten()
+        expected_image = np.array([0.4399, 0.5112, 0.5478, 0.4314, 0.472, 0.4823, 0.4647, 0.4957, 0.4853])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
+
+    def test_canny_lora(self):
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
+
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
+        )
+        pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors")
+        pipe.enable_sequential_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "corgi"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        original_image = images[0, -3:, -3:, -1].flatten()
+        expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
