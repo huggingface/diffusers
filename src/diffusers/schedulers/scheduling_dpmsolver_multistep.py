@@ -264,7 +264,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
-        timesteps = timesteps.astype(np.int32)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
         self.num_inference_steps = len(timesteps)
@@ -460,7 +459,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return -torch.log(_sigma)
 
         # YiYi notes: keep these for now so don't get an error, don't need once fully refactored
-        alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
+        #alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
 
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         h = t_fn(sigma_t) - t_fn(sigma_s)
@@ -472,7 +471,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             assert noise is not None
             x_t = (
                 (sigma_t / sigma_s * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
+                + (1 - torch.exp(-2.0 * h)) * model_output
                 + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
             )
         elif self.config.algorithm_type == "sde-dpmsolver":
@@ -514,8 +513,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return -torch.log(_sigma)
 
         # YiYi notes: keep these for now so don't get an error, not needed once fully refactored
-        t, s0 = prev_timestep, timestep_list[-1]
-        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
+        #t, s0 = prev_timestep, timestep_list[-1]
+        #alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
 
         sigma_t, sigma_s0, sigma_s1 = (
             self.sigmas[self.step_index + 1],
@@ -535,8 +534,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (torch.exp(-h) - 1.0)) * D0
-                    + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
+                    - (torch.exp(-h) - 1.0) * D0
+                    + ((torch.exp(-h) - 1.0) / h + 1.0) * D1
                 )
         elif self.config.algorithm_type == "dpmsolver":
             # See https://arxiv.org/abs/2206.00927 for detailed derivations
@@ -557,15 +556,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
+                    + (1 - torch.exp(-2.0 * h)) * D0
+                    + 0.5 * (1 - torch.exp(-2.0 * h)) * D1
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
                 )
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
+                    + (1 - torch.exp(-2.0 * h)) * D0
+                    + ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0) * D1
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
                 )
         elif self.config.algorithm_type == "sde-dpmsolver":
