@@ -118,27 +118,25 @@ class FabricCrossAttnProcessor:
 class FabricPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion and conditioning the results using feedback images.
-
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        text_encoder ([`~transformers.CLIPTextModel`]):
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        unet ([`UNet2DConditionModel`]):
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`EulerAncestralDiscreteScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
     """
 
     def __init__(
@@ -508,6 +506,7 @@ class FabricPipeline(DiffusionPipeline):
         num_images: int = 4,
         guidance_scale: float = 7.0,
         num_inference_steps: int = 20,
+        output_type: Optional[str] = "pil",
         feedback_start_ratio: float = 0.33,
         feedback_end_ratio: float = 0.66,
         min_weight: float = 0.05,
@@ -515,52 +514,63 @@ class FabricPipeline(DiffusionPipeline):
         neg_scale: float = 0.5,
         pos_bottleneck_scale: float = 1.0,
         neg_bottleneck_scale: float = 1.0,
-        output_type: Optional[str] = "pil",
         latents: Optional[torch.FloatTensor] = None,
     ):
         r"""
-        Function invoked when calling the pipeline for generation. Generate a trajectory of images with binary
-        feedback. The feedback can be given as a list of liked and disliked images.
+        The call function to the pipeline for generation. Generate a trajectory of images with binary feedback. The
+        feedback can be given as a list of liked and disliked images.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             liked (`List[Image.Image]` or `List[str]`, *optional*):
-                Liked enables feedback through images, encourages images with liked features.
+                Encourages images with liked features.
             disliked (`List[Image.Image]` or `List[str]`, *optional*):
-                Disliked enables feedback through images, discourages images with disliked features.
+                Discourages images with disliked features.
             generator (`torch.Generator` or `List[torch.Generator]` or `int`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html),
-                can be int. to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) or an `int` to
+                make generation deterministic.
             height (`int`, *optional*, defaults to 512):
-                height of the generated image
+                Height of the generated image
             width (`int`, *optional*, defaults to 512):
-                width of the generated image
-            num_images (`int`, *optional*, defaults to 1):
+                Width of the generated image
+            num_images (`int`, *optional*, defaults to 4):
                 The number of images to generate per prompt.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            guidance_scale (`float`, *optional*, defaults to 7.0):
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+            num_inference_steps (`int`, *optional*, defaults to 20):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            output_type (`str`, *optional*, defaults to "pil"):
-                defines the output type of generated image supports "np","pil"
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                plain tuple.
+            feedback_start_ratio (`float`, *optional*, defaults to `.33`):
+                Start point for providing feedback (between 0 and 1).
+            feedback_end_ratio (`float`, *optional*, defaults to `.66`):
+                End point for providing feedback (between 0 and 1).
+            min_weight (`float`, *optional*, defaults to `.05`):
+                Minimum weight for feedback.
+            max_weight (`float`, *optional*, defults tp `1.0`):
+                Maximum weight for feedback.
+            neg_scale (`float`, *optional*, defaults to `.5`):
+                Scale factor for negative feedback.
 
         Examples:
 
         Returns:
-            [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`: When returning a tuple, the first element is a list
-            with the generated images, and the second element is a list of `bool`s denoting whether the corresponding
-            generated image likely represents "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.fabric.FabricPipelineOutput`] is returned, otherwise a `tuple`
+                is returned where the first element is a list with the generated images and the second element is a
+                list of `bool`s indicating whether the corresponding generated image contains "not-safe-for-work"
+                (nsfw) content.
 
         """
 
