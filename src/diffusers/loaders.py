@@ -1182,9 +1182,9 @@ class LoraLoaderMixin:
         # examples: 'input_blocks.0.0.bias', 'input_hint_block.0.bias' respectively.
         indirect_patterns = [r"^\w+\.\d+\.\d+\.\w+$", r"^\w+\.\d+\.\w+$"]
 
-        new_state_dict["conv_in.down.weight"] = state_dict.pop("input_blocks.0.0.down")
-        new_state_dict["conv_in.up.bias"] = state_dict.pop("input_blocks.0.0.bias")
-        new_state_dict["conv_in.up.weight"] = state_dict.pop("input_blocks.0.0.up")
+        new_state_dict["conv_in.lora_down.weight"] = state_dict.pop("input_blocks.0.0.down")
+        new_state_dict["conv_in.bias"] = state_dict.pop("input_blocks.0.0.bias")
+        new_state_dict["conv_in.lora_up.weight"] = state_dict.pop("input_blocks.0.0.up")
 
         # Retrieves # of down, mid and up blocks
         input_block_ids, middle_block_ids = set(), set()
@@ -1223,7 +1223,6 @@ class LoraLoaderMixin:
                     + [str(block_id), inner_block_key, inner_layers_in_block]
                     + key.split(delimiter)[block_slice_pos + 1 :]
                 )
-
                 new_key = new_key.replace("_bias", ".bias")
                 if "norm" in key:
                     new_key = new_key.replace("_weight", ".weight")
