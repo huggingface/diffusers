@@ -25,6 +25,8 @@ The original codebase can be found here:
 
 Available Checkpoints are:
 - *dreamlike-photoreal-2.0* [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0)
+- *stable-diffusion-v1.5* [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)
+- *stable-diffusion-2-1* [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (may give unexpected results)
 
 
 ## Usage Example

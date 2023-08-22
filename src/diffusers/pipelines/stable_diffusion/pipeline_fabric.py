@@ -32,7 +32,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import FabricPipelineOutput
+from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -184,7 +184,7 @@ class FabricPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipelines.stable_diffusion._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -341,9 +341,6 @@ class FabricPipeline(DiffusionPipeline):
             )
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-            print(null_embed.shape)
-            print(negative_prompt_embeds.shape)
-            print(prompt_embeds.shape)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -713,7 +710,7 @@ class FabricPipeline(DiffusionPipeline):
         if not return_dict:
             return imgs
 
-        return FabricPipelineOutput(imgs, False)
+        return StableDiffusionPipelineOutput(imgs, False)
 
     def image_to_tensor(self, image: Union[str, Image.Image], dim: tuple, dtype):
         """
