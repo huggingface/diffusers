@@ -364,7 +364,7 @@ class UNet2DConditionLoadersMixin:
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
-               
+
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 if "lora.down.weight" in value_dict:
@@ -1671,7 +1671,7 @@ class LoraLoaderMixin:
         print(f"Total state_dict: {len(state_dict)}")
 
         # every down weight has a corresponding up weight
-        lora_state_dict = {k: v for k, v in state_dict.items() if k.endswith("lora_down.weight")}
+        lora_state_dict = {k: v for k, v in state_dict.items() if k.endswith(("lora_down.weight", "lora_up.weight"))}
         print(f"Total LoRA state_dict: {len(lora_state_dict)}")
         for key in lora_state_dict:
             if not any(k in key for k in exceptional_keys):
@@ -1681,9 +1681,6 @@ class LoraLoaderMixin:
             else:
                 lora_name_up = key.replace("lora_down", "lora_up")
                 diffusers_name = key
-
-            # if "time" in key:
-            #     print(f"Diffusers name: {diffusers_name} actual key: {key} up: {lora_name_up}")
 
             if "input.blocks" in diffusers_name:
                 diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
@@ -1726,16 +1723,24 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
                     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
                     controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                        lora_name_up
+                    )
                 elif "ff" in diffusers_name:
                     controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
+                    controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                        lora_name_up
+                    )
             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
                 controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                    lora_name_up
+                )
             else:
                 controlnet_lora_state_dict[diffusers_name] = lora_state_dict.pop(key)
-                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(lora_name_up)
+                controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
+                    lora_name_up
+                )
 
         print(f"Remaining keys in the LoRA state dict: {lora_state_dict.keys()}")
 
