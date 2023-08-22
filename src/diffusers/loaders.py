@@ -1576,6 +1576,8 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 else:
+                    if "weightsamplers" in key and "op" in key:
+                        print(f"Actual key: {key} Diffusers name: {diffusers_name} lora_name_up: {lora_name_up}")
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
@@ -1673,7 +1675,7 @@ class LoraLoaderMixin:
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_state_dict = {}
 
-        # every down weight has a corresponding up weight and potentially an alpha weight
+        # every down weight has a corresponding up weight
         lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
         for key in lora_keys:
             lora_name = key.split(".")[0]
