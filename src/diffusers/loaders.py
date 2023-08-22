@@ -1743,7 +1743,7 @@ class LoraLoaderMixin:
                 controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = lora_state_dict.pop(
                     lora_name_up
                 )
-        print(f"Total traversed: {totality}.")
+        print(f"Total traversed: {lora_keys[totality:]}.")
         print(f"Remaining keys in the LoRA state dict: {lora_state_dict.keys()}")
         assert 2 * len(lora_keys) == len(controlnet_lora_state_dict)
 
