@@ -403,7 +403,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument("--min_resolution", type=int, default=None, required=False)
-    parser.add_argument("--validation_steps", type=int, required=False, default=1)
+    parser.add_argument("--validation_steps", type=int, required=False, default=500)
 
     if input_args is not None:
         args = parser.parse_args(input_args)
