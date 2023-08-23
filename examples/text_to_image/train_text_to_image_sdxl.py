@@ -54,6 +54,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
@@ -619,7 +620,7 @@ def make_wds_inpainting_dataset(
     return dataset
 
 
-def log_validation(unet, vae_path, accelerator, weight_dtype):
+def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
     # create pipeline
     vae = AutoencoderKL.from_pretrained(
         vae_path,
@@ -650,7 +651,13 @@ def log_validation(unet, vae_path, accelerator, weight_dtype):
             image = Image.open("./validation/" + validation_dir + "/image.png")
             mask_image = Image.open("./validation/" + validation_dir + "/mask.png")
             images = pipeline(
-                prompt=prompt, image=image, mask_image=mask_image, num_images_per_prompt=4, generator=generator
+                prompt=prompt,
+                image=image,
+                mask_image=mask_image,
+                num_images_per_prompt=4,
+                generator=generator,
+                height=resolution,
+                width=resolution,
             ).images
 
     wandb.log({"validation": [wandb.Image(image) for image in images]})
@@ -753,10 +760,15 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
+    sigma_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    # TODO - BAD
+    sigma_scheduler.timesteps = sigma_scheduler.timesteps.to(accelerator.device)
+    sigma_scheduler.sigmas = sigma_scheduler.sigmas.to(accelerator.device)
     with torch.no_grad():  # needed because inplace operations on tensors that require grads are not allowed
         orig_in_channels = unet.config.in_channels
         unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
         original_conv_in = unet.conv_in
+        # TODO - should initial weights for new channels be initialized to zero?
         unet.conv_in = nn.Conv2d(
             unet.config.in_channels, unet.config.block_out_channels[0], kernel_size=3, padding=(1, 1)
         )
@@ -1003,6 +1015,9 @@ def main(args):
 
                 prompt_embeds = torch.concat((prompt_embeds_one, prompt_embeds_two), dim=-1)
 
+                encoded_pixel_values = vae.encode(pixel_values).latent_dist.sample()
+                encoded_pixel_values = encoded_pixel_values * vae.config.scaling_factor
+
                 encoded_masked_pixel_values = vae.encode(masked_pixel_values).latent_dist.sample()
                 encoded_masked_pixel_values = encoded_masked_pixel_values * vae.config.scaling_factor
 
@@ -1013,9 +1028,7 @@ def main(args):
 
                 noise = torch.randn_like(encoded_masked_pixel_values)
 
-                noisy_encoded_masked_pixel_values = noise_scheduler.add_noise(
-                    encoded_masked_pixel_values, noise, timesteps
-                )
+                noisy_encoded_pixel_values = noise_scheduler.add_noise(encoded_pixel_values, noise, timesteps)
 
                 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
                 latent_dimension = args.resolution // vae_scale_factor
@@ -1024,9 +1037,11 @@ def main(args):
                 )
 
                 model_input = torch.cat(
-                    [noisy_encoded_masked_pixel_values, mask_resized_to_latent_dims, encoded_masked_pixel_values],
+                    [noisy_encoded_pixel_values, mask_resized_to_latent_dims, encoded_masked_pixel_values],
                     dim=1,
                 )
+
+                model_input = sigma_scheduler.scale_model_input(model_input, timesteps)
 
             with accelerator.accumulate(unet):
                 model_pred = unet(
@@ -1036,7 +1051,11 @@ def main(args):
                     added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
-                target = noise
+                model_pred = sigma_scheduler.scale_model_output(model_pred, timesteps)
+
+                model_pred = model_pred + noisy_encoded_pixel_values
+
+                target = encoded_pixel_values
 
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
@@ -1094,7 +1113,7 @@ def main(args):
 
             if accelerator.is_main_process:
                 if global_step % args.validation_steps == 0:
-                    log_validation(unet, vae_path, accelerator, weight_dtype)
+                    log_validation(unet, vae_path, accelerator, weight_dtype, args.resolution)
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:

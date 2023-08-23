@@ -202,12 +202,30 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+
+        # step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.timesteps[:, None] == timestep[None, :]
+        step_index = step_index.nonzero()
+        step_index = step_index[:, 0]
+
         sigma = self.sigmas[step_index]
+        sigma = sigma[:, None, None, None]
 
         sample = sample / ((sigma**2 + 1) ** 0.5)
 
         self.is_scale_input_called = True
+        return sample
+
+    def scale_model_output(self, sample, timestep):
+        step_index = self.timesteps[:, None] == timestep[None, :]
+        step_index = step_index.nonzero()
+        step_index = step_index[:, 0]
+
+        sigma = self.sigmas[step_index]
+        sigma = sigma[:, None, None, None]
+
+        sample = sample * -sigma
+
         return sample
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
