@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from .common import AttnBlock, LayerNorm2d, ResBlockStageB, TimestepBlock
+from .common import AttnBlock, WuerstchenLayerNorm, ResBlockStageB, TimestepBlock
 
 
 class DiffNeXt(ModelMixin, ConfigMixin):
@@ -48,7 +48,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
             nn.Conv2d(c_in * (patch_size**2), c_hidden[0], kernel_size=1),
-            LayerNorm2d(c_hidden[0], elementwise_affine=False, eps=1e-6),
+            WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
         )
 
         def get_block(block_type, c_hidden, nhead, c_skip=0, dropout=0):
@@ -69,7 +69,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             if i > 0:
                 down_block.append(
                     nn.Sequential(
-                        LayerNorm2d(c_hidden[i - 1], elementwise_affine=False, eps=1e-6),
+                        WuerstchenLayerNorm(c_hidden[i - 1], elementwise_affine=False, eps=1e-6),
                         nn.Conv2d(c_hidden[i - 1], c_hidden[i], kernel_size=2, stride=2),
                     )
                 )
@@ -91,7 +91,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             if i > 0:
                 up_block.append(
                     nn.Sequential(
-                        LayerNorm2d(c_hidden[i], elementwise_affine=False, eps=1e-6),
+                        WuerstchenLayerNorm(c_hidden[i], elementwise_affine=False, eps=1e-6),
                         nn.ConvTranspose2d(c_hidden[i], c_hidden[i - 1], kernel_size=2, stride=2),
                     )
                 )
@@ -99,7 +99,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
 
         # OUTPUT
         self.clf = nn.Sequential(
-            LayerNorm2d(c_hidden[0], elementwise_affine=False, eps=1e-6),
+            WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
             nn.Conv2d(c_hidden[0], 2 * c_out * (patch_size**2), kernel_size=1),
             nn.PixelShuffle(patch_size),
         )

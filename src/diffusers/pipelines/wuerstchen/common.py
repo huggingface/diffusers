@@ -4,7 +4,7 @@ import torch.nn as nn
 from ...models.attention_processor import Attention
 
 
-class LayerNorm2d(nn.LayerNorm):
+class WuerstchenLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -28,7 +28,7 @@ class ResBlockStageB(nn.Module):
     def __init__(self, c, c_skip=None, kernel_size=3, dropout=0.0):
         super().__init__()
         self.depthwise = nn.Conv2d(c, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
             nn.Linear(c + c_skip, c * 4),
             nn.GELU(),
@@ -50,7 +50,7 @@ class ResBlock(nn.Module):
     def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
         super().__init__()
         self.depthwise = nn.Conv2d(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
             nn.Linear(c, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), nn.Linear(c * 4, c)
         )
@@ -81,7 +81,7 @@ class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
         self.self_attn = self_attn
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
         self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 

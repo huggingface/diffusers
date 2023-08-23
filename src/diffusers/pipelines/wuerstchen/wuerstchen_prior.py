@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from .common import AttnBlock, LayerNorm2d, ResBlock, TimestepBlock
+from .common import AttnBlock, WuerstchenLayerNorm, ResBlock, TimestepBlock
 
 
 class WuerstchenPrior(ModelMixin, ConfigMixin):
@@ -26,7 +26,7 @@ class WuerstchenPrior(ModelMixin, ConfigMixin):
             self.blocks.append(TimestepBlock(c, c_r))
             self.blocks.append(AttnBlock(c, c, nhead, self_attn=True, dropout=dropout))
         self.out = nn.Sequential(
-            LayerNorm2d(c, elementwise_affine=False, eps=1e-6),
+            WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6),
             nn.Conv2d(c, c_in * 2, kernel_size=1),
         )
 
