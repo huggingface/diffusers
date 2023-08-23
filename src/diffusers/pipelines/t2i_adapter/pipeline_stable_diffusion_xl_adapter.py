@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
         >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            model_id, adapter=adapter, safety_checker=None, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
+            model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
         )
 
         >>> pipe.to('cuda')
@@ -578,7 +578,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
-    # Copied from diffusers.pipelines.t2i_adapter.pipeline_stable_diffusion_adapter._default_height_width
+    # Copied from diffusers.pipelines.t2i_adapter.pipeline_stable_diffusion_adapter.StableDiffusionAdapterPipeline._default_height_width
     def _default_height_width(self, height, width, image):
         # NOTE: It is possible that a list of images have different
         # dimensions for each image, so just checking the first image
