@@ -106,7 +106,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "ruff==0.0.280",
-    "safetensors>=0.3.1",
+    "safetensors==0.3.3.rc1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "onnx",
