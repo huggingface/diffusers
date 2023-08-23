@@ -597,7 +597,7 @@ def make_wds_inpainting_dataset(
         else:
             mask = make_random_irregular_mask(resolution, resolution)
 
-        mask = mask.astype(np.int32)
+        mask = mask[None, :, :].astype(np.int32)
 
         return {
             "mask": mask,
@@ -998,7 +998,9 @@ def main(args):
 
                 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
                 latent_dimension = args.resolution // vae_scale_factor
-                mask_resized_to_latent_dims = F.interpolate(mask, size=(latent_dimension, latent_dimension))
+                mask_resized_to_latent_dims = F.interpolate(
+                    mask.to(torch.float32), size=(latent_dimension, latent_dimension)
+                )
 
                 model_input = torch.cat(
                     [noisy_encoded_masked_pixel_values, mask_resized_to_latent_dims, encoded_masked_pixel_values],
