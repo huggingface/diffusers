@@ -30,7 +30,7 @@ from diffusers import (
 from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -39,8 +39,8 @@ enable_full_determinism()
 
 class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionXLAdapterPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
