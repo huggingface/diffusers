@@ -1012,7 +1012,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
-        # define init kwargs
+        # define init kwargs and make sure that optional component modules are filtered out
         init_kwargs = {
             k: init_dict.pop(k)
             for k in optional_kwargs
