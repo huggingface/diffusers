@@ -1228,7 +1228,6 @@ class DiffusionPipeline(ConfigMixin):
         for hook in self._all_hooks:
             # offload model and remove hook from model
             hook.offload()
-            hook.remove()
 
     def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
         r"""
