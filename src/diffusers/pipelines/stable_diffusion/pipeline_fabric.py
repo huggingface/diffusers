@@ -47,8 +47,8 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = FabricPipeline(model_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> prompt = "a giant standing in a fantasy landscape best quality"
-        >>> liked = []
-        >>> disliked = []
+        >>> liked = []  # list of images for positive feedback
+        >>> disliked = []  # list of images for negative feedback
         >>> image = pipe(prompt, num_images=4, liked=liked, disliked=disliked).images[0]
         ```
 """
@@ -523,9 +523,8 @@ class FabricPipeline(DiffusionPipeline):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
+                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             liked (`List[Image.Image]` or `List[str]`, *optional*):
                 Encourages images with liked features.
             disliked (`List[Image.Image]` or `List[str]`, *optional*):
@@ -534,9 +533,9 @@ class FabricPipeline(DiffusionPipeline):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) or an `int` to
                 make generation deterministic.
             height (`int`, *optional*, defaults to 512):
-                Height of the generated image
+                Height of the generated image.
             width (`int`, *optional*, defaults to 512):
-                Width of the generated image
+                Width of the generated image.
             num_images (`int`, *optional*, defaults to 4):
                 The number of images to generate per prompt.
             guidance_scale (`float`, *optional*, defaults to 7.0):
@@ -565,10 +564,10 @@ class FabricPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.fabric.FabricPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.fabric.FabricPipelineOutput`] is returned, otherwise a `tuple`
-                is returned where the first element is a list with the generated images and the second element is a
-                list of `bool`s indicating whether the corresponding generated image contains "not-safe-for-work"
-                (nsfw) content.
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images and the
+                second element is a list of `bool`s indicating whether the corresponding generated image contains
+                "not-safe-for-work" (nsfw) content.
 
         """
 

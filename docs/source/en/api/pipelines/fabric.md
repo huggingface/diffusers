@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # FABRIC
 
-[FABRIC: Personalizing Diffusion Models with Iterative Feedback](https://huggingface.co/papers/2307.10159) (FABRIC) is by Dimitri von Rütte, Elisabetta Fedele, Jonathan Thomm and Lukas Wolf
+[FABRIC: Personalizing Diffusion Models with Iterative Feedback](https://huggingface.co/papers/2307.10159) (FABRIC) is by Dimitri von Rütte, Elisabetta Fedele, Jonathan Thomm and Lukas Wolf.
 
 FABRIC is a training-free approach that conditions the diffusion process on a set of feedback images, applicable to a wide range of popular diffusion models. It is created by researchers and engineers from [ETH Zürich, Switzerland](https://github.com/sd-fabric). The [`FabricPipeline`] can generate photo-realistic images given any text input using Stable Diffusion.
 
@@ -20,7 +20,7 @@ The abstract from the paper is:
 
 *In an era where visual content generation is increasingly driven by machine learning, the integration of human feedback into generative models presents significant opportunities for enhancing user experience and output quality. This study explores strategies for incorporating iterative human feedback into the generative process of diffusion-based text-to-image models. We propose FABRIC, a training-free approach applicable to a wide range of popular diffusion models, which exploits the self-attention layer present in the most widely used architectures to condition the diffusion process on a set of feedback images. To ensure a rigorous assessment of our approach, we introduce a comprehensive evaluation methodology, offering a robust mechanism to quantify the performance of generative visual models that integrate human feedback. We show that generation results improve over multiple rounds of iterative feedback through exhaustive analysis, implicitly optimizing arbitrary user preferences. The potential applications of these findings extend to fields such as personalized content creation and customization*
 
-The original codebase can be found at [sd-fabric/fabric](https://github.com/sd-fabric/fabric), and available checkpoints are [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0), [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) and [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (may give unexpected results)
+The original codebase can be found at [sd-fabric/fabric](https://github.com/sd-fabric/fabric), and available checkpoints are [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0), [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), and [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (may give unexpected results).
 
 Let's have a look at the images (*512X512*)
 
