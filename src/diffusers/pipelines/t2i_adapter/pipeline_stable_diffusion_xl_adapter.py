@@ -48,15 +48,26 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> from PIL import Image
+        >>> from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, DDPMScheduler
+        >>> from pytorch_lightning import seed_everything
+        >>> from diffusers.models.unet_2d_condition import UNet2DConditionModel
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
+        >>> sketch_image = load_image('https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png').convert('L')
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
+
+        >>> adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder='sketch_sdxl_1.0',torch_dtype=torch.float16, adapter_type="full_adapter_xl")
+        >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
+
+        >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            model_id, adapter=adapter, safety_checker=None, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
+        )
+
+        >>> pipe.to('cuda')
+        >>> generator = torch.Generator().manual_seed(42)
+        >>> sketch_image_out = pipe(prompt='a photo of a dog in real world, high quality', negative_prompt='extra digit, fewer digits, cropped, worst quality, low quality', image=sketch_image, generator=generator, guidance_scale=7.5).images[0]
         ```
 """
 
@@ -198,7 +209,6 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
