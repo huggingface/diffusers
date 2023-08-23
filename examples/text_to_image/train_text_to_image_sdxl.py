@@ -37,6 +37,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from torch import nn
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -729,6 +730,15 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
+    orig_in_channels = unet.config.in_channels
+    unet.config.in_channels = 2*orig_in_channels + 1 # 2 images + 1 mask
+    original_conv_in = unet.conv_in
+    unet.conv_in = nn.Conv2d(unet.config.in_channels, unet.config.block_out_channels[0], kernel_size=3, padding=(1, 1))
+    unet.conv_in.bias = original_conv_in.bias
+    # set first `origin_n_channels` input channels of `unet.conv_in.weight` to `original_conv_in.weight`
+    # 2d conv weight shape: `out channels, in channels, kernel height, kernel width`
+    unet.conv_in.weight[:, orig_in_channels, :, :] = original_conv_in.weight
+    del original_conv_in
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
