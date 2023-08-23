@@ -12,7 +12,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         AudioLDM2ProjectionModel,
-        AudioLDMPipeline,
+        AudioLDM2Pipeline,
+        AudioLDM2UNet2DConditionModel,
     )
 else:
     from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
