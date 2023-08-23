@@ -164,7 +164,7 @@ class FullAdapter(nn.Module):
         for block in self.body:
             x = block(x)
             features.append(x)
-
+        print(f"Number of features: {len(features)}")
         return features
 
 
@@ -293,7 +293,7 @@ class LightAdapter(nn.Module):
         for block in self.body:
             x = block(x)
             features.append(x)
-
+        print(f"Number of features: {len(features)}")
         return features
 
 
