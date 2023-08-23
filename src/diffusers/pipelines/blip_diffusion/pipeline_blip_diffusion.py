@@ -160,7 +160,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         reference_image,
         source_subject_category,
         target_subject_category,
-        condtioning_image,
+        condtioning_image=None,
         latents=None,
         guidance_scale=7.5,
         height=512,
@@ -279,30 +279,10 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             )["prev_sample"]
 
         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-        image = self.postprocess_image(image, output_type="pil")
+        image = self.image_processor.postprocess(image, output_type="pil")
 
         return image
 
-    # Follows diffusers.VaeImageProcessor.postprocess
-    def postprocess_image(self, sample: torch.FloatTensor, output_type: str = "pil"):
-        if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(
-                f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"
-            )
-
-        # Equivalent to diffusers.VaeImageProcessor.denormalize
-        sample = (sample / 2 + 0.5).clamp(0, 1)
-        if output_type == "pt":
-            return sample
-
-        # Equivalent to diffusers.VaeImageProcessor.pt_to_numpy
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
-        if output_type == "np":
-            return sample
-
-        # Output_type must be 'pil'
-        sample = self.image_processor.postprocess(sample)
-        return sample
 
     def _tokenize_text(self, text_input, with_query=True):
         max_len = self.text_encoder.text_model.config.max_position_embeddings
