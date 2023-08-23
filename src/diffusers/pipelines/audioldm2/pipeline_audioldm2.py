@@ -926,7 +926,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     encoder_hidden_states=generated_prompt_embeds,
                     encoder_hidden_states_1=prompt_embeds,
                     encoder_attention_mask_1=attention_mask,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
