@@ -724,6 +724,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         adapter_state = self.adapter(adapter_input)
+        print(f"From pipeline (before rejigging): {len(adapter_state)}.")
         for k, v in enumerate(adapter_state):
             adapter_state[k] = v * adapter_conditioning_scale
         if num_images_per_prompt > 1:
@@ -732,6 +733,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             for k, v in enumerate(adapter_state):
                 adapter_state[k] = torch.cat([v] * 2, dim=0)
+        print(f"From pipeline (after rejigging): {len(adapter_state)}.")
 
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -741,7 +743,6 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                print(f"From pipeline: {len(adapter_state)}.")
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
