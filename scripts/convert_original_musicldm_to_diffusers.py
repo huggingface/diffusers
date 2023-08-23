@@ -300,7 +300,6 @@ def create_diffusers_schedular(original_config):
     return schedular
 
 
-# Adapted from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_unet_checkpoint
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint. Compared to the original Stable Diffusion
