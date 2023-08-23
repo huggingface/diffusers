@@ -24,16 +24,18 @@ from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
     StableDiffusionXLAdapterPipeline,
+    T2IAdapter,
     UNet2DConditionModel,
-    T2IAdapter
 )
 from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import enable_full_determinism
-from ..pipeline_params import TEXT_TO_IMAGE_PARAMS, TEXT_TO_IMAGE_BATCH_PARAMS
+
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
+
 
 class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionXLAdapterPipeline
@@ -101,7 +103,7 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
             channels=[32, 64],
             num_res_blocks=2,
             downscale_factor=4,
-            adapter_type='full_adapter_xl',
+            adapter_type="full_adapter_xl",
         )
         components = {
             "adapter": adapter,
@@ -145,5 +147,7 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5752919, 0.6022097, 0.4728038, 0.49861962, 0.57084894, 0.4644975, 0.5193715, 0.5133664, 0.4729858])
+        expected_slice = np.array(
+            [0.5752919, 0.6022097, 0.4728038, 0.49861962, 0.57084894, 0.4644975, 0.5193715, 0.5133664, 0.4729858]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3

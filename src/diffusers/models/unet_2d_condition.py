@@ -966,7 +966,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 encoder_attention_mask=encoder_attention_mask,
             )
             # To support T2I-Adapter-XL
-            if is_adapter and len(down_block_additional_residuals) > 0 and sample.shape == down_block_additional_residuals[0].shape:
+            if (
+                is_adapter
+                and len(down_block_additional_residuals) > 0
+                and sample.shape == down_block_additional_residuals[0].shape
+            ):
                 sample += down_block_additional_residuals.pop(0)
 
         if is_controlnet:
