@@ -279,7 +279,7 @@ class LightAdapter(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
-        channels: List[int] = [320, 640, 1280, 1280],
+        channels: List[int] = [320, 640, 1280],
         num_res_blocks: int = 4,
         downscale_factor: int = 8,
     ):
