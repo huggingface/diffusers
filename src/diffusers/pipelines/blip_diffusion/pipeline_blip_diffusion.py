@@ -177,6 +177,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         std = (0.26862954, 0.26130258, 0.27577711)
 
         reference_image = self.image_processor.preprocess(reference_image,  mean=mean, std=std)
+        reference_image = reference_image.to(self.device)
 
         prompt = self._build_prompt(
             prompts=prompt,
