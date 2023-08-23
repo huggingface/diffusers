@@ -155,6 +155,7 @@ class FullAdapter(nn.Module):
         downscale_factor: int = 8,
     ):
         super().__init__()
+        print(f"From {self.__class__.name} channels: {channels}.")
 
         in_channels = in_channels * downscale_factor**2
 
@@ -284,6 +285,7 @@ class LightAdapter(nn.Module):
         downscale_factor: int = 8,
     ):
         super().__init__()
+        print(f"From {self.__class__.name} channels: {channels}.")
 
         in_channels = in_channels * downscale_factor**2
 
