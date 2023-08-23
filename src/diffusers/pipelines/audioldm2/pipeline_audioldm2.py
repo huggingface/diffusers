@@ -39,7 +39,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
 
@@ -948,7 +948,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             latents = 1 / self.vae.config.scaling_factor * latents
             mel_spectrogram = self.vae.decode(latents).sample
         else:
-            return ImagePipelineOutput(images=latents)
+            return AudioPipelineOutput(audios=latents)
 
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
 
