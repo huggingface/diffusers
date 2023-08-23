@@ -1107,12 +1107,14 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         #     negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
         #     lora_scale=text_encoder_lora_scale,
         # )
+        
+        negative_prompt = negative_prompt if negative_prompt is not None else ""
         (
             prompt_embeds,
             negative_prompt_embeds,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
-        ) = get_weighted_text_embeddings_sdxl(pipe=self, prompt=prompt, neg_prompt=negative_prompt)
+        ) = get_weighted_text_embeddings_sdxl(pipe=self, prompt = prompt, neg_prompt = negative_prompt)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
