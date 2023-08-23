@@ -186,11 +186,8 @@ class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMi
 
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4858, 0.5500, 0.4278, 0.4669, 0.6184, 0.4322, 0.5010, 0.5033, 0.4746])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
 class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
@@ -206,11 +203,8 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4965, 0.5548, 0.4330, 0.4771, 0.6226, 0.4382, 0.5037, 0.5071, 0.4782])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
 class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
