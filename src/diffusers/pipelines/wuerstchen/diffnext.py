@@ -59,7 +59,7 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             elif block_type == "T":
                 return TimestepBlock(c_hidden, c_r)
             else:
-                raise Exception(f"Block type {block_type} not supported")
+                raise ValueError(f"Block type {block_type} not supported")
 
         # BLOCKS
         # -- down blocks
