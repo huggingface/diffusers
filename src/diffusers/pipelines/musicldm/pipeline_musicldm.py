@@ -561,7 +561,8 @@ class MusicLDMPipeline(DiffusionPipeline):
                     encoder_hidden_states=None,
                     class_labels=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

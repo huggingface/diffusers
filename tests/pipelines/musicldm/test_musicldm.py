@@ -427,7 +427,7 @@ class MusicLDMPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_musicldm(self):
-        musicldm_pipe = MusicLDMPipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
+        musicldm_pipe = MusicLDMPipeline.from_pretrained("cvssp/musicldm")
         musicldm_pipe = musicldm_pipe.to(torch_device)
         musicldm_pipe.set_progress_bar_config(disable=None)
 
@@ -439,13 +439,15 @@ class MusicLDMPipelineSlowTests(unittest.TestCase):
         assert len(audio) == 81952
 
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[17275:17285]
-        expected_slice = np.array([0.0791, 0.0666, 0.1158, 0.1227, 0.1171, -0.2880, -0.1940, -0.0283, -0.0126, 0.1127])
+        audio_slice = audio[8680:8690]
+        expected_slice = np.array(
+            [-0.1042, -0.1068, -0.1235, -0.1387, -0.1428, -0.136, -0.1213, -0.1097, -0.0967, -0.0945]
+        )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-3
 
     def test_musicldm_lms(self):
-        musicldm_pipe = MusicLDMPipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2")
+        musicldm_pipe = MusicLDMPipeline.from_pretrained("cvssp/musicldm")
         musicldm_pipe.scheduler = LMSDiscreteScheduler.from_config(musicldm_pipe.scheduler.config)
         musicldm_pipe = musicldm_pipe.to(torch_device)
         musicldm_pipe.set_progress_bar_config(disable=None)
@@ -457,28 +459,7 @@ class MusicLDMPipelineSlowTests(unittest.TestCase):
         assert len(audio) == 81952
 
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[31390:31400]
-        expected_slice = np.array(
-            [-0.1318, -0.0577, 0.0446, -0.0573, 0.0659, 0.1074, -0.2600, 0.0080, -0.2190, -0.4301]
-        )
-        max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-3
-
-    def test_musicldm_large(self):
-        musicldm_pipe = MusicLDMPipeline.from_pretrained("/home/sanchit/convert-audioldm2/hub-audioldm2-large")
-        musicldm_pipe = musicldm_pipe.to(torch_device)
-        musicldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        audio = musicldm_pipe(**inputs).audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 81952
-
-        # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[8825:8835]
-        expected_slice = np.array(
-            [-0.1829, -0.1461, 0.0759, -0.1493, -0.1396, 0.5783, 0.3001, -0.3038, -0.0639, -0.2244]
-        )
+        audio_slice = audio[58020:58030]
+        expected_slice = np.array([0.3592, 0.3477, 0.4084, 0.4665, 0.5048, 0.5891, 0.6461, 0.5579, 0.4595, 0.4403])
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-3
