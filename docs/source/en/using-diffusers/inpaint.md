@@ -29,6 +29,7 @@ from diffusers import StableDiffusionInpaintPipeline
 pipeline = StableDiffusionInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     torch_dtype=torch.float16,
+    use_safetensors=True,
 )
 pipeline = pipeline.to("cuda")
 ```

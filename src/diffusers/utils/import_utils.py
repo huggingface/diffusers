@@ -306,10 +306,6 @@ def is_torch_available():
     return _torch_available
 
 
-def is_safetensors_available():
-    return _safetensors_available
-
-
 def is_tf_available():
     return _tf_available
 
@@ -571,7 +567,7 @@ class DummyObject(type):
     """
 
     def __getattr__(cls, key):
-        if key.startswith("_") and key != "_load_connected_pipes":
+        if key.startswith("_") and key not in ["_load_connected_pipes", "_is_onnx"]:
             return super().__getattr__(cls, key)
         requires_backends(cls, cls._backends)
 

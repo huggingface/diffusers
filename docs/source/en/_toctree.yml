@@ -32,6 +32,8 @@
       title: Load safetensors
     - local: using-diffusers/other-formats
       title: Load different Stable Diffusion formats
+    - local: using-diffusers/push_to_hub
+      title: Push files to the Hub
     title: Loading & Hub
   - sections:
     - local: using-diffusers/pipeline_overview
@@ -65,7 +67,7 @@
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: Stable Diffusion in JAX/Flax
     - local: using-diffusers/weighted_prompts
-      title: Weighting Prompts
+      title: Prompt weighting
     title: Pipelines for Inference
   - sections:
     - local: training/overview
@@ -190,6 +192,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/audioldm2
+      title: AudioLDM 2
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/consistency_models
@@ -269,6 +273,8 @@
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
         title: Stable Diffusion T2I-adapter
+      - local: api/pipelines/stable_diffusion/gligen
+        title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP

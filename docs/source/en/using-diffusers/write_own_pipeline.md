@@ -25,7 +25,7 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 ```py
 >>> from diffusers import DDPMPipeline
 
->>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256").to("cuda")
+>>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
 >>> image = ddpm(num_inference_steps=25).images[0]
 >>> image
 ```
@@ -46,7 +46,7 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
 >>> from diffusers import DDPMScheduler, UNet2DModel
 
 >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
->>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
+>>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
 ```
 
 2. Set the number of timesteps to run the denoising process for:
@@ -124,10 +124,14 @@ Now that you know what you need for the Stable Diffusion pipeline, load all thes
 >>> from transformers import CLIPTextModel, CLIPTokenizer
 >>> from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler
 
->>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+>>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae", use_safetensors=True)
 >>> tokenizer = CLIPTokenizer.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="tokenizer")
->>> text_encoder = CLIPTextModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="text_encoder")
->>> unet = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
+>>> text_encoder = CLIPTextModel.from_pretrained(
+...     "CompVis/stable-diffusion-v1-4", subfolder="text_encoder", use_safetensors=True
+... )
+>>> unet = UNet2DConditionModel.from_pretrained(
+...     "CompVis/stable-diffusion-v1-4", subfolder="unet", use_safetensors=True
+... )
 ```
 
 Instead of the default [`PNDMScheduler`], exchange it for the [`UniPCMultistepScheduler`] to see how easy it is to plug a different scheduler in:
