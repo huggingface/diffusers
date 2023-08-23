@@ -55,13 +55,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AudioLDM2Pipeline
 
-        >>> # load the best weights for music generation
-        >>> repo_id = "cvssp/audioldm2-music"
+        >>> repo_id = "cvssp/audioldm2"
         >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # define the prompts
-        >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
+        >>> prompt = "The sound of a hammer hitting a wooden surface."
         >>> negative_prompt = "Low quality."
 
         >>> # set the seed
