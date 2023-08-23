@@ -597,6 +597,8 @@ def make_wds_inpainting_dataset(
         else:
             mask = make_random_irregular_mask(resolution, resolution)
 
+        mask = mask.astype(np.int32)
+
         return {
             "mask": mask,
             "pixel_values": pixel_values,
@@ -730,15 +732,18 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    orig_in_channels = unet.config.in_channels
-    unet.config.in_channels = 2*orig_in_channels + 1 # 2 images + 1 mask
-    original_conv_in = unet.conv_in
-    unet.conv_in = nn.Conv2d(unet.config.in_channels, unet.config.block_out_channels[0], kernel_size=3, padding=(1, 1))
-    unet.conv_in.bias = original_conv_in.bias
-    # set first `origin_n_channels` input channels of `unet.conv_in.weight` to `original_conv_in.weight`
-    # 2d conv weight shape: `out channels, in channels, kernel height, kernel width`
-    unet.conv_in.weight[:, orig_in_channels, :, :] = original_conv_in.weight
-    del original_conv_in
+    with torch.no_grad():  # needed because inplace operations on tensors that require grads are not allowed
+        orig_in_channels = unet.config.in_channels
+        unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
+        original_conv_in = unet.conv_in
+        unet.conv_in = nn.Conv2d(
+            unet.config.in_channels, unet.config.block_out_channels[0], kernel_size=3, padding=(1, 1)
+        )
+        unet.conv_in.bias = original_conv_in.bias
+        # set first `origin_n_channels` input channels of `unet.conv_in.weight` to `original_conv_in.weight`
+        # 2d conv weight shape: `out channels, in channels, kernel height, kernel width`
+        unet.conv_in.weight[:, :orig_in_channels, :, :] = original_conv_in.weight
+        del original_conv_in
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
@@ -952,7 +957,7 @@ def main(args):
 
                 pixel_values = batch["pixel_values"].to(accelerator.device, dtype=vae.dtype)
 
-                mask = batch["mask"].to(accelerator.device, dtype=weight_dtype)
+                mask = batch["mask"].to(accelerator.device)
 
                 masked_pixel_values = pixel_values * ~mask
 
