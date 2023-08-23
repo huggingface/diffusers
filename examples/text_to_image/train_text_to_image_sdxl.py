@@ -127,6 +127,7 @@ def import_model_class_from_model_name_or_path(
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument("--wds_dataset_url", type=str, default=None, required=True)
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -263,6 +264,7 @@ def parse_args(input_args=None):
         type=int,
         default=None,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
+        required=True,
     )
     parser.add_argument(
         "--checkpointing_steps",
@@ -413,6 +415,7 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument("--min_resolution", type=int, default=None, required=False)
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -422,10 +425,6 @@ def parse_args(input_args=None):
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
-
-    # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
@@ -521,7 +520,7 @@ def make_wds_inpainting_dataset(
             max_length=tokenizer_one.model_max_length,
             truncation=True,
             return_tensors="pt",
-        ).input_ids
+        ).input_ids[0]
 
         tokenzier_two_text_input_ids = tokenizer_two(
             text,
@@ -529,7 +528,7 @@ def make_wds_inpainting_dataset(
             max_length=tokenizer_two.model_max_length,
             truncation=True,
             return_tensors="pt",
-        ).input_ids
+        ).input_ids[0]
 
         return {
             "pixel_values": pixel_values,
@@ -897,7 +896,7 @@ def main(args):
 
                 prompt_embeds = torch.concat((prompt_embeds_one, prompt_embeds_two), dim=-1)
 
-                model_input = vae.encode(pixel_values).laent_dist.sample()
+                model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
 
                 noise = torch.randn_like(model_input)
@@ -919,7 +918,7 @@ def main(args):
                     noisy_model_input,
                     timesteps,
                     prompt_embeds,
-                    added_cond_kwargs={"time_ids", time_ids, "text_embeds", pooled_prompt_embeds},
+                    added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
                 if noise_scheduler.config.prediction_type == "epsilon":
