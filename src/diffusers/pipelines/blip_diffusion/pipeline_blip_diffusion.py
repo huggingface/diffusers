@@ -16,7 +16,6 @@ from ...utils import (
     logging,
     randn_tensor,
     replace_example_docstring,
-    numpy_to_pil
 )
 from ...utils.pil_utils import PIL_INTERPOLATION
 from torch import nn
@@ -187,7 +186,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         )
         query_embeds = self.get_query_embeddings(reference_image, source_subject_category)
         text_embeddings = self.encode_prompt(
-            reference_image, source_subject_category, prompt
+            query_embeds, prompt
         )
         # 3. unconditional embedding
         do_classifier_free_guidance = guidance_scale > 1.0
@@ -302,7 +301,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             return sample
 
         # Output_type must be 'pil'
-        sample = numpy_to_pil(sample)
+        sample = self.image_processor.postprocess(sample)
         return sample
 
     def _tokenize_text(self, text_input, with_query=True):
