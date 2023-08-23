@@ -28,9 +28,12 @@ from transformers import (
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, randn_tensor, replace_example_docstring
+from ...utils import is_librosa_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
+
+if is_librosa_available():
+    import librosa
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -252,12 +255,6 @@ class MusicLDMPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.decode_latents
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        mel_spectrogram = self.vae.decode(latents).sample
-        return mel_spectrogram
-
     # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
@@ -268,17 +265,29 @@ class MusicLDMPipeline(DiffusionPipeline):
         waveform = waveform.cpu().float()
         return waveform
 
-    def score_waveforms(self, text, audio):
+    # Copied from diffusers.pipelines.audioldm2.pipeline_audioldm2.AudioLDM2Pipeline.score_waveforms
+    def score_waveforms(self, text, audio, num_waveforms_per_prompt, device, dtype):
+        if not is_librosa_available():
+            logger.info(
+                "Automatic scoring of the generated audio waveforms against the input prompt text requires the "
+                "`librosa` package to resample the generated waveforms. Returning the audios in the order they were "
+                "generated. To enable automatic scoring, install `librosa` with: `pip install librosa`."
+            )
+            return audio
         inputs = self.tokenizer(text, return_tensors="pt", padding=True)
-        inputs["input_features"] = self.feature_extractor(list(audio.numpy()), return_tensors="pt").input_features
-        inputs = inputs.to(self.device)
+        resampled_audio = librosa.resample(
+            audio.numpy(), orig_sr=self.vocoder.config.sampling_rate, target_sr=self.feature_extractor.sampling_rate
+        )
+        inputs["input_features"] = self.feature_extractor(
+            list(resampled_audio), return_tensors="pt", sampling_rate=self.feature_extractor.sampling_rate
+        ).input_features.type(dtype)
+        inputs = inputs.to(device)
 
-        # compute the audio-text similarity score and take the softmax to get the label probabilities
+        # compute the audio-text similarity score using the CLAP model
         logits_per_text = self.text_encoder(**inputs).logits_per_text
-        probs = logits_per_text.softmax(dim=-1)
-        # rank waveforms by the probability scores
-        indices = torch.argsort(probs, dim=1, descending=True)
-        audio = torch.index_select(audio, 0, indices.view(-1))
+        # sort by the highest matching generations per prompt
+        indices = torch.argsort(logits_per_text, dim=1, descending=True)[:, :num_waveforms_per_prompt]
+        audio = torch.index_select(audio, 0, indices.reshape(-1).cpu())
         return audio
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -454,8 +463,9 @@ class MusicLDMPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated image. Choose between `"np"` to return a NumPy `np.ndarray` or
-                `"pt"` to return a PyTorch `torch.Tensor` object.
+                The output format of the generated audio. Choose between `"np"` to return a NumPy `np.ndarray` or
+                `"pt"` to return a PyTorch `torch.Tensor` object. Set to `"latent"` to return the latent diffusion
+                model (LDM) output.
 
         Examples:
 
@@ -568,15 +578,25 @@ class MusicLDMPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Post-processing
-        mel_spectrogram = self.decode_latents(latents)
+        if not output_type == "latent":
+            latents = 1 / self.vae.config.scaling_factor * latents
+            mel_spectrogram = self.vae.decode(latents).sample
+        else:
+            return AudioPipelineOutput(audios=latents)
 
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
 
         audio = audio[:, :original_waveform_length]
 
         # 9. Automatic scoring
-        if num_waveforms_per_prompt > 1:
-            audio = self.score_waveforms(text=prompt, audio=audio)
+        if num_waveforms_per_prompt > 1 and prompt is not None:
+            audio = self.score_waveforms(
+                text=prompt,
+                audio=audio,
+                num_waveforms_per_prompt=num_waveforms_per_prompt,
+                device=device,
+                dtype=prompt_embeds.dtype,
+            )
 
         if output_type == "np":
             audio = audio.numpy()
