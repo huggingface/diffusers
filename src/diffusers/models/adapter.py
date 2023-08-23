@@ -284,7 +284,6 @@ class LightAdapter(nn.Module):
         downscale_factor: int = 8,
     ):
         super().__init__()
-        print(f"From {self.__class__} channels: {channels}.")
 
         in_channels = in_channels * downscale_factor**2
 
