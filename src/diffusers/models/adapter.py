@@ -163,7 +163,7 @@ class FullAdapter(nn.Module):
         for block in self.body:
             x = block(x)
             features.append(x)
-
+        
         return features
 
 
@@ -265,6 +265,7 @@ class LightAdapter(nn.Module):
         downscale_factor: int = 8,
     ):
         super().__init__()
+        print(f"From {self.__class__} channels: {channels}.")
 
         in_channels = in_channels * downscale_factor**2
 
@@ -291,7 +292,7 @@ class LightAdapter(nn.Module):
         for block in self.body:
             x = block(x)
             features.append(x)
-
+        
         return features
 
 
