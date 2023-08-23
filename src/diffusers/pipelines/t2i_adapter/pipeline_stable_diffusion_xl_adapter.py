@@ -749,8 +749,8 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
         adapter_input = _preprocess_adapter_image(image, height, width).to(device)
 
-        original_size = (height, width) 
-        target_size = (height, width)
+        original_size = original_size or (height, width) 
+        target_size = target_size or (height, width)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
