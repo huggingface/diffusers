@@ -15,6 +15,7 @@
 
 import gc
 import random
+import tempfile
 import unittest
 
 import numpy as np
@@ -422,3 +423,42 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9
+
+    def test_stable_diffusion_upscale_pipeline_from_save_pretrained(self):
+        model_id = "stabilityai/stable-diffusion-x4-upscaler"
+        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            new_pipe = StableDiffusionUpscalePipeline.from_pretrained(tmpdirname)
+
+            new_pipe.to(torch_device)
+            new_pipe.set_progress_bar_config(disable=None)
+            new_pipe.enable_attention_slicing()
+
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/sd2-upscale/low_res_cat.png"
+        )
+        prompt = "a cat sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        upscaled_image = pipe(
+            prompt=prompt,
+            image=image,
+            generator=generator,
+            output_type="np",
+        ).images[0]
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        new_upscaled_image = new_pipe(
+            prompt=prompt,
+            image=image,
+            generator=generator,
+            output_type="np",
+        ).images[0]
+
+        assert np.abs(upscaled_image - new_upscaled_image).sum() < 1e-5, "pipeline don't give the same forward pass"
