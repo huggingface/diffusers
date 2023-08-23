@@ -169,6 +169,7 @@ else:
         ShapEImg2ImgPipeline,
         ShapEPipeline,
         StableDiffusionAdapterPipeline,
+        StableDiffusionXLAdapterPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
