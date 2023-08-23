@@ -204,10 +204,10 @@ class FullAdapterXL(nn.Module):
         self.body = []
         # blocks to extract XL features with dimensions of [320, 64, 64], [640, 64, 64], [1280, 32, 32], [1280, 32, 32]
         for i in range(len(channels)):
-            if i==1:
-                self.body.append(AdapterBlock(channels[i-1], channels[i], num_res_blocks))
-            elif i==2:
-                self.body.append(AdapterBlock(channels[i-1], channels[i], num_res_blocks, down=True))
+            if i == 1:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks))
+            elif i == 2:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks, down=True))
             else:
                 self.body.append(AdapterBlock(channels[i], channels[i], num_res_blocks))
 
