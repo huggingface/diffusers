@@ -37,6 +37,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from PIL import Image
 from torch import nn
 from torch.utils.data import default_collate
 from torchvision import transforms
@@ -53,6 +54,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
+    StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -60,6 +62,10 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+
+
+if is_wandb_available():
+    import wandb
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -184,27 +190,6 @@ def parse_args(input_args=None):
         type=str,
         default="text",
         help="The column of the dataset containing a caption or a list of captions.",
-    )
-    parser.add_argument(
-        "--validation_prompt",
-        type=str,
-        default=None,
-        help="A prompt that is used during validation to verify that the model is learning.",
-    )
-    parser.add_argument(
-        "--num_validation_images",
-        type=int,
-        default=4,
-        help="Number of images that should be generated during validation with `validation_prompt`.",
-    )
-    parser.add_argument(
-        "--validation_epochs",
-        type=int,
-        default=1,
-        help=(
-            "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
-            " `args.validation_prompt` multiple times: `args.num_validation_images`."
-        ),
     )
     parser.add_argument(
         "--max_train_samples",
@@ -418,6 +403,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument("--min_resolution", type=int, default=None, required=False)
+    parser.add_argument("--validation_steps", type=int, required=False, default=1)
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -633,6 +619,46 @@ def make_wds_inpainting_dataset(
     return dataset
 
 
+def log_validation(unet, vae_path, accelerator, weight_dtype):
+    # create pipeline
+    vae = AutoencoderKL.from_pretrained(
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+    )
+    pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=vae,
+        unet=accelerator.unwrap_model(unet),
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    if args.prediction_type is not None:
+        scheduler_args = {"prediction_type": args.prediction_type}
+        pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # run inference
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+
+    with torch.cuda.amp.autocast():
+        validation_dirs = os.listdir("./validation")
+        for validation_dir in validation_dirs:
+            prompt = validation_dir
+            image = Image.open("./validation/" + validation_dir + "/image.png")
+            mask_image = Image.open("./validation/" + validation_dir + "/mask.png")
+            images = pipeline(
+                prompt=prompt, image=image, mask_image=mask_image, num_images_per_prompt=4, generator=generator
+            ).images
+
+    wandb.log({"validation": [wandb.Image(image) for image in images]})
+
+    del pipeline
+    torch.cuda.empty_cache()
+
+
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -644,11 +670,6 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -1071,63 +1092,9 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process:
-            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
-
-                # create pipeline
-                vae = AutoencoderKL.from_pretrained(
-                    vae_path,
-                    subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-                    revision=args.revision,
-                )
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    unet=accelerator.unwrap_model(unet),
-                    revision=args.revision,
-                    torch_dtype=weight_dtype,
-                )
-                if args.prediction_type is not None:
-                    scheduler_args = {"prediction_type": args.prediction_type}
-                    pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
-
-                # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                pipeline_args = {"prompt": args.validation_prompt}
-
-                with torch.cuda.amp.autocast():
-                    images = [
-                        pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
-
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
-
-                del pipeline
-                torch.cuda.empty_cache()
+            if accelerator.is_main_process:
+                if global_step % args.validation_steps == 0:
+                    log_validation(unet, vae_path, accelerator, weight_dtype)
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1150,36 +1117,9 @@ def main(args):
             pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
         pipeline.save_pretrained(args.output_dir)
 
-        # run inference
-        images = []
-        if args.validation_prompt and args.num_validation_images > 0:
-            pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.cuda.amp.autocast():
-                images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-                    for _ in range(args.num_validation_images)
-                ]
-
-            for tracker in accelerator.trackers:
-                if tracker.name == "tensorboard":
-                    np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "test": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
-
         if args.push_to_hub:
             save_model_card(
                 repo_id=repo_id,
-                images=images,
-                validation_prompt=args.validation_prompt,
                 base_model=args.pretrained_model_name_or_path,
                 dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
