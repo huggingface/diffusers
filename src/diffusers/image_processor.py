@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Iterable
 
 import numpy as np
 import PIL
@@ -364,3 +364,251 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             return self.numpy_to_pil(image), self.numpy_to_depth(image)
         else:
             raise Exception(f"This type {output_type} is not supported")
+
+
+class BlipImageProcessor(ConfigMixin):
+    """
+    Image processor for VAE.
+
+    Args:
+        do_resize (`bool`, *optional*, defaults to `True`):
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
+            `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
+        scale_factor (`int`, *optional*, defaults to `8`):
+            Scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
+        resample (`str`, *optional*, defaults to `lanczos`):
+            Resampling filter to use when resizing the image.
+        do_normalize (`bool`, *optional*, defaults to `True`):
+            Whether to normalize the image to [-1,1].
+        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to RGB format.
+    """
+
+    config_name = CONFIG_NAME
+
+    @register_to_config
+    def __init__(
+        self,
+        do_resize: bool = True,
+        do_normalize: bool = True,
+        do_center_crop: bool = True,
+        input_size: int = 224,
+        resample: str = "lanczos",
+        do_convert_rgb: bool = True,
+    ):
+        super().__init__()
+
+    @staticmethod
+    def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
+        """
+        Convert a numpy image or a batch of images to a PIL image.
+        """
+        if images.ndim == 3:
+            images = images[None, ...]
+        images = (images * 255).round().astype("uint8")
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
+
+        return pil_images
+
+    @staticmethod
+    def pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+        """
+        Convert a PIL image or a list of PIL images to NumPy arrays.
+        """
+        if not isinstance(images, list):
+            images = [images]
+        images = [np.array(image).astype(np.float32) / 255.0 for image in images]
+        images = np.stack(images, axis=0)
+
+        return images
+
+    @staticmethod
+    def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
+        """
+        Convert a NumPy image to a PyTorch tensor.
+        """
+        if images.ndim == 3:
+            images = images[..., None]
+
+        images = torch.from_numpy(images.transpose(0, 3, 1, 2))
+        return images
+
+    @staticmethod
+    def pt_to_numpy(images: torch.FloatTensor) -> np.ndarray:
+        """
+        Convert a PyTorch tensor to a NumPy image.
+        """
+        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+        return images
+
+
+    @staticmethod
+    def denormalize(images):
+        """
+        Denormalize an image array to [0,1].
+        """
+        return (images / 2 + 0.5).clamp(0, 1)
+
+    @staticmethod
+    def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        Converts an image to RGB format.
+        """
+        image = image.convert("RGB")
+        return image
+
+    def resize(
+        self,
+        image: PIL.Image.Image,
+    ) -> PIL.Image.Image:
+        """
+        Resize a PIL image. 
+        """
+        # matching torchvision.transforms.Resize(size) behavior, smaller dimension is resized to size and the other is resized accordingly
+
+        h = image.height
+        w = image.width
+        if h > w : 
+            width = self.config.input_size
+            height = int(h * width / w) 
+        else:
+            height = self.config.input_size
+            width = int(w * height / h)
+
+        image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+        return image
+
+    def center_crop(
+            self,
+            image: np.ndarray
+    ) -> np.ndarray:
+    
+        # expecting BxHxWxC
+        crop_height, crop_width = self.config.input_size, self.config.input_size
+        image = image.transpose(0, 3, 1, 2) # BxCxHxW
+        orig_height, orig_width = image.shape[-2:]
+        # In case size is odd, (image_shape[0] + size[0]) // 2 won't give the proper result.
+        top = (orig_height - crop_height) // 2
+        bottom = top + crop_height
+        # In case size is odd, (image_shape[1] + size[1]) // 2 won't give the proper result.
+        left = (orig_width - crop_width) // 2
+        right = left + crop_width
+
+        # Check if cropped area is within image boundaries
+        if top >= 0 and bottom <= orig_height and left >= 0 and right <= orig_width:
+            image = image[..., top:bottom, left:right]
+            image = image.transpose(0, 2, 3, 1) # BxHxWxC
+            return image
+
+        # Otherwise, we may need to pad if the image is too small. Oh joy...
+        new_height = max(crop_height, orig_height)
+        new_width = max(crop_width, orig_width)
+        new_shape = image.shape[:-2] + (new_height, new_width)
+        new_image = np.zeros_like(image, shape=new_shape)
+
+        # If the image is too small, pad it with zeros
+        top_pad = (new_height - orig_height) // 2
+        bottom_pad = top_pad + orig_height
+        left_pad = (new_width - orig_width) // 2
+        right_pad = left_pad + orig_width
+        new_image[..., top_pad:bottom_pad, left_pad:right_pad] = image
+
+        top += top_pad
+        bottom += top_pad
+        left += left_pad
+        right += left_pad
+
+        new_image = new_image[..., max(0, top) : min(new_height, bottom), max(0, left) : min(new_width, right)]
+        new_image = new_image.transpose(0, 2, 3, 1) # BxHxWxC
+        return new_image
+
+    @staticmethod
+    def normalize(images):
+        """
+        Normalize an image array to [-1,1].
+        """
+        return 2.0 * images - 1.0
+
+    def normalize_multichannel(
+        self, 
+        image: np.ndarray,
+        mean: Union[float, Iterable[float]],
+        std: Union[float, Iterable[float]],
+    ) -> np.ndarray:
+        """
+        Normalizes `image` using the mean and standard deviation specified by `mean` and `std`.
+
+        image = (image - mean) / std
+
+        Args:
+            image (`np.ndarray`):
+                The image to normalize.
+            mean (`float` or `Iterable[float]`):
+                The mean to use for normalization.
+            std (`float` or `Iterable[float]`):
+                The standard deviation to use for normalization.
+            data_format (`ChannelDimension`, *optional*):
+                The channel dimension format of the output image. If unset, will use the inferred format from the input.
+            input_data_format (`ChannelDimension`, *optional*):
+                The channel dimension format of the input image. If unset, will use the inferred format from the input.
+        """
+        if not isinstance(image, np.ndarray):
+            raise ValueError("image must be a numpy array")
+
+        # Initially image is in BxHxWxC format
+        num_channels = image.shape[-1]
+
+        if isinstance(mean, Iterable):
+            if len(mean) != num_channels:
+                raise ValueError(f"mean must have {num_channels} elements if it is an iterable, got {len(mean)}")
+        else:
+            mean = [mean] * num_channels
+        mean = np.array(mean, dtype=image.dtype)
+
+        if isinstance(std, Iterable):
+            if len(std) != num_channels:
+                raise ValueError(f"std must have {num_channels} elements if it is an iterable, got {len(std)}")
+        else:
+            std = [std] * num_channels
+        std = np.array(std, dtype=image.dtype)
+
+        image = (image - mean) / std
+
+        return image
+
+    def preprocess(
+        self,
+        image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        mean: Union[float, Iterable[float]],
+        std: Union[float, Iterable[float]],
+    ) -> torch.Tensor:
+        """
+        Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
+        """
+        supported_formats = (PIL.Image.Image)
+        if isinstance(image, supported_formats):
+            image = [image]
+        elif not (isinstance(image, list) and all(isinstance(i, supported_formats) for i in image)):
+            raise ValueError(
+                f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support {', '.join(supported_formats)}"
+            )
+        if self.config.do_convert_rgb:
+            image = [self.convert_to_rgb(i) for i in image]
+        if self.config.do_resize:
+            image = [self.resize(i) for i in image]
+        image = self.pil_to_numpy(image)  # to np
+        if self.config.do_center_crop:
+            image = self.center_crop(image)
+
+        # expected range [0,1], normalize to [-1,1]
+        do_normalize = self.config.do_normalize
+        if do_normalize:
+            image = self.normalize(image)
+
+        image = self.normalize_multichannel(image, mean, std)
+        image = self.numpy_to_pt(image)  # to pt
+        return image

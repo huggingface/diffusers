@@ -25,7 +25,7 @@ from .modeling_blip2 import Blip2QFormerModel
 import tqdm
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
-
+from ...image_processor import BlipImageProcessor
 from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
@@ -85,7 +85,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
     def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel=None, ctx_begin_pos: int = 2):
         super().__init__()
 
-
+        self.image_processor = BlipImageProcessor()
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos)
     
@@ -153,20 +153,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return caption
     
-    def preprocess_image(self, image):
-                
-        mean = (0.48145466, 0.4578275, 0.40821073)
-        std = (0.26862954, 0.26130258, 0.27577711)
-        transform = transforms.Compose(
-            [
-                transforms.Resize(224, interpolation=InterpolationMode.BICUBIC),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std)
-            ]
-        )
-
-        return transform(image)
 
     @torch.no_grad()
     def __call__(
@@ -187,6 +173,11 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         prompt_reps=20,
         use_ddim=False,
     ):
+        
+        mean = (0.48145466, 0.4578275, 0.40821073)
+        std = (0.26862954, 0.26130258, 0.27577711)
+
+        reference_image = self.image_processor.preprocess(reference_image,  mean=mean, std=std)
 
         prompt = self._build_prompt(
             prompts=prompt,
