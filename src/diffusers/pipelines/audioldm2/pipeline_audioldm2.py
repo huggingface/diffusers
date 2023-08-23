@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "The sound of a hammer hitting a wooden surface."
         >>> negative_prompt = "Low quality."
 
-        >>> # set the seed
+        >>> # set the seed for generator
         >>> generator = torch.Generator("cuda").manual_seed(0)
 
         >>> # run the generation
@@ -73,6 +73,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=200,
         ...     audio_length_in_s=10.0,
         ...     num_waveforms_per_prompt=3,
+        ...     generator=generator,
         ... ).audios
 
         >>> # save the best audio sample (index 0) as a .wav file
