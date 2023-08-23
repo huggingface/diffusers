@@ -728,6 +728,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
+                print(f"From pipeline: {len(adapter_state)}.")
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
