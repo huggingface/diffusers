@@ -17,7 +17,6 @@ import random
 import unittest
 
 import numpy as np
-import torch
 
 from diffusers import (
     DPMSolverMultistepScheduler,
@@ -108,7 +107,6 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
-        inputs.update({"noise_level": 0.3})
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -124,7 +122,6 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
-        inputs.update({"noise_level": 0})
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -172,7 +169,7 @@ class OnnxStableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.manual_seed(0)
+        generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -209,7 +206,7 @@ class OnnxStableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.manual_seed(0)
+        generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
             image=init_image,

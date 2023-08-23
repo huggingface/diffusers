@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...schedulers import DDPMScheduler
+from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ..pipeline_utils import DiffusionPipeline
@@ -29,9 +29,6 @@ from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)
-
-NUM_LATENT_CHANNELS = 4
-NUM_UNET_INPUT_CHANNELS = 7
 
 
 def preprocess(image):
@@ -61,7 +58,8 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
     unet: OnnxRuntimeModel
-    scheduler: DDPMScheduler
+    low_res_scheduler: DDPMScheduler
+    scheduler: KarrasDiffusionSchedulers
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPImageProcessor
 
@@ -74,10 +72,13 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         text_encoder: OnnxRuntimeModel,
         tokenizer: Any,
         unet: OnnxRuntimeModel,
-        scheduler: DDPMScheduler,
-        safety_checker: OnnxRuntimeModel,
-        feature_extractor: CLIPImageProcessor,
+        low_res_scheduler: DDPMScheduler,
+        scheduler: KarrasDiffusionSchedulers,
+        safety_checker: Optional[OnnxRuntimeModel] = None,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
         max_noise_level: int = 350,
+        num_latent_channels=4,
+        num_unet_input_channels=7,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -131,17 +132,20 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            safety_checker=None,
-            feature_extractor=None,
+            low_res_scheduler=low_res_scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
         )
-        self.register_to_config(max_noise_level=max_noise_level)
+        self.register_to_config(
+            max_noise_level=max_noise_level,
+            num_latent_channels=num_latent_channels,
+            num_unet_input_channels=num_unet_input_channels,
+        )
 
     def check_inputs(
         self,
         prompt: Union[str, List[str]],
         image,
-        height: Optional[int],
-        width: Optional[int],
         noise_level,
         callback_steps,
         negative_prompt=None,
@@ -155,9 +159,6 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -196,7 +197,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
             )
 
         # verify batch size of prompt and image are same if image is a list or tensor or numpy array
-        if isinstance(image, list) or isinstance(image, torch.Tensor) or isinstance(image, np.ndarray):
+        if isinstance(image, list) or isinstance(image, np.ndarray):
             if prompt is not None and isinstance(prompt, str):
                 batch_size = 1
             elif prompt is not None and isinstance(prompt, list):
@@ -382,7 +383,8 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            noise_level (`float`, defaults to 0.2): Deteremines the amount of noise to add to the initial image before performing upscaling.
+            noise_level (`float`, defaults to 0.2):
+                Deteremines the amount of noise to add to the initial image before performing upscaling.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -426,12 +428,9 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        height, width = image.shape[2:]
         self.check_inputs(
             prompt,
             image,
-            height,
-            width,
             noise_level,
             callback_steps,
             negative_prompt,
@@ -465,16 +464,17 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         )
 
         latents_dtype = prompt_embeds.dtype
+        image = preprocess(image).cpu().numpy()
+        height, width = image.shape[2:]
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
-            4,
+            self.num_latent_channels,
             height,
             width,
             latents_dtype,
             generator,
         )
-
-        image = preprocess(image).cpu().numpy()
         image = image.astype(latents_dtype)
 
         self.scheduler.set_timesteps(num_inference_steps)
@@ -487,7 +487,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         noise_level = np.array([noise_level]).astype(np.int64)
         noise = generator.randn(*image.shape).astype(latents_dtype)
 
-        image = self.scheduler.add_noise(
+        image = self.low_res_scheduler.add_noise(
             torch.from_numpy(image), torch.from_numpy(noise), torch.from_numpy(noise_level)
         )
         image = image.numpy()
@@ -498,12 +498,12 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # 7. Check that sizes of image and latents match
         num_channels_image = image.shape[1]
-        if NUM_LATENT_CHANNELS + num_channels_image != NUM_UNET_INPUT_CHANNELS:
+        if self.num_latent_channels + num_channels_image != self.num_unet_input_channels:
             raise ValueError(
                 "Incorrect configuration settings! The config of `pipeline.unet` expects"
-                f" {NUM_UNET_INPUT_CHANNELS} but received `num_channels_latents`: {NUM_LATENT_CHANNELS} +"
+                f" {self.num_unet_input_channels} but received `num_channels_latents`: {self.num_latent_channels} +"
                 f" `num_channels_image`: {num_channels_image} "
-                f" = {NUM_LATENT_CHANNELS+num_channels_image}. Please verify the config of"
+                f" = {self.num_latent_channels + num_channels_image}. Please verify the config of"
                 " `pipeline.unet` or your `image` input."
             )
 
@@ -547,8 +547,9 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(
-                    torch.from_numpy(noise_pred), t, latents, **extra_step_kwargs
+                    torch.from_numpy(noise_pred), t, torch.from_numpy(latents), **extra_step_kwargs
                 ).prev_sample
+                latents = latents.numpy()
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -557,7 +558,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 10. Post-processing
-        image = self.decode_latents(latents.float())
+        image = self.decode_latents(latents)
 
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(
