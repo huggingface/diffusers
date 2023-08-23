@@ -51,33 +51,33 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-            >>> import scipy
-            >>> import torch
-            >>> from diffusers import AudioLDM2Pipeline
+        >>> import scipy
+        >>> import torch
+        >>> from diffusers import AudioLDM2Pipeline
 
-            >>> # load the best weights for music generation
-            >>> repo_id = "cvssp/audioldm2-music"
-            >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
-            >>> pipe = pipe.to("cuda")
+        >>> # load the best weights for music generation
+        >>> repo_id = "cvssp/audioldm2-music"
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
 
-            >>> # define the prompts
-            >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
-            >>> negative_prompt = "Low quality."
+        >>> # define the prompts
+        >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
+        >>> negative_prompt = "Low quality."
 
-            >>> # set the seed
-            >>> generator = torch.Generator("cuda").manual_seed(0)
+        >>> # set the seed
+        >>> generator = torch.Generator("cuda").manual_seed(0)
 
-            >>> # run the generation
-            >>> audio = pipe(
-            >>>     prompt,
-            >>>     negative_prompt=negative_prompt,
-            >>>     num_inference_steps=200,
-            >>>     audio_length_in_s=10.0,
-            >>>     num_waveforms_per_prompt=3,
-            >>> ).audios
+        >>> # run the generation
+        >>> audio = pipe(
+        >>>     prompt,
+        >>>     negative_prompt=negative_prompt,
+        >>>     num_inference_steps=200,
+        >>>     audio_length_in_s=10.0,
+        >>>     num_waveforms_per_prompt=3,
+        >>> ).audios
 
-            >>> # save the best audio sample (index 0) as a .wav file
-            >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
+        >>> # save the best audio sample (index 0) as a .wav file
+        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
         ```
 """
 
