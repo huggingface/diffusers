@@ -25,23 +25,18 @@ from transformers import (
     ClapFeatureExtractor,
     ClapModel,
     ClapTextConfig,
-    GPT2Config,
-    GPT2Model,
     RobertaTokenizer,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
-    T5Config,
-    T5EncoderModel,
-    T5Tokenizer,
 )
 
 from diffusers import (
-    MusicLDMPipeline,
     AutoencoderKL,
     DDIMScheduler,
     LMSDiscreteScheduler,
+    MusicLDMPipeline,
     PNDMScheduler,
-UNet2DConditionModel,
+    UNet2DConditionModel,
 )
 from diffusers.utils import is_xformers_available, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
@@ -112,7 +107,6 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=2,
             pad_token_id=1,
             vocab_size=1000,
-            projection_dim=16,
         )
         audio_branch_config = ClapAudioConfig(
             spec_size=64,
@@ -124,13 +118,12 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=[2, 2],
             num_hidden_layers=2,
             hidden_size=192,
-            projection_dim=16,
             patch_size=2,
             patch_stride=2,
             patch_embed_input_channels=4,
         )
         text_encoder_config = ClapConfig.from_text_audio_configs(
-            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
+            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=32
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
@@ -188,14 +181,12 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = musicldm_pipe(**inputs)
         audio = output.audios[0]
 
-        import ipdb; ipdb.set_trace()
-
         assert audio.ndim == 1
         assert len(audio) == 256
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [0.0025, 0.0018, 0.0018, -0.0023, -0.0026, -0.0020, -0.0026, -0.0021, -0.0027, -0.0020]
+            [-0.0027, -0.0036, -0.0037, -0.0020, -0.0035, -0.0019, -0.0037, -0.0020, -0.0038, -0.0019]
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
@@ -297,7 +288,7 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [0.0025, 0.0018, 0.0018, -0.0023, -0.0026, -0.0020, -0.0026, -0.0021, -0.0027, -0.0020]
+            [-0.0027, -0.0036, -0.0037, -0.0019, -0.0035, -0.0018, -0.0037, -0.0021, -0.0038, -0.0018]
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
@@ -381,28 +372,15 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
-
-    def test_dict_tuple_outputs_equivalent(self):
-        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=2e-4)
-
-    def test_inference_batch_single_identical(self):
-        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=2e-4)
-
-    def test_save_load_local(self):
-        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_save_load_local(expected_max_difference=2e-4)
-
-    def test_save_load_optional_components(self):
-        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_save_load_optional_components(expected_max_difference=2e-4)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
