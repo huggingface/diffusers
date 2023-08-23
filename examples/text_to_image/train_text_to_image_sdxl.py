@@ -665,6 +665,39 @@ def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
     del pipeline
     torch.cuda.empty_cache()
 
+# TODO - hack
+class Scaler:
+    def __init__(self, pretrained_model_name_or_path, device):
+        sigma_scheduler = EulerDiscreteScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler")
+        self.timesteps = sigma_scheduler.timesteps.to(device)
+        self.sigmas = sigma_scheduler.sigmas.to(device)
+
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep
+    ) -> torch.FloatTensor:
+        step_index = self.timesteps[:, None] == timestep[None, :]
+        step_index = step_index.nonzero()
+        step_index = step_index[:, 0]
+
+        sigma = self.sigmas[step_index]
+        sigma = sigma[:, None, None, None]
+
+        sample = sample / ((sigma**2 + 1) ** 0.5)
+
+        return sample
+
+    def scale_model_output(self, sample, timestep):
+        step_index = self.timesteps[:, None] == timestep[None, :]
+        step_index = step_index.nonzero()
+        step_index = step_index[:, 0]
+
+        sigma = self.sigmas[step_index]
+        sigma = sigma[:, None, None, None]
+
+        sample = sample * -sigma
+
+        return sample
+
 
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -760,10 +793,7 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    sigma_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    # TODO - BAD
-    sigma_scheduler.timesteps = sigma_scheduler.timesteps.to(accelerator.device)
-    sigma_scheduler.sigmas = sigma_scheduler.sigmas.to(accelerator.device)
+    scaler = Scaler(args.pretrained_model_name_or_path, accelerator.device)
     with torch.no_grad():  # needed because inplace operations on tensors that require grads are not allowed
         orig_in_channels = unet.config.in_channels
         unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
@@ -1041,7 +1071,7 @@ def main(args):
                     dim=1,
                 )
 
-                model_input = sigma_scheduler.scale_model_input(model_input, timesteps)
+                model_input = scaler.scale_model_input(model_input, timesteps)
 
             with accelerator.accumulate(unet):
                 model_pred = unet(
@@ -1051,7 +1081,7 @@ def main(args):
                     added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
-                model_pred = sigma_scheduler.scale_model_output(model_pred, timesteps)
+                model_pred = scaler.scale_model_output(model_pred, timesteps)
 
                 model_pred = model_pred + noisy_encoded_pixel_values
 
