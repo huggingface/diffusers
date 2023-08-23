@@ -46,34 +46,24 @@ class AdapterTests:
 
     def get_dummy_components(self, adapter_type):
         torch.manual_seed(0)
-        if adapter_type == 'light_adapter':
-            channels = [32, 32, 32]
-        else:
-            channels = [32, 32, 32, 32]
-        torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=[32, 32, 32, 32],
+            block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=(
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
-        ),
-            up_block_types= ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+            down_block_types=("CrossAttnDownBlock2D", "DownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
         scheduler = PNDMScheduler(skip_prk_steps=True)
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 32, 32, 32],
+            block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
         torch.manual_seed(0)
@@ -94,9 +84,9 @@ class AdapterTests:
         torch.manual_seed(0)
         adapter = T2IAdapter(
             in_channels=3,
-            channels=channels,
+            channels=[32, 64],
             num_res_blocks=2,
-            downscale_factor=8,
+            downscale_factor=2,
             adapter_type=adapter_type,
         )
 
@@ -155,8 +145,11 @@ class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMi
 
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4858, 0.5500, 0.4278, 0.4669, 0.6184, 0.4322, 0.5010, 0.5033, 0.4746])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
 class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
@@ -172,8 +165,11 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4965, 0.5548, 0.4330, 0.4771, 0.6226, 0.4382, 0.5037, 0.5071, 0.4782])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
 @slow
