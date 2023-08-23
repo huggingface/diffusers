@@ -168,6 +168,32 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertTrue(np.allclose(image_slice.flatten(), expected_slice, atol=1e-2))
 
+    def test_monkey_patching(self):
+        # Create a sample model and module
+        device = "cpu"
+        torch.manual_seed(0)
+        z_all = torch.randn(2, 4, 64, 64)
+        t = 0
+        prompt_embd = torch.randn(2, 77, 32)
+        cached_pos_hiddens = [torch.randn(1, 1024, 64)] * 6
+        print(len(cached_pos_hiddens))
+        self.get_dummy_inputs(device)
+        print(cached_pos_hiddens[0].shape)
+        # out = model.unet(z_all, t, encoder_hidden_states=prompt_embd)
+        components = self.get_dummy_components()
+        pipe = FabricPipeline(**components)
+        pipe = pipe.to(device)
+        pipeline = pipe.unet_forward_with_cached_hidden_states(
+            z_all, t, prompt_embd, cached_pos_hiddens=cached_pos_hiddens
+        )[0]
+
+        image_slice = pipeline[0, -3:, -3:, -1].detach().numpy()
+        expected_slice = np.array(
+            [[-0.0590, 0.3149, -0.1035], [0.0016, -0.1665, 0.1026], [-0.0626, 0.0607, -0.1045]]
+        ).flatten()
+
+        self.assertTrue(np.allclose(image_slice.flatten(), expected_slice, atol=1e-2))
+
 
 @nightly
 @require_torch_gpu

@@ -227,12 +227,11 @@ class FabricPipeline(DiffusionPipeline):
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
-            prompt = [prompt]
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        # prompt = [prompt] * num_images_per_prompt
+
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
@@ -283,6 +282,7 @@ class FabricPipeline(DiffusionPipeline):
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
@@ -294,7 +294,7 @@ class FabricPipeline(DiffusionPipeline):
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt] + [""]
+                uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -302,7 +302,7 @@ class FabricPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
             else:
-                uncond_tokens = negative_prompt + [""]
+                uncond_tokens = negative_prompt
 
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
@@ -333,17 +333,15 @@ class FabricPipeline(DiffusionPipeline):
             seq_len = negative_prompt_embeds.shape[1]
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-            negative_prompt_embeds, null_embed = (
-                negative_prompt_embeds[:batch_size],
-                negative_prompt_embeds[batch_size:],
-            )
+
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds, null_embed])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+
         return prompt_embeds
 
     def get_unet_hidden_states(self, z_all, t, prompt_embd):
@@ -587,7 +585,7 @@ class FabricPipeline(DiffusionPipeline):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if isinstance(negative_prompt, str):
-            negative_prompt = [negative_prompt]
+            negative_prompt = negative_prompt
         elif isinstance(negative_prompt, list):
             negative_prompt = negative_prompt
         else:
@@ -627,15 +625,35 @@ class FabricPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 0.1
 
-        (prompt_embs, null_prompt_emb) = self._encode_prompt(
+        (prompt_neg_embs, prompt_pos_embs) = self._encode_prompt(
             prompt,
             device,
             num_images,
             do_classifier_free_guidance,
             negative_prompt,
-        ).split([(num_images + num_images) * batch_size, 1])
+        ).split([num_images * batch_size, num_images * batch_size])
 
-        batched_prompt_embd = torch.cat([prompt_embs], dim=0)
+        batched_prompt_embd = torch.cat([prompt_pos_embs, prompt_neg_embs], dim=0)
+
+        null_tokens = self.tokenizer(
+            [""],
+            return_tensors="pt",
+            max_length=self.tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+        )
+
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            attention_mask = null_tokens.attention_mask.to(device)
+        else:
+            attention_mask = None
+
+        null_prompt_emb = self.text_encoder(
+            input_ids=null_tokens.input_ids.to(device),
+            attention_mask=attention_mask,
+        ).last_hidden_state
+
+        null_prompt_emb = null_prompt_emb.to(device=device, dtype=dtype)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
