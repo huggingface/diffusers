@@ -920,6 +920,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
 
         down_block_res_samples = (sample,)
+        print(f"From UNet: {len(down_block_additional_residuals)}")
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
