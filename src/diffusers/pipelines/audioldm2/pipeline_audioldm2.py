@@ -68,12 +68,12 @@ EXAMPLE_DOC_STRING = """
 
         >>> # run the generation
         >>> audio = pipe(
-        >>>     prompt,
-        >>>     negative_prompt=negative_prompt,
-        >>>     num_inference_steps=200,
-        >>>     audio_length_in_s=10.0,
-        >>>     num_waveforms_per_prompt=3,
-        >>> ).audios
+        ...     prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     num_inference_steps=200,
+        ...     audio_length_in_s=10.0,
+        ...     num_waveforms_per_prompt=3,
+        ... ).audios
 
         >>> # save the best audio sample (index 0) as a .wav file
         >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
