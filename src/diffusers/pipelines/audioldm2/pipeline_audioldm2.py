@@ -51,32 +51,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import scipy
-        >>> import torch
         >>> from diffusers import AudioLDM2Pipeline
+        >>> import torch
+        >>> import scipy
 
         >>> repo_id = "cvssp/audioldm2"
         >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> # define the prompts
-        >>> prompt = "The sound of a hammer hitting a wooden surface."
-        >>> negative_prompt = "Low quality."
+        >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
+        >>> audio = pipe(prompt, num_inference_steps=200, audio_length_in_s=10.0).audios[0]
 
-        >>> # set the seed
-        >>> generator = torch.Generator("cuda").manual_seed(0)
-
-        >>> # run the generation
-        >>> audio = pipe(
-        ...     prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     num_inference_steps=200,
-        ...     audio_length_in_s=10.0,
-        ...     num_waveforms_per_prompt=3,
-        ... ).audios
-
-        >>> # save the best audio sample (index 0) as a .wav file
-        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
+        >>> # save the audio sample as a .wav file
+        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
         ```
 """
 
@@ -328,7 +315,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Example:
 
         ```python
-        >>> import scipy
         >>> import torch
         >>> from diffusers import AudioLDM2Pipeline
 
@@ -351,9 +337,6 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         ...     num_inference_steps=200,
         ...     audio_length_in_s=10.0,
         ... ).audios[0]
-
-        >>> # save generated audio sample
-        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
         ```"""
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
