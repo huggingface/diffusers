@@ -84,9 +84,9 @@ class AdapterTests:
         torch.manual_seed(0)
         adapter = T2IAdapter(
             in_channels=3,
-            channels=[32, 64],
+            channels=[320, 640, 1280, 1280],
             num_res_blocks=2,
-            downscale_factor=2,
+            downscale_factor=8,
             adapter_type=adapter_type,
         )
 
