@@ -219,6 +219,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -240,7 +241,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         model_sequence = (
             [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
         )
-        model_sequence.extend([self.unet, self.vae, self.adapter])
+        model_sequence.extend([self.unet, self.vae])
 
         hook = None
         for cpu_offloaded_model in model_sequence:
