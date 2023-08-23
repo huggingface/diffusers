@@ -15,10 +15,12 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
-import PIL
-import numpy as np
+
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
@@ -32,7 +34,6 @@ from ...models.attention_processor import (
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
-    BaseOutput,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -40,7 +41,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -48,28 +49,36 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from PIL import Image
         >>> from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, DDPMScheduler
-        >>> from pytorch_lightning import seed_everything
-        >>> from diffusers.models.unet_2d_condition import UNet2DConditionModel
         >>> from diffusers.utils import load_image
 
-        >>> sketch_image = load_image('https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png').convert('L')
+        >>> sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
 
-        >>> model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
+        >>> model_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        >>> adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder='sketch_sdxl_1.0',torch_dtype=torch.float16, adapter_type="full_adapter_xl")
+        >>> adapter = T2IAdapter.from_pretrained(
+        ...     "Adapter/t2iadapter",
+        ...     subfolder="sketch_sdxl_1.0",
+        ...     torch_dtype=torch.float16,
+        ...     adapter_type="full_adapter_xl",
+        ... )
         >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
         >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
-        )
+        ...     model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
+        ... ).to("cuda")
 
-        >>> pipe.to('cuda')
-        >>> generator = torch.Generator().manual_seed(42)
-        >>> sketch_image_out = pipe(prompt='a photo of a dog in real world, high quality', negative_prompt='extra digit, fewer digits, cropped, worst quality, low quality', image=sketch_image, generator=generator, guidance_scale=7.5).images[0]
+        >>> generator = torch.manual_seed(42)
+        >>> sketch_image_out = pipe(
+        ...     prompt="a photo of a dog in real world, high quality",
+        ...     negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality",
+        ...     image=sketch_image,
+        ...     generator=generator,
+        ...     guidance_scale=7.5,
+        ... ).images[0]
         ```
 """
+
 
 def _preprocess_adapter_image(image, height, width):
     if isinstance(image, torch.Tensor):
@@ -96,6 +105,7 @@ def _preprocess_adapter_image(image, height, width):
                 f"Invalid image tensor! Expecting image tensor with 3 or 4 dimension, but recive: {image[0].ndim}"
             )
     return image
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -710,8 +720,8 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionAdapterPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionAdapterPipelineOutput`]
+                instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -759,7 +769,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
         adapter_input = _preprocess_adapter_image(image, height, width).to(device)
 
-        original_size = original_size or (height, width) 
+        original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
         # 1. Check inputs. Raise error if not correct

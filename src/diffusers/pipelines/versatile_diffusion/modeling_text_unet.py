@@ -1137,7 +1137,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_kwargs=cross_attention_kwargs,
                 encoder_attention_mask=encoder_attention_mask,
             )
-            # To support T2I-Adapter-XL 
+            # To support T2I-Adapter-XL
             if is_adapter and len(down_block_additional_residuals) > 0:
                 sample += down_block_additional_residuals.pop(0)
 
