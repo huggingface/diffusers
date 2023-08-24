@@ -1114,7 +1114,11 @@ class StableDiffusionXLInpaintPipeline(
 
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
 
-        masked_image = init_image * (mask < 0.5)
+        if init_image.shape[1] ==4: 
+            # if images are in latent space, we can't mask it
+            masked_image = None
+        else:
+            masked_image = init_image * (mask < 0.5)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
