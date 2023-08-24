@@ -30,7 +30,7 @@ from diffusers import (
 from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
