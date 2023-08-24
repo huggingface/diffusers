@@ -21,7 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenDecoderPipeline
 from diffusers.models import VQModelPaella
-from diffusers.pipelines.wuerstchen import DiffNeXt
+from diffusers.pipelines.wuerstchen import WuerstchenDiffNeXt
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
 
@@ -102,7 +102,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "c_in": 4,
         }
 
-        model = DiffNeXt(**model_kwargs)
+        model = WuerstchenDiffNeXt(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):

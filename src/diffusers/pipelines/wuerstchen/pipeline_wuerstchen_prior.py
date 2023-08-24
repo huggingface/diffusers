@@ -23,7 +23,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .wuerstchen_prior import WuerstchenPrior
+from .modeling_wuerstchen_prior import WuerstchenPrior
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

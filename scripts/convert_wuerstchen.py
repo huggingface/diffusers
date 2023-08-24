@@ -12,7 +12,7 @@ from diffusers import (
     WuerstchenPipeline,
     WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import DiffNeXt, WuerstchenPrior
+from diffusers.pipelines.wuerstchen import WuerstchenDiffNeXt, WuerstchenPrior
 
 
 model_path = "models/"
@@ -56,7 +56,7 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-generator = DiffNeXt()
+generator = WuerstchenDiffNeXt()
 generator.load_state_dict(state_dict)
 
 # Prior

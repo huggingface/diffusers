@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from .common import AttnBlock, WuerstchenLayerNorm, ResBlock, TimestepBlock
+from .modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, WuerstchenLayerNorm
 
 
 class WuerstchenPrior(ModelMixin, ConfigMixin):
@@ -54,5 +54,4 @@ class WuerstchenPrior(ModelMixin, ConfigMixin):
             else:
                 x = block(x)
         a, b = self.out(x).chunk(2, dim=1)
-        # denoised = a / (1-(1-b).pow(2)).sqrt()
         return (x_in - a) / ((1 - b).abs() + 1e-5)

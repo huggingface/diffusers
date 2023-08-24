@@ -22,7 +22,7 @@ from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .diffnext import DiffNeXt
+from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -59,8 +59,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             The CLIP tokenizer.
         text_encoder (`CLIPTextModel`):
             The CLIP text encoder.
-        generator ([`DiffNeXt`]):
-            The DiffNeXt unet generator.
+        generator ([`WuerstchenDiffNeXt`]):
+            The WuerstchenDiffNeXt unet generator.
         vqgan ([`VQModelPaella`]):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
@@ -73,7 +73,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        generator: DiffNeXt,
+        generator: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
         latent_dim_scale: float = 10.67,

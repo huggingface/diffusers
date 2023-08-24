@@ -20,10 +20,10 @@ from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
-from .diffnext import DiffNeXt
+from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
+from .modeling_wuerstchen_prior import WuerstchenPrior
 from .pipeline_wuerstchen import WuerstchenDecoderPipeline
 from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
-from .wuerstchen_prior import WuerstchenPrior
 
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
@@ -52,7 +52,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             The decoder tokenizer to be used for text inputs.
         text_encoder (:class:`~transformers.CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        generator (:class:`~diffusions.models.DiffNeXt`):
+        generator (:class:`~diffusions.models.WuerstchenDiffNeXt`):
             The generator model to be used for decoder image generation pipeline.
         scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
@@ -74,7 +74,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        generator: DiffNeXt,
+        generator: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: VQModelPaella,
         prior_tokenizer: CLIPTokenizer,

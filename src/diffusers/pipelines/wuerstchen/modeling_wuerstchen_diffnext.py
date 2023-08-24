@@ -6,10 +6,10 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from .common import AttnBlock, WuerstchenLayerNorm, ResBlockStageB, TimestepBlock
+from .modeling_wuerstchen_common import AttnBlock, GlobalResponseNorm, TimestepBlock, WuerstchenLayerNorm
 
 
-class DiffNeXt(ModelMixin, ConfigMixin):
+class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -105,7 +105,15 @@ class DiffNeXt(ModelMixin, ConfigMixin):
         )
 
         # --- WEIGHT INIT ---
-        self.apply(self._init_weights)  # General init
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        # General init
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
         for mapper in self.effnet_mappers:
             if mapper is not None:
                 nn.init.normal_(mapper.weight, std=0.02)  # conditionings
@@ -117,15 +125,9 @@ class DiffNeXt(ModelMixin, ConfigMixin):
         for level_block in self.down_blocks + self.up_blocks:
             for block in level_block:
                 if isinstance(block, ResBlockStageB):
-                    block.channelwise[-1].weight.data *= np.sqrt(1 / sum(blocks))
+                    block.channelwise[-1].weight.data *= np.sqrt(1 / sum(self.config.blocks))
                 elif isinstance(block, TimestepBlock):
                     nn.init.constant_(block.mapper.weight, 0)
-
-    def _init_weights(self, m):
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def gen_r_embedding(self, r, max_positions=10000):
         r = r * max_positions
@@ -214,3 +216,25 @@ class DiffNeXt(ModelMixin, ConfigMixin):
             return (x_in - a) / b
         else:
             return a, b
+
+
+class ResBlockStageB(nn.Module):
+    def __init__(self, c, c_skip=None, kernel_size=3, dropout=0.0):
+        super().__init__()
+        self.depthwise = nn.Conv2d(c, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+        self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
+        self.channelwise = nn.Sequential(
+            nn.Linear(c + c_skip, c * 4),
+            nn.GELU(),
+            GlobalResponseNorm(c * 4),
+            nn.Dropout(dropout),
+            nn.Linear(c * 4, c),
+        )
+
+    def forward(self, x, x_skip=None):
+        x_res = x
+        x = self.norm(self.depthwise(x))
+        if x_skip is not None:
+            x = torch.cat([x, x_skip], dim=1)
+        x = self.channelwise(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        return x + x_res
