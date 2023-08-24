@@ -460,6 +460,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
         height,
         width,
         callback_steps,
+        image,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -499,6 +500,17 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+
+        if isinstance(self.adapter, MultiAdapter):
+            if not isinstance(image, list):
+                raise ValueError(
+                    "MultiAdapter is enabled, but `image` is not a list. Please pass a list of images to `image`."
+                )
+
+            if len(image) != len(self.adapter.adapters):
+                raise ValueError(
+                    f"MultiAdapter requires passing the same number of images as adapters. Given {len(image)} images and {len(self.adapter.adapters)} adapters."
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -653,20 +665,10 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, height, width, callback_steps, image, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         if isinstance(self.adapter, MultiAdapter):
-            if not isinstance(image, list):
-                raise ValueError(
-                    "MultiAdapter is enabled, but `image` is not a list. Please pass a list of images to `image`."
-                )
-
-            if len(image) != len(self.adapter.adapters):
-                raise ValueError(
-                    f"MultiAdapter requires passing the same number of images as adapters. Given {len(image)} images and {len(self.adapter.adapters)} adapters."
-                )
-
             adapter_input = []
 
             for one_image in image:
