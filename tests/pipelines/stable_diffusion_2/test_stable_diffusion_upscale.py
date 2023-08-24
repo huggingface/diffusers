@@ -316,6 +316,52 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         expected_height_width = low_res_image.size[0] * 4
         assert image.shape == (1, expected_height_width, expected_height_width, 3)
 
+    def test_stable_diffusion_upscale_from_save_pretrained(self):
+        pipes = []
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        low_res_scheduler = DDPMScheduler()
+        scheduler = DDIMScheduler(prediction_type="v_prediction")
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionUpscalePipeline(
+            unet=self.dummy_cond_unet_upscale,
+            low_res_scheduler=low_res_scheduler,
+            scheduler=scheduler,
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=tokenizer,
+            max_noise_level=350,
+        )
+        sd_pipe = sd_pipe.to(device)
+        pipes.append(sd_pipe)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd_pipe.save_pretrained(tmpdirname)
+            sd_pipe = StableDiffusionUpscalePipeline.from_pretrained(tmpdirname).to(device)
+        pipes.append(sd_pipe)
+
+        prompt = "A painting of a squirrel eating a burger"
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        low_res_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+
+        image_slices = []
+        for pipe in pipes:
+            generator = torch.Generator(device=device).manual_seed(0)
+            image = pipe(
+                [prompt],
+                image=low_res_image,
+                generator=generator,
+                guidance_scale=6.0,
+                noise_level=20,
+                num_inference_steps=2,
+                output_type="np",
+            ).images
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
 
 @slow
 @require_torch_gpu
@@ -423,42 +469,3 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9
-
-    def test_stable_diffusion_upscale_pipeline_from_save_pretrained(self):
-        model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
-            new_pipe = StableDiffusionUpscalePipeline.from_pretrained(tmpdirname)
-
-            new_pipe.to(torch_device)
-            new_pipe.set_progress_bar_config(disable=None)
-            new_pipe.enable_attention_slicing()
-
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/low_res_cat.png"
-        )
-        prompt = "a cat sitting on a park bench"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        upscaled_image = pipe(
-            prompt=prompt,
-            image=image,
-            generator=generator,
-            output_type="np",
-        ).images[0]
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        new_upscaled_image = new_pipe(
-            prompt=prompt,
-            image=image,
-            generator=generator,
-            output_type="np",
-        ).images[0]
-
-        assert np.abs(upscaled_image - new_upscaled_image).sum() < 1e-5, "pipeline don't give the same forward pass"

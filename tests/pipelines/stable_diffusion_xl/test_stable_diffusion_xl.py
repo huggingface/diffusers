@@ -691,7 +691,6 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    @require_torch_gpu
     def test_stable_diffusion_xl_save_from_pretrained(self):
         pipes = []
         components = self.get_dummy_components()
