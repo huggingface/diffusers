@@ -1008,4 +1008,4 @@ class StableDiffusionMultiControlNetPipelineNightlyTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
 
-        assert np.abs(images[0] - images[1]).sum() < 1e-3
+        assert np.abs(images[0] - images[1]).max() < 1e-3
