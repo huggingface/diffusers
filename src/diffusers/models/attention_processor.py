@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
-from .lora import LoRALinearLayer
+from .lora import LoRALinearLayer, LoRACompatibleLinear
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -135,22 +135,22 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
+        self.to_q = LoRACompatibleLinear(query_dim, inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-            self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_k = LoRACompatibleLinear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_v = LoRACompatibleLinear(cross_attention_dim, inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, inner_dim)
+            self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, inner_dim)
+            self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(LoRACompatibleLinear(inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
