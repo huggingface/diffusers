@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Stable Diffusion XL
 
-Stable Diffusion XL (SDXL) was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://huggingface.co/papers/2307.01952) by Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas Müller, Joe Penna, Robin Rombach.
+Stable Diffusion XL (SDXL) was proposed in [SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis](https://huggingface.co/papers/2307.01952) by Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas Müller, Joe Penna, and Robin Rombach.
 
 The abstract from the paper is:
 
@@ -22,12 +22,14 @@ The abstract from the paper is:
 
 - SDXL works especially well with images between 768 and 1024.
 - SDXL can pass a different prompt for each of the text encoders it was trained on as shown below. We can even pass different parts of the same prompt to the text encoders.
-- SDXL output image can be improved by making use of a refiner as shown below.
+- SDXL output images can be improved by making use of a refiner model in an image-to-image setting.
 
 
 <Tip>
 
-Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organization for the official base and refiner model checkpoints! To learn how to use [`StableDiffusionXLPipeline`] for various tasks, how to optimize performance, and other usage examples, take a look at the [Stable Diffusion XL](/using-diffusers/sdxl) guide.
+To learn how to use SDXL for various tasks, how to optimize performance, and other usage examples, take a look at the [Stable Diffusion XL](/using-diffusers/sdxl) guide.
+
+Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organization for the official base and refiner model checkpoints! 
 
 </Tip>
 

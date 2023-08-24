@@ -14,7 +14,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install transformers accelerate safetensors invisible-watermark>=0.2.0
+#!pip install diffusers transformers accelerate safetensors omegaconf invisible-watermark>=0.2.0
 ```
 
 <Tip warning={true}>
@@ -27,20 +27,35 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(..., add_watermarker=False)
 
 </Tip>
 
-## Load single file formats
+## Load model checkpoints
 
-Use the [`~StableDiffusionXLPipeline.from_single_file`] method to load single file formats (`.ckpt` or `.safetensors`) into 🤗 Diffusers (otherwise you can use [`~StableDiffusionXLPipeline.from_pretrained`]):
+Use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally:
 
 ```py
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
-    "./sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "./sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+).to("cuda")
+```
+
+Model weights may also be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~StableDiffusionXLPipeline.from_pretrained`] method:
+
+```py
+from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
+import torch
+
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+
+refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 ).to("cuda")
 ```
 
@@ -49,10 +64,10 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
 For text-to-image, pass a text prompt:
 
 ```py
-from diffusers import AutoPipeline
+from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline_text2image = AutoPipeline.from_pretrained(
+pipeline_text2image = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 
@@ -69,11 +84,11 @@ image = pipeline(prompt=prompt).images[0]
 For image-to-image, SDXL works especially well with image sizes between 768x768 and 1024x1024. Pass an initial image, and a text prompt to condition the image with:
 
 ```py
-from diffusers import AutoPipeline
+from diffusers import AutoPipelineForImg2Img
 from diffusers.utils import load_image
 
 # use from_pipe to avoid consuming additional memory when loading a checkpoint
-pipeline = AutoPipeline.from_pipe(pipeline_text2image).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_text2image).to("cuda")
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-img2img.png"
 
 init_image = load_image(url).convert("RGB")
@@ -90,11 +105,11 @@ image = pipeline(prompt, image=init_image, strength=0.8, guidance_scale=10.5).im
 For inpainting, you'll need the original image and a mask of what you want to replace in the original image. Create a prompt to describe what you want to replace the masked area with.
 
 ```py
-from diffusers import AutoPipeline
+from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 
 # use from_pipe to avoid consuming additional memory when loading a checkpoint
-pipeline = AutoPipeline.from_pipe(pipeline_text2image).to("cuda")
+pipeline = AutoPipelineForInpainting.from_pipe(pipeline_text2image).to("cuda")
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -103,7 +118,7 @@ init_image = load_image(img_url).convert("RGB")
 mask_image = load_image(mask_url).convert("RGB")
 
 prompt = "A deep sea diver floating"
-image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85, guidance_scale=12.5).images[0]
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85, guidance_scale=12.5).images[0]
 ```
 
 <div class="flex justify-center">
@@ -114,12 +129,12 @@ image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.
 
 SDXL includes a [refiner model](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0) specialized in denoising low-noise stage images to generate higher-quality images from the base model. There are two ways to use the refiner:
 
-1. use the base and refiner model as an [*ensemble of expert denoisers*](https://research.nvidia.com/labs/dir/eDiff-I/) (❤️ thanks to the following contributors for proposing and implementing this method: [SytanSD](https://github.com/SytanSD), [bghira](https://github.com/bghira), [Birch-san](https://github.com/Birch-san), [AmericanPresidentJimmyCarter](https://github.com/AmericanPresidentJimmyCarter))
-2. use the refiner with [SDEdit](https://huggingface.co/papers/2108.01073) after running the base model (this is how SDXL is originally trained)
+1. use the base and refiner model together to produce a refined image
+2. use the base model to produce an image, and subsequently use the refiner model to add more details to the image (this is how SDXL is originally trained)
 
-### Ensemble of expert denoisers
+### Base + refiner model
 
-The ensemble of expert denoisers approach requires less overall denoising steps versus passing the base model's output to the refiner model, so it should be significantly faster to run. However, you won't be able to inspect the base model's output because it is heavily denoised.
+When you use the base and refiner model together to generate an image, this is known as an ([*ensemble of expert denoisers*](https://research.nvidia.com/labs/dir/eDiff-I/)). The ensemble of expert denoisers approach requires less overall denoising steps versus passing the base model's output to the refiner model, so it should be significantly faster to run. However, you won't be able to inspect the base model's output because it still contains a large amount of noise.
 
 As an ensemble of expert denoisers, the base model serves as the expert during the high-noise diffusion stage and the refiner model serves as the expert during the low-noise diffusion stage. Load the base and refiner model:
 
@@ -179,7 +194,7 @@ image = refiner(
   </div>
 </div>
 
-For inpainting, use the [`StableDiffusionXLInpaintPipeline`]:
+The refiner model can also be used for inpainting in the [`StableDiffusionXLInpaintPipeline`]:
 
 ```py
 from diffusers import StableDiffusionXLInpaintPipeline
@@ -227,9 +242,9 @@ image = refiner(
 
 This ensemble of expert denoisers method works well for all available schedulers!
 
-### Refine fully-denoised base image
+### Base model to refiner model
 
-SDXL gets a boost in image quality by using the refiner model to add additional high-quality details to the fully-denoised image from the base model, similar to image-to-image generation.
+SDXL gets a boost in image quality by using the refiner model to add additional high-quality details to the fully-denoised image from the base model, in an image-to-image setting.
 
 Load the base and refiner models:
 
@@ -256,7 +271,7 @@ Generate an image from the base model, and set the model output to **latent** sp
 ```py
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
-image = pipe(prompt=prompt, output_type="latent" if use_refiner else "pil").images[0]
+image = base(prompt=prompt, output_type="latent" if use_refiner else "pil").images[0]
 ```
 
 Pass the generated image to the refiner model:
@@ -276,7 +291,7 @@ image = refiner(prompt=prompt, image=image[None, :]).images[0]
   </div>
 </div>
 
-For inpainting, use the [`StableDiffusionXLInpaintPipeline`], remove the `denoising_end` and `denoising_start` parameters, and choose a smaller number of inference steps for the refiner.
+For inpainting, load the refiner model in the [`StableDiffusionXLInpaintPipeline`], remove the `denoising_end` and `denoising_start` parameters, and choose a smaller number of inference steps for the refiner.
 
 ## Use a different prompt for each text-encoder
 
@@ -324,7 +339,7 @@ image = pipeline(prompt=prompt, crops_coords_top_left=(256,0)).images[0]
 
 ## Optimizations
 
-SDXL is a large model, and you may need to optimize your memory to get it to run on hardware. Here are some tips to save memory and speed up inference.
+SDXL is a large model, and you may need to optimize memory to get it to run on your hardware. Here are some tips to save memory and speed up inference.
 
 1. Offload the model to the CPU with [`~StableDiffusionXLPipeline.enable_model_cpu_offload`] for out-of-memory errors:
 

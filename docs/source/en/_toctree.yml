@@ -3,8 +3,6 @@
     title: 🧨 Diffusers
   - local: quicktour
     title: Quicktour
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: Stable Diffusion in JAX/Flax
   - local: stable_diffusion
     title: Effective and efficient diffusion
   - local: installation
@@ -111,6 +109,8 @@
     title: Memory and Speed
   - local: optimization/torch2.0
     title: Torch2.0 support
+  - local: using-diffusers/stable_diffusion_jax_how_to
+    title: Stable Diffusion in JAX/Flax
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
