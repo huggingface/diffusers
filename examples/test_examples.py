@@ -420,9 +420,9 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
             )
             self.assertTrue(starts_with_unet)
-    
+
     def test_dreambooth_lora_sdxl_checkpointing_checkpoints_total_limit(self):
-        pipeline_path =  "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        pipeline_path = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -457,7 +457,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             )
 
     def test_dreambooth_lora_sdxl_text_encoder_checkpointing_checkpoints_total_limit(self):
-        pipeline_path =  "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        pipeline_path = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
