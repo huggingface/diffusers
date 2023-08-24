@@ -375,10 +375,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    attn_proc_class = (
-                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-                    )
-                    self.assertIsInstance(module.processor, attn_proc_class)
+                    self.assertIsNotNone(module.to_q.lora_layer)
+                    self.assertIsNotNone(module.to_k.lora_layer)
+                    self.assertIsNotNone(module.to_v.lora_layer)
+                    self.assertIsNotNone(module.to_out[0].lora_layer)
 
     def test_unload_lora_sd(self):
         pipeline_components, lora_components = self.get_dummy_components()
@@ -443,7 +443,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    self.assertIsInstance(module.processor, LoRAXFormersAttnProcessor)
+                    self.assertIsNotNone(module.to_q.lora_layer)
+                    self.assertIsNotNone(module.to_k.lora_layer)
+                    self.assertIsNotNone(module.to_v.lora_layer)
+                    self.assertIsNotNone(module.to_out[0].lora_layer)
 
             # unload lora weights
             sd_pipe.unload_lora_weights()
