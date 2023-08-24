@@ -242,7 +242,7 @@ image = refiner(
 
 This ensemble of expert denoisers method works well for all available schedulers!
 
-### Base model to refiner model
+### Base to refiner model
 
 SDXL gets a boost in image quality by using the refiner model to add additional high-quality details to the fully-denoised image from the base model, in an image-to-image setting.
 
