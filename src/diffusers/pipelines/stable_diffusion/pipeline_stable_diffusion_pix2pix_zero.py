@@ -981,6 +981,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         prompt_embeds_edit[1:2] += edit_direction
 
         # 10. Second denoising loop to generate the edited image.
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+
         latents = latents_init
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1095,7 +1098,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             image (`torch.FloatTensor` `np.ndarray`, `PIL.Image.Image`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, or tensor representing an image batch which will be used for conditioning. Can also accpet
+                `Image`, or tensor representing an image batch which will be used for conditioning. Can also accept
                 image latents as `image`, if passing latents directly, it will not be encoded again.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the

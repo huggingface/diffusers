@@ -51,17 +51,9 @@ EXAMPLE_DOC_STRING = """
         >>> import jax.numpy as jnp
         >>> from flax.jax_utils import replicate
         >>> from flax.training.common_utils import shard
-        >>> from diffusers.utils import load_image
+        >>> from diffusers.utils import load_image, make_image_grid
         >>> from PIL import Image
         >>> from diffusers import FlaxStableDiffusionControlNetPipeline, FlaxControlNetModel
-
-
-        >>> def image_grid(imgs, rows, cols):
-        ...     w, h = imgs[0].size
-        ...     grid = Image.new("RGB", size=(cols * w, rows * h))
-        ...     for i, img in enumerate(imgs):
-        ...         grid.paste(img, box=(i % cols * w, i // cols * h))
-        ...     return grid
 
 
         >>> def create_key(seed=0):
@@ -110,7 +102,7 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> output_images = pipe.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
-        >>> output_images = image_grid(output_images, num_samples // 4, 4)
+        >>> output_images = make_image_grid(output_images, num_samples // 4, 4)
         >>> output_images.save("generated_image.png")
         ```
 """

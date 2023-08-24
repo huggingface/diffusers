@@ -165,7 +165,9 @@ import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 model_id = "your_model_id"  # <- replace this
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+    model_id, torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
 url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"

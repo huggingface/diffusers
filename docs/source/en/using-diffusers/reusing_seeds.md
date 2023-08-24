@@ -27,7 +27,9 @@ Instantiate a pipeline with [`DiffusionPipeline.from_pretrained`] and place it o
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+>>> pipe = DiffusionPipeline.from_pretrained(
+...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+... )
 >>> pipe = pipe.to("cuda")
 ```
 
