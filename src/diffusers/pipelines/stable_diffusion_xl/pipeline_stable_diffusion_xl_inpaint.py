@@ -143,7 +143,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
     deprecate(
         "prepare_mask_and_masked_image",
-        "0.21.0",
+        "0.30.0",
         deprecation_message,
     )
     if image is None:
