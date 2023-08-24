@@ -169,6 +169,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.derivatives = []
         self.is_scale_input_called = False
 
+        self._step_index = None
+
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
@@ -176,6 +178,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             return self.sigmas.max()
 
         return (self.sigmas.max() ** 2 + 1) ** 0.5
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increae 1 after each scheduler step.
+        """
+        return self._step_index
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
@@ -194,10 +203,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 A scaled input sample.
         """
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
-        sigma = self.sigmas[step_index]
+
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
+        sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
         return sample
@@ -238,20 +248,20 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[
+            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
                 ::-1
             ].copy()
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(float)
+            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
             timesteps -= 1
         else:
             raise ValueError(
@@ -269,13 +279,28 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        if str(device).startswith("mps"):
-            # mps does not support float64
-            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
-        else:
-            self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        self._step_index = None
 
         self.derivatives = []
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.item()
 
     # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
@@ -351,10 +376,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
-        sigma = self.sigmas[step_index]
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
+        sigma = self.sigmas[self.step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -376,13 +401,16 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.derivatives.pop(0)
 
         # 3. Compute linear multistep coefficients
-        order = min(step_index + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(order, step_index, curr_order) for curr_order in range(order)]
+        order = min(self.step_index + 1, order)
+        lms_coeffs = [self.get_lms_coefficient(order, self.step_index, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
         prev_sample = sample + sum(
             coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(self.derivatives))
         )
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
