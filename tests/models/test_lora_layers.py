@@ -998,7 +998,6 @@ class LoraIntegrationTests(unittest.TestCase):
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
         ).images
-
         images_with_fusion = images[0, -3:, -3:, -1].flatten()
 
         pipe.unet.unfuse_lora()
