@@ -987,12 +987,12 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdxl_1_0_lora_fusion_efficiency(self):
         generator = torch.Generator().manual_seed(0)
-
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
 
         start_time = time.time()
         for _ in range(3):
@@ -1005,9 +1005,9 @@ class LoraIntegrationTests(unittest.TestCase):
         del pipe
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.enable_model_cpu_offload()
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.unet.fuse_lora()
+        pipe.enable_model_cpu_offload()
 
         start_time = time.time()
         for _ in range(3):
