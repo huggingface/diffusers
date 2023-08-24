@@ -29,6 +29,7 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_compiled_module,
@@ -133,10 +134,13 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
         tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
-    warnings.warn(
-        "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
+    deprecate(
+        "prepare_mask_and_masked_image",
+        "0.21.0",
+        message=(
+            "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor.preprocess instead",
+        ),
     )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
