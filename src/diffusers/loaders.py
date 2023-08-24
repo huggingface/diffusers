@@ -451,7 +451,9 @@ class UNet2DConditionLoadersMixin:
                 return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
 
             state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
-            network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
+
+            if network_alphas is not None:
+                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()} 
         return state_dict, network_alphas
 
     def save_attn_procs(
@@ -1655,36 +1657,9 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        from .models.attention_processor import (
-            LORA_ATTENTION_PROCESSORS,
-            AttnProcessor,
-            AttnProcessor2_0,
-            LoRAAttnAddedKVProcessor,
-            LoRAAttnProcessor,
-            LoRAAttnProcessor2_0,
-            LoRAXFormersAttnProcessor,
-            XFormersAttnProcessor,
-        )
-
-        unet_attention_classes = {type(processor) for _, processor in self.unet.attn_processors.items()}
-
-        if unet_attention_classes.issubset(LORA_ATTENTION_PROCESSORS):
-            # Handle attention processors that are a mix of regular attention and AddedKV
-            # attention.
-            if len(unet_attention_classes) > 1 or LoRAAttnAddedKVProcessor in unet_attention_classes:
-                self.unet.set_default_attn_processor()
-            else:
-                regular_attention_classes = {
-                    LoRAAttnProcessor: AttnProcessor,
-                    LoRAAttnProcessor2_0: AttnProcessor2_0,
-                    LoRAXFormersAttnProcessor: XFormersAttnProcessor,
-                }
-                [attention_proc_class] = unet_attention_classes
-                self.unet.set_attn_processor(regular_attention_classes[attention_proc_class]())
-
-            for _, module in self.unet.named_modules():
-                if hasattr(module, "set_lora_layer"):
-                    module.set_lora_layer(None)
+        for _, module in self.unet.named_modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
