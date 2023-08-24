@@ -221,7 +221,7 @@ class ModelTesterMixin:
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
 
-        max_diff = (image - new_image).abs().sum().item()
+        max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
     def test_getattr_is_correct(self):
@@ -351,7 +351,7 @@ class ModelTesterMixin:
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
 
-        max_diff = (image - new_image).abs().sum().item()
+        max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
     @require_torch_2

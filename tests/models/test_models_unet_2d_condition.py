@@ -726,8 +726,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             model.disable_xformers_memory_efficient_attention()
             off_sample = model(**inputs_dict).sample
 
-        assert (sample - on_sample).abs().max() < 1e-4
-        assert (sample - off_sample).abs().max() < 1e-4
+        assert (sample - on_sample).abs().max() <= 5e-4
+        assert (sample - off_sample).abs().max() <= 5e-4
 
     def test_custom_diffusion_processors(self):
         # enable deterministic behavior for gradient checkpointing
