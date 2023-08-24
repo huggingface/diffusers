@@ -39,7 +39,6 @@ from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from diffusers.utils import floats_tensor, torch_device

@@ -24,7 +24,6 @@ from typing import Callable, Dict, List, Optional, Union
 import requests
 import safetensors
 import torch
-import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch import nn
 
@@ -231,15 +230,7 @@ class UNet2DConditionLoadersMixin:
 
         """
         from .models.attention_processor import (
-            AttnAddedKVProcessor,
-            AttnAddedKVProcessor2_0,
             CustomDiffusionAttnProcessor,
-            LoRAAttnAddedKVProcessor,
-            LoRAAttnProcessor,
-            LoRAAttnProcessor2_0,
-            LoRAXFormersAttnProcessor,
-            SlicedAttnAddedKVProcessor,
-            XFormersAttnProcessor,
         )
         from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
@@ -444,16 +435,17 @@ class UNet2DConditionLoadersMixin:
             state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
 
         # change processor format to 'pure' LoRACompatibleLinear format
-        if any("processor" in k.split('.') for k in state_dict.keys()):
+        if any("processor" in k.split(".") for k in state_dict.keys()):
+
             def format_to_lora_compatible(key):
-                if not "processor" in key.split("."):
+                if "processor" not in key.split("."):
                     return key
                 return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
 
             state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
 
             if network_alphas is not None:
-                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()} 
+                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
         return state_dict, network_alphas
 
     def save_attn_procs(

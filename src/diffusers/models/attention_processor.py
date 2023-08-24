@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
-from .lora import LoRALinearLayer, LoRACompatibleLinear
+from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -555,9 +555,9 @@ class LoRAAttnProcessor(nn.Module):
             self_cls_name,
             "0.24.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -820,9 +820,9 @@ class LoRAAttnAddedKVProcessor(nn.Module):
             self_cls_name,
             "0.24.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1137,9 +1137,9 @@ class LoRAXFormersAttnProcessor(nn.Module):
             self_cls_name,
             "0.24.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1203,9 +1203,9 @@ class LoRAAttnProcessor2_0(nn.Module):
             self_cls_name,
             "0.24.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
