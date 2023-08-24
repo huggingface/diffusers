@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import numpy as np
+from numpy.linalg import norm
 import PIL.Image
 import PIL.ImageOps
 import requests
@@ -70,6 +71,13 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def numpy_cosine_similarity_distance(a, b):
+    similarity = np.dot(a, b) / (norm(a) * norm(b))
+    distance = 1.0 - similarity.mean()
+
+    return distance
 
 
 def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
