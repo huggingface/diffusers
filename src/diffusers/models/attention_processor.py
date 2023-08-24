@@ -1245,10 +1245,6 @@ AttentionProcessor = Union[
     SlicedAttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     XFormersAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAAttnAddedKVProcessor,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
 ]
@@ -1406,6 +1402,84 @@ class LoRAAttnProcessor2_0(nn.Module):
         return attn.processor(attn, hidden_states, *args, **kwargs)
 
 
+class LoRAXFormersAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism with memory efficient attention using xFormers.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        attention_op (`Callable`, *optional*, defaults to `None`):
+            The base
+            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
+            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
+            operator.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+
+    """
+
+    def __init__(
+        self,
+        hidden_size,
+        cross_attention_dim,
+        rank=4,
+        attention_op: Optional[Callable] = None,
+        network_alpha=None,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.rank = rank
+        self.attention_op = attention_op
+
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
+
+    def __call__(self, attn: Attention, hidden_states, *args, **kwargs):
+        self_cls_name = self.__class__.__name__
+        deprecate(
+            self_cls_name,
+            "0.24.0",
+            (
+               f"Make sure use {self_cls_name[4:]} instead by setting"
+               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+               " `LoraLoaderMixin.load_lora_weights`"
+            ),
+        )
+        attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
+        attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
+        attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
+        attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
+
+        attn._modules.pop("processor")
+        attn.processor = XFormersAttnProcessor()
+        return attn.processor(attn, hidden_states, *args, **kwargs)
+
+
 class LoRAAttnAddedKVProcessor(nn.Module):
     r"""
     Processor for implementing the LoRA attention mechanism with extra learnable key and value matrices for the text
@@ -1462,4 +1536,3 @@ LORA_ATTENTION_PROCESSORS = (
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
 )
-
