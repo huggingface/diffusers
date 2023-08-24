@@ -572,8 +572,7 @@ class TextualInversionLoaderMixin:
     Load textual inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    @classmethod
-    def maybe_convert_prompt(cls, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
+    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -593,15 +592,14 @@ class TextualInversionLoaderMixin:
         else:
             prompts = prompt
 
-        prompts = [cls._maybe_convert_prompt(p, tokenizer) for p in prompts]
+        prompts = [self._maybe_convert_prompt(p, tokenizer) for p in prompts]
 
         if not isinstance(prompt, List):
             return prompts[0]
 
         return prompts
 
-    @classmethod
-    def _maybe_convert_prompt(cls, prompt: str, tokenizer: "PreTrainedTokenizer"):
+    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
