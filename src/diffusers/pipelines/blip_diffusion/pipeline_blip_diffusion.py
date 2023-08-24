@@ -172,7 +172,10 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         prompt_reps=20,
         use_ddim=False,
     ):
-        
+        prompt = [self.preprocess_caption(prompt)]
+        source_subject_category = [self.preprocess_caption(source_subject_category)]
+        target_subject_category = [self.preprocess_caption(target_subject_category)]
+
         mean = (0.48145466, 0.4578275, 0.40821073)
         std = (0.26862954, 0.26130258, 0.27577711)
 
@@ -231,7 +234,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             latent_model_input = (
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             )
-
             if self.controlnet is not None:
                 cond_image = prepare_cond_image(
                     condtioning_image, width, height, batch_size=1, device=self.device
@@ -278,7 +280,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 t,
                 latents,
             )["prev_sample"]
-
         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         image = self.image_processor.postprocess(image, output_type="pil")
 

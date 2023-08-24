@@ -450,7 +450,7 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side="right")
         self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         self.proj_layer =  ProjLayer(
-            in_dim=768, out_dim=768, hidden_dim=3072, drop_p=0.1, eps=1e-12
+            in_dim=config.qformer_config.hidden_size, out_dim=config.qformer_config.hidden_size, hidden_dim=config.qformer_config.hidden_size*4, drop_p=0.1, eps=1e-12
         )
 
 
