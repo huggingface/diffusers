@@ -1016,5 +1016,5 @@ class LoraIntegrationTests(unittest.TestCase):
             ).images
         end_time = time.time()
         elapsed_time_fusion = end_time - start_time
-
+        print(f"elapsed_time_fusion: {elapsed_time_fusion}, elapsed_time_non_fusion: {elapsed_time_non_fusion}")
         self.assertTrue(elapsed_time_fusion < elapsed_time_non_fusion)
