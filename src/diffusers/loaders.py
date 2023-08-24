@@ -321,7 +321,7 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
-            state_dict = self.convert_state_dict_from_old_format(state_dict)
+            state_dict, network_alphas = self.convert_state_dict_from_old_format(state_dict, network_alphas)
 
             lora_grouped_dict = defaultdict(dict)
             mapped_network_alphas = {}
@@ -430,7 +430,7 @@ class UNet2DConditionLoadersMixin:
         for target_module, lora_layer in lora_layers_dict:
             target_module.set_lora_layer(lora_layer)
 
-    def convert_state_dict_from_old_format(self, state_dict):
+    def convert_state_dict_from_old_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
             key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
         )
@@ -451,7 +451,8 @@ class UNet2DConditionLoadersMixin:
                 return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
 
             state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
-        return state_dict
+            network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
+        return state_dict, network_alphas
 
     def save_attn_procs(
         self,
