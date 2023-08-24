@@ -23,7 +23,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import ImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -680,8 +680,8 @@ class StableDiffusionInpaintPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: ImageInput = None,
-        mask_image: ImageInput = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 1.0,

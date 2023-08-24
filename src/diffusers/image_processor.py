@@ -24,13 +24,13 @@ from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
-ImageInput = Union[
-    "PIL.Image.Image",
+PipelineImageInput = Union[
+    PIL.Image.Image,
     np.ndarray,
-    "torch.FloatTensor",
-    List["PIL.Image.Image"],
+    torch.FloatTensor,
+    List[PIL.Image.Image],
     List[np.ndarray],
-    List["torch.FloatTensor"],
+    List[torch.FloatTensor],
 ]
 
 

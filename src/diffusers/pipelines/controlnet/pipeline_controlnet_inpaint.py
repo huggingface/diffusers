@@ -24,7 +24,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import ImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -925,9 +925,9 @@ class StableDiffusionControlNetInpaintPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: ImageInput = None,
-        mask_image: ImageInput = None,
-        control_image: ImageInput = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 1.0,
