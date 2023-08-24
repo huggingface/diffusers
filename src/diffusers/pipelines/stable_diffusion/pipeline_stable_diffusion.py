@@ -260,6 +260,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
+        concat_prompt_embeds=True,
     ):
         deprecation_message = "`_encode_prompt()` is now deprecated and it will be removed in a future version. Use `encode_prompt()` instead."
         deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
@@ -273,6 +274,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=lora_scale,
+            concat_prompt_embeds=concat_prompt_embeds,
         )
 
     def encode_prompt(
@@ -285,6 +287,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
+        concat_prompt_embeds: Optional[bool] = True,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -311,6 +314,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 argument.
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+            concat_prompt_embeds: (`bool`, *optional*):
+                Boolean flag to specify if the `prompt_embeds` and `negative_prompts` should be concatenated for
+                performing classifier-free guidance.
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -432,9 +438,13 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            # prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            if concat_prompt_embeds:
+                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return prompt_embeds, negative_prompt_embeds
+        if concat_prompt_embeds:
+            return prompt_embeds
+        else:
+            return prompt_embeds, negative_prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -659,7 +669,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        embedded_output = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -668,12 +678,18 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
+            concat_prompt_embeds=False,
         )
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        if isinstance(embedded_output, tuple):
+            negative_prompt_embeds = embedded_output[-1]
+            prompt_embeds = embedded_output[0]
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            if do_classifier_free_guidance:
+                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        else:
+            prompt_embeds = embedded_output
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
