@@ -98,7 +98,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 ```
 
@@ -137,7 +137,7 @@ lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 ...
 ```
 
@@ -211,7 +211,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 ```
 
 Load the LoRA weights from your finetuned DreamBooth model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -251,7 +251,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -307,7 +307,7 @@ import torch
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
+    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None, use_safetensors=True
 ).to("cuda")
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
     pipeline.scheduler.config, use_karras_sigmas=True
@@ -401,5 +401,12 @@ Thanks to [@isidentical](https://github.com/isidentical) for helping us on integ
 
 ### Known limitations specific to the Kohya-styled LoRAs
 
-* SDXL LoRAs that have both the text encoders are currently leading to weird results. We're actively investigating the issue. 
-* When images don't looks similar to other UIs such ComfyUI, it can be beacause of multiple reasons as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736). 
+* When images don't looks similar to other UIs, such as ComfyUI, it can be because of multiple reasons, as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736).
+* We don't fully support [LyCORIS checkpoints](https://github.com/KohakuBlueleaf/LyCORIS). To the best of our knowledge, our current `load_lora_weights()` should support LyCORIS checkpoints that have LoRA and LoCon modules but not the other ones, such as Hada, LoKR, etc. 
+
+## Stable Diffusion XL
+
+We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+
+* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
+* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)

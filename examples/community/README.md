@@ -39,6 +39,9 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
+|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
+Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
+
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1527,6 +1530,44 @@ CLIP guided stable diffusion images mixing pipline allows to combine two images 
 This approach is using (optional) CoCa model to avoid writing image description.  
 [More code examples](https://github.com/TheDenk/images_mixing)
 
+
+### Stable Diffusion XL Long Weighted Prompt Pipeline
+
+This SDXL pipeline support unlimted length prompt and negative prompt, compatible with A1111 prompt weighted style. 
+
+You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0"
+    , torch_dtype       = torch.float16
+    , use_safetensors   = True
+    , variant           = "fp16"
+    , custom_pipeline   = "lpw_stable_diffusion_xl",
+)
+
+prompt = "photo of a cute (white) cat running on the grass"*20
+prompt2 = "chasing (birds:1.5)"*20
+prompt = f"{prompt},{prompt2}"
+neg_prompt = "blur, low quality, carton, animate"
+
+pipe.to("cuda")
+images = pipe(
+    prompt                  = prompt 
+    , negative_prompt       = neg_prompt 
+).images[0]
+
+pipe.to("cpu")
+torch.cuda.empty_cache()
+images
+```
+
+In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result. 
+![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
 ## Example Images Mixing (with CoCa)
 ```python
 import requests
@@ -1644,13 +1685,13 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import PNDMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
 
 # Use the PNDMScheduler scheduler here instead
 scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
 
 
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
     revision='fp16',
     torch_dtype=torch.float16,
@@ -1767,3 +1808,150 @@ while True:
     loss.backward()
     optimizer.step()
 ```
+
+### Zero1to3 pipeline
+
+This pipeline is the implementation of the [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328) paper.
+The original pytorch-lightning [repo](https://github.com/cvlab-columbia/zero123) and a diffusers [repo](https://github.com/kxhit/zero123-hf).
+
+The following code shows how to use the Zero1to3 pipeline to generate novel view synthesis images using a pretrained stable diffusion model.
+
+```python
+import os
+import torch
+from pipeline_zero1to3 import Zero1to3StableDiffusionPipeline
+from diffusers.utils import load_image
+
+model_id = "kxic/zero123-165000" # zero123-105000, zero123-165000, zero123-xl
+
+pipe = Zero1to3StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+
+pipe.enable_xformers_memory_efficient_attention()
+pipe.enable_vae_tiling()
+pipe.enable_attention_slicing()
+pipe = pipe.to("cuda")
+
+num_images_per_prompt = 4
+
+# test inference pipeline
+# x y z, Polar angle (vertical rotation in degrees) 	Azimuth angle (horizontal rotation in degrees) 	Zoom (relative distance from center)
+query_pose1 = [-75.0, 100.0, 0.0]
+query_pose2 = [-20.0, 125.0, 0.0]
+query_pose3 = [-55.0, 90.0, 0.0]
+
+# load image
+# H, W = (256, 256) # H, W = (512, 512)   # zero123 training is 256,256
+
+# for batch input
+input_image1 = load_image("./demo/4_blackarm.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/4_blackarm.png")
+input_image2 = load_image("./demo/8_motor.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/8_motor.png")
+input_image3 = load_image("./demo/7_london.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/7_london.png")
+input_images = [input_image1, input_image2, input_image3]
+query_poses = [query_pose1, query_pose2, query_pose3]
+
+# # for single input
+# H, W = (256, 256)
+# input_images = [input_image2.resize((H, W), PIL.Image.NEAREST)]
+# query_poses = [query_pose2]
+
+
+# better do preprocessing
+from gradio_new import preprocess_image, create_carvekit_interface
+import numpy as np
+import PIL.Image as Image
+
+pre_images = []
+models = dict()
+print('Instantiating Carvekit HiInterface...')
+models['carvekit'] = create_carvekit_interface()
+if not isinstance(input_images, list):
+    input_images = [input_images]
+for raw_im in input_images:
+    input_im = preprocess_image(models, raw_im, True)
+    H, W = input_im.shape[:2]
+    pre_images.append(Image.fromarray((input_im * 255.0).astype(np.uint8)))
+input_images = pre_images
+
+# infer pipeline, in original zero123 num_inference_steps=76
+images = pipe(input_imgs=input_images, prompt_imgs=input_images, poses=query_poses, height=H, width=W,
+              guidance_scale=3.0, num_images_per_prompt=num_images_per_prompt, num_inference_steps=50).images
+
+
+# save imgs
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+bs = len(input_images)
+i = 0
+for obj in range(bs):
+    for idx in range(num_images_per_prompt):
+        images[i].save(os.path.join(log_dir,f"obj{obj}_{idx}.jpg"))
+        i += 1
+
+```
+
+### Stable Diffusion XL Reference
+
+This pipeline uses the Reference . Refer to the [stable_diffusion_reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference).
+
+
+```py
+import torch
+from PIL import Image
+from diffusers.utils import load_image
+from diffusers import DiffusionPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# pipe = DiffusionPipeline.from_pretrained(
+#     "stabilityai/stable-diffusion-xl-base-1.0",
+#     custom_pipeline="stable_diffusion_xl_reference",
+#     torch_dtype=torch.float16,
+#     use_safetensors=True,
+#     variant="fp16").to('cuda:0')
+
+pipe = StableDiffusionXLReferencePipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16").to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image   
+
+`prompt: 1 girl`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
+
+
+Output Image 
+
+`prompt: A dog`
+
+`reference_attn=True, reference_adain=False, num_inference_steps=20`
+![Output_image](https://github.com/huggingface/diffusers/assets/34944964/fff2f16f-6e91-434b-abcc-5259d866c31e)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/077ed4fe-2991-4b79-99a1-009f056227d1)
+
+Output Image
+
+`prompt: An astronaut riding a lion`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![output_image](https://github.com/huggingface/diffusers/assets/34944964/9b2f1aca-886f-49c3-89ec-d2031c8e3670)

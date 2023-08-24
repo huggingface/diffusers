@@ -31,14 +31,14 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput
 class DDIMParallelSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the scheduler's `step` function output.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
@@ -250,11 +250,14 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
@@ -320,11 +323,11 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.set_timesteps
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+                The number of diffusion steps used when generating samples with a pre-trained model.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:

@@ -2,14 +2,8 @@ import glob
 import os
 from typing import Dict, List, Union
 
+import safetensors.torch
 import torch
-
-from diffusers.utils import is_safetensors_available
-
-
-if is_safetensors_available():
-    import safetensors.torch
-
 from huggingface_hub import snapshot_download
 
 from diffusers import DiffusionPipeline, __version__
@@ -229,14 +223,14 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     update_theta_0 = getattr(module, "load_state_dict")
                     theta_1 = (
                         safetensors.torch.load_file(checkpoint_path_1)
-                        if (is_safetensors_available() and checkpoint_path_1.endswith(".safetensors"))
+                        if (checkpoint_path_1.endswith(".safetensors"))
                         else torch.load(checkpoint_path_1, map_location="cpu")
                     )
                     theta_2 = None
                     if checkpoint_path_2:
                         theta_2 = (
                             safetensors.torch.load_file(checkpoint_path_2)
-                            if (is_safetensors_available() and checkpoint_path_2.endswith(".safetensors"))
+                            if (checkpoint_path_2.endswith(".safetensors"))
                             else torch.load(checkpoint_path_2, map_location="cpu")
                         )
 

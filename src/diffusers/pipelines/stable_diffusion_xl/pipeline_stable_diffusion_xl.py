@@ -87,7 +87,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
         - *LoRA*: [`StableDiffusionXLPipeline.load_lora_weights`]
         - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
@@ -905,7 +904,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
     ):
         state_dict = {}
 
