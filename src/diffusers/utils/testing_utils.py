@@ -44,13 +44,13 @@ if is_torch_available():
 
     if "DIFFUSERS_TEST_DEVICE" in os.environ:
         torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
-
-        available_backends = ["cuda", "cpu", "mps"]
-        if torch_device not in available_backends:
-            raise ValueError(
-                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
-                f" {available_backends}"
-            )
+        try:
+            # try creating device to see if provided device is valid
+            _ = torch.device(torch_device)
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Unknown testing device specified by environment variable `DIFFUSERS_TEST_DEVICE`: {torch_device}"
+            ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
