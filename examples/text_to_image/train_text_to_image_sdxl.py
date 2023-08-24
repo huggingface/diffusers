@@ -665,6 +665,7 @@ def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
     del pipeline
     torch.cuda.empty_cache()
 
+
 # TODO - hack
 class Scaler:
     def __init__(self, pretrained_model_name_or_path, device):
@@ -672,9 +673,7 @@ class Scaler:
         self.timesteps = sigma_scheduler.timesteps.to(device)
         self.sigmas = sigma_scheduler.sigmas.to(device)
 
-    def scale_model_input(
-        self, sample: torch.FloatTensor, timestep
-    ) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.FloatTensor, timestep) -> torch.FloatTensor:
         step_index = self.timesteps[:, None] == timestep[None, :]
         step_index = step_index.nonzero()
         step_index = step_index[:, 0]
@@ -758,7 +757,21 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+
+    # TODO - hack
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+
     # Check for terminal SNR in combination with SNR Gamma
     if (
         args.snr_gamma
@@ -793,7 +806,7 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    scaler = Scaler(args.pretrained_model_name_or_path, accelerator.device)
+    # Scaler(args.pretrained_model_name_or_path, accelerator.device)
     with torch.no_grad():  # needed because inplace operations on tensors that require grads are not allowed
         orig_in_channels = unet.config.in_channels
         unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
@@ -1071,7 +1084,9 @@ def main(args):
                     dim=1,
                 )
 
-                model_input = scaler.scale_model_input(model_input, timesteps)
+                # model_input = scaler.scale_model_input(model_input, timesteps)
+                sigmas = get_sigmas(timesteps, len(model_input.shape), model_input.dtype)
+                model_input = model_input / ((sigmas**2 + 1) ** 0.5)
 
             with accelerator.accumulate(unet):
                 model_pred = unet(
@@ -1081,13 +1096,19 @@ def main(args):
                     added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
-                model_pred = scaler.scale_model_output(model_pred, timesteps)
+                # model_pred = scaler.scale_model_output(model_pred, timesteps)
+                model_pred = model_pred * (-sigmas) + noisy_encoded_pixel_values
+                weighing = sigmas**-2.0
 
                 model_pred = model_pred + noisy_encoded_pixel_values
 
                 target = encoded_pixel_values
 
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                # loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                loss = torch.mean(
+                    (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                )
+                loss = loss.mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
