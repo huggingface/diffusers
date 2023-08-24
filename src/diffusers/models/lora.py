@@ -128,7 +128,7 @@ class LoRACompatibleConv(nn.Conv2d):
             return
         logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
-        fused_weight = self.weight
+        fused_weight = self.weight.data
         dtype, device = fused_weight.data.dtype, fused_weight.data.device
 
         self.w_up = self.w_up.to(device=device, dtype=dtype)
@@ -193,8 +193,8 @@ class LoRACompatibleLinear(nn.Linear):
             return
         logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
-        fused_weight = self.weight
-        dtype, device = fused_weight.data.dtype, fused_weight.data.device
+        fused_weight = self.weight.data
+        dtype, device = fused_weight.dtype, fused_weight.device
 
         self.w_up = self.w_up.to(device=device, dtype=dtype)
         self.w_down = self.w_down.to(device, dtype=dtype)
