@@ -1092,7 +1092,10 @@ class LoraLoaderMixin:
     @classmethod
     def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension=".safetensors"):
         targeted_files = []
-        if os.path.isdir(pretrained_model_name_or_path_or_dict):
+
+        if os.path.isfile(pretrained_model_name_or_path_or_dict):
+            return
+        elif os.path.isdir(pretrained_model_name_or_path_or_dict):
             targeted_files = [
                 f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
             ]
