@@ -31,6 +31,7 @@ from ...models.attention_processor import (
 )
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_invisible_watermark_available,
@@ -1114,7 +1115,7 @@ class StableDiffusionXLInpaintPipeline(
 
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
 
-        if init_image.shape[1] ==4: 
+        if init_image.shape[1] == 4:
             # if images are in latent space, we can't mask it
             masked_image = None
         else:
