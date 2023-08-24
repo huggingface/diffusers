@@ -1812,12 +1812,12 @@ class LoraLoaderMixin:
     @classmethod
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_lora_state_dict = {}
-        exceptional_keys = {"time_embedding", "add_embedding"}
+        exceptional_keys_lora = {"time_embedding", "add_embedding"}
 
         # every down weight has a corresponding up weight
         lora_keys = [k for k in state_dict.keys() if "lora_down.weight" in k]
         for key in lora_keys:
-            if not any(k in key for k in exceptional_keys):
+            if not any(k in key for k in exceptional_keys_lora):
                 lora_name = key.split(".")[0]
                 lora_name_up = lora_name + ".lora_up.weight"
                 diffusers_name = key.replace("_", ".")
@@ -1873,7 +1873,7 @@ class LoraLoaderMixin:
             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
                 controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
                 controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-            elif any(k in diffusers_name for k in exceptional_keys):
+            elif any(k in diffusers_name for k in exceptional_keys_lora):
                 diffusers_name = diffusers_name.replace("lora_down", "lora.down")
                 controlnet_lora_state_dict[diffusers_name] = state_dict.pop(key)
                 controlnet_lora_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
@@ -1885,6 +1885,8 @@ class LoraLoaderMixin:
 
         logger.info("StabilityAI ControlNet LoRA checkpoint detected.")
 
+        # Need to handle the `state_dict` which should be same as how we do
+        # it for existing ControlNets that are in non-diffusers format.
         return controlnet_lora_state_dict, state_dict
 
     def unload_lora_weights(self):
