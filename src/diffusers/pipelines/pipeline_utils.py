@@ -556,7 +556,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
         push_to_hub: bool = False,
         **kwargs,
@@ -569,7 +569,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save a pipeline to. Will be created if it doesn't exist.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
@@ -924,6 +924,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         # 1. Download the checkpoints and configs
@@ -940,6 +941,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
                 from_flax=from_flax,
                 use_safetensors=use_safetensors,
+                use_onnx=use_onnx,
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
