@@ -20,7 +20,7 @@ import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
@@ -139,6 +139,12 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     """
 
     # checkpoint. TOD(Yiyi) - need to clean this up later
+    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
+    deprecate(
+        "prepare_mask_and_masked_image",
+        "0.21.0",
+        deprecation_message,
+    )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
@@ -292,6 +298,9 @@ class StableDiffusionXLInpaintPipeline(
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
 
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
@@ -859,8 +868,8 @@ class StableDiffusionXLInpaintPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 1.0,
@@ -1100,9 +1109,12 @@ class StableDiffusionXLInpaintPipeline(
         is_strength_max = strength == 1.0
 
         # 5. Preprocess mask and image
-        mask, masked_image, init_image = prepare_mask_and_masked_image(
-            image, mask_image, height, width, return_image=True
-        )
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
+        masked_image = init_image * (mask < 0.5)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
