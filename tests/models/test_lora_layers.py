@@ -983,4 +983,3 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
-
