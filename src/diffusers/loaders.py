@@ -573,6 +573,20 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
+    def fuse_lora(self):
+        self.apply(self._fuse_lora_apply)
+
+    def _fuse_lora_apply(self, module):
+        if hasattr(module, "_fuse_lora"):
+            module._fuse_lora()
+
+    def unfuse_lora(self):
+        self.apply(self._unfuse_lora_apply)
+
+    def _unfuse_lora_apply(self, module):
+        if hasattr(module, "_unfuse_lora"):
+            module._unfuse_lora()
+
 
 class TextualInversionLoaderMixin:
     r"""

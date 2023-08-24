@@ -679,6 +679,27 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             orig_image_slice, orig_image_slice_two, atol=1e-3
         ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
+    def test_lora_fusion_warning(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=None,
+                text_encoder_2_lora_layers=None,
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+            with self.assertWarns(RuntimeWarning):
+                sd_pipe.unet.fuse_lora()
+
 
 @slow
 @require_torch_gpu
