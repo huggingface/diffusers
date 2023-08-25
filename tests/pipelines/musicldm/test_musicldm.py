@@ -38,8 +38,8 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_xformers_available, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils import is_xformers_available, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -383,8 +383,9 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
 
-@slow
-class MusicLDMPipelineSlowTests(unittest.TestCase):
+@nightly
+@require_torch_gpu
+class MusicLDMPipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
