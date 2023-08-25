@@ -80,6 +80,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
+    "peft>=0.5.0",
     "compel==0.1.8",
     "black~=23.1",
     "datasets",
@@ -189,7 +190,7 @@ extras = {}
 extras = {}
 extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft")
 extras["test"] = deps_list(
     "compel",
     "datasets",
@@ -209,7 +210,7 @@ extras["test"] = deps_list(
     "torchvision",
     "transformers",
 )
-extras["torch"] = deps_list("torch", "accelerate")
+extras["torch"] = deps_list("torch", "accelerate", "peft")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
