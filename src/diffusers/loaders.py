@@ -937,7 +937,6 @@ class LoraLoaderMixin:
             network_alphas=network_alphas,
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
-            adapter_name=adapter_name,
         )
 
     @classmethod
