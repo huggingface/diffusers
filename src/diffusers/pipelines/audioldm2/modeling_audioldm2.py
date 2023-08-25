@@ -659,7 +659,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
-        The [`UNet2DConditionModel`] forward method.
+        The [`AudioLDM2UNet2DConditionModel`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
