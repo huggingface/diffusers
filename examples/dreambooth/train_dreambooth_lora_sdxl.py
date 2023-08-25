@@ -1324,7 +1324,7 @@ def main(args):
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                pipeline(args.validation_prompt, generator=generator).images[0]
                 for _ in range(args.num_validation_images)
             ]
 
