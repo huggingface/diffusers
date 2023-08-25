@@ -344,6 +344,9 @@ class Attention(nn.Module):
         if not any(is_lora_activated.values()):
             return self.processor
 
+        # If doesn't apply LoRA do `add_k_proj` or `add_v_proj`
+        is_lora_activated.pop("add_k_proj", None)
+        is_lora_activated.pop("add_v_proj", None)
         # 2. else it is not posssible that only some layers have LoRA activated
         if not all(is_lora_activated.values()):
             raise ValueError(
@@ -381,20 +384,24 @@ class Attention(nn.Module):
             lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
             lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
         elif lora_processor_cls == LoRAAttnAddedKVProcessor:
-            lora_processor = lora_processor(
+            lora_processor = lora_processor_cls(
                 hidden_size,
-                cross_attention_dim=self.added_kv_proj_dim,
+                cross_attention_dim=self.add_k_proj.weight.shape[0],
                 rank=self.to_q.lora_layer.rank,
                 network_alpha=self.to_q.lora_layer.network_alpha,
             )
-
             lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
             lora_processor.to_k_lora.load_state_dict(self.to_k.lora_layer.state_dict())
             lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
             lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
 
-            lora_processor.add_k_proj_lora.load_state_dict(self.add_k_proj_lora.lora_layer.state_dict())
-            lora_processor.add_v_proj_lora.load_state_dict(self.add_v_proj_lora.lora_layer.state_dict())
+            # only save if used
+            if self.add_k_proj.lora_layer is not None:
+                lora_processor.add_k_proj_lora.load_state_dict(self.add_k_proj.lora_layer.state_dict())
+                lora_processor.add_v_proj_lora.load_state_dict(self.add_v_proj.lora_layer.state_dict())
+            else:
+                lora_processor.add_k_proj_lora = None
+                lora_processor.add_v_proj_lora = None
         else:
             raise ValueError(f"{lora_processor_cls} does not exist.")
 
