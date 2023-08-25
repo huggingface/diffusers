@@ -1,6 +1,8 @@
 __version__ = "0.21.0.dev0"
 
+import importlib
 from .configuration_utils import ConfigMixin
+from .file_utils import _BaseLazyModule
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
@@ -294,3 +296,26 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_note_seq_objects import *  # noqa F403
 else:
     from .pipelines import MidiProcessor
+
+import sys
+
+
+class _LazyModule(_BaseLazyModule):
+    """
+    Module class that surfaces all objects but only performs associated imports when the objects are requested.
+    """
+
+    __file__ = globals()["__file__"]
+    __path__ = [os.path.dirname(__file__)]
+
+    def _get_module(self, module_name: str):
+        return importlib.import_module("." + module_name, self.__name__)
+
+    def __getattr__(self, name: str):
+        # Special handling for the version, which is a constant from this module and not imported in a submodule.
+        if name == "__version__":
+            return __version__
+        return super().__getattr__(name)
+
+
+sys.modules[__name__] = _LazyModule(__name__, _import_structure)
