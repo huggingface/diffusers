@@ -17,7 +17,7 @@
 import re
 from contextlib import nullcontext
 from io import BytesIO
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import requests
 import torch
