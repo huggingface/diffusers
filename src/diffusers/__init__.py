@@ -199,6 +199,7 @@ else:
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
         TextToVideoZeroPipeline,
+        TextToVideoZeroSDXLPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         UniDiffuserModel,
