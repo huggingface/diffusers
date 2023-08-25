@@ -58,45 +58,76 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
-        >>> from diffusers.utils import load_image
-        >>> import numpy as np
-        >>> import torch
+        >>> # pip install accelerate transformers safetensors diffusers
 
-        >>> import cv2
+        >>> import torch
+        >>> import numpy as np
         >>> from PIL import Image
 
-        >>> prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
-        >>> negative_prompt = "low quality, bad quality, sketches"
+        >>> from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
+        >>> from diffusers.utils import load_image
 
-        >>> # download an image
-        >>> image = load_image(
-        ...     "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
-        ... )
 
-        >>> # initialize the models and pipeline
-        >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
+        >>> depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
+        >>> feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
-        ... )
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
-        ... )
+        ...     "diffusers/controlnet-depth-sdxl-1.0-small",
+        ...     variant="fp16",
+        ...     use_safetensors=True,
+        ...     torch_dtype=torch.float16,
+        ... ).to("cuda")
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to("cuda")
+        >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0",
+        ...     controlnet=controlnet,
+        ...     vae=vae,
+        ...     variant="fp16",
+        ...     use_safetensors=True,
+        ...     torch_dtype=torch.float16,
+        ... ).to("cuda")
         >>> pipe.enable_model_cpu_offload()
 
-        >>> # get canny image
-        >>> image = np.array(image)
-        >>> image = cv2.Canny(image, 100, 200)
-        >>> image = image[:, :, None]
-        >>> image = np.concatenate([image, image, image], axis=2)
-        >>> canny_image = Image.fromarray(image)
 
-        >>> # generate image
-        >>> image = pipe(
-        ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image
-        ... ).images[0]
+        >>> def get_depth_map(image):
+        ...     image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
+        ...     with torch.no_grad(), torch.autocast("cuda"):
+        ...         depth_map = depth_estimator(image).predicted_depth
+
+        ...     depth_map = torch.nn.functional.interpolate(
+        ...         depth_map.unsqueeze(1),
+        ...         size=(1024, 1024),
+        ...         mode="bicubic",
+        ...         align_corners=False,
+        ...     )
+        ...     depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
+        ...     depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
+        ...     depth_map = (depth_map - depth_min) / (depth_max - depth_min)
+        ...     image = torch.cat([depth_map] * 3, dim=1)
+        ...     image = image.permute(0, 2, 3, 1).cpu().numpy()[0]
+        ...     image = Image.fromarray((image * 255.0).clip(0, 255).astype(np.uint8))
+        ...     return image
+
+
+        >>> prompt = "A robot, 4k photo"
+        >>> negative_prompt = "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
+
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+        ...     "/kandinsky/cat.png"
+        ... ).resize((1024, 1024))
+        >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
+        >>> depth_image = get_depth_map(image)
+
+        >>> images = pipe(
+        ...     prompt,
+        ...     image=image,
+        ...     control_image=depth_image,
+        ...     strength=0.99,
+        ...     num_inference_steps=50,
+        ...     controlnet_conditioning_scale=controlnet_conditioning_scale,
+        ... ).images
+        >>> images[0].save(f"robot_cat.png")
         ```
 """
 
