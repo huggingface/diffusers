@@ -618,7 +618,7 @@ def make_wds_inpainting_dataset(
     return dataset
 
 
-def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
+def log_validation(unet, vae_path, accelerator, weight_dtype):
     # create pipeline
     vae = AutoencoderKL.from_pretrained(
         vae_path,
@@ -653,9 +653,8 @@ def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
                 image=image,
                 mask_image=mask_image,
                 num_images_per_prompt=4,
+                strength=0.8,
                 generator=generator,
-                height=resolution,
-                width=resolution,
             ).images
 
     wandb.log({"validation": [wandb.Image(image) for image in images]})
@@ -1083,7 +1082,7 @@ def main(args):
 
             if accelerator.is_main_process:
                 if global_step % args.validation_steps == 0:
-                    log_validation(unet, vae_path, accelerator, weight_dtype, args.resolution)
+                    log_validation(unet, vae_path, accelerator, weight_dtype)
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
