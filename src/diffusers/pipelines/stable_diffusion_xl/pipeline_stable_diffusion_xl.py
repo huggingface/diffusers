@@ -506,11 +506,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 )
             else:
                 all_keys_present = all(
-                    k in negative_conditions for k in {"original_size", "target_size", "coords_top_left"}
+                    k in negative_conditions for k in {"original_size", "target_size", "crops_coords_top_left"}
                 )
                 if not all_keys_present:
                     raise ValueError(
-                        f"When `negative_conditions` are provided, it's expected to have the following keys: `original_size`, `target_size`, and `coords_top_left`, but only the following keys were found:\n {list(negative_conditions.keys())}"
+                        f"When `negative_conditions` are provided, it's expected to have the following keys: `original_size`, `target_size`, and `crops_coords_top_left`, but only the following keys were found:\n {list(negative_conditions.keys())}"
                     )
                 else:
                     for k in negative_conditions:
@@ -709,8 +709,8 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             negative_conditions (`Dict[str, Tuple[int, int]]`, *optional*, defaults to None):
                 Optional negative conditions to be provided to the UNet. Here's an example of how the dictionary should
-                be structured should it be provided: {"original_size": (512, 512), "crops_coords_top_left": (0, 0).
-                "targe_size": (1024, 1024)} For more information, refer to this issue thread:
+                be structured should it be provided: {"original_size": (512, 512), "crops_coords_top_left": (0, 0),
+                "targe_size": (1024, 1024)}. For more information, refer to this issue thread:
                 https://github.com/huggingface/diffusers/issues/4208.
 
         Examples:
