@@ -763,7 +763,7 @@ def main(args):
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         sigmas = np.array(((1 - alphas_cumprod) / alphas_cumprod) ** 0.5)
         sigmas = np.concatenate([[0.0], sigmas]).astype(np.float32)
-        sigmas = torch.from_numpy(sigmas, device=accelerator.device)
+        sigmas = torch.from_numpy(sigmas).to(accelerator.device)
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
@@ -984,10 +984,11 @@ def main(args):
                 encoded_masked_pixel_values = vae.encode(masked_pixel_values).latent_dist.sample()
                 encoded_masked_pixel_values = encoded_masked_pixel_values * vae.config.scaling_factor
 
-                timesteps = torch.randint(0, 1000, (bsz,), device=accelerator.device)
+                timesteps = torch.randint(0, num_train_timesteps, (bsz,), device=accelerator.device)
                 timesteps = timesteps.long()
 
                 timestep_sigmas = sigmas[timesteps]
+                timestep_sigmas = timestep_sigmas[:, None, None, None]
 
                 noise = torch.randn_like(encoded_masked_pixel_values)
 
@@ -1014,9 +1015,8 @@ def main(args):
                     added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
-                # model_pred = scaler.scale_model_output(model_pred, timesteps)
-                model_pred = model_pred * (-sigmas) + noisy_encoded_pixel_values
-                weighing = sigmas**-2.0
+                model_pred = model_pred * (-timestep_sigmas) + noisy_encoded_pixel_values
+                weighing = timestep_sigmas**-2.0
 
                 model_pred = model_pred + noisy_encoded_pixel_values
 
