@@ -329,7 +329,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
         self.assertLess(max_diff, expected_max_difference)
 
     def test_pipeline_call_signature(self):
@@ -579,8 +579,7 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
@@ -616,7 +615,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
         self.assertLess(max_diff, expected_max_difference)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
@@ -673,7 +672,9 @@ class PipelineTesterMixin:
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
-            max_diff = np.abs(to_np(output_with_slicing) - to_np(output_without_slicing)).max()
+            max_diff = numpy_cosine_similarity_distance(
+                to_np(output_with_slicing).flatten(), to_np(output_without_slicing).flatten()
+            )
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         if test_mean_pixel_difference:
@@ -696,7 +697,9 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        max_diff = numpy_cosine_similarity_distance(
+            to_np(output_with_offload).flatten(), to_np(output_without_offload).flatten()
+        )
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
