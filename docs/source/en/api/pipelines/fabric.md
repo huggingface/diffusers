@@ -26,7 +26,7 @@ Let's have a look at the images (*512X512*)
 
 | Without Feedback            | With Feedback  (1st image)          |
 |---------------------|---------------------|
-| ![Image 1](https://drive.google.com/uc?export=view&id=12wxbikt7834eRTK40legR5PtJmFLNH34) | ![Feedback Image 1](https://drive.google.com/uc?export=view&id=1YcFPDHSRr2OE3hy-5lvr8An21Jum85D5) | 
+| ![Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_wo_feedback.jpg) | ![Feedback Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_w_feedback.png) | 
 
 <Tip>
 

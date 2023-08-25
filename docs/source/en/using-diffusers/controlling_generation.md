@@ -62,7 +62,7 @@ For convenience, we provide a table to denote which methods are inference-only a
 |           [Model Editing](#model-editing)           |         ✅         |                   ❌                    |                                                                                                 |
 |                [DiffEdit](#diffedit)                |         ✅         |                   ❌                    |                                                                                                 |
 |             [T2I-Adapter](#t2i-adapter)             |         ✅         |                   ❌                    |                                                                                                 |
-|                    [Fabric](#fabric)                |         ✅         |                   ❌                    |                                                                                                 |
+|                [Fabric](#fabric)                    |         ✅         |                   ❌                    |                                                                                                 |
 ## Instruct Pix2Pix
 
 [Paper](https://arxiv.org/abs/2211.09800)

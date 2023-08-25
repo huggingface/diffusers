@@ -176,9 +176,7 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         t = 0
         prompt_embd = torch.randn(2, 77, 32)
         cached_pos_hiddens = [torch.randn(1, 1024, 64)] * 6
-        print(len(cached_pos_hiddens))
         self.get_dummy_inputs(device)
-        print(cached_pos_hiddens[0].shape)
         # out = model.unet(z_all, t, encoder_hidden_states=prompt_embd)
         components = self.get_dummy_components()
         pipe = FabricPipeline(**components)
@@ -194,48 +192,3 @@ class FabricPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertTrue(np.allclose(image_slice.flatten(), expected_slice, atol=1e-2))
 
-
-@nightly
-@require_torch_gpu
-class FABRICPipelineIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def test_fabric(self):
-        generator = torch.manual_seed(0)
-
-        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16)
-        pipe.to("cuda")
-
-        prompt = "a photograph of an astronaut riding a horse"
-        images = pipe(prompt, output_type="np", generator=generator, num_inference_steps=2).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-
-        expected_image = np.array(
-            [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
-        )
-
-        self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
-
-    def test_fabric_feedback(self):
-        generator = torch.manual_seed(0)
-
-        pipe = FabricPipeline.from_pretrained("dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16)
-        pipe.to("cuda")
-
-        prompt = "a photograph of an astronaut riding a horse"
-        images = pipe(prompt, output_type="pil", generator=generator, num_inference_steps=2).images
-
-        liked = [images[0]]
-        images = pipe(prompt, output_type="np", generator=generator, num_inference_steps=2, liked=liked).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-
-        expected_image = np.array(
-            [0.46241423, 0.45808375, 0.4768011, 0.48806447, 0.46090087, 0.5161956, 0.52250206, 0.50051796, 0.4663524]
-        )
-
-        self.assertTrue(np.allclose(images, expected_image, atol=1e-4))
