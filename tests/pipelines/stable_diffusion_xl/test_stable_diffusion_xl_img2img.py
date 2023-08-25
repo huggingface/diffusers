@@ -138,7 +138,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "strength": 0.8,
         }
         return inputs
@@ -319,7 +319,8 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
     def test_stable_diffusion_xl_img2img_negative_conditions(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+
+        sd_pipe = self.pipeline_class(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
