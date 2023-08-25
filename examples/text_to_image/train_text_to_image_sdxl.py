@@ -745,7 +745,6 @@ def main(args):
         orig_in_channels = unet.config.in_channels
         unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
         original_conv_in = unet.conv_in
-        # TODO - should initial weights for new channels be initialized to zero?
         unet.conv_in = nn.Conv2d(
             unet.config.in_channels, unet.config.block_out_channels[0], kernel_size=3, padding=(1, 1)
         )
@@ -753,6 +752,7 @@ def main(args):
         # set first `origin_n_channels` input channels of `unet.conv_in.weight` to `original_conv_in.weight`
         # 2d conv weight shape: `out channels, in channels, kernel height, kernel width`
         unet.conv_in.weight[:, :orig_in_channels, :, :] = original_conv_in.weight
+        unet.conv_in.weight[:, orig_in_channels:, :, :] = 0
         del original_conv_in
 
         beta_start = 0.00085
