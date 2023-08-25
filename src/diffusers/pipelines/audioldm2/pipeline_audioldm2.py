@@ -194,12 +194,15 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         model_sequence = [
-            self.text_encoder,
+            self.text_encoder.text_model,
+            self.text_encoder.text_projection,
             self.text_encoder_2,
             self.projection_model,
             self.language_model,
             self.unet,
             self.vae,
+            self.vocoder,
+            self.text_encoder,
         ]
 
         hook = None
