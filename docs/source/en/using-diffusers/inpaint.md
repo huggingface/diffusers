@@ -74,3 +74,11 @@ Check out the Spaces below to try out image inpainting yourself!
 	width="850"
 	height="500"
 ></iframe>
+
+## Preserving the Unmasked Area of the Image
+
+Generally speaking, [`StableDiffusionInpaintPipeline`] (and other inpainting pipelines) will change the unmasked part of the image as well to make the transitions to the repainted masked area more natural. If this behavior is undesirable, you can force the unmasked area to remain the same as follows:
+
+```python
+# TODO: add example code
+```
