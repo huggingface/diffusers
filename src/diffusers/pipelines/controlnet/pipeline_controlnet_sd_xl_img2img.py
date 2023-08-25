@@ -179,7 +179,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: ControlNetModel,
+        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -188,7 +188,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         super().__init__()
 
         if isinstance(controlnet, (list, tuple)):
-            raise ValueError("MultiControlNet is not yet supported.")
+            controlnet = MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -1072,6 +1072,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
             if isinstance(controlnet, ControlNetModel)
@@ -1105,6 +1108,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
 
         # 4. Prepare image and controlnet_conditioning_image
         image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        height, width = image.shape[-2:]
 
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
@@ -1118,7 +1122,25 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-            height, width = control_image.shape[-2:]
+        elif isinstance(controlnet, MultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self.prepare_control_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                control_images.append(control_image_)
+
+            control_image = control_images
         else:
             assert False
 
@@ -1149,9 +1171,13 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
-        original_size = original_size or control_image.shape[-2:]
+        # 7.2 Prepare added time ids & embeddings
+        if isinstance(control_image, list):
+            original_size = original_size or control_image[0].shape[-2:]
+        else:
+            original_size = original_size or control_image.shape[-2:]
         target_size = target_size or (height, width)
 
         # 7.2 Prepare added time ids & embeddings
