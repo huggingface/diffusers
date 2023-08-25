@@ -451,8 +451,7 @@ class MusicLDMPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
                 following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
