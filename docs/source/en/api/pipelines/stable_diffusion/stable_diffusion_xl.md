@@ -23,7 +23,7 @@ The abstract of the paper is the following:
 - Stable Diffusion XL works especially well with images between 768 and 1024.
 - Stable Diffusion XL can pass a different prompt for each of the text encoders it was trained on as shown below. We can even pass different parts of the same prompt to the text encoders.
 - Stable Diffusion XL output image can be improved by making use of a refiner as shown below.
-- One make use of `negative_original_size`, `negative_crops_coords_top_left`, and `negative_target_size` to influence the generation process.
+- One can make use of `negative_original_size`, `negative_crops_coords_top_left`, and `negative_target_size` to influence the generation process.
 
 ### Available checkpoints:
 
