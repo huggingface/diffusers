@@ -451,7 +451,7 @@ class MusicLDMPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
@@ -470,9 +470,9 @@ class MusicLDMPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated audio.
+            [`~pipelines.AudioPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.AudioPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated audio.
         """
         # 0. Convert audio input length from seconds to spectrogram height
         vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
