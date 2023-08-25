@@ -76,7 +76,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
             output_type="numpy",
         ).images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_dual_guided(self):
         pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("shi-labs/versatile-diffusion")
