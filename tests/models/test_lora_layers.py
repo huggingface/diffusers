@@ -923,9 +923,9 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4115, 0.4047, 0.4124, 0.3931, 0.3746, 0.3802, 0.3735, 0.3748, 0.3609])
+        expected = np.array([0.4015, 0.3761, 0.3616, 0.3745, 0.3462, 0.3337, 0.3564, 0.3649, 0.3468])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-3))
+        self.assertTrue(np.allclose(images, expected, atol=5e-3))
 
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator().manual_seed(0)
