@@ -215,6 +215,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
 
+_peft_available = importlib.util.find_spec("peft") is not None
+try:
+    _accelerate_version = importlib_metadata.version("peft")
+    logger.debug(f"Successfully imported accelerate version {_accelerate_version}")
+except importlib_metadata.PackageNotFoundError:
+    _peft_available = False
+
 _xformers_available = importlib.util.find_spec("xformers") is not None
 try:
     _xformers_version = importlib_metadata.version("xformers")
@@ -357,6 +364,8 @@ def is_k_diffusion_available():
 def is_note_seq_available():
     return _note_seq_available
 
+def is_peft_available():
+    return _peft_available
 
 def is_wandb_available():
     return _wandb_available

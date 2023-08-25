@@ -36,8 +36,10 @@ from .utils import (
     is_accelerate_available,
     is_omegaconf_available,
     is_transformers_available,
+    is_peft_available,
     logging,
-    convert_state_dict_to_peft
+    convert_old_state_dict_to_peft,
+    convert_diffusers_state_dict_to_peft
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -48,6 +50,9 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.utils import set_module_tensor_to_device
+
+if is_peft_available():
+    from peft import LoraConfig
 
 logger = logging.get_logger(__name__)
 
@@ -904,7 +909,7 @@ class LoraLoaderMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], use_peft=True, **kwargs):
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
         `self.text_encoder`.
@@ -932,7 +937,7 @@ class LoraLoaderMixin:
             network_alphas=network_alphas,
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
-            use_peft=use_peft
+            adapter_name=adapter_name,
         )
 
     @classmethod
@@ -1212,7 +1217,7 @@ class LoraLoaderMixin:
         unet.load_attn_procs(state_dict, network_alphas=network_alphas)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1., use_peft=True):
+    def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
@@ -1230,7 +1235,6 @@ class LoraLoaderMixin:
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
         """
-        from peft import LoraConfig
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
@@ -1249,56 +1253,24 @@ class LoraLoaderMixin:
                 logger.info(f"Loading {prefix}.")
                 rank = {}
 
+                # Old diffusers to PEFT
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                    if use_peft:
-                        attention_modules = text_encoder_attn_modules(text_encoder)
-                        text_encoder_lora_state_dict = convert_state_dict_to_peft(attention_modules, text_encoder_lora_state_dict)
-                    # # Convert from the old naming convention to the new naming convention.
-                    # #
-                    # # Previously, the old LoRA layers were stored on the state dict at the
-                    # # same level as the attention block i.e.
-                    # # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
-                    # #
-                    # # This is no actual module at that point, they were monkey patched on to the
-                    # # existing module. We want to be able to load them via their actual state dict.
-                    # # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                    else:
-                        for name, _ in text_encoder_attn_modules(text_encoder):
-                            text_encoder_lora_state_dict[
-                                f"{name}.q_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.k_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.v_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.out_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
-
-                            text_encoder_lora_state_dict[
-                                f"{name}.q_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.k_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.v_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.out_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
+                    attention_modules = text_encoder_attn_modules(text_encoder)
+                    text_encoder_lora_state_dict = convert_old_state_dict_to_peft(attention_modules, text_encoder_lora_state_dict)
+                # New diffusers format to PEFT
+                elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
+                    attention_modules = text_encoder_attn_modules(text_encoder)
+                    text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(attention_modules, text_encoder_lora_state_dict)
 
                 for name, _ in text_encoder_attn_modules(text_encoder):
-                    rank_key = f"{name}.out_proj.lora_B.weight" if use_peft else f"{name}.out_proj.lora_linear_layer.up.weight"
+                    rank_key = f"{name}.out_proj.lora_B.weight"
                     rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
                 if patch_mlp:
                     for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
-                        rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
+                        rank_key_fc1 = f"{name}.fc1.lora_B.weight"
+                        rank_key_fc2 = f"{name}.fc2.lora_B.weight"
                         rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
                         rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
@@ -1312,36 +1284,20 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                if not use_peft:
-                    cls._modify_text_encoder(
-                        text_encoder,
-                        lora_scale,
-                        network_alphas,
-                        rank=rank,
-                        patch_mlp=patch_mlp,
-                    )
+                lora_rank = list(rank.values())[0]
+                alpha = lora_scale * lora_rank
 
-                    # set correct dtype & device
-                    text_encoder_lora_state_dict = {
-                        k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
-                        for k, v in text_encoder_lora_state_dict.items()
-                    }
-                    load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
-                    if len(load_state_dict_results.unexpected_keys) != 0:
-                        raise ValueError(
-                            f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
-                        )
-                else:
-                    lora_rank = list(rank.values())[0]
-                    alpha = lora_scale * lora_rank
+                target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+                if patch_mlp:
+                    target_modules += ["fc1", "fc2"]
 
-                    lora_config = LoraConfig(
-                        r=lora_rank,
-                        target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
-                        lora_alpha=alpha
-                    )
+                lora_config = LoraConfig(
+                    r=lora_rank,
+                    target_modules=target_modules,
+                    lora_alpha=alpha
+                )
 
-                    text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
+                text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
 
     @property
     def lora_scale(self) -> float:
@@ -1366,82 +1322,6 @@ class LoraLoaderMixin:
                 mlp_module.fc1 = mlp_module.fc1.regular_linear_layer
                 mlp_module.fc2 = mlp_module.fc2.regular_linear_layer
 
-    @classmethod
-    def _modify_text_encoder(
-        cls,
-        text_encoder,
-        lora_scale=1,
-        network_alphas=None,
-        rank: Union[Dict[str, int], int] = 4,
-        dtype=None,
-        patch_mlp=False,
-    ):
-        r"""
-        Monkey-patches the forward passes of attention modules of the text encoder.
-        """
-
-        # First, remove any monkey-patch that might have been applied before
-        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
-
-        lora_parameters = []
-        network_alphas = {} if network_alphas is None else network_alphas
-        is_network_alphas_populated = len(network_alphas) > 0
-
-        for name, attn_module in text_encoder_attn_modules(text_encoder):
-            query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
-            key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
-            value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
-            out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
-
-            if isinstance(rank, dict):
-                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
-            else:
-                current_rank = rank
-
-            attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
-
-            attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
-
-            attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
-
-            attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
-
-        if patch_mlp:
-            for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
-
-                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
-                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
-
-                mlp_module.fc1 = PatchedLoraProjection(
-                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
-                )
-                lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
-
-                mlp_module.fc2 = PatchedLoraProjection(
-                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
-                )
-                lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
-
-        if is_network_alphas_populated and len(network_alphas) > 0:
-            raise ValueError(
-                f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-            )
-
-        return lora_parameters
 
     @classmethod
     def save_lora_weights(
