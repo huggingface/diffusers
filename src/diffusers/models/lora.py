@@ -28,6 +28,8 @@ class LoRALinearLayer(nn.Module):
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         self.network_alpha = network_alpha
         self.rank = rank
+        self.out_features = out_features
+        self.in_features = in_features
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)

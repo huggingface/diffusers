@@ -175,8 +175,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -211,7 +211,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             )
 
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
+            if hasattr(module, "get_processor"):
                 if not isinstance(processor, dict):
                     module.set_processor(processor)
                 else:

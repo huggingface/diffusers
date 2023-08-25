@@ -305,7 +305,7 @@ class UNet2DConditionLoadersMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         # fill attn processors
-        lora_layers_dict = []
+        lora_layers_list = []
 
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
@@ -376,7 +376,7 @@ class UNet2DConditionLoadersMixin:
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
                 lora.load_state_dict(value_dict)
-                lora_layers_dict.append((attn_processor, lora))
+                lora_layers_list.append((attn_processor, lora))
 
         elif is_custom_diffusion:
             attn_processors = {}
@@ -415,10 +415,10 @@ class UNet2DConditionLoadersMixin:
             )
 
         # set correct dtype & device
-        lora_layers_dict = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in lora_layers_dict]
+        lora_layers_list = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in lora_layers_list]
 
         # set lora layers
-        for target_module, lora_layer in lora_layers_dict:
+        for target_module, lora_layer in lora_layers_list:
             target_module.set_lora_layer(lora_layer)
 
     def convert_state_dict_from_old_format(self, state_dict, network_alphas):

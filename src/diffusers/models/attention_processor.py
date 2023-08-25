@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from importlib import import_module
 from typing import Callable, Optional, Union
 
 import torch
@@ -19,7 +20,7 @@ from torch import nn
 
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
-from .lora import LoRALinearLayer, LoRACompatibleLinear
+from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -73,8 +74,8 @@ class Attention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
-        inner_dim = dim_head * heads
-        cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
+        self.inner_dim = dim_head * heads
+        self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
@@ -115,7 +116,7 @@ class Attention(nn.Module):
         if cross_attention_norm is None:
             self.norm_cross = None
         elif cross_attention_norm == "layer_norm":
-            self.norm_cross = nn.LayerNorm(cross_attention_dim)
+            self.norm_cross = nn.LayerNorm(self.cross_attention_dim)
         elif cross_attention_norm == "group_norm":
             if self.added_kv_proj_dim is not None:
                 # The given `encoder_hidden_states` are initially of shape
@@ -125,7 +126,7 @@ class Attention(nn.Module):
                 # the number of channels for the group norm.
                 norm_cross_num_channels = added_kv_proj_dim
             else:
-                norm_cross_num_channels = cross_attention_dim
+                norm_cross_num_channels = self.cross_attention_dim
 
             self.norm_cross = nn.GroupNorm(
                 num_channels=norm_cross_num_channels, num_groups=cross_attention_norm_num_groups, eps=1e-5, affine=True
@@ -135,22 +136,22 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        self.to_q = LoRACompatibleLinear(query_dim, inner_dim, bias=bias)
+        self.to_q = LoRACompatibleLinear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = LoRACompatibleLinear(cross_attention_dim, inner_dim, bias=bias)
-            self.to_v = LoRACompatibleLinear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_k = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_v = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, inner_dim)
-            self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, inner_dim)
+            self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
+            self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(LoRACompatibleLinear(inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(LoRACompatibleLinear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -314,6 +315,79 @@ class Attention(nn.Module):
             self._modules.pop("processor")
 
         self.processor = processor
+
+    def get_processor(self, return_deprecated_lora: bool = False) -> "AttentionProcessor":
+        if not return_deprecated_lora:
+            return self.processor
+
+        # TODO(Sayak, Patrick). The rest of the function is needed to ensure backwards compatible
+        # serialization format for LoRA Attention Processors. It should be deleted once the integration
+        # with PEFT is completed.
+        is_lora_activated = {
+            "to_q": self.to_q.lora_layer is not None,
+            "to_k": self.to_k.lora_layer is not None,
+            "to_v": self.to_v.lora_layer is not None,
+            "to_out.0": self.to_out[0].lora_layer is not None,
+        }
+        # 1. if no layer has a LoRA activated we can return the processor as usual
+        if not any(is_lora_activated.values()):
+            return self.processor
+
+        # 2. else it is not posssible that only some layers have LoRA activated
+        if not all(is_lora_activated.values()):
+            raise ValueError(
+                f"Make sure that either all layers or no layers have LoRA activated, but have {is_lora_activated}"
+            )
+
+        # 3. And we need to merge the current LoRA layers into the corresponding LoRA attention processor
+        non_lora_processor_cls_name = self.processor.__class__.__name__
+        lora_processor_cls = getattr(import_module(__name__), "LoRA" + non_lora_processor_cls_name)
+
+        hidden_size = self.inner_dim
+
+        # now create a LoRA attention processor from the LoRA layers
+        if lora_processor_cls in [LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor]:
+            kwargs = {
+                "cross_attention_dim": self.cross_attention_dim,
+                "rank": self.to_q.lora_layer.rank,
+                "network_alpha": self.to_q.lora_layer.network_alpha,
+                "q_rank": self.to_q.lora_layer.rank,
+                "q_hidden_size": self.to_q.lora_layer.out_features,
+                "k_rank": self.to_k.lora_layer.rank,
+                "k_hidden_size": self.to_k.lora_layer.out_features,
+                "v_rank": self.to_v.lora_layer.rank,
+                "v_hidden_size": self.to_v.lora_layer.out_features,
+                "out_rank": self.to_out[0].lora_layer.rank,
+                "out_hidden_size": self.to_out[0].lora_layer.out_features,
+            }
+
+            if hasattr(self.processor, "attention_op"):
+                kwargs["attention_op"] = self.prcoessor.attention_op
+
+            lora_processor = lora_processor_cls(hidden_size, **kwargs)
+            lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
+            lora_processor.to_k_lora.load_state_dict(self.to_k.lora_layer.state_dict())
+            lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
+            lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
+        elif lora_processor_cls == LoRAAttnAddedKVProcessor:
+            lora_processor = lora_processor(
+                hidden_size,
+                cross_attention_dim=self.added_kv_proj_dim,
+                rank=self.to_q.lora_layer.rank,
+                network_alpha=self.to_q.lora_layer.network_alpha,
+            )
+
+            lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
+            lora_processor.to_k_lora.load_state_dict(self.to_k.lora_layer.state_dict())
+            lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
+            lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
+
+            lora_processor.add_k_proj_lora.load_state_dict(self.add_k_proj_lora.lora_layer.state_dict())
+            lora_processor.add_v_proj_lora.load_state_dict(self.add_v_proj_lora.lora_layer.state_dict())
+        else:
+            raise ValueError(f"{lora_processor_cls} does not exist.")
+
+        return lora_processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
         # The `Attention` class can call different attention processors / attention functions
@@ -1236,19 +1310,6 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-AttentionProcessor = Union[
-    AttnProcessor,
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-    SlicedAttnProcessor,
-    AttnAddedKVProcessor,
-    SlicedAttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    XFormersAttnAddedKVProcessor,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-]
-
 class SpatialNorm(nn.Module):
     """
     Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
@@ -1321,9 +1382,9 @@ class LoRAAttnProcessor(nn.Module):
             self_cls_name,
             "0.26.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1387,9 +1448,9 @@ class LoRAAttnProcessor2_0(nn.Module):
             self_cls_name,
             "0.26.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1465,9 +1526,9 @@ class LoRAXFormersAttnProcessor(nn.Module):
             self_cls_name,
             "0.26.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1515,9 +1576,9 @@ class LoRAAttnAddedKVProcessor(nn.Module):
             self_cls_name,
             "0.26.0",
             (
-               f"Make sure use {self_cls_name[4:]} instead by setting"
-               "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-               " `LoraLoaderMixin.load_lora_weights`"
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
         attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
@@ -1536,3 +1597,21 @@ LORA_ATTENTION_PROCESSORS = (
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
 )
+
+AttentionProcessor = Union[
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+    # depraceted
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+]
