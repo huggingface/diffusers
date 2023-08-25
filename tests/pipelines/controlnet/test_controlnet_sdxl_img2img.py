@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import random
+import unittest
 
 import numpy as np
 import torch
@@ -144,7 +144,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         controlnet_embedder_scale_factor = 2
         image = floats_tensor(
             (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
-            rng=random.Random(seed)
+            rng=random.Random(seed),
         ).to(device)
 
         if str(device).startswith("mps"):
