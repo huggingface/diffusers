@@ -82,6 +82,7 @@ from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .torch_utils import is_compiled_module, randn_tensor
+from .peft_utils import convert_state_dict_to_peft
 
 
 if is_torch_available():
