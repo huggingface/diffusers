@@ -285,6 +285,23 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         model.to(torch_device).eval()
         return model
 
+    @parameterized.expand(
+        [
+            [(1, 4, 73, 97), (1, 3, 584, 776)],
+            [(1, 4, 97, 73), (1, 3, 776, 584)],
+            [(1, 4, 49, 65), (1, 3, 392, 520)],
+            [(1, 4, 65, 49), (1, 3, 520, 392)],
+            [(1, 4, 49, 49), (1, 3, 392, 392)],
+        ]
+    )
+    def test_tae_tiling(self, in_shape, out_shape):
+        model = self.get_sd_vae_model()
+        model.enable_tiling()
+        with torch.no_grad():
+            zeros = torch.zeros(in_shape).to(torch_device)
+            dec = model.decode(zeros).sample
+            assert dec.shape == out_shape
+
     def test_stable_diffusion(self):
         model = self.get_sd_vae_model()
         image = self.get_sd_image(seed=33)
@@ -295,9 +312,31 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor([0.9858, 0.9262, 0.8629, 1.0974, -0.091, -0.2485, 0.0936, 0.0604])
+        expected_output_slice = torch.tensor([0.0093, 0.6385, -0.1274, 0.1631, -0.1762, 0.5232, -0.3108, -0.0382])
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
+
+    @parameterized.expand([(True,), (False,)])
+    def test_tae_roundtrip(self, enable_tiling):
+        # load the autoencoder
+        model = self.get_sd_vae_model()
+        if enable_tiling:
+            model.enable_tiling()
+
+        # make a black image with a white square in the middle,
+        # which is large enough to split across multiple tiles
+        image = -torch.ones(1, 3, 1024, 1024, device=torch_device)
+        image[..., 256:768, 256:768] = 1.0
+
+        # round-trip the image through the autoencoder
+        with torch.no_grad():
+            sample = model(image).sample
+
+        # the autoencoder reconstruction should match original image, sorta
+        def downscale(x):
+            return torch.nn.functional.avg_pool2d(x, model.spatial_scale_factor)
+
+        assert torch_all_close(downscale(sample), downscale(image), atol=0.125)
 
 
 @slow
