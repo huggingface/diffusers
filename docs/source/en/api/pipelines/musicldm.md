@@ -55,7 +55,3 @@ section to learn how to efficiently load the same components into multiple pipel
 [[autodoc]] MusicLDMPipeline
 	- all
 	- __call__
-
-## AudioPipelineOutput
-
-[[autodoc]] pipelines.AudioPipelineOutput
