@@ -1319,7 +1319,7 @@ class LoRAAttnProcessor(nn.Module):
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
-            "0.24.0",
+            "0.26.0",
             (
                f"Make sure use {self_cls_name[4:]} instead by setting"
                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
@@ -1385,7 +1385,7 @@ class LoRAAttnProcessor2_0(nn.Module):
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
-            "0.24.0",
+            "0.26.0",
             (
                f"Make sure use {self_cls_name[4:]} instead by setting"
                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
@@ -1463,7 +1463,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
-            "0.24.0",
+            "0.26.0",
             (
                f"Make sure use {self_cls_name[4:]} instead by setting"
                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
@@ -1513,7 +1513,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
-            "0.24.0",
+            "0.26.0",
             (
                f"Make sure use {self_cls_name[4:]} instead by setting"
                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
