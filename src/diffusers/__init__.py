@@ -163,6 +163,7 @@ else:
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
+        MusicLDMPipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
