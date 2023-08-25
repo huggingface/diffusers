@@ -410,14 +410,15 @@ class PushToHubMixin:
         variant: Optional[str] = None,
     ) -> str:
         """
-        Upload the {object_files} to the 🤗 Hugging Face Hub.
+        Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.
 
         Parameters:
             repo_id (`str`):
-                The name of the repository you want to push your {object} to. It should contain your organization name
-                when pushing to a given organization. `repo_id` can also be a path to a local directory.
+                The name of the repository you want to push your model, scheduler, or pipeline files to. It should
+                contain your organization name when pushing to an organization. `repo_id` can also be a path to a local
+                directory.
             commit_message (`str`, *optional*):
-                Message to commit while pushing. Will default to `"Upload {object}"`.
+                Message to commit while pushing. Default to `"Upload {object}"`.
             private (`bool`, *optional*):
                 Whether or not the repository created should be private.
             token (`str`, *optional*):
@@ -425,8 +426,8 @@ class PushToHubMixin:
                 `huggingface-cli login` (stored in `~/.huggingface`).
             create_pr (`bool`, *optional*, defaults to `False`):
                 Whether or not to create a PR with the uploaded files or directly commit.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
-                Whether or not to convert the model weights in safetensors format for safer serialization.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether or not to convert the model weights to the `safetensors` format.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
 
