@@ -53,8 +53,6 @@ from webdataset.tariterators import (
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    DDPMScheduler,
-    EulerDiscreteScheduler,
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
@@ -666,38 +664,6 @@ def log_validation(unet, vae_path, accelerator, weight_dtype, resolution):
     torch.cuda.empty_cache()
 
 
-# TODO - hack
-class Scaler:
-    def __init__(self, pretrained_model_name_or_path, device):
-        sigma_scheduler = EulerDiscreteScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler")
-        self.timesteps = sigma_scheduler.timesteps.to(device)
-        self.sigmas = sigma_scheduler.sigmas.to(device)
-
-    def scale_model_input(self, sample: torch.FloatTensor, timestep) -> torch.FloatTensor:
-        step_index = self.timesteps[:, None] == timestep[None, :]
-        step_index = step_index.nonzero()
-        step_index = step_index[:, 0]
-
-        sigma = self.sigmas[step_index]
-        sigma = sigma[:, None, None, None]
-
-        sample = sample / ((sigma**2 + 1) ** 0.5)
-
-        return sample
-
-    def scale_model_output(self, sample, timestep):
-        step_index = self.timesteps[:, None] == timestep[None, :]
-        step_index = step_index.nonzero()
-        step_index = step_index[:, 0]
-
-        sigma = self.sigmas[step_index]
-        sigma = sigma[:, None, None, None]
-
-        sample = sample * -sigma
-
-        return sample
-
-
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -756,39 +722,6 @@ def main(args):
         args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
     )
 
-    # Load scheduler and models
-    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-
-    # TODO - hack
-    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
-        sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
-        schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
-        timesteps = timesteps.to(accelerator.device)
-
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
-
-        sigma = sigmas[step_indices].flatten()
-        while len(sigma.shape) < n_dim:
-            sigma = sigma.unsqueeze(-1)
-        return sigma
-
-    # Check for terminal SNR in combination with SNR Gamma
-    if (
-        args.snr_gamma
-        and not args.force_snr_gamma
-        and (
-            hasattr(noise_scheduler.config, "rescale_betas_zero_snr") and noise_scheduler.config.rescale_betas_zero_snr
-        )
-    ):
-        raise ValueError(
-            f"The selected noise scheduler for the model {args.pretrained_model_name_or_path} uses rescaled betas for zero SNR.\n"
-            "When this configuration is present, the parameter --snr_gamma may not be used without parameter --force_snr_gamma.\n"
-            "This is due to a mathematical incompatibility between our current SNR gamma implementation, and a sigma value of zero."
-        )
-    if args.prediction_type is not None:
-        # set prediction_type of scheduler if defined
-        noise_scheduler.register_to_config(prediction_type=args.prediction_type)
-
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -806,8 +739,10 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    # Scaler(args.pretrained_model_name_or_path, accelerator.device)
-    with torch.no_grad():  # needed because inplace operations on tensors that require grads are not allowed
+
+    with torch.no_grad():
+        # Increase the number of input channels in the unet to handle
+        # the additional mask and masked image conditioning
         orig_in_channels = unet.config.in_channels
         unet.config.in_channels = 2 * orig_in_channels + 1  # 2 images + 1 mask
         original_conv_in = unet.conv_in
@@ -820,6 +755,16 @@ def main(args):
         # 2d conv weight shape: `out channels, in channels, kernel height, kernel width`
         unet.conv_in.weight[:, :orig_in_channels, :, :] = original_conv_in.weight
         del original_conv_in
+
+        beta_start = 0.00085
+        beta_end = 0.012
+        num_train_timesteps = 1000
+        betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+        alphas = 1.0 - betas
+        alphas_cumprod = torch.cumprod(alphas, dim=0)
+        sigmas = np.array(((1 - alphas_cumprod) / alphas_cumprod) ** 0.5)
+        sigmas = np.concatenate([[0.0], sigmas]).astype(np.float32)
+        sigmas = torch.from_numpy(sigmas, device=accelerator.device)
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
@@ -859,30 +804,6 @@ def main(args):
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    def compute_snr(timesteps):
-        """
-        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
-        """
-        alphas_cumprod = noise_scheduler.alphas_cumprod
-        sqrt_alphas_cumprod = alphas_cumprod**0.5
-        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
-
-        # Expand the tensors.
-        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
-        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
-        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
-
-        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
-        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
-
-        # Compute SNR.
-        snr = (alpha / sigma) ** 2
-        return snr
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -1064,14 +985,14 @@ def main(args):
                 encoded_masked_pixel_values = vae.encode(masked_pixel_values).latent_dist.sample()
                 encoded_masked_pixel_values = encoded_masked_pixel_values * vae.config.scaling_factor
 
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=accelerator.device
-                )
+                timesteps = torch.randint(0, 1000, (bsz,), device=accelerator.device)
                 timesteps = timesteps.long()
+
+                timestep_sigmas = sigmas[timesteps]
 
                 noise = torch.randn_like(encoded_masked_pixel_values)
 
-                noisy_encoded_pixel_values = noise_scheduler.add_noise(encoded_pixel_values, noise, timesteps)
+                noisy_encoded_pixel_values = encoded_pixel_values + timestep_sigmas * noise
 
                 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
                 latent_dimension = args.resolution // vae_scale_factor
@@ -1084,9 +1005,7 @@ def main(args):
                     dim=1,
                 )
 
-                # model_input = scaler.scale_model_input(model_input, timesteps)
-                sigmas = get_sigmas(timesteps, len(model_input.shape), model_input.dtype)
-                model_input = model_input / ((sigmas**2 + 1) ** 0.5)
+                model_input = model_input / ((timestep_sigmas**2 + 1) ** 0.5)
 
             with accelerator.accumulate(unet):
                 model_pred = unet(
