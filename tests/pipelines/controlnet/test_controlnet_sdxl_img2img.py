@@ -55,7 +55,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, skip_first_text_encoder=False):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -72,7 +72,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+            cross_attention_dim=64 if not skip_first_text_encoder else 32,
         )
         torch.manual_seed(0)
         controlnet = ControlNetModel(
@@ -133,8 +133,8 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "controlnet": controlnet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "text_encoder": text_encoder if not skip_first_text_encoder else None,
+            "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
         }
@@ -164,6 +164,24 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
 
         return inputs
 
+    def test_stable_diffusion_xl_controlnet_img2img(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array(
+            [0.5557202, 0.46418434, 0.46983826, 0.623529, 0.5557242, 0.49262643, 0.6070508, 0.5702978, 0.43777135]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
@@ -176,6 +194,10 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    def test_save_load_optional_components(self):
+        pass
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
