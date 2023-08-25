@@ -438,7 +438,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
-        negative_conditions=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -498,30 +497,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             raise ValueError(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
-
-        if negative_conditions is not None:
-            if not isinstance(negative_conditions, dict):
-                raise ValueError(
-                    "`negative_conditions` should be provided as a dictionary. Refer to the docstrings to learn more about how the dictionary should be structured."
-                )
-            else:
-                all_keys_present = all(
-                    k in negative_conditions for k in {"original_size", "target_size", "crops_coords_top_left"}
-                )
-                if not all_keys_present:
-                    raise ValueError(
-                        f"When `negative_conditions` are provided, it's expected to have the following keys: `original_size`, `target_size`, and `crops_coords_top_left`, but only the following keys were found:\n {list(negative_conditions.keys())}"
-                    )
-                else:
-                    for k in negative_conditions:
-                        current_condition = negative_conditions[k]
-                        if not isinstance(current_condition, tuple):
-                            raise ValueError(f"{k} in `negative_conditions` is expected to be a tuple.")
-                        else:
-                            if len(current_condition) != 2:
-                                raise ValueError(
-                                    f"{k} in `negative_conditions` is expected to be a tuple of length 2."
-                                )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -607,7 +582,9 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
-        negative_conditions: Dict[str, Tuple[int, int]] = None,
+        negative_original_size: Optional[Tuple[int, int]] = None,
+        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
+        negative_target_size: Optional[Tuple[int, int]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -707,11 +684,21 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
                 not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            negative_conditions (`Dict[str, Tuple[int, int]]`, *optional*, defaults to None):
-                Optional negative conditions to be provided to the UNet. Here's an example of how the dictionary should
-                be structured should it be provided: {"original_size": (512, 512), "crops_coords_top_left": (0, 0),
-                "targe_size": (1024, 1024)}. For more information, refer to this issue thread:
-                https://github.com/huggingface/diffusers/issues/4208.
+            negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                To negatively condition the generation process based on a specific image resolution. Part of SDXL's
+                micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            negative_crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's
+                micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            negative_target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                To negatively condition the generation process based on a target image resolution. It should be as same
+                as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
 
         Examples:
 
@@ -740,7 +727,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             negative_prompt_embeds,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
-            negative_conditions,
         )
 
         # 2. Define call parameters
@@ -808,11 +794,11 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
-        if negative_conditions is not None:
+        if negative_original_size is not None and negative_target_size is not None:
             negative_add_time_ids = self._get_add_time_ids(
-                negative_conditions["original_size"],
-                negative_conditions["crops_coords_top_left"],
-                negative_conditions["target_size"],
+                negative_original_size,
+                negative_crops_coords_top_left,
+                negative_target_size,
                 dtype=prompt_embeds.dtype,
             )
         else:
