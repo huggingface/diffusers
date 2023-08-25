@@ -41,6 +41,31 @@ class MultiAdapter(ModelMixin):
         self.num_adapter = len(adapters)
         self.adapters = nn.ModuleList(adapters)
 
+        if len(adapters) == 0:
+            raise ValueError("Expecting at least one adapter")
+
+        if len(adapters) == 1:
+            raise ValueError("For a single adapter, please use the `T2IAdapter` class instead of `MultiAdapter`")
+
+        # The outputs from each adapter are added together with a weight
+        # This means that the change in dimenstions from downsampling must
+        # be the same for all adapters. Inductively, it also means the total
+        # downscale factor must also be the same for all adapters.
+
+        first_adapter_total_downscale_factor = adapters[0].total_downscale_factor
+
+        for idx in range(1, len(adapters)):
+            adapter_idx_total_downscale_factor = adapters[idx].total_downscale_factor
+
+            if adapter_idx_total_downscale_factor != first_adapter_total_downscale_factor:
+                raise ValueError(
+                    f"Expecting all adapters to have the same total_downscale_factor, "
+                    f"but got adapters[0].total_downscale_factor={first_adapter_total_downscale_factor} and "
+                    f"adapter[`{idx}`]={adapter_idx_total_downscale_factor}"
+                )
+
+        self.total_downscale_factor = adapters[0].total_downscale_factor
+
     def forward(self, xs: torch.Tensor, adapter_weights: Optional[List[float]] = None) -> List[torch.Tensor]:
         r"""
         Args:
@@ -56,14 +81,8 @@ class MultiAdapter(ModelMixin):
         else:
             adapter_weights = torch.tensor(adapter_weights)
 
-        if xs.shape[1] % self.num_adapter != 0:
-            raise ValueError(
-                f"Expecting multi-adapter's input have number of channel that cab be evenly divisible "
-                f"by num_adapter: {xs.shape[1]} % {self.num_adapter} != 0"
-            )
-        x_list = torch.chunk(xs, self.num_adapter, dim=1)
         accume_state = None
-        for x, w, adapter in zip(x_list, adapter_weights, self.adapters):
+        for x, w, adapter in zip(xs, adapter_weights, self.adapters):
             features = adapter(x)
             if accume_state is None:
                 accume_state = features
