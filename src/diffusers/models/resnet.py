@@ -675,7 +675,11 @@ class Conv1dBlock(nn.Module):
 
 
 class MixingResidualBlock(nn.Module):
-    def __init__(self, inp_channels, c_hidden):
+    """
+    Residual block with mixing used by Paella's VQ-VAE.
+    """
+
+    def __init__(self, inp_channels, embed_dim):
         super().__init__()
         # depthwise
         self.norm1 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
@@ -686,9 +690,7 @@ class MixingResidualBlock(nn.Module):
         # channelwise
         self.norm2 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
-            nn.Linear(inp_channels, c_hidden),
-            nn.GELU(),
-            nn.Linear(c_hidden, inp_channels),
+            nn.Linear(inp_channels, embed_dim), nn.GELU(), nn.Linear(embed_dim, inp_channels)
         )
 
         self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
