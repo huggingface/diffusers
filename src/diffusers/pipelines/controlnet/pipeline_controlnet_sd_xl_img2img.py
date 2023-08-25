@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 
 from diffusers.utils.import_utils import is_invisible_watermark_available
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...models.attention_processor import (
@@ -870,22 +870,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
-        control_image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 0.8,
@@ -928,19 +914,29 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 used in both text-encoders
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
                     `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The initial image will be used as the starting point for the image generation process. Can also accept
+                image latents as `image`, if passing latents directly, it will not be encoded again.
+            control_image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. `PIL.Image.Image` can
                 also be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If
                 height and/or width are passed, `image` is resized according to them. If multiple ControlNets are
                 specified in init, images must be passed as a list such that each element of the list can be correctly
                 batched for input to a single controlnet.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            height (`int`, *optional*, defaults to the size of control_image):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to the size of control_image):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            strength (`float`, *optional*, defaults to 0.3):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -1021,6 +1017,14 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
                 not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            aesthetic_score (`float`, *optional*, defaults to 6.0):
+                Used to simulate an aesthetic score of the generated image by influencing the positive text condition.
+                Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            negative_aesthetic_score (`float`, *optional*, defaults to 2.5):
+                Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). Can be used to
+                simulate an aesthetic score of the generated image by influencing the negative text condition.
         Examples:
 
         Returns:
