@@ -46,6 +46,7 @@ else:
     from .pipeline_stable_diffusion import StableDiffusionPipeline
     from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
     from .pipeline_stable_diffusion_gligen import StableDiffusionGLIGENPipeline
+    from .pipeline_stable_diffusion_gligen_text_image import StableDiffusionGLIGENTextImagePipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy

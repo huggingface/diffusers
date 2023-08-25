@@ -29,6 +29,7 @@ from .embeddings import (
     ImageProjection,
     ImageTimeEmbedding,
     PositionNet,
+    PositionNetTextImage,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,
@@ -571,7 +572,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 positive_len = cross_attention_dim
             elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
                 positive_len = cross_attention_dim[0]
+
             self.position_net = PositionNet(positive_len=positive_len, out_dim=cross_attention_dim)
+
+        elif attention_type == "GatedTextImage":
+            positive_len = 768
+            if isinstance(cross_attention_dim, int):
+                positive_len = cross_attention_dim
+            elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
+                positive_len = cross_attention_dim[0]
+            self.position_net = PositionNetTextImage(positive_len=positive_len, out_dim=cross_attention_dim)
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
