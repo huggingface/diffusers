@@ -25,7 +25,7 @@ import requests
 import safetensors
 import torch
 import torch.nn.functional as F
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, model_info
 from torch import nn
 
 from .utils import (
@@ -1021,6 +1021,13 @@ class LoraLoaderMixin:
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
                 try:
+                    # Here we're relaxing the loading check to enable more Inference API
+                    # friendliness where sometimes, it's not at all possible to automatically
+                    # determine `weight_name`.
+                    if weight_name is None:
+                        weight_name = cls._best_guess_weight_name(
+                            pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
+                        )
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -1041,7 +1048,12 @@ class LoraLoaderMixin:
                     # try loading non-safetensors weights
                     model_file = None
                     pass
+
             if model_file is None:
+                if weight_name is None:
+                    weight_name = cls._best_guess_weight_name(
+                        pretrained_model_name_or_path_or_dict, file_extension=".bin"
+                    )
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME,
@@ -1076,6 +1088,31 @@ class LoraLoaderMixin:
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
+
+    @classmethod
+    def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension=".safetensors"):
+        targeted_files = []
+
+        if os.path.isfile(pretrained_model_name_or_path_or_dict):
+            return
+        elif os.path.isdir(pretrained_model_name_or_path_or_dict):
+            targeted_files = [
+                f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
+            ]
+        else:
+            files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
+            targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
+
+        if len(targeted_files) == 0:
+            return
+
+        targeted_files = list(filter(lambda x: "scheduler" not in x and "optimizer" not in x, targeted_files))
+        if len(targeted_files) > 1:
+            raise ValueError(
+                f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
+            )
+        weight_name = targeted_files[0]
+        return weight_name
 
     @classmethod
     def _map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
@@ -1245,6 +1282,7 @@ class LoraLoaderMixin:
 
             if len(text_encoder_lora_state_dict) > 0:
                 logger.info(f"Loading {prefix}.")
+                rank = {}
 
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     # Convert from the old naming convention to the new naming convention.
@@ -1283,10 +1321,17 @@ class LoraLoaderMixin:
                             f"{name}.out_proj.lora_linear_layer.down.weight"
                         ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
 
-                rank = text_encoder_lora_state_dict[
-                    "text_model.encoder.layers.0.self_attn.out_proj.lora_linear_layer.up.weight"
-                ].shape[1]
+                for name, _ in text_encoder_attn_modules(text_encoder):
+                    rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
+                    rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                if patch_mlp:
+                    for name, _ in text_encoder_mlp_modules(text_encoder):
+                        rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
+                        rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
+                        rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
+                        rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1344,7 +1389,7 @@ class LoraLoaderMixin:
         text_encoder,
         lora_scale=1,
         network_alphas=None,
-        rank=4,
+        rank: Union[Dict[str, int], int] = 4,
         dtype=None,
         patch_mlp=False,
     ):
@@ -1365,38 +1410,46 @@ class LoraLoaderMixin:
             value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
             out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
 
+            if isinstance(rank, dict):
+                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
+            else:
+                current_rank = rank
+
             attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=rank, dtype=dtype
+                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
             attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=rank, dtype=dtype
+                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
             attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=rank, dtype=dtype
+                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=rank, dtype=dtype
+                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
         if patch_mlp:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha")
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha")
+                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
+                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
+
+                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
+                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
                 mlp_module.fc1 = PatchedLoraProjection(
-                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=rank, dtype=dtype
+                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
 
                 mlp_module.fc2 = PatchedLoraProjection(
-                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=rank, dtype=dtype
+                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
 
