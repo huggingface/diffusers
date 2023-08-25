@@ -304,6 +304,17 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_processor(self, processor: "AttnProcessor"):
+        if (
+            hasattr(self, "processor")
+            and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
+            and self.to_q.lora_layer is not None
+        ):
+            # TODO(Patrick, Sayak) - this can be deprecated once PEFT LoRA integration is complete
+            # We need to remove all LoRA layers
+            for module in self.modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
+
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
         # pop `processor` from `self._modules`
         if (
@@ -324,11 +335,11 @@ class Attention(nn.Module):
         # serialization format for LoRA Attention Processors. It should be deleted once the integration
         # with PEFT is completed.
         is_lora_activated = {
-            "to_q": self.to_q.lora_layer is not None,
-            "to_k": self.to_k.lora_layer is not None,
-            "to_v": self.to_v.lora_layer is not None,
-            "to_out.0": self.to_out[0].lora_layer is not None,
+            name: module.lora_layer is not None
+            for name, module in self.named_modules()
+            if hasattr(module, "lora_layer")
         }
+
         # 1. if no layer has a LoRA activated we can return the processor as usual
         if not any(is_lora_activated.values()):
             return self.processor
@@ -702,8 +713,8 @@ class AttnAddedKVProcessor:
         query = attn.to_q(hidden_states, lora_scale=scale)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, lora_scale=scale)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, lora_scale=scale)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
