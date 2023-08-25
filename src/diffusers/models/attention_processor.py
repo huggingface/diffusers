@@ -309,7 +309,11 @@ class Attention(nn.Module):
             and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
             and self.to_q.lora_layer is not None
         ):
-            deprecate("set_processor to offload LoRA", "0.26.0", "In detail, removing LoRA layers via calling `set_processor` or `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.")
+            deprecate(
+                "set_processor to offload LoRA",
+                "0.26.0",
+                "In detail, removing LoRA layers via calling `set_processor` or `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
+            )
             # TODO(Patrick, Sayak) - this can be deprecated once PEFT LoRA integration is complete
             # We need to remove all LoRA layers
             for module in self.modules():
