@@ -1108,7 +1108,6 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
 
         # 4. Prepare image and controlnet_conditioning_image
         image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
-        height, width = image.shape[-2:]
 
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
@@ -1143,6 +1142,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
             control_image = control_images
         else:
             assert False
+        height, width = control_image.shape[-2:]
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
