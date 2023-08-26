@@ -34,6 +34,17 @@ class ImageProcessorTest(unittest.TestCase):
 
         return sample
 
+    @property
+    def dummy_mask(self):
+        batch_size = 1
+        num_channels = 1
+        height = 8
+        width = 8
+
+        sample = torch.rand((batch_size, num_channels, height, width))
+
+        return sample
+
     def to_np(self, image):
         if isinstance(image[0], PIL.Image.Image):
             return np.stack([np.array(i) for i in image], axis=0)
@@ -133,17 +144,144 @@ class ImageProcessorTest(unittest.TestCase):
         )
 
         input_np_4d = self.to_np(self.dummy_sample)
-        list(input_np_4d)
+        input_np_list = list(input_np_4d)
 
         out_np_4d = image_processor.postprocess(
-            image_processor.preprocess(input_pt_4d),
+            image_processor.preprocess(input_np_4d),
             output_type="np",
         )
 
         out_np_list = image_processor.postprocess(
-            image_processor.preprocess(input_pt_list),
+            image_processor.preprocess(input_np_list),
             output_type="np",
         )
 
         assert np.abs(out_pt_4d - out_pt_list).max() < 1e-6
         assert np.abs(out_np_4d - out_np_list).max() < 1e-6
+
+    def test_preprocess_input_mask_3d(self):
+        image_processor = VaeImageProcessor(
+            do_resize=False, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
+
+        input_pt_4d = self.dummy_mask
+        input_pt_3d = input_pt_4d.squeeze(0)
+        input_pt_2d = input_pt_3d.squeeze(0)
+
+        out_pt_4d = image_processor.postprocess(
+            image_processor.preprocess(input_pt_4d),
+            output_type="np",
+        )
+        out_pt_3d = image_processor.postprocess(
+            image_processor.preprocess(input_pt_3d),
+            output_type="np",
+        )
+
+        out_pt_2d = image_processor.postprocess(
+            image_processor.preprocess(input_pt_2d),
+            output_type="np",
+        )
+
+        input_np_4d = self.to_np(self.dummy_mask)
+        input_np_3d = input_np_4d.squeeze(0)
+        input_np_3d_1 = input_np_4d.squeeze(-1)
+        input_np_2d = input_np_3d.squeeze(-1)
+
+        out_np_4d = image_processor.postprocess(
+            image_processor.preprocess(input_np_4d),
+            output_type="np",
+        )
+        out_np_3d = image_processor.postprocess(
+            image_processor.preprocess(input_np_3d),
+            output_type="np",
+        )
+
+        out_np_3d_1 = image_processor.postprocess(
+            image_processor.preprocess(input_np_3d_1),
+            output_type="np",
+        )
+
+        out_np_2d = image_processor.postprocess(
+            image_processor.preprocess(input_np_2d),
+            output_type="np",
+        )
+
+        assert np.abs(out_pt_4d - out_pt_3d).max() == 0
+        assert np.abs(out_pt_4d - out_pt_2d).max() == 0
+        assert np.abs(out_np_4d - out_np_3d).max() == 0
+        assert np.abs(out_np_4d - out_np_3d_1).max() == 0
+        assert np.abs(out_np_4d - out_np_2d).max() == 0
+
+    def test_preprocess_input_mask_list(self):
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False, do_convert_grayscale=True)
+
+        input_pt_4d = self.dummy_mask
+        input_pt_3d = input_pt_4d.squeeze(0)
+        input_pt_2d = input_pt_3d.squeeze(0)
+
+        inputs_pt = [input_pt_4d, input_pt_3d, input_pt_2d]
+        inputs_pt_list = [[input_pt] for input_pt in inputs_pt]
+
+        for input_pt, input_pt_list in zip(inputs_pt, inputs_pt_list):
+            out_pt = image_processor.postprocess(
+                image_processor.preprocess(input_pt),
+                output_type="np",
+            )
+            out_pt_list = image_processor.postprocess(
+                image_processor.preprocess(input_pt_list),
+                output_type="np",
+            )
+            assert np.abs(out_pt - out_pt_list).max() < 1e-6
+
+        input_np_4d = self.to_np(self.dummy_mask)
+        input_np_3d = input_np_4d.squeeze(0)
+        input_np_2d = input_np_3d.squeeze(-1)
+
+        inputs_np = [input_np_4d, input_np_3d, input_np_2d]
+        inputs_np_list = [[input_np] for input_np in inputs_np]
+
+        for input_np, input_np_list in zip(inputs_np, inputs_np_list):
+            out_np = image_processor.postprocess(
+                image_processor.preprocess(input_np),
+                output_type="np",
+            )
+            out_np_list = image_processor.postprocess(
+                image_processor.preprocess(input_np_list),
+                output_type="np",
+            )
+            assert np.abs(out_np - out_np_list).max() < 1e-6
+
+    def test_preprocess_input_mask_3d_batch(self):
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False, do_convert_grayscale=True)
+
+        # create a dummy mask input with batch_size 2
+        dummy_mask_batch = torch.cat([self.dummy_mask] * 2, axis=0)
+
+        # squeeze out the channel dimension
+        input_pt_3d = dummy_mask_batch.squeeze(1)
+        input_np_3d = self.to_np(dummy_mask_batch).squeeze(-1)
+
+        input_pt_3d_list = list(input_pt_3d)
+        input_np_3d_list = list(input_np_3d)
+
+        out_pt_3d = image_processor.postprocess(
+            image_processor.preprocess(input_pt_3d),
+            output_type="np",
+        )
+        out_pt_3d_list = image_processor.postprocess(
+            image_processor.preprocess(input_pt_3d_list),
+            output_type="np",
+        )
+
+        assert np.abs(out_pt_3d - out_pt_3d_list).max() < 1e-6
+
+        out_np_3d = image_processor.postprocess(
+            image_processor.preprocess(input_np_3d),
+            output_type="np",
+        )
+        out_np_3d_list = image_processor.postprocess(
+            image_processor.preprocess(input_np_3d_list),
+            output_type="np",
+        )
+
+        assert np.abs(out_np_3d - out_np_3d_list).max() < 1e-6

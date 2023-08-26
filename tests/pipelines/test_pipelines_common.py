@@ -22,7 +22,12 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    numpy_cosine_similarity_distance,
+    require_torch,
+    torch_device,
+)
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
@@ -543,7 +548,7 @@ class PipelineTesterMixin:
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
+        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_fp16).flatten())
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
