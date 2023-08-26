@@ -18,21 +18,21 @@ from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import BasicTransformerBlock
-from ...models.attention_processor import LoRAAttnProcessor
-from ...schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
-from ...utils import (
+from diffusers.configuration_utils import FrozenDict
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers import AutoencoderKL, UNet2DConditionModel
+from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
+from diffusers.utils import (
     deprecate,
     logging,
     randn_tensor,
     replace_example_docstring,
 )
-from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from diffusion.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -40,11 +40,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import FabricPipeline
+        >>> from diffusers import DiffusionPipeline
         >>> import torch
 
         >>> model_id = "dreamlike-art/dreamlike-photoreal-2.0"
-        >>> pipe = FabricPipeline(model_id, torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline(model_id, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric")
         >>> pipe = pipe.to("cuda")
         >>> prompt = "a giant standing in a fantasy landscape best quality"
         >>> liked = []  # list of images for positive feedback
