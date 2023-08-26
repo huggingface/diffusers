@@ -1112,7 +1112,6 @@ class LoraLoaderMixin:
         targeted_files = list(
             filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
         )
-        print(f"From loaders: {targeted_files}.")
 
         if len(targeted_files) > 1:
             raise ValueError(
