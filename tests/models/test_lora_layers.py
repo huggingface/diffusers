@@ -952,9 +952,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_filename = "papercut.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
-        images = pipe(
-            "papercut.safetensors", output_type="np", generator=generator, num_inference_steps=2
-        ).images
+        images = pipe("papercut.safetensors", output_type="np", generator=generator, num_inference_steps=2).images
 
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.5244, 0.4347, 0.4312, 0.4246, 0.4398, 0.4409, 0.4884, 0.4938, 0.4094])
