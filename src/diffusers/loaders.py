@@ -1145,7 +1145,7 @@ class LoraLoaderMixin:
 
         for layer in all_keys:
             if "text" in layer:
-                new_state_dict[layer] = state_dict.pop(key)
+                new_state_dict[layer] = state_dict.pop(layer)
             else:
                 layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
                 if sgm_patterns[0] in layer:
