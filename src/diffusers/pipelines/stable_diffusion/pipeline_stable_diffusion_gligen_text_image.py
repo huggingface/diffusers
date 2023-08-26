@@ -444,9 +444,6 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         height,
         width,
         callback_steps,
-        gligen_phrases,
-        gligen_images,
-        gligen_boxes,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -545,6 +542,18 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             return x
         else:
             return x @ torch.transpose(projection_matrix, 0, 1)
+        
+    def complete_mask(self, has_mask, max_objs, device):
+        mask = torch.ones(1, max_objs).type(self.text_encoder.dtype).to(device)
+        if has_mask is None:
+            return mask
+        
+        if isinstance(has_mask, int):
+            return mask * has_mask
+        else:
+            for idx, value in enumerate(has_mask):
+                mask[0, idx] = value
+            return mask
 
     def get_clip_feature(self, input, hidden_size, device, is_image=False):
         if is_image:
@@ -565,7 +574,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         return feature
 
     def prepare_cross_attention_kwags(
-        self, hidden_size, gligen_phrases, gligen_images, gligen_boxes, repeat_batch, max_objs, device
+        self, hidden_size, gligen_phrases, gligen_images, gligen_boxes, input_phrases_mask, input_images_mask, repeat_batch, max_objs, device
     ):
         phrases, images = gligen_phrases, gligen_images
         images = [None] * len(phrases) if images is None else images
@@ -593,14 +602,23 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             if image_feature is not None:
                 image_embeddings[idx] = image_feature
                 image_masks[idx] = 1
+        
+        input_phrases_mask = self.complete_mask(input_phrases_mask, max_objs, device)
+        phrases_masks = phrases_masks.unsqueeze(0).repeat(repeat_batch, 1) * input_phrases_mask
+        input_images_mask = self.complete_mask(input_images_mask, max_objs, device)
+        image_masks = image_masks.unsqueeze(0).repeat(repeat_batch, 1) * input_images_mask
+        boxes = boxes.unsqueeze(0).repeat(repeat_batch, 1, 1)
+        masks = masks.unsqueeze(0).repeat(repeat_batch, 1)
+        phrases_embeddings = phrases_embeddings.unsqueeze(0).repeat(repeat_batch, 1, 1)
+        image_embeddings = image_embeddings.unsqueeze(0).repeat(repeat_batch, 1, 1)
 
         out = {
-            "boxes": boxes.unsqueeze(0).repeat(repeat_batch, 1, 1),
-            "masks": masks.unsqueeze(0).repeat(repeat_batch, 1),
-            "phrases_masks": phrases_masks.unsqueeze(0).repeat(repeat_batch, 1),
-            "image_masks": image_masks.unsqueeze(0).repeat(repeat_batch, 1),
-            "phrases_embeddings": phrases_embeddings.unsqueeze(0).repeat(repeat_batch, 1, 1),
-            "image_embeddings": image_embeddings.unsqueeze(0).repeat(repeat_batch, 1, 1),
+            "boxes": boxes,
+            "masks": masks,
+            "phrases_masks": phrases_masks,
+            "image_masks": image_masks,
+            "phrases_embeddings": phrases_embeddings,
+            "image_embeddings": image_embeddings,
         }
 
         return out
@@ -636,6 +654,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         gligen_scheduled_sampling_beta: float = 0.3,
         gligen_phrases: List[str] = None,
         gligen_images: List[PIL.Image.Image] = None,
+        input_phrases_mask: Union[int, List[int]] = None,
+        input_images_mask: Union[int, List[int]] = None,
         gligen_boxes: List[List[float]] = None,
         gligen_inpaint_image: Optional[PIL.Image.Image] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -673,6 +693,10 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             gligen_images (`List[PIL.Image.Image]`):
                 The images to guide what to include in each of the regions defined by the corresponding `gligen_boxes`.
                 There should only be one image per bounding box
+            input_phrases_mask (`int` or `List[int]`): 
+                pre phrases mask input defined by the correspongding `input_phrases_mask`
+            input_images_mask (`int` or `List[int]`): 
+                pre images mask input defined by the correspongding `input_images_mask`
             gligen_boxes (`List[List[float]]`):
                 The bounding boxes that identify rectangular regions of the image that are going to be filled with the
                 content described by the corresponding `gligen_phrases`. Each rectangular box is defined as a
@@ -743,9 +767,6 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             height,
             width,
             callback_steps,
-            gligen_phrases,
-            gligen_images,
-            gligen_boxes,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
@@ -819,6 +840,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             gligen_phrases=gligen_phrases,
             gligen_images=gligen_images,
             gligen_boxes=gligen_boxes,
+            input_phrases_mask=input_phrases_mask,
+            input_images_mask=input_images_mask,
             repeat_batch=repeat_batch,
             max_objs=max_objs,
             device=device,
