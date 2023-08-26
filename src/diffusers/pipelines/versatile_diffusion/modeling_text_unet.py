@@ -794,6 +794,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 positive_len = cross_attention_dim
             elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
                 positive_len = cross_attention_dim[0]
+
             self.position_net = PositionNet(positive_len=positive_len, out_dim=cross_attention_dim)
 
         elif attention_type == "GatedTextImage":
