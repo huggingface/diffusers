@@ -326,7 +326,8 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
-        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **load_config_kwargs, **kwargs)
+        kwargs = {**load_config_kwargs, **kwargs}
+        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
