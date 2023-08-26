@@ -1102,7 +1102,7 @@ class LoraLoaderMixin:
         else:
             files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
             targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
-
+            print(f"From loaders: {targeted_files}.")
         if len(targeted_files) == 0:
             return
 
