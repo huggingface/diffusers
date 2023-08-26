@@ -404,14 +404,11 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
-    # We do not support saving pipelines with multiple adapters. The multiple adapters should be saved as their
-    # own independent pipelines
-
     def test_save_load_local(self):
-        ...
+        super().test_save_load_local()
 
     def test_save_load_optional_components(self):
-        ...
+        super().test_save_load_optional_components()
 
 
 @slow
