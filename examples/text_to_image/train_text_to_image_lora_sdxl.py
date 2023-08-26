@@ -1206,6 +1206,13 @@ def main(args):
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
 
+        del unet 
+        del text_encoder_one
+        del text_encoder_two
+        del text_encoder_lora_layers
+        del text_encoder_2_lora_layers
+        torch.cuda.empty_cache()
+
         # Final inference
         # Load previous pipeline
         pipeline = StableDiffusionXLPipeline.from_pretrained(
