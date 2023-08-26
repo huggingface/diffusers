@@ -17,6 +17,7 @@ import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
+from ..utils import DIFFUSERS_CACHE
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -295,7 +296,29 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> image = pipeline(prompt).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+            "subfolder": subfolder,
+            "user_agent": user_agent,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -303,7 +326,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
-        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **load_config_kwargs, **kwargs)
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
