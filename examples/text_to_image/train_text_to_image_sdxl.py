@@ -53,6 +53,7 @@ from webdataset.tariterators import (
 import diffusers
 from diffusers import (
     AutoencoderKL,
+    EulerDiscreteScheduler,
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
@@ -529,11 +530,7 @@ def make_wds_inpainting_dataset(
 
     pixel_values_transform = transforms.Compose(
         [
-            *(
-                [transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR)]
-                if min_resolution is None
-                else []
-            ),
+            transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             crop_transform,
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -618,23 +615,13 @@ def make_wds_inpainting_dataset(
     return dataset
 
 
-def log_validation(unet, vae_path, accelerator, weight_dtype):
-    # create pipeline
-    vae = AutoencoderKL.from_pretrained(
-        vae_path,
-        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-        revision=args.revision,
-    )
+def log_validation(pretrained_model_name_or_path, unet, vae, accelerator, weight_dtype):
     pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=vae,
+        pretrained_model_name_or_path,
+        vae=accelerator.unwrap_model(vae),
         unet=accelerator.unwrap_model(unet),
-        revision=args.revision,
         torch_dtype=weight_dtype,
     )
-    if args.prediction_type is not None:
-        scheduler_args = {"prediction_type": args.prediction_type}
-        pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -738,6 +725,7 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
+    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     with torch.no_grad():
         # Increase the number of input channels in the unet to handle
@@ -754,16 +742,6 @@ def main(args):
         unet.conv_in.weight[:, :orig_in_channels, :, :] = original_conv_in.weight
         unet.conv_in.weight[:, orig_in_channels:, :, :] = 0
         del original_conv_in
-
-        beta_start = 0.00085
-        beta_end = 0.012
-        num_train_timesteps = 1000
-        betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-        alphas = 1.0 - betas
-        alphas_cumprod = torch.cumprod(alphas, dim=0)
-        sigmas = np.array(((1 - alphas_cumprod) / alphas_cumprod) ** 0.5)
-        sigmas = np.concatenate([[0.0], sigmas]).astype(np.float32)
-        sigmas = torch.from_numpy(sigmas).to(accelerator.device)
 
     # Freeze vae and text encoders.
     vae.requires_grad_(False)
@@ -889,8 +867,8 @@ def main(args):
         shuffle=False,
         batch_size=None,
         num_workers=args.dataloader_num_workers,
-        # pin_memory=True,
-        # persistent_workers=True,
+        pin_memory=True,
+        persistent_workers=True,
     )
 
     lr_scheduler = get_scheduler(
@@ -984,15 +962,23 @@ def main(args):
                 encoded_masked_pixel_values = vae.encode(masked_pixel_values).latent_dist.sample()
                 encoded_masked_pixel_values = encoded_masked_pixel_values * vae.config.scaling_factor
 
-                timesteps = torch.randint(0, num_train_timesteps, (bsz,), device=accelerator.device)
+                timesteps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=accelerator.device
+                )
                 timesteps = timesteps.long()
 
-                timestep_sigmas = sigmas[timesteps]
-                timestep_sigmas = timestep_sigmas[:, None, None, None]
+                schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device, dtype=torch.float32)
+                step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+                sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=weight_dtype)
+                sigma = sigmas[step_indices].flatten()
+                loss_weight = sigma**-2.0
 
                 noise = torch.randn_like(encoded_masked_pixel_values)
 
-                noisy_encoded_pixel_values = encoded_pixel_values + timestep_sigmas * noise
+                noisy_encoded_pixel_values = noise_scheduler.add_noise(encoded_pixel_values, noise, timesteps)
+                noisy_encoded_pixel_values = noisy_encoded_pixel_values / (
+                    (sigma[:, None, None, None] ** 2 + 1) ** 0.5
+                )
 
                 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
                 latent_dimension = args.resolution // vae_scale_factor
@@ -1005,8 +991,6 @@ def main(args):
                     dim=1,
                 )
 
-                model_input = model_input / ((timestep_sigmas**2 + 1) ** 0.5)
-
             with accelerator.accumulate(unet):
                 model_pred = unet(
                     model_input,
@@ -1015,18 +999,10 @@ def main(args):
                     added_cond_kwargs={"time_ids": time_ids, "text_embeds": pooled_prompt_embeds},
                 ).sample
 
-                model_pred = model_pred * (-timestep_sigmas) + noisy_encoded_pixel_values
-                weighing = timestep_sigmas**-2.0
-
-                model_pred = model_pred + noisy_encoded_pixel_values
-
-                target = encoded_pixel_values
-
-                # loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                loss = torch.mean(
-                    (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
-                )
-                loss = loss.mean()
+                squared_errors = (model_pred.float() - noise.float()) ** 2
+                batched_mean_squared_errors = squared_errors.reshape(bsz, -1).mean(-1)
+                weighted_losses = loss_weight * batched_mean_squared_errors
+                loss = weighted_losses.mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
@@ -1082,7 +1058,7 @@ def main(args):
 
             if accelerator.is_main_process:
                 if global_step % args.validation_steps == 0:
-                    log_validation(unet, vae_path, accelerator, weight_dtype)
+                    log_validation(args.pretrained_model_name_or_path, unet, vae, accelerator, weight_dtype)
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
