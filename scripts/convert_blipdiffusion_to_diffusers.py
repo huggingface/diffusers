@@ -15,6 +15,7 @@ import torch
 import argparse
 import os
 
+
 BLIP2_CONFIG = {
     "vision_config": {
         "hidden_size" : 1024,
@@ -32,10 +33,10 @@ BLIP2_CONFIG = {
     },
    "num_query_tokens" : 16
 }
+blip2config = Blip2Config(**BLIP2_CONFIG)
 
 
 def qformer_model_from_original_config():
-    blip2config = Blip2Config(**BLIP2_CONFIG)
     qformer = Blip2QFormerModel(blip2config)
     return qformer
 
@@ -84,7 +85,7 @@ def output_layers_from_original_checkpoint(model, diffuser_output_prefix, origin
 
 def encoder_from_original_checkpoint(model, diffuser_encoder_prefix, original_encoder_prefix):
     encoder = {}
-    for i in range(BLIP2_CONFIG["qformer_config"]["num_hidden_layers"]):
+    for i in range(blip2config.qformer_config.num_hidden_layers):
         encoder.update(attention_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.attention", f"{original_encoder_prefix}.{i}.attention"))
         encoder.update(attention_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.crossattention", f"{original_encoder_prefix}.{i}.crossattention"))
         
@@ -120,13 +121,13 @@ def visual_encoder_layer_from_original_checkpoint(model, diffuser_prefix, origin
 def visual_encoder_from_original_checkpoint(model, diffuser_prefix, original_prefix):
     visual_encoder = {} 
 
-    visual_encoder.update({f"{diffuser_prefix}.embeddings.class_embedding": model[f"{original_prefix}.class_embedding"]})
-    visual_encoder.update({f"{diffuser_prefix}.embeddings.position_embedding": model[f"{original_prefix}.position_embedding"]})
+    visual_encoder.update({f"{diffuser_prefix}.embeddings.class_embedding": model[f"{original_prefix}.class_embedding"].unsqueeze(0).unsqueeze(0)})
+    visual_encoder.update({f"{diffuser_prefix}.embeddings.position_embedding": model[f"{original_prefix}.positional_embedding"].unsqueeze(0)})
     visual_encoder.update({f"{diffuser_prefix}.embeddings.patch_embedding.weight": model[f"{original_prefix}.conv1.weight"]})
     visual_encoder.update({f"{diffuser_prefix}.pre_layernorm.weight": model[f"{original_prefix}.ln_pre.weight"]})
     visual_encoder.update({f"{diffuser_prefix}.pre_layernorm.bias": model[f"{original_prefix}.ln_pre.bias"]})
 
-    for i in range(BLIP2_CONFIG["vision_config"]["num_hidden_layers"]):
+    for i in range(blip2config.vision_config.num_hidden_layers):
         visual_encoder.update(visual_encoder_layer_from_original_checkpoint(model, f"{diffuser_prefix}.encoder.layers.{i}", f"{original_prefix}.transformer.resblocks.{i}"))
     
     visual_encoder.update({f"{diffuser_prefix}.post_layernorm.weight": model["blip.ln_vision.weight"]})
@@ -140,7 +141,7 @@ def qformer_original_checkpoint_to_diffusers_checkpoint(model):
     qformer_checkpoint.update(embeddings_from_original_checkpoint(model, "embeddings", "blip.Qformer.bert.embeddings"))
     qformer_checkpoint.update({"query_tokens": model["blip.query_tokens"]})
     qformer_checkpoint.update(proj_layer_from_original_checkpoint(model, "proj_layer", "proj_layer"))
-    qformer_checkpoint.update(encoder_from_original_checkpoint(model, "encoder", "blip.Qformer.bert.encoder"))
+    qformer_checkpoint.update(encoder_from_original_checkpoint(model, "encoder.layer", "blip.Qformer.bert.encoder.layer"))
     qformer_checkpoint.update(visual_encoder_from_original_checkpoint(model, "visual_encoder", "blip.visual_encoder"))
     return qformer_checkpoint
 
@@ -151,20 +152,18 @@ def get_qformer(model):
     qformer = qformer_model_from_original_config()
     qformer_diffusers_checkpoint = qformer_original_checkpoint_to_diffusers_checkpoint(model)
 
-    load_checkpoint_to_model(qformer_diffusers_checkpoint, qformer, strict=True)
+    load_checkpoint_to_model(qformer_diffusers_checkpoint, qformer)
 
     print("done loading qformer")
     return qformer
 
 
-def load_checkpoint_to_model(checkpoint, model, strict=False):
+def load_checkpoint_to_model(checkpoint, model):
     with tempfile.NamedTemporaryFile(delete=False) as file:
         torch.save(checkpoint, file.name)
         del checkpoint
-        if strict:
-            model.load_state_dict(torch.load(file.name), strict=True)
-        else:
-            load_checkpoint_and_dispatch(model, file.name, device_map="auto")
+        model.load_state_dict(torch.load(file.name), strict=False)
+
     os.remove(file.name)
 
 
@@ -193,10 +192,11 @@ def save_blip_diffusion_model(model, args):
         skip_prk_steps=True,
     )
     tokenizer = CLIPTokenizer.from_pretrained(
-        "./runwayml/stable-diffusion-v1-5/", subfolder="tokenizer"
+        "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
     )
     blipDiffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
     blipDiffusion.save_pretrained(args.checkpoint_path)
+
 
 
 def main(args):
