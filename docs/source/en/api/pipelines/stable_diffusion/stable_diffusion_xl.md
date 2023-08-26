@@ -75,7 +75,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt=prompt).images[0]
 ```
 
-You can additionally pass "negative conditions" to steer the generation process like so:
+You can additionally pass negative conditions about an image's size and position to avoid undesirable cropping behavior in the generated image, and improve image resolution. Let's take an example:
 
 ```python
 from diffusers import StableDiffusionXLPipeline
