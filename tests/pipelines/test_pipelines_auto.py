@@ -18,12 +18,17 @@ import unittest
 from collections import OrderedDict
 
 import torch
+import uuid
+import tempfile
+
+from huggingface_hub import delete_repo
 
 from diffusers import (
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
+    DiffusionPipeline
 )
 from diffusers.pipelines.auto_pipeline import (
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
@@ -31,6 +36,7 @@ from diffusers.pipelines.auto_pipeline import (
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
 )
 from diffusers.utils import slow
+from ..others.test_utils import TOKEN
 
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
@@ -81,6 +87,26 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         assert dict(pipe.config) == original_config
 
+    def test_kwargs_local_files_only(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        identifier = uuid.uuid4()
+        repo_id = f"YiYiXu/test-pipeline-{identifier}"
+        pipe.push_to_hub(repo_id)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipe = DiffusionPipeline.from_pretrained(repo_id, cache_dir=tmp_dir)
+            local_cache_config = dict(pipe.config)
+            
+            # create a discrepency between local cache and repo 
+            pipe.text_encoder = None
+            pipe.push_to_hub(repo_id)
+
+            pipe = AutoPipelineForText2Image.from_pretrained(repo_id, cache_dir=tmp_dir, local_files_only=True)
+        
+        assert dict(pipe.config) == local_cache_config
+        delete_repo(repo_id)
 
 @slow
 class AutoPipelineIntegrationTest(unittest.TestCase):
