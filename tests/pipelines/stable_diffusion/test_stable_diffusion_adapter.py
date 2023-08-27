@@ -405,10 +405,6 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
     def test_save_load_local(self):
-        super().test_save_load_local()
-
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components()
 
 
 @slow
