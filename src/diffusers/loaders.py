@@ -1084,7 +1084,7 @@ class LoraLoaderMixin:
             # Map SDXL blocks correctly.
             if unet_config is not None:
                 # use unet config to remap block numbers
-                state_dict = cls._map_sgm_blocks_to_diffusers(state_dict, unet_config)
+                state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
@@ -1102,11 +1102,17 @@ class LoraLoaderMixin:
         else:
             files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
             targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
-
         if len(targeted_files) == 0:
             return
 
-        targeted_files = list(filter(lambda x: "scheduler" not in x and "optimizer" not in x, targeted_files))
+        # "scheduler" does not correspond to a LoRA checkpoint.
+        # "optimizer" does not correspond to a LoRA checkpoint
+        # only top-level checkpoints are considered and not the other ones, hence "checkpoint".
+        unallowed_substrings = {"scheduler", "optimizer", "checkpoint"}
+        targeted_files = list(
+            filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
+        )
+
         if len(targeted_files) > 1:
             raise ValueError(
                 f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
@@ -1115,24 +1121,41 @@ class LoraLoaderMixin:
         return weight_name
 
     @classmethod
-    def _map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
-        is_all_unet = all(k.startswith("lora_unet") for k in state_dict)
+    def _maybe_map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
+        # 1. get all state_dict_keys
+        all_keys = state_dict.keys()
+        sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
+
+        # 2. check if needs remapping, if not return original dict
+        is_in_sgm_format = False
+        for key in all_keys:
+            if any(p in key for p in sgm_patterns):
+                is_in_sgm_format = True
+                break
+
+        if not is_in_sgm_format:
+            return state_dict
+
+        # 3. Else remap from SGM patterns
         new_state_dict = {}
         inner_block_map = ["resnets", "attentions", "upsamplers"]
 
         # Retrieves # of down, mid and up blocks
         input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
-        for layer in state_dict:
-            if "text" not in layer:
+
+        for layer in all_keys:
+            if "text" in layer:
+                new_state_dict[layer] = state_dict.pop(layer)
+            else:
                 layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
-                if "input_blocks" in layer:
+                if sgm_patterns[0] in layer:
                     input_block_ids.add(layer_id)
-                elif "middle_block" in layer:
+                elif sgm_patterns[1] in layer:
                     middle_block_ids.add(layer_id)
-                elif "output_blocks" in layer:
+                elif sgm_patterns[2] in layer:
                     output_block_ids.add(layer_id)
                 else:
-                    raise ValueError("Checkpoint not supported")
+                    raise ValueError(f"Checkpoint not supported because layer {layer} not supported.")
 
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
@@ -1195,12 +1218,8 @@ class LoraLoaderMixin:
                 )
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        if is_all_unet and len(state_dict) > 0:
+        if len(state_dict) > 0:
             raise ValueError("At this point all state dict entries have to be converted.")
-        else:
-            # Remaining is the text encoder state dict.
-            for k, v in state_dict.items():
-                new_state_dict.update({k: v})
 
         return new_state_dict
 
