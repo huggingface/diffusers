@@ -404,8 +404,6 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
-    def test_save_load_local(self):
-
 
 @slow
 @require_torch_gpu
