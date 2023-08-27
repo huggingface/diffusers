@@ -1976,7 +1976,7 @@ from diffusers import Diffusionpipeline
 # make sure you're logged in with `huggingface-cli login`
 model_id_or_path = "runwayml/stable-diffusion-v1-5"
 #can also be used with dreamlike-art/dreamlike-photoreal-2.0
-pipe = FabricPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
 
 # let's specify a prompt
 prompt = "An astronaut riding an elephant"
