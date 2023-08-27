@@ -133,6 +133,9 @@ else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
+        AudioLDM2Pipeline,
+        AudioLDM2ProjectionModel,
+        AudioLDM2UNet2DConditionModel,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,
@@ -160,6 +163,7 @@ else:
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
+        MusicLDMPipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
