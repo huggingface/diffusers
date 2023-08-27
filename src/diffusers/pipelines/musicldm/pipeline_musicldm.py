@@ -17,26 +17,35 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
+from transformers import (
+    ClapFeatureExtractor,
+    ClapModel,
+    ClapTextModelWithProjection,
+    RobertaTokenizer,
+    RobertaTokenizerFast,
+    SpeechT5HifiGan,
+)
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, randn_tensor, replace_example_docstring
+from ...utils import is_librosa_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
+
+if is_librosa_available():
+    import librosa
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import AudioLDMPipeline
+        >>> from diffusers import MusicLDMPipeline
         >>> import torch
         >>> import scipy
 
         >>> repo_id = "cvssp/audioldm-s-full-v2"
-        >>> pipe = AudioLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = MusicLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
@@ -48,9 +57,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class AudioLDMPipeline(DiffusionPipeline):
+class MusicLDMPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-audio generation using AudioLDM.
+    Pipeline for text-to-audio generation using MusicLDM.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -58,11 +67,13 @@ class AudioLDMPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
-            Frozen text-encoder (`ClapTextModelWithProjection`, specifically the
+        text_encoder ([`~transformers.ClapModel`]):
+            Frozen text-audio embedding model (`ClapTextModel`), specifically the
             [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
         tokenizer ([`PreTrainedTokenizer`]):
             A [`~transformers.RobertaTokenizer`] to tokenize text.
+        feature_extractor ([`~transformers.ClapFeatureExtractor`]):
+            Feature extractor to compute mel-spectrograms from audio waveforms.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
@@ -75,8 +86,9 @@ class AudioLDMPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: ClapTextModelWithProjection,
+        text_encoder: Union[ClapTextModelWithProjection, ClapModel],
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
+        feature_extractor: Optional[ClapFeatureExtractor],
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
@@ -87,6 +99,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            feature_extractor=feature_extractor,
             unet=unet,
             scheduler=scheduler,
             vocoder=vocoder,
@@ -173,15 +186,12 @@ class AudioLDMPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            prompt_embeds = self.text_encoder(
+            prompt_embeds = self.text_encoder.get_text_features(
                 text_input_ids.to(device),
                 attention_mask=attention_mask.to(device),
             )
-            prompt_embeds = prompt_embeds.text_embeds
-            # additional L_2 normalization over each hidden-state
-            prompt_embeds = F.normalize(prompt_embeds, dim=-1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.text_model.dtype, device=device)
 
         (
             bs_embed,
@@ -224,19 +234,16 @@ class AudioLDMPipeline(DiffusionPipeline):
             uncond_input_ids = uncond_input.input_ids.to(device)
             attention_mask = uncond_input.attention_mask.to(device)
 
-            negative_prompt_embeds = self.text_encoder(
+            negative_prompt_embeds = self.text_encoder.get_text_features(
                 uncond_input_ids,
                 attention_mask=attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds.text_embeds
-            # additional L_2 normalization over each hidden-state
-            negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.text_model.dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len)
@@ -248,11 +255,7 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        mel_spectrogram = self.vae.decode(latents).sample
-        return mel_spectrogram
-
+    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
@@ -261,6 +264,31 @@ class AudioLDMPipeline(DiffusionPipeline):
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
         return waveform
+
+    # Copied from diffusers.pipelines.audioldm2.pipeline_audioldm2.AudioLDM2Pipeline.score_waveforms
+    def score_waveforms(self, text, audio, num_waveforms_per_prompt, device, dtype):
+        if not is_librosa_available():
+            logger.info(
+                "Automatic scoring of the generated audio waveforms against the input prompt text requires the "
+                "`librosa` package to resample the generated waveforms. Returning the audios in the order they were "
+                "generated. To enable automatic scoring, install `librosa` with: `pip install librosa`."
+            )
+            return audio
+        inputs = self.tokenizer(text, return_tensors="pt", padding=True)
+        resampled_audio = librosa.resample(
+            audio.numpy(), orig_sr=self.vocoder.config.sampling_rate, target_sr=self.feature_extractor.sampling_rate
+        )
+        inputs["input_features"] = self.feature_extractor(
+            list(resampled_audio), return_tensors="pt", sampling_rate=self.feature_extractor.sampling_rate
+        ).input_features.type(dtype)
+        inputs = inputs.to(device)
+
+        # compute the audio-text similarity score using the CLAP model
+        logits_per_text = self.text_encoder(**inputs).logits_per_text
+        # sort by the highest matching generations per prompt
+        indices = torch.argsort(logits_per_text, dim=1, descending=True)[:, :num_waveforms_per_prompt]
+        audio = torch.index_select(audio, 0, indices.reshape(-1).cpu())
+        return audio
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -280,6 +308,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -338,7 +367,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
+    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, dtype, device, generator, latents=None):
         shape = (
             batch_size,
@@ -367,8 +396,8 @@ class AudioLDMPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         audio_length_in_s: Optional[float] = None,
-        num_inference_steps: int = 10,
-        guidance_scale: float = 2.5,
+        num_inference_steps: int = 200,
+        guidance_scale: float = 2.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -388,19 +417,23 @@ class AudioLDMPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
-            audio_length_in_s (`int`, *optional*, defaults to 5.12):
+            audio_length_in_s (`int`, *optional*, defaults to 10.24):
                 The length of the generated audio sample in seconds.
-            num_inference_steps (`int`, *optional*, defaults to 10):
+            num_inference_steps (`int`, *optional*, defaults to 200):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 2.5):
+            guidance_scale (`float`, *optional*, defaults to 2.0):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
-                The number of waveforms to generate per prompt.
+                The number of waveforms to generate per prompt. If `num_waveforms_per_prompt > 1`, the text encoding
+                model is a joint text-audio model ([`~transformers.ClapModel`]), and the tokenizer is a
+                `[~transformers.ClapProcessor]`, then automatic scoring will be performed between the generated outputs
+                and the input text. This scoring ranks the generated waveforms based on their cosine similarity to text
+                input in the joint text-audio embedding space.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -429,8 +462,9 @@ class AudioLDMPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated image. Choose between `"np"` to return a NumPy `np.ndarray` or
-                `"pt"` to return a PyTorch `torch.Tensor` object.
+                The output format of the generated audio. Choose between `"np"` to return a NumPy `np.ndarray` or
+                `"pt"` to return a PyTorch `torch.Tensor` object. Set to `"latent"` to return the latent diffusion
+                model (LDM) output.
 
         Examples:
 
@@ -526,7 +560,8 @@ class AudioLDMPipeline(DiffusionPipeline):
                     encoder_hidden_states=None,
                     class_labels=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -543,11 +578,25 @@ class AudioLDMPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Post-processing
-        mel_spectrogram = self.decode_latents(latents)
+        if not output_type == "latent":
+            latents = 1 / self.vae.config.scaling_factor * latents
+            mel_spectrogram = self.vae.decode(latents).sample
+        else:
+            return AudioPipelineOutput(audios=latents)
 
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
 
         audio = audio[:, :original_waveform_length]
+
+        # 9. Automatic scoring
+        if num_waveforms_per_prompt > 1 and prompt is not None:
+            audio = self.score_waveforms(
+                text=prompt,
+                audio=audio,
+                num_waveforms_per_prompt=num_waveforms_per_prompt,
+                device=device,
+                dtype=prompt_embeds.dtype,
+            )
 
         if output_type == "np":
             audio = audio.numpy()
