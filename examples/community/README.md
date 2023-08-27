@@ -2013,6 +2013,8 @@ image = pipe(
 image.save("black_to_blue.png")
 ```
 
+*With enough feedbacks you can create very similar high quality images.*
+
 The original codebase can be found at [sd-fabric/fabric](https://github.com/sd-fabric/fabric), and available checkpoints are [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0), [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), and [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (may give unexpected results).
 
 Let's have a look at the images (*512X512*)

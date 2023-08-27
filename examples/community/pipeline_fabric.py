@@ -14,7 +14,6 @@
 from typing import List, Optional, Union
 
 import torch
-from diffusion.pipelines.pipeline_utils import DiffusionPipeline
 from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -25,6 +24,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import (
