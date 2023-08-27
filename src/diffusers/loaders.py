@@ -1123,12 +1123,12 @@ class LoraLoaderMixin:
     @classmethod
     def _maybe_map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
         # 1. get all state_dict_keys
-        all_keys = state_dict.keys()
+        all_keys = list(state_dict.keys())
         sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
 
         # 2. check if needs remapping, if not return original dict
         is_in_sgm_format = False
-        for key in list(all_keys):
+        for key in all_keys:
             if any(p in key for p in sgm_patterns):
                 is_in_sgm_format = True
                 break
@@ -1143,7 +1143,7 @@ class LoraLoaderMixin:
         # Retrieves # of down, mid and up blocks
         input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
 
-        for layer in list(all_keys):
+        for layer in all_keys:
             if "text" in layer:
                 new_state_dict[layer] = state_dict.pop(layer)
             else:
