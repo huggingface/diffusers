@@ -161,13 +161,13 @@ MultiDiffusion은 사전 학습된 diffusion model을 통해 새로운 생성 �
 
 사전 학습된 모델 외에도 Diffusers는 사용자가 제공한 데이터에 대해 모델을 파인튜닝할 수 있는 학습 스크립트가 있습니다.
 
-### DreamBooth
+## DreamBooth
 
 [DreamBooth](../training/dreambooth)는 모델을 파인튜닝하여 새로운 주제에 대해 가르칩니다. 즉, 한 사람의 사진 몇 장을 사용하여 다양한 스타일로 그 사람의 이미지를 생성할 수 있습니다.
 
 사용 방법에 대한 자세한 내용은 [여기](../training/dreambooth)를 참조하세요.
 
-### Textual Inversion
+## Textual Inversion
 
 [Textual Inversion](../training/text_inversion)은 모델을 파인튜닝하여 새로운 개념에 대해 학습시킵니다. 즉, 특정 스타일의 아트웍 사진 몇 장을 사용하여 해당 스타일의 이미지를 생성할 수 있습니다.
 
@@ -190,7 +190,7 @@ MultiDiffusion은 사전 학습된 diffusion model을 통해 새로운 생성 �
 
 자세한 설명과 예시는 [여기](../using-diffusers/weighted_prompts)를 참조하세요.
 
-# Custom Diffusion
+## Custom Diffusion
 
 [Custom Diffusion](../training/custom_diffusion)은 사전 학습된 text-to-image 간 확산 모델의 교차 관심도 맵만 미세 조정합니다. 
 또한 textual inversion을 추가로 수행할 수 있습니다. 설계상 다중 개념 훈련을 지원합니다. 
@@ -223,4 +223,4 @@ DreamBooth 및 Textual Inversion 마찬가지로, 사용자 지정 확산은 사
 [T2I-어댑터](../api/pipelines/stable_diffusion/adapter)는 추가적인 조건을 추가하는 auxiliary 네트워크입니다.
 가장자리 감지, 스케치, depth maps, semantic segmentations와 같은 다양한 조건에 대해 훈련된 8개의 표준 사전훈련된 adapter가 있습니다, 
 
-[공식 문서](../training/custom_diffusion)서 사용 방법에 대한 정보를 참조하세요.
+[공식 문서](api/pipelines/stable_diffusion/adapter)에서 사용 방법에 대한 정보를 참조하세요.

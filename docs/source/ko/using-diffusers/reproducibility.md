@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # 재현 가능한 파이프라인 생성하기
 
+[[open-in-colab]]
+
 재현성은 테스트, 결과 재현, 그리고 [이미지 퀄리티 높이기](resuing_seeds)에서 중요합니다.
 그러나 diffusion 모델의 무작위성은 매번 모델이 돌아갈 때마다 파이프라인이 다른 이미지를 생성할 수 있도록 하는 이유로 필요합니다.
 플랫폼 간에 정확하게 동일한 결과를 얻을 수는 없지만, 특정 허용 범위 내에서 릴리스 및 플랫폼 간에 결과를 재현할 수는 있습니다.

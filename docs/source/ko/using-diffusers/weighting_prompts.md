@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # 프롬프트에 가중치 부여하기
 
-[[colab에서 열기]]
+[[open-in-colab]]
 
 텍스트 가이드 기반의 diffusion 모델은 주어진 텍스트 프롬프트를 기반으로 이미지를 생성합니다.
 텍스트 프롬프트에는 모델이 생성해야 하는 여러 개념이 포함될 수 있으며 프롬프트의 특정 부분에 가중치를 부여하는 것이 바람직한 경우가 많습니다.
