@@ -14,21 +14,20 @@
 # limitations under the License.
 
 import gc
+import os
+import shutil
 import unittest
 from collections import OrderedDict
+from pathlib import Path
 
 import torch
-import uuid
-import tempfile
-
-from huggingface_hub import delete_repo
 
 from diffusers import (
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
-    DiffusionPipeline
+    DiffusionPipeline,
 )
 from diffusers.pipelines.auto_pipeline import (
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
@@ -36,7 +35,6 @@ from diffusers.pipelines.auto_pipeline import (
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
 )
 from diffusers.utils import slow
-from ..others.test_utils import TOKEN
 
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
@@ -88,25 +86,28 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert dict(pipe.config) == original_config
 
     def test_kwargs_local_files_only(self):
-        pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        repo = "hf-internal-testing/tiny-stable-diffusion-torch"
+        tmpdirname = DiffusionPipeline.download(repo)
+        tmpdirname = Path(tmpdirname)
 
-        identifier = uuid.uuid4()
-        repo_id = f"YiYiXu/test-pipeline-{identifier}"
-        pipe.push_to_hub(repo_id)
+        # edit commit_id to so that it's not the latest commit
+        commit_id = tmpdirname.name
+        new_commit_id = commit_id + "hug"
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            pipe = DiffusionPipeline.from_pretrained(repo_id, cache_dir=tmp_dir)
-            local_cache_config = dict(pipe.config)
-            
-            # create a discrepency between local cache and repo 
-            pipe.text_encoder = None
-            pipe.push_to_hub(repo_id)
+        ref_dir = tmpdirname.parent.parent / "refs/main"
+        with open(ref_dir, "w") as f:
+            f.write(new_commit_id)
 
-            pipe = AutoPipelineForText2Image.from_pretrained(repo_id, cache_dir=tmp_dir, local_files_only=True)
-        
-        assert dict(pipe.config) == local_cache_config
-        delete_repo(repo_id)
+        new_tmpdirname = tmpdirname.parent / new_commit_id
+        os.rename(tmpdirname, new_tmpdirname)
+
+        try:
+            AutoPipelineForText2Image.from_pretrained(repo, local_files_only=True)
+        except OSError:
+            assert False, "not able to load local files"
+
+        shutil.rmtree(tmpdirname.parent.parent)
+
 
 @slow
 class AutoPipelineIntegrationTest(unittest.TestCase):
