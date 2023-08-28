@@ -35,4 +35,5 @@ else:
     from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
     from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
     from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
+    from .pipeline_stable_diffusion_xl_controlnet_inpaint import StableDiffusionXLControlNetInpaintPipeline
     from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
