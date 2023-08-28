@@ -16,10 +16,10 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
+from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 from .modeling_wuerstchen_prior import WuerstchenPrior
 from .pipeline_wuerstchen import WuerstchenDecoderPipeline
@@ -56,7 +56,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             The generator model to be used for decoder image generation pipeline.
         scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
-        vqgan (:class:`~diffusions.models.VQModelPaella`):
+        vqgan (:class:`~diffusions.pipelines.wuerstchen.modeling_paella_vq_model.PaellaVQModel`):
             The VQGAN model to be used for decoder image generation pipeline.
         prior_tokenizer (:class:`~transformers.CLIPTokenizer`):
             The prior tokenizer to be used for text inputs.
@@ -76,7 +76,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         generator: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
-        vqgan: VQModelPaella,
+        vqgan: PaellaVQModel,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
         prior_prior: WuerstchenPrior,

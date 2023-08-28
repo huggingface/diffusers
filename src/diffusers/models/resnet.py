@@ -674,36 +674,6 @@ class Conv1dBlock(nn.Module):
         return output
 
 
-class MixingResidualBlock(nn.Module):
-    """
-    Residual block with mixing used by Paella's VQ-VAE.
-    """
-
-    def __init__(self, inp_channels, embed_dim):
-        super().__init__()
-        # depthwise
-        self.norm1 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
-        self.depthwise = nn.Sequential(
-            nn.ReplicationPad2d(1), nn.Conv2d(inp_channels, inp_channels, kernel_size=3, groups=inp_channels)
-        )
-
-        # channelwise
-        self.norm2 = nn.LayerNorm(inp_channels, elementwise_affine=False, eps=1e-6)
-        self.channelwise = nn.Sequential(
-            nn.Linear(inp_channels, embed_dim), nn.GELU(), nn.Linear(embed_dim, inp_channels)
-        )
-
-        self.gammas = nn.Parameter(torch.zeros(6), requires_grad=True)
-
-    def forward(self, x):
-        mods = self.gammas
-        x_temp = self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * (1 + mods[0]) + mods[1]
-        x = x + self.depthwise(x_temp) * mods[2]
-        x_temp = self.norm2(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * (1 + mods[3]) + mods[4]
-        x = x + self.channelwise(x_temp.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) * mods[5]
-        return x
-
-
 # unet_rl.py
 class ResidualTemporalBlock1D(nn.Module):
     def __init__(self, inp_channels, out_channels, embed_dim, kernel_size=5):

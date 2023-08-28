@@ -18,10 +18,10 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import VQModelPaella
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 
 
@@ -61,7 +61,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             The CLIP text encoder.
         generator ([`WuerstchenDiffNeXt`]):
             The WuerstchenDiffNeXt unet generator.
-        vqgan ([`VQModelPaella`]):
+        vqgan ([`PaellaVQModel`]):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
@@ -75,7 +75,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         generator: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
-        vqgan: VQModelPaella,
+        vqgan: PaellaVQModel,
         latent_dim_scale: float = 10.67,
     ) -> None:
         super().__init__()
@@ -294,6 +294,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
+        # scale and decode the image latents with vq-vae
+        latents = self.vqgan.config.scaling_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 
         if output_type not in ["pt", "np", "pil"]:

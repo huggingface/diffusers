@@ -7,12 +7,11 @@ from vqgan import VQModel
 
 from diffusers import (
     DDPMWuerstchenScheduler,
-    VQModelPaella,
     WuerstchenDecoderPipeline,
     WuerstchenPipeline,
     WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import WuerstchenDiffNeXt, WuerstchenPrior
+from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
 
 
 model_path = "models/"
@@ -24,7 +23,7 @@ paella_vqmodel.load_state_dict(state_dict)
 
 state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
 state_dict.pop("vquantizer.codebook.weight")
-vqmodel = VQModelPaella(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
+vqmodel = PaellaVQModel(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
 vqmodel.load_state_dict(state_dict)
 
 # Clip Text encoder and tokenizer

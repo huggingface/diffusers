@@ -51,7 +51,6 @@ else:
         UNet2DModel,
         UNet3DConditionModel,
         VQModel,
-        VQModelPaella,
     )
     from .optimization import (
         get_constant_schedule,
