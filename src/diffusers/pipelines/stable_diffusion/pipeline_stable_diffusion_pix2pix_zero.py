@@ -29,7 +29,7 @@ from transformers import (
     CLIPTokenizer,
 )
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
@@ -981,6 +981,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         prompt_embeds_edit[1:2] += edit_direction
 
         # 10. Second denoising loop to generate the edited image.
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+
         latents = latents_init
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1063,14 +1066,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def invert(
         self,
         prompt: Optional[str] = None,
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        image: PipelineImageInput = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,

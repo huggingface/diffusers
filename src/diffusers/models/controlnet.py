@@ -723,7 +723,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        if "addition_embed_type" in self.config:
+        if self.config.addition_embed_type is not None:
             if self.config.addition_embed_type == "text":
                 aug_emb = self.add_embedding(encoder_hidden_states)
 
