@@ -408,7 +408,7 @@ class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
 
-        with self.progress_bar(total=num_inference_steps):
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -440,6 +440,7 @@ class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
+                progress_bar.update()
         # Hardcode 0.18215 because stable-diffusion-2-base has not self.vae.config.scaling_factor
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
