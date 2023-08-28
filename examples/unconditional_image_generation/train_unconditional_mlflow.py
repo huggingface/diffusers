@@ -536,10 +536,7 @@ def main(args):
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {max_train_steps}")
-    assert (max_train_steps * args.gradient_accumulation_steps // args.logging_steps) >= 5, \
-        """At least 5 logging points should be available for mlflow logging.
-        \nChange one of parameter in the below formular to get the required of logging points.
-        \nNumber of logging points = (len(dataset) * num_epochs) / train_batch_size / logging_steps"""
+
     global_step = 0
     first_epoch = 0
 
@@ -581,8 +578,6 @@ def main(args):
     # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
     mlflow.start_run()
-
-    mlflow.log_params({'task': 'unconditional_gen_image', 'model': args.model_config_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
 
     start_time = time.time()
     throughput_list = []
@@ -650,7 +645,7 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            if (step+1) % args.logging_steps == 0:
+            if (step) % args.logging_steps == 0:
                 logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
                 
                 interval_elapsed_time = time.time() - interval_start_time
@@ -666,7 +661,7 @@ def main(args):
                     logs["ema_decay"] = ema_model.cur_decay_value
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
-            print(throughput_list)
+            
             if len(throughput_list) == 5:
                 avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
                 epoch_time = len(dataset) / avg_throughput
@@ -674,6 +669,13 @@ def main(args):
                 mlflow.log_metric('epoch_time', epoch_time)   
 
             if global_step >= max_train_steps:
+                if len(throughput_list) < 5:
+                    avg_throughput = sum(throughput_list) / len(throughput_list)
+                elif len(throughput_list) > 5:
+                    avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
+                epoch_time = len(dataset) / avg_throughput
+                mlflow.log_metric('avg_throughput', avg_throughput)
+                mlflow.log_metric('epoch_time', epoch_time)
                 # elapsed_time = time.time() - start_time
                 # one_epoch_time = elapsed_time/ args.num_epochs
                 # throughput = (max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
