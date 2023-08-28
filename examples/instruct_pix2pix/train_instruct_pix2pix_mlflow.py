@@ -44,6 +44,7 @@ from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
@@ -754,6 +755,7 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    
     global_step = 0
     first_epoch = 0
 
@@ -799,6 +801,7 @@ def main():
 
     mlflow.start_run()
     start_time = time.time()
+    throughput_list = []
     for epoch in range(first_epoch, args.num_train_epochs):
         interval_start_time = time.time()
         unet.train()
@@ -898,27 +901,39 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            if (step+1) % args.logging_steps == 0:
+            if (step) % args.logging_steps == 0:
                 logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}                    
                 
                 interval_elapsed_time = time.time() - interval_start_time
                 interval_start_time = time.time()
                 interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
-                                    
+                throughput_list.append(interval_throughput)
+
                 mlflow.log_metric('loss', loss.detach().item(), step=global_step)
                 mlflow.log_metric('throughput', interval_throughput, step=global_step)
                 mlflow.log_metric('lr', args.learning_rate, step=global_step)
                 
                 progress_bar.set_postfix(**logs)
+            if len(throughput_list) == 5:
+                avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
+                epoch_time = len(train_dataset) / avg_throughput
+                mlflow.log_metric('avg_throughput', avg_throughput)
+                mlflow.log_metric('epoch_time', epoch_time)
 
             if global_step >= args.max_train_steps:
-                elapsed_time = (time.time() - start_time) 
-                one_epoch_time = elapsed_time/ (args.max_train_steps / num_update_steps_per_epoch)
-                throughput = (args.max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
+                if len(throughput_list) < 5:
+                    avg_throughput = sum(throughput_list) / len(throughput_list)
+                elif len(throughput_list) > 5:
+                    avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
+                epoch_time = len(train_dataset) / avg_throughput
+                mlflow.log_metric('avg_throughput', avg_throughput)
+                mlflow.log_metric('epoch_time', epoch_time)
+                # elapsed_time = (time.time() - start_time) 
+                # one_epoch_time = elapsed_time/ (args.max_train_steps / num_update_steps_per_epoch)
+                # throughput = (args.max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
 
-                mlflow.log_metric('avg_throughput', throughput)
-                mlflow.log_metric('one_epoch_time', one_epoch_time)
-                mlflow.log_params({'task': 'instruct_pix2pix', 'model': args.pretrained_model_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
+                # mlflow.log_metric('avg_throughput', throughput)
+                # mlflow.log_metric('one_epoch_time', one_epoch_time)
                 break
 
         if accelerator.is_main_process:

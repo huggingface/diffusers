@@ -30,6 +30,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.17.0.dev0")
@@ -577,7 +578,9 @@ def main(args):
     # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
     mlflow.start_run()
+
     start_time = time.time()
+    throughput_list = []
     for epoch in range(first_epoch, args.num_epochs):
         interval_start_time = time.time()
         model.train()
@@ -642,13 +645,14 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            if (step+1) % args.logging_steps == 0:
+            if (step) % args.logging_steps == 0:
                 logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
                 
                 interval_elapsed_time = time.time() - interval_start_time
                 interval_start_time = time.time()
                 interval_throughput = (args.logging_steps*args.train_batch_size) / interval_elapsed_time                  
-                                    
+                throughput_list.append(interval_throughput)
+                  
                 mlflow.log_metric('loss', loss.detach().item(), step=global_step)
                 mlflow.log_metric('throughput', interval_throughput, step=global_step)
                 mlflow.log_metric('lr', args.learning_rate, step=global_step)
@@ -657,15 +661,27 @@ def main(args):
                     logs["ema_decay"] = ema_model.cur_decay_value
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
+            
+            if len(throughput_list) == 5:
+                avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
+                epoch_time = len(dataset) / avg_throughput
+                mlflow.log_metric('avg_throughput', avg_throughput)
+                mlflow.log_metric('epoch_time', epoch_time)   
 
             if global_step >= max_train_steps:
-                elapsed_time = time.time() - start_time
-                one_epoch_time = elapsed_time/ args.num_epochs
-                throughput = (max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
+                if len(throughput_list) < 5:
+                    avg_throughput = sum(throughput_list) / len(throughput_list)
+                elif len(throughput_list) > 5:
+                    avg_throughput = sum(throughput_list[1:-1]) / (len(throughput_list) - 2)
+                epoch_time = len(dataset) / avg_throughput
+                mlflow.log_metric('avg_throughput', avg_throughput)
+                mlflow.log_metric('epoch_time', epoch_time)
+                # elapsed_time = time.time() - start_time
+                # one_epoch_time = elapsed_time/ args.num_epochs
+                # throughput = (max_train_steps * args.train_batch_size * args.gradient_accumulation_steps) / elapsed_time
 
-                mlflow.log_metric('avg_throughput', throughput)
-                mlflow.log_metric('one_epoch_time', one_epoch_time)
-                mlflow.log_params({'task': 'unconditional_gen_image', 'model': args.model_config_name_or_path ,'batch_size': args.train_batch_size, 'logging_interval':args.logging_steps})
+                # mlflow.log_metric('avg_throughput', throughput)
+                # mlflow.log_metric('one_epoch_time', one_epoch_time)
                 break
 
         progress_bar.close()
