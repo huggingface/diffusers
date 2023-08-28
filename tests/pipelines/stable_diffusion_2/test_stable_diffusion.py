@@ -33,21 +33,23 @@ from diffusers import (
     logging,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
-class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusion2PipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -208,6 +210,27 @@ class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_unflawed(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = DDIMScheduler.from_config(
+            components["scheduler"].config, timestep_spacing="trailing"
+        )
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guidance_rescale"] = 0.7
+        inputs["num_inference_steps"] = 10
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4736, 0.5405, 0.4705, 0.4955, 0.5675, 0.4812, 0.5310, 0.4967, 0.5064])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
@@ -321,6 +344,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -336,6 +360,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         # disable slicing
         pipe.disable_attention_slicing()
+        pipe.unet.set_default_attn_processor()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image = pipe(**inputs).images
 

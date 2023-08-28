@@ -21,13 +21,20 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LDMTextToImagePipeline, UNet2DConditionModel
-from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -44,7 +51,6 @@ class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "callback_steps",
     }
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

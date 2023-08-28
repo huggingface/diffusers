@@ -17,6 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from .activations import get_activation
 from .resnet import Downsample1D, ResidualTemporalBlock1D, Upsample1D, rearrange_dims
 
 
@@ -55,14 +56,10 @@ class DownResnetBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-        else:
+        if non_linearity is None:
             self.nonlinearity = None
+        else:
+            self.nonlinearity = get_activation(non_linearity)
 
         self.downsample = None
         if add_downsample:
@@ -119,14 +116,10 @@ class UpResnetBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-        else:
+        if non_linearity is None:
             self.nonlinearity = None
+        else:
+            self.nonlinearity = get_activation(non_linearity)
 
         self.upsample = None
         if add_upsample:
@@ -194,14 +187,10 @@ class MidResTemporalBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-        else:
+        if non_linearity is None:
             self.nonlinearity = None
+        else:
+            self.nonlinearity = get_activation(non_linearity)
 
         self.upsample = None
         if add_upsample:
@@ -232,10 +221,7 @@ class OutConv1DBlock(nn.Module):
         super().__init__()
         self.final_conv1d_1 = nn.Conv1d(embed_dim, embed_dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(num_groups_out, embed_dim)
-        if act_fn == "silu":
-            self.final_conv1d_act = nn.SiLU()
-        if act_fn == "mish":
-            self.final_conv1d_act = nn.Mish()
+        self.final_conv1d_act = get_activation(act_fn)
         self.final_conv1d_2 = nn.Conv1d(embed_dim, out_channels, 1)
 
     def forward(self, hidden_states, temb=None):
@@ -249,12 +235,12 @@ class OutConv1DBlock(nn.Module):
 
 
 class OutValueFunctionBlock(nn.Module):
-    def __init__(self, fc_dim, embed_dim):
+    def __init__(self, fc_dim, embed_dim, act_fn="mish"):
         super().__init__()
         self.final_block = nn.ModuleList(
             [
                 nn.Linear(fc_dim + embed_dim, fc_dim // 2),
-                nn.Mish(),
+                get_activation(act_fn),
                 nn.Linear(fc_dim // 2, 1),
             ]
         )
@@ -666,5 +652,5 @@ def get_out_block(*, out_block_type, num_groups_out, embed_dim, out_channels, ac
     if out_block_type == "OutConv1DBlock":
         return OutConv1DBlock(num_groups_out, out_channels, embed_dim, act_fn)
     elif out_block_type == "ValueFunction":
-        return OutValueFunctionBlock(fc_dim, embed_dim)
+        return OutValueFunctionBlock(fc_dim, embed_dim, act_fn)
     return None

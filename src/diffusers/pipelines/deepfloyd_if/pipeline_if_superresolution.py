@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
+from ...loaders import LoraLoaderMixin
 from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -70,7 +71,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class IFSuperResolutionPipeline(DiffusionPipeline):
+class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -135,31 +136,6 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models = [
-            self.text_encoder,
-            self.unet,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -357,25 +333,6 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
         caption = re.sub(r"^\.\S+$", "", caption)
 
         return caption.strip()
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     @torch.no_grad()
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
@@ -664,7 +621,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
-            image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+            image = [np.array(i).astype(np.float32) / 127.5 - 1.0 for i in image]
 
             image = np.stack(image, axis=0)  # to np
             image = torch.from_numpy(image.transpose(0, 3, 1, 2))
@@ -773,7 +730,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             noise_level (`int`, *optional*, defaults to 250):
                 The amount of noise to add to the upscaled image. Must be in the range `[0, 1000)`
             clean_caption (`bool`, *optional*, defaults to `True`):
@@ -902,6 +859,9 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
                     noise_pred_text, predicted_variance = noise_pred_text.split(model_input.shape[1] // 2, dim=1)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
+
+                if self.scheduler.config.variance_type not in ["learned", "learned_range"]:
+                    noise_pred, _ = noise_pred.split(intermediate_images.shape[1], dim=1)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(

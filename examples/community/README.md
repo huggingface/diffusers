@@ -35,6 +35,13 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | EDICT Image Editing Pipeline                                                                                                          | Diffusion pipeline for text-guided image editing                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline)                             | - |                    [Joqsan Azocar](https://github.com/Joqsan) | 
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.0986) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )                                    | - |                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) | 
 | TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
+| CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
+| TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
+|   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
+|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
+Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
+
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -1320,3 +1327,631 @@ prompt = "photorealistic new zealand hills"
 image = pipe(prompt, image=input_image, strength=0.75,).images[0]
 image.save('tensorrt_img2img_new_zealand_hills.png')
 ```
+
+### Stable Diffusion Reference
+
+This pipeline uses the Reference Control. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
+
+Based on [this issue](https://github.com/huggingface/diffusers/issues/3566),
+- `EulerAncestralDiscreteScheduler` got poor results.
+
+```py
+import torch
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+pipe = StableDiffusionReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image of `reference_attn=True` and `reference_adain=False`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/813b5c6a-6d89-46ba-b7a4-2624e240eea5)
+
+Output Image of `reference_attn=False` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/ffc90339-9ef0-4c4d-a544-135c3e5644da)
+
+Output Image of `reference_attn=True` and `reference_adain=True`
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/3c5255d6-867d-4d35-b202-8dfd30cc6827)
+
+### Stable Diffusion ControlNet Reference
+
+This pipeline uses the Reference Control with ControlNet. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
+
+Based on [this issue](https://github.com/huggingface/diffusers/issues/3566),
+- `EulerAncestralDiscreteScheduler` got poor results.
+- `guess_mode=True` works well for ControlNet v1.1
+
+```py
+import cv2
+import torch
+import numpy as np
+from PIL import Image
+from diffusers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# get canny image
+image = cv2.Canny(np.array(input_image), 100, 200)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image)
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
+       "runwayml/stable-diffusion-v1-5",
+       controlnet=controlnet,
+       safety_checker=None,
+       torch_dtype=torch.float16
+       ).to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      image=canny_image,
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image
+
+![output_image](https://github.com/huggingface/diffusers/assets/24734142/7b9a5830-f173-4b92-b0cf-73d0e9c01d60)
+
+
+### Stable Diffusion on IPEX
+
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+**Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
+```python
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
+# For Float32
+pipe.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+# For BFloat16 
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+```
+
+Then you can use the ipex pipeline in a similar way to the default stable diffusion pipeline.
+```python
+# For Float32
+image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+# For BFloat16 
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    image = pipe(prompt, num_inference_steps=20, height=512, width=512).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+```
+
+The following code compares the performance of the original stable diffusion pipeline with the ipex-optimized pipeline.
+
+```python
+import torch
+import intel_extension_for_pytorch as ipex
+from diffusers import StableDiffusionPipeline
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "runwayml/stable-diffusion-v1-5"
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe.prepare_for_ipex(prompt, dtype=torch.bfloat16, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe2 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe)
+    print("Latency of StableDiffusionIPEXPipeline--bf16", latency)
+    latency = elapsed_time(pipe2)
+    print("Latency of StableDiffusionPipeline--bf16",latency)
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe3.prepare_for_ipex(prompt, dtype=torch.float32, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3)
+print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
+latency = elapsed_time(pipe4)
+print("Latency of StableDiffusionPipeline--fp32",latency)
+
+```
+  
+### CLIP Guided Images Mixing With Stable Diffusion
+
+![clip_guided_images_mixing_examples](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/main.png)
+
+CLIP guided stable diffusion images mixing pipline allows to combine two images using standard diffusion models.  
+This approach is using (optional) CoCa model to avoid writing image description.  
+[More code examples](https://github.com/TheDenk/images_mixing)
+
+
+### Stable Diffusion XL Long Weighted Prompt Pipeline
+
+This SDXL pipeline support unlimted length prompt and negative prompt, compatible with A1111 prompt weighted style. 
+
+You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0"
+    , torch_dtype       = torch.float16
+    , use_safetensors   = True
+    , variant           = "fp16"
+    , custom_pipeline   = "lpw_stable_diffusion_xl",
+)
+
+prompt = "photo of a cute (white) cat running on the grass"*20
+prompt2 = "chasing (birds:1.5)"*20
+prompt = f"{prompt},{prompt2}"
+neg_prompt = "blur, low quality, carton, animate"
+
+pipe.to("cuda")
+images = pipe(
+    prompt                  = prompt 
+    , negative_prompt       = neg_prompt 
+).images[0]
+
+pipe.to("cpu")
+torch.cuda.empty_cache()
+images
+```
+
+In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result. 
+![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
+## Example Images Mixing (with CoCa)
+```python
+import requests
+from io import BytesIO
+
+import PIL
+import torch
+import open_clip
+from open_clip import SimpleTokenizer
+from diffusers import DiffusionPipeline
+from transformers import CLIPFeatureExtractor, CLIPModel
+
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+# Loading additional models
+feature_extractor = CLIPFeatureExtractor.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+)
+clip_model = CLIPModel.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
+)
+coca_model = open_clip.create_model('coca_ViT-L-14', pretrained='laion2B-s13B-b90k').to('cuda')
+coca_model.dtype = torch.float16
+coca_transform = open_clip.image_transform(
+    coca_model.visual.image_size,
+    is_train = False,
+    mean = getattr(coca_model.visual, 'image_mean', None),
+    std = getattr(coca_model.visual, 'image_std', None),
+)
+coca_tokenizer = SimpleTokenizer()
+
+# Pipline creating
+mixing_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="clip_guided_images_mixing_stable_diffusion",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    coca_model=coca_model,
+    coca_tokenizer=coca_tokenizer,
+    coca_transform=coca_transform,
+    torch_dtype=torch.float16,
+)
+mixing_pipeline.enable_attention_slicing()
+mixing_pipeline = mixing_pipeline.to("cuda")
+
+# Pipline running
+generator = torch.Generator(device="cuda").manual_seed(17) 
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+content_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir.jpg")
+style_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/gigachad.jpg")
+
+pipe_images = mixing_pipeline(
+    num_inference_steps=50,
+    content_image=content_image,
+    style_image=style_image,
+    noise_strength=0.65,
+    slerp_latent_style_strength=0.9,
+    slerp_prompt_style_strength=0.1,
+    slerp_clip_image_style_strength=0.1,
+    guidance_scale=9.0,
+    batch_size=1,
+    clip_guidance_scale=100,
+    generator=generator,
+).images
+```
+
+![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
+
+### Stable Diffusion Mixture Tiling
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+    
+```python
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
+
+# Creater scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler, custom_pipeline="mixture_tiling")
+pipeline.to("cuda")
+
+# Mixture of Diffusers generation
+image = pipeline(
+    prompt=[[
+        "A charming house in the countryside, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        "A dirt road in the countryside crossing pastures, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        "An old and rusty giant robot lying on a dirt road, by jakub rozalski, dark sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece"
+    ]],
+    tile_height=640,
+    tile_width=640,
+    tile_row_overlap=0,
+    tile_col_overlap=256,
+    guidance_scale=8,
+    seed=7178915308,
+    num_inference_steps=50,
+)["images"][0]
+```
+![mixture_tiling_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/mixture_tiling.png)
+
+### TensorRT Inpainting Stable Diffusion Pipeline
+
+The TensorRT Pipeline can be used to accelerate the Inpainting Stable Diffusion Inference run.
+
+NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
+
+```python
+import requests
+from io import BytesIO
+from PIL import Image
+import torch
+from diffusers import PNDMScheduler
+from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
+
+# Use the PNDMScheduler scheduler here instead
+scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
+
+
+pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+    custom_pipeline="stable_diffusion_tensorrt_inpaint",
+    revision='fp16',
+    torch_dtype=torch.float16,
+    scheduler=scheduler,
+    )
+
+# re-use cached folder to save ONNX models and TensorRT Engines
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-inpainting", revision='fp16',)
+
+pipe = pipe.to("cuda")
+
+url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+response = requests.get(url)
+input_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+response = requests.get(mask_url)
+mask_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+prompt = "a mecha robot sitting on a bench"
+image = pipe(prompt, image=input_image, mask_image=mask_image, strength=0.75,).images[0]
+image.save('tensorrt_inpaint_mecha_robot.png')
+```
+
+### Stable Diffusion Mixture Canvas
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+    
+```python
+from PIL import Image
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import Image2ImageRegion, Text2ImageRegion, preprocess_image
+
+
+# Load and preprocess guide image
+iic_image = preprocess_image(Image.open("input_image.png").convert("RGB"))
+
+# Creater scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler).to("cuda:0", custom_pipeline="mixture_canvas")
+pipeline.to("cuda")
+
+# Mixture of Diffusers generation
+output = pipeline(
+    canvas_height=800,
+    canvas_width=352,
+    regions=[
+        Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
+            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
+        Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
+    ],
+    num_inference_steps=100,
+    seed=5525475061,
+)["images"][0]
+```
+![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
+![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)
+
+
+### IADB pipeline
+
+This pipeline is the implementation of the [α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486) paper.
+It is a simple and minimalist diffusion model.
+
+The following code shows how to use the IADB pipeline to generate images using a pretrained celebahq-256 model.
+
+```python
+
+pipeline_iadb = DiffusionPipeline.from_pretrained("thomasc4/iadb-celebahq-256", custom_pipeline='iadb')
+
+pipeline_iadb = pipeline_iadb.to('cuda')
+
+output = pipeline_iadb(batch_size=4,num_inference_steps=128)
+for i in range(len(output[0])):
+    plt.imshow(output[0][i])
+    plt.show()
+
+```
+
+Sampling with the IADB formulation is easy, and can be done in a few lines (the pipeline already implements it):
+
+```python
+
+def sample_iadb(model, x0, nb_step):
+    x_alpha = x0
+    for t in range(nb_step):
+        alpha = (t/nb_step)
+        alpha_next =((t+1)/nb_step)
+
+        d = model(x_alpha, torch.tensor(alpha, device=x_alpha.device))['sample']
+        x_alpha = x_alpha + (alpha_next-alpha)*d
+
+    return x_alpha
+
+```
+
+The training loop is also straightforward:
+
+```python
+
+# Training loop
+while True:
+    x0 = sample_noise()
+    x1 = sample_dataset()
+
+    alpha = torch.rand(batch_size)
+
+    # Blend
+    x_alpha = (1-alpha) * x0 + alpha * x1
+
+    # Loss
+    loss = torch.sum((D(x_alpha, alpha)- (x1-x0))**2)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+```
+
+### Zero1to3 pipeline
+
+This pipeline is the implementation of the [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328) paper.
+The original pytorch-lightning [repo](https://github.com/cvlab-columbia/zero123) and a diffusers [repo](https://github.com/kxhit/zero123-hf).
+
+The following code shows how to use the Zero1to3 pipeline to generate novel view synthesis images using a pretrained stable diffusion model.
+
+```python
+import os
+import torch
+from pipeline_zero1to3 import Zero1to3StableDiffusionPipeline
+from diffusers.utils import load_image
+
+model_id = "kxic/zero123-165000" # zero123-105000, zero123-165000, zero123-xl
+
+pipe = Zero1to3StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+
+pipe.enable_xformers_memory_efficient_attention()
+pipe.enable_vae_tiling()
+pipe.enable_attention_slicing()
+pipe = pipe.to("cuda")
+
+num_images_per_prompt = 4
+
+# test inference pipeline
+# x y z, Polar angle (vertical rotation in degrees) 	Azimuth angle (horizontal rotation in degrees) 	Zoom (relative distance from center)
+query_pose1 = [-75.0, 100.0, 0.0]
+query_pose2 = [-20.0, 125.0, 0.0]
+query_pose3 = [-55.0, 90.0, 0.0]
+
+# load image
+# H, W = (256, 256) # H, W = (512, 512)   # zero123 training is 256,256
+
+# for batch input
+input_image1 = load_image("./demo/4_blackarm.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/4_blackarm.png")
+input_image2 = load_image("./demo/8_motor.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/8_motor.png")
+input_image3 = load_image("./demo/7_london.png") #load_image("https://cvlab-zero123-live.hf.space/file=/home/user/app/configs/7_london.png")
+input_images = [input_image1, input_image2, input_image3]
+query_poses = [query_pose1, query_pose2, query_pose3]
+
+# # for single input
+# H, W = (256, 256)
+# input_images = [input_image2.resize((H, W), PIL.Image.NEAREST)]
+# query_poses = [query_pose2]
+
+
+# better do preprocessing
+from gradio_new import preprocess_image, create_carvekit_interface
+import numpy as np
+import PIL.Image as Image
+
+pre_images = []
+models = dict()
+print('Instantiating Carvekit HiInterface...')
+models['carvekit'] = create_carvekit_interface()
+if not isinstance(input_images, list):
+    input_images = [input_images]
+for raw_im in input_images:
+    input_im = preprocess_image(models, raw_im, True)
+    H, W = input_im.shape[:2]
+    pre_images.append(Image.fromarray((input_im * 255.0).astype(np.uint8)))
+input_images = pre_images
+
+# infer pipeline, in original zero123 num_inference_steps=76
+images = pipe(input_imgs=input_images, prompt_imgs=input_images, poses=query_poses, height=H, width=W,
+              guidance_scale=3.0, num_images_per_prompt=num_images_per_prompt, num_inference_steps=50).images
+
+
+# save imgs
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+bs = len(input_images)
+i = 0
+for obj in range(bs):
+    for idx in range(num_images_per_prompt):
+        images[i].save(os.path.join(log_dir,f"obj{obj}_{idx}.jpg"))
+        i += 1
+
+```
+
+### Stable Diffusion XL Reference
+
+This pipeline uses the Reference . Refer to the [stable_diffusion_reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference).
+
+
+```py
+import torch
+from PIL import Image
+from diffusers.utils import load_image
+from diffusers import DiffusionPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# pipe = DiffusionPipeline.from_pretrained(
+#     "stabilityai/stable-diffusion-xl-base-1.0",
+#     custom_pipeline="stable_diffusion_xl_reference",
+#     torch_dtype=torch.float16,
+#     use_safetensors=True,
+#     variant="fp16").to('cuda:0')
+
+pipe = StableDiffusionXLReferencePipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16").to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image   
+
+`prompt: 1 girl`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
+
+
+Output Image 
+
+`prompt: A dog`
+
+`reference_attn=True, reference_adain=False, num_inference_steps=20`
+![Output_image](https://github.com/huggingface/diffusers/assets/34944964/fff2f16f-6e91-434b-abcc-5259d866c31e)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/077ed4fe-2991-4b79-99a1-009f056227d1)
+
+Output Image
+
+`prompt: An astronaut riding a lion`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![output_image](https://github.com/huggingface/diffusers/assets/34944964/9b2f1aca-886f-49c3-89ec-d2031c8e3670)

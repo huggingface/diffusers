@@ -21,10 +21,12 @@ import logging
 import math
 import os
 import random
+import shutil
 import warnings
 from pathlib import Path
 
 import numpy as np
+import safetensors
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -56,7 +58,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -295,14 +297,19 @@ class CustomDiffusionDataset(Dataset):
         return example
 
 
-def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir):
+def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir, safe_serialization=True):
     """Saves the new token embeddings from the text encoder."""
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight
     for x, y in zip(modifier_token_id, args.modifier_token):
         learned_embeds_dict = {}
         learned_embeds_dict[y] = learned_embeds[x]
-        torch.save(learned_embeds_dict, f"{output_dir}/{y}.bin")
+        filename = f"{output_dir}/{y}.bin"
+
+        if safe_serialization:
+            safetensors.torch.save_file(learned_embeds_dict, filename, metadata={"format": "pt"})
+        else:
+            torch.save(learned_embeds_dict, filename)
 
 
 def parse_args(input_args=None):
@@ -446,11 +453,7 @@ def parse_args(input_args=None):
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=(
-            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
-            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
-        ),
+        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -608,6 +611,11 @@ def parse_args(input_args=None):
         action="store_true",
         help="Dont apply augmentation during data augmentation when this flag is enabled.",
     )
+    parser.add_argument(
+        "--no_safe_serialization",
+        action="store_true",
+        help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -637,13 +645,12 @@ def parse_args(input_args=None):
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -1011,8 +1018,8 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
     # Prepare everything with our `accelerator`.
@@ -1170,6 +1177,26 @@ def main(args):
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
@@ -1182,6 +1209,8 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
+            images = []
+
             if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -1194,6 +1223,7 @@ def main(args):
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     tokenizer=tokenizer,
                     revision=args.revision,
+                    torch_dtype=weight_dtype,
                 )
                 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)
@@ -1227,8 +1257,15 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        unet.save_attn_procs(args.output_dir)
-        save_new_embed(text_encoder, modifier_token_id, accelerator, args, args.output_dir)
+        unet.save_attn_procs(args.output_dir, safe_serialization=not args.no_safe_serialization)
+        save_new_embed(
+            text_encoder,
+            modifier_token_id,
+            accelerator,
+            args,
+            args.output_dir,
+            safe_serialization=not args.no_safe_serialization,
+        )
 
         # Final inference
         # Load previous pipeline
@@ -1239,9 +1276,15 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.unet.load_attn_procs(args.output_dir, weight_name="pytorch_custom_diffusion_weights.bin")
+        weight_name = (
+            "pytorch_custom_diffusion_weights.safetensors"
+            if not args.no_safe_serialization
+            else "pytorch_custom_diffusion_weights.bin"
+        )
+        pipeline.unet.load_attn_procs(args.output_dir, weight_name=weight_name)
         for token in args.modifier_token:
-            pipeline.load_textual_inversion(args.output_dir, weight_name=f"{token}.bin")
+            token_weight_name = f"{token}.safetensors" if not args.no_safe_serialization else f"{token}.bin"
+            pipeline.load_textual_inversion(args.output_dir, weight_name=token_weight_name)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:

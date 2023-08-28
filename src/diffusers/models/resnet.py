@@ -20,7 +20,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .activations import get_activation
 from .attention import AdaGroupNorm
+from .attention_processor import SpatialNorm
+from .lora import LoRACompatibleConv, LoRACompatibleLinear
 
 
 class Upsample1D(nn.Module):
@@ -51,17 +54,17 @@ class Upsample1D(nn.Module):
         elif use_conv:
             self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
 
-    def forward(self, x):
-        assert x.shape[1] == self.channels
+    def forward(self, inputs):
+        assert inputs.shape[1] == self.channels
         if self.use_conv_transpose:
-            return self.conv(x)
+            return self.conv(inputs)
 
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        outputs = F.interpolate(inputs, scale_factor=2.0, mode="nearest")
 
         if self.use_conv:
-            x = self.conv(x)
+            outputs = self.conv(outputs)
 
-        return x
+        return outputs
 
 
 class Downsample1D(nn.Module):
@@ -93,9 +96,9 @@ class Downsample1D(nn.Module):
             assert self.channels == self.out_channels
             self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
 
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        return self.conv(x)
+    def forward(self, inputs):
+        assert inputs.shape[1] == self.channels
+        return self.conv(inputs)
 
 
 class Upsample2D(nn.Module):
@@ -124,7 +127,7 @@ class Upsample2D(nn.Module):
         if use_conv_transpose:
             conv = nn.ConvTranspose2d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
+            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, padding=1)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -194,7 +197,7 @@ class Downsample2D(nn.Module):
         self.name = name
 
         if use_conv:
-            conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
@@ -429,12 +432,13 @@ class KDownsample2D(nn.Module):
         self.pad = kernel_1d.shape[1] // 2 - 1
         self.register_buffer("kernel", kernel_1d.T @ kernel_1d, persistent=False)
 
-    def forward(self, x):
-        x = F.pad(x, (self.pad,) * 4, self.pad_mode)
-        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
-        indices = torch.arange(x.shape[1], device=x.device)
-        weight[indices, indices] = self.kernel.to(weight)
-        return F.conv2d(x, weight, stride=2)
+    def forward(self, inputs):
+        inputs = F.pad(inputs, (self.pad,) * 4, self.pad_mode)
+        weight = inputs.new_zeros([inputs.shape[1], inputs.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        indices = torch.arange(inputs.shape[1], device=inputs.device)
+        kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
+        weight[indices, indices] = kernel
+        return F.conv2d(inputs, weight, stride=2)
 
 
 class KUpsample2D(nn.Module):
@@ -445,12 +449,13 @@ class KUpsample2D(nn.Module):
         self.pad = kernel_1d.shape[1] // 2 - 1
         self.register_buffer("kernel", kernel_1d.T @ kernel_1d, persistent=False)
 
-    def forward(self, x):
-        x = F.pad(x, ((self.pad + 1) // 2,) * 4, self.pad_mode)
-        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
-        indices = torch.arange(x.shape[1], device=x.device)
-        weight[indices, indices] = self.kernel.to(weight)
-        return F.conv_transpose2d(x, weight, stride=2, padding=self.pad * 2 + 1)
+    def forward(self, inputs):
+        inputs = F.pad(inputs, ((self.pad + 1) // 2,) * 4, self.pad_mode)
+        weight = inputs.new_zeros([inputs.shape[1], inputs.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        indices = torch.arange(inputs.shape[1], device=inputs.device)
+        kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
+        weight[indices, indices] = kernel
+        return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
 
 
 class ResnetBlock2D(nn.Module):
@@ -498,7 +503,7 @@ class ResnetBlock2D(nn.Module):
         eps=1e-6,
         non_linearity="swish",
         skip_time_act=False,
-        time_embedding_norm="default",  # default, scale_shift, ada_group
+        time_embedding_norm="default",  # default, scale_shift, ada_group, spatial
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
@@ -525,17 +530,19 @@ class ResnetBlock2D(nn.Module):
 
         if self.time_embedding_norm == "ada_group":
             self.norm1 = AdaGroupNorm(temb_channels, in_channels, groups, eps=eps)
+        elif self.time_embedding_norm == "spatial":
+            self.norm1 = SpatialNorm(in_channels, temb_channels)
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = LoRACompatibleConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+                self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
-            elif self.time_embedding_norm == "ada_group":
+                self.time_emb_proj = LoRACompatibleLinear(temb_channels, 2 * out_channels)
+            elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
                 self.time_emb_proj = None
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
@@ -544,21 +551,16 @@ class ResnetBlock2D(nn.Module):
 
         if self.time_embedding_norm == "ada_group":
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
+        elif self.time_embedding_norm == "spatial":
+            self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
             self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = torch.nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = LoRACompatibleConv(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-        elif non_linearity == "gelu":
-            self.nonlinearity = nn.GELU()
+        self.nonlinearity = get_activation(non_linearity)
 
         self.upsample = self.downsample = None
         if self.up:
@@ -582,14 +584,14 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = torch.nn.Conv2d(
+            self.conv_shortcut = LoRACompatibleConv(
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
     def forward(self, input_tensor, temb):
         hidden_states = input_tensor
 
-        if self.time_embedding_norm == "ada_group":
+        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
@@ -617,7 +619,7 @@ class ResnetBlock2D(nn.Module):
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
 
-        if self.time_embedding_norm == "ada_group":
+        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)
@@ -637,11 +639,6 @@ class ResnetBlock2D(nn.Module):
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
         return output_tensor
-
-
-class Mish(torch.nn.Module):
-    def forward(self, hidden_states):
-        return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
 
 # unet_rl.py
@@ -668,13 +665,13 @@ class Conv1dBlock(nn.Module):
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
         self.mish = nn.Mish()
 
-    def forward(self, x):
-        x = self.conv1d(x)
-        x = rearrange_dims(x)
-        x = self.group_norm(x)
-        x = rearrange_dims(x)
-        x = self.mish(x)
-        return x
+    def forward(self, inputs):
+        intermediate_repr = self.conv1d(inputs)
+        intermediate_repr = rearrange_dims(intermediate_repr)
+        intermediate_repr = self.group_norm(intermediate_repr)
+        intermediate_repr = rearrange_dims(intermediate_repr)
+        output = self.mish(intermediate_repr)
+        return output
 
 
 # unet_rl.py
@@ -691,10 +688,10 @@ class ResidualTemporalBlock1D(nn.Module):
             nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
         )
 
-    def forward(self, x, t):
+    def forward(self, inputs, t):
         """
         Args:
-            x : [ batch_size x inp_channels x horizon ]
+            inputs : [ batch_size x inp_channels x horizon ]
             t : [ batch_size x embed_dim ]
 
         returns:
@@ -702,9 +699,9 @@ class ResidualTemporalBlock1D(nn.Module):
         """
         t = self.time_emb_act(t)
         t = self.time_emb(t)
-        out = self.conv_in(x) + rearrange_dims(t)
+        out = self.conv_in(inputs) + rearrange_dims(t)
         out = self.conv_out(out)
-        return out + self.residual_conv(x)
+        return out + self.residual_conv(inputs)
 
 
 def upsample_2d(hidden_states, kernel=None, factor=2, gain=1):

@@ -1,11 +1,15 @@
 import inspect
+import io
 import logging
+import multiprocessing
 import os
 import random
 import re
+import struct
 import tempfile
 import unittest
 import urllib.parse
+from contextlib import contextmanager
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -15,6 +19,7 @@ import numpy as np
 import PIL.Image
 import PIL.ImageOps
 import requests
+from numpy.linalg import norm
 from packaging import version
 
 from .import_utils import (
@@ -40,13 +45,13 @@ if is_torch_available():
 
     if "DIFFUSERS_TEST_DEVICE" in os.environ:
         torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
-
-        available_backends = ["cuda", "cpu", "mps"]
-        if torch_device not in available_backends:
-            raise ValueError(
-                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
-                f" {available_backends}"
-            )
+        try:
+            # try creating device to see if provided device is valid
+            _ = torch.device(torch_device)
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Unknown testing device specified by environment variable `DIFFUSERS_TEST_DEVICE`: {torch_device}"
+            ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -66,6 +71,13 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def numpy_cosine_similarity_distance(a, b):
+    similarity = np.dot(a, b) / (norm(a) * norm(b))
+    distance = 1.0 - similarity.mean()
+
+    return distance
 
 
 def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
@@ -260,12 +272,14 @@ def load_pt(url: str):
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
-    Args:
     Loads `image` to a PIL Image.
+
+    Args:
         image (`str` or `PIL.Image.Image`):
             The image to convert to the PIL Image format.
     Returns:
-        `PIL.Image.Image`: A PIL Image.
+        `PIL.Image.Image`:
+            A PIL Image.
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
@@ -295,6 +309,100 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
+
+
+def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+    if output_gif_path is None:
+        output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
+
+    image[0].save(
+        output_gif_path,
+        save_all=True,
+        append_images=image[1:],
+        optimize=False,
+        duration=100,
+        loop=0,
+    )
+    return output_gif_path
+
+
+@contextmanager
+def buffered_writer(raw_f):
+    f = io.BufferedWriter(raw_f)
+    yield f
+    f.flush()
+
+
+def export_to_ply(mesh, output_ply_path: str = None):
+    """
+    Write a PLY file for a mesh.
+    """
+    if output_ply_path is None:
+        output_ply_path = tempfile.NamedTemporaryFile(suffix=".ply").name
+
+    coords = mesh.verts.detach().cpu().numpy()
+    faces = mesh.faces.cpu().numpy()
+    rgb = np.stack([mesh.vertex_channels[x].detach().cpu().numpy() for x in "RGB"], axis=1)
+
+    with buffered_writer(open(output_ply_path, "wb")) as f:
+        f.write(b"ply\n")
+        f.write(b"format binary_little_endian 1.0\n")
+        f.write(bytes(f"element vertex {len(coords)}\n", "ascii"))
+        f.write(b"property float x\n")
+        f.write(b"property float y\n")
+        f.write(b"property float z\n")
+        if rgb is not None:
+            f.write(b"property uchar red\n")
+            f.write(b"property uchar green\n")
+            f.write(b"property uchar blue\n")
+        if faces is not None:
+            f.write(bytes(f"element face {len(faces)}\n", "ascii"))
+            f.write(b"property list uchar int vertex_index\n")
+        f.write(b"end_header\n")
+
+        if rgb is not None:
+            rgb = (rgb * 255.499).round().astype(int)
+            vertices = [
+                (*coord, *rgb)
+                for coord, rgb in zip(
+                    coords.tolist(),
+                    rgb.tolist(),
+                )
+            ]
+            format = struct.Struct("<3f3B")
+            for item in vertices:
+                f.write(format.pack(*item))
+        else:
+            format = struct.Struct("<3f")
+            for vertex in coords.tolist():
+                f.write(format.pack(*vertex))
+
+        if faces is not None:
+            format = struct.Struct("<B3I")
+            for tri in faces.tolist():
+                f.write(format.pack(len(tri), *tri))
+
+    return output_ply_path
+
+
+def export_to_obj(mesh, output_obj_path: str = None):
+    if output_obj_path is None:
+        output_obj_path = tempfile.NamedTemporaryFile(suffix=".obj").name
+
+    verts = mesh.verts.detach().cpu().numpy()
+    faces = mesh.faces.cpu().numpy()
+
+    vertex_colors = np.stack([mesh.vertex_channels[x].detach().cpu().numpy() for x in "RGB"], axis=1)
+    vertices = [
+        "{} {} {} {} {} {}".format(*coord, *color) for coord, color in zip(verts.tolist(), vertex_colors.tolist())
+    ]
+
+    faces = ["f {} {} {}".format(str(tri[0] + 1), str(tri[1] + 1), str(tri[2] + 1)) for tri in faces.tolist()]
+
+    combined_data = ["v " + vertex for vertex in vertices] + faces
+
+    with open(output_obj_path, "w") as f:
+        f.writelines("\n".join(combined_data))
 
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
@@ -477,6 +585,50 @@ def pytest_terminal_summary_main(tr, id):
     config.option.tbstyle = orig_tbstyle
 
 
+# Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers/testing_utils.py#L1787
+def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+    """
+    To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
+
+    Args:
+        test_case (`unittest.TestCase`):
+            The test that will run `target_func`.
+        target_func (`Callable`):
+            The function implementing the actual testing logic.
+        inputs (`dict`, *optional*, defaults to `None`):
+            The inputs that will be passed to `target_func` through an (input) queue.
+        timeout (`int`, *optional*, defaults to `None`):
+            The timeout (in seconds) that will be passed to the input and output queues. If not specified, the env.
+            variable `PYTEST_TIMEOUT` will be checked. If still `None`, its value will be set to `600`.
+    """
+    if timeout is None:
+        timeout = int(os.environ.get("PYTEST_TIMEOUT", 600))
+
+    start_methohd = "spawn"
+    ctx = multiprocessing.get_context(start_methohd)
+
+    input_queue = ctx.Queue(1)
+    output_queue = ctx.JoinableQueue(1)
+
+    # We can't send `unittest.TestCase` to the child, otherwise we get issues regarding pickle.
+    input_queue.put(inputs, timeout=timeout)
+
+    process = ctx.Process(target=target_func, args=(input_queue, output_queue, timeout))
+    process.start()
+    # Kill the child process if we can't get outputs from it in time: otherwise, the hanging subprocess prevents
+    # the test to exit properly.
+    try:
+        results = output_queue.get(timeout=timeout)
+        output_queue.task_done()
+    except Exception as e:
+        process.terminate()
+        test_case.fail(e)
+    process.join(timeout=timeout)
+
+    if results["error"] is not None:
+        test_case.fail(f'{results["error"]}')
+
+
 class CaptureLogger:
     """
     Args:
@@ -514,3 +666,27 @@ class CaptureLogger:
 
     def __repr__(self):
         return f"captured: {self.out}\n"
+
+
+def enable_full_determinism():
+    """
+    Helper function for reproducible behavior during distributed training. See
+    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
+    """
+    #  Enable PyTorch deterministic mode. This potentially requires either the environment
+    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
+    # depending on the CUDA version, so we set them both here
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+    # Enable CUDNN deterministic mode
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def disable_full_determinism():
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
+    torch.use_deterministic_algorithms(False)

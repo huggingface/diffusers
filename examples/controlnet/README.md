@@ -274,9 +274,9 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-# remove following line if xformers is not installed
+# remove following line if xformers is not installed or when using Torch 2.0.
 pipe.enable_xformers_memory_efficient_attention()
-
+# memory optimization.
 pipe.enable_model_cpu_offload()
 
 control_image = load_image("./conditioning_image_1.png")
@@ -285,9 +285,8 @@ prompt = "pale golden rod circle with old lace background"
 # generate image
 generator = torch.manual_seed(0)
 image = pipe(
-     prompt, num_inference_steps=20, generator=generator, image=control_image
+    prompt, num_inference_steps=20, generator=generator, image=control_image
 ).images[0]
-
 image.save("./output.png")
 ```
 
@@ -460,3 +459,7 @@ The profile can then be inspected at http://localhost:6006/#profile
 Sometimes you'll get version conflicts (error messages like `Duplicate plugins for name projector`), which means that you have to uninstall and reinstall all versions of Tensorflow/Tensorboard (e.g. with `pip uninstall tensorflow tf-nightly tensorboard tb-nightly tensorboard-plugin-profile && pip install tf-nightly tbp-nightly tensorboard-plugin-profile`).
 
 Note that the debugging functionality of the Tensorboard `profile` plugin is still under active development. Not all views are fully functional, and for example the `trace_viewer` cuts off events after 1M (which can result in all your device traces getting lost if you for example profile the compilation step by accident).
+
+## Support for Stable Diffusion XL
+
+We provide a training script for training a ControlNet with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to [README_sdxl.md](./README_sdxl.md) for more details.

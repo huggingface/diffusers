@@ -14,13 +14,16 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import copy
 import gc
 import hashlib
+import importlib
 import itertools
 import logging
 import math
 import os
 import time
+import shutil
 import warnings
 from pathlib import Path
 
@@ -35,6 +38,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, model_info, upload_folder
 from packaging import version
 from PIL import Image
+from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -45,7 +49,7 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DiffusionPipeline,
-    DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
@@ -57,12 +61,20 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.17.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
+def save_model_card(
+    repo_id: str,
+    images=None,
+    base_model=str,
+    train_text_encoder=False,
+    prompt=str,
+    repo_folder=None,
+    pipeline: DiffusionPipeline = None,
+):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -74,8 +86,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- stable-diffusion
-- stable-diffusion-diffusers
+- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
+- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
 - text-to-image
 - diffusers
 - dreambooth
@@ -96,7 +108,16 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
 
 
 def log_validation(
-    text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch, prompt_embeds, negative_prompt_embeds
+    text_encoder,
+    tokenizer,
+    unet,
+    vae,
+    args,
+    accelerator,
+    weight_dtype,
+    global_step,
+    prompt_embeds,
+    negative_prompt_embeds,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -105,16 +126,17 @@ def log_validation(
 
     pipeline_args = {}
 
-    if text_encoder is not None:
-        pipeline_args["text_encoder"] = accelerator.unwrap_model(text_encoder)
-
     if vae is not None:
         pipeline_args["vae"] = vae
+
+    if text_encoder is not None:
+        text_encoder = accelerator.unwrap_model(text_encoder)
 
     # create pipeline (note: unet and vae are loaded again in float32)
     pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         tokenizer=tokenizer,
+        text_encoder=text_encoder,
         unet=accelerator.unwrap_model(unet),
         revision=args.revision,
         torch_dtype=weight_dtype,
@@ -132,7 +154,9 @@ def log_validation(
 
         scheduler_args["variance_type"] = variance_type
 
-    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+    module = importlib.import_module("diffusers")
+    scheduler_class = getattr(module, args.validation_scheduler)
+    pipeline.scheduler = scheduler_class.from_config(pipeline.scheduler.config, **scheduler_args)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -147,15 +171,21 @@ def log_validation(
     # run inference
     generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
     images = []
-    for _ in range(args.num_validation_images):
-        with torch.autocast("cuda"):
-            image = pipeline(**pipeline_args, num_inference_steps=25, generator=generator).images[0]
-        images.append(image)
+    if args.validation_images is None:
+        for _ in range(args.num_validation_images):
+            with torch.autocast("cuda"):
+                image = pipeline(**pipeline_args, num_inference_steps=25, generator=generator).images[0]
+            images.append(image)
+    else:
+        for image in args.validation_images:
+            image = Image.open(image)
+            image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+            images.append(image)
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images("validation", np_images, global_step, dataformats="NHWC")
         if tracker.name == "wandb":
             tracker.log(
                 {
@@ -522,6 +552,26 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--skip_save_text_encoder", action="store_true", required=False, help="Set to not save text encoder"
     )
+    parser.add_argument(
+        "--validation_images",
+        required=False,
+        default=None,
+        nargs="+",
+        help="Optional set of images to use for validation. Used when the target pipeline takes an initial image as input such as when training image variation or superresolution.",
+    )
+    parser.add_argument(
+        "--class_labels_conditioning",
+        required=False,
+        default=None,
+        help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
+    )
+    parser.add_argument(
+        "--validation_scheduler",
+        type=str,
+        default="DPMSolverMultistepScheduler",
+        choices=["DPMSolverMultistepScheduler", "DDPMScheduler"],
+        help="Select which scheduler to use for validation. DDPMScheduler is recommended for DeepFloyd IF.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -567,14 +617,14 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         encoder_hidden_states=None,
-        instance_prompt_encoder_hidden_states=None,
+        class_prompt_encoder_hidden_states=None,
         tokenizer_max_length=None,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.encoder_hidden_states = encoder_hidden_states
-        self.instance_prompt_encoder_hidden_states = instance_prompt_encoder_hidden_states
+        self.class_prompt_encoder_hidden_states = class_prompt_encoder_hidden_states
         self.tokenizer_max_length = tokenizer_max_length
 
         self.instance_data_root = Path(instance_data_root)
@@ -614,6 +664,8 @@ class DreamBoothDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = exif_transpose(instance_image)
+
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -629,12 +681,14 @@ class DreamBoothDataset(Dataset):
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = exif_transpose(class_image)
+
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
 
-            if self.instance_prompt_encoder_hidden_states is not None:
-                example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
+            if self.class_prompt_encoder_hidden_states is not None:
+                example["class_prompt_ids"] = self.class_prompt_encoder_hidden_states
             else:
                 class_text_inputs = tokenize_prompt(
                     self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
@@ -674,6 +728,7 @@ def collate_fn(examples, with_prior_preservation=False):
     }
 
     if has_attention_mask:
+        attention_mask = torch.cat(attention_mask, dim=0)
         batch["attention_mask"] = attention_mask
 
     return batch
@@ -743,13 +798,12 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
 
@@ -998,10 +1052,10 @@ def main(args):
         else:
             validation_prompt_encoder_hidden_states = None
 
-        if args.instance_prompt is not None:
-            pre_computed_instance_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        if args.class_prompt is not None:
+            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.class_prompt)
         else:
-            pre_computed_instance_prompt_encoder_hidden_states = None
+            pre_computed_class_prompt_encoder_hidden_states = None
 
         text_encoder = None
         tokenizer = None
@@ -1012,7 +1066,7 @@ def main(args):
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
         validation_prompt_negative_prompt_embeds = None
-        pre_computed_instance_prompt_encoder_hidden_states = None
+        pre_computed_class_prompt_encoder_hidden_states = None
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -1025,7 +1079,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         encoder_hidden_states=pre_computed_encoder_hidden_states,
-        instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+        class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
         tokenizer_max_length=args.tokenizer_max_length,
     )
 
@@ -1047,8 +1101,8 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1063,8 +1117,8 @@ def main(args):
             unet, optimizer, train_dataloader, lr_scheduler
         )
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
+    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -1088,7 +1142,9 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth", config=vars(args))
+        tracker_config = vars(copy.deepcopy(args))
+        tracker_config.pop("validation_images")
+        accelerator.init_trackers("dreambooth", config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1164,7 +1220,7 @@ def main(args):
                     )
                 else:
                     noise = torch.randn_like(model_input)
-                bsz = model_input.shape[0]
+                bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
@@ -1186,8 +1242,18 @@ def main(args):
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                     )
 
+                if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
+                    noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
+
+                if args.class_labels_conditioning == "timesteps":
+                    class_labels = timesteps
+                else:
+                    class_labels = None
+
                 # Predict the noise residual
-                model_pred = unet(noisy_model_input, timesteps, encoder_hidden_states).sample
+                model_pred = unet(
+                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
+                ).sample
 
                 if model_pred.shape[1] == 6:
                     model_pred, _ = torch.chunk(model_pred, 2, dim=1)
@@ -1234,11 +1300,32 @@ def main(args):
                 global_step += 1
 
                 if accelerator.is_main_process:
-                    images = []
                     if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                    images = []
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(
@@ -1249,7 +1336,7 @@ def main(args):
                             args,
                             accelerator,
                             weight_dtype,
-                            epoch,
+                            global_step,
                             validation_prompt_encoder_hidden_states,
                             validation_prompt_negative_prompt_embeds,
                         )
@@ -1308,6 +1395,7 @@ def main(args):
                 train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
+                pipeline=pipeline,
             )
             upload_folder(
                 repo_id=repo_id,

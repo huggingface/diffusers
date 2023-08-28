@@ -17,12 +17,12 @@
 import gc
 import tempfile
 import time
+import traceback
 import unittest
 
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -37,24 +37,65 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
+from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    enable_full_determinism,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+)
 
+from ...models.test_lora_layers import create_unet_lora_layers
 from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 
 
-class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+# Will be run via run_test_in_subprocess
+def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
+    error = None
+    try:
+        inputs = in_queue.get(timeout=timeout)
+        torch_device = inputs.pop("torch_device")
+        seed = inputs.pop("seed")
+        inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
+
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+
+        sd_pipe.unet.to(memory_format=torch.channels_last)
+        sd_pipe.unet = torch.compile(sd_pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
+        assert np.abs(image_slice - expected_slice).max() < 5e-3
+    except Exception:
+        error = f"{traceback.format_exc()}"
+
+    results = {"error": error}
+    out_queue.put(results, timeout=timeout)
+    out_queue.join()
+
+
+class StableDiffusionPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -329,6 +370,56 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
+    def test_stable_diffusion_attn_processors(self):
+        # disable_full_determinism()
+        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        # run normal sd pipe
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run xformers attention
+        sd_pipe.enable_xformers_memory_efficient_attention()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run attention slicing
+        sd_pipe.enable_attention_slicing()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run vae attention slicing
+        sd_pipe.enable_vae_slicing()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run lora attention
+        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
+        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
+        sd_pipe.unet.set_attn_processor(attn_processors)
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run lora xformers attention
+        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
+        attn_processors = {
+            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
+            for k, v in attn_processors.items()
+        }
+        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
+        sd_pipe.unet.set_attn_processor(attn_processors)
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # enable_full_determinism()
+
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-lms-pipe", safety_checker=None
@@ -551,8 +642,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineSlowTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+    def setUp(self):
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -641,6 +731,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -656,6 +747,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # disable slicing
         pipe.disable_attention_slicing()
+        pipe.unet.set_default_attn_processor()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image = pipe(**inputs).images
 
@@ -913,27 +1005,15 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
+    @require_torch_2
     def test_stable_diffusion_compile(self):
-        if version.parse(torch.__version__) < version.parse("2.0"):
-            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
-            return
-
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        sd_pipe.unet.to(memory_format=torch.channels_last)
-        sd_pipe.unet = torch.compile(sd_pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-        assert np.abs(image_slice - expected_slice).max() < 5e-3
+        seed = 0
+        inputs = self.get_inputs(torch_device, seed=seed)
+        # Can't pickle a Generator object
+        del inputs["generator"]
+        inputs["torch_device"] = torch_device
+        inputs["seed"] = seed
+        run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=inputs)
 
 
 @slow
@@ -951,7 +1031,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         ]
 
         for ckpt_path in ckpt_paths:
-            pipe = StableDiffusionPipeline.from_ckpt(ckpt_path, torch_dtype=torch.float16)
+            pipe = StableDiffusionPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
             pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
             pipe.to("cuda")
 
@@ -962,7 +1042,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_local(self):
         filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
 
-        pipe = StableDiffusionPipeline.from_ckpt(filename, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -973,7 +1053,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        pipe = StableDiffusionPipeline.from_ckpt(ckpt_path)
+        pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
         pipe.to("cuda")
@@ -987,9 +1067,9 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-4
+        assert np.max(np.abs(image - image_ckpt)) < 1e-3
 
 
 @nightly

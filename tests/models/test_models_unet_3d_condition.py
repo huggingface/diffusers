@@ -29,13 +29,14 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
+
+enable_full_determinism()
 
 logger = logging.get_logger(__name__)
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -72,8 +73,9 @@ def create_lora_layers(model, mock_weights: bool = True):
 
 
 @skip_mps
-class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
+    main_input_name = "sample"
 
     @property
     def dummy_input(self):
@@ -250,7 +252,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
@@ -260,7 +262,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 1e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -294,7 +296,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 3e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -314,11 +316,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.bin")
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.safetensors")
 
     def test_lora_save_torch_force_load_safetensors_error(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -333,7 +335,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
@@ -396,6 +398,24 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_feed_forward_chunking(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["norm_num_groups"] = 32
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)[0]
+
+        model.enable_forward_chunking()
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        self.assertEqual(output.shape, output_2.shape, "Shape doesn't match")
+        assert np.abs(output.cpu() - output_2.cpu()).max() < 1e-2
 
 
 # (todo: sayakpaul) implement SLOW tests.

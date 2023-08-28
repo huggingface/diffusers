@@ -40,9 +40,9 @@ def randn_tensor(
     dtype: Optional["torch.dtype"] = None,
     layout: Optional["torch.layout"] = None,
 ):
-    """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
-    passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
-    will always be created on CPU.
+    """A helper function to create random tensors on the desired `device` with the desired `dtype`. When
+    passing a list of generators, you can seed each batch size individually. If CPU generators are passed, the tensor
+    is always created on the CPU.
     """
     # device on which tensor is created defaults to device
     rand_device = device
@@ -63,6 +63,10 @@ def randn_tensor(
                 )
         elif gen_device_type != device.type and gen_device_type == "cuda":
             raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
+
+    # make sure generator list of length 1 is treated like a non-list
+    if isinstance(generator, list) and len(generator) == 1:
+        generator = generator[0]
 
     if isinstance(generator, list):
         shape = (1,) + shape[1:]
