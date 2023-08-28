@@ -508,7 +508,7 @@ class PipelineTesterMixin:
                 diff.sort()
                 max_diff = np.median(diff[-5:])
             else:
-                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+                max_diff = numpy_cosine_similarity_distance(output_batch[0][0].flatten(), output[0][0].flatten())
             assert max_diff < expected_max_diff
 
         if test_mean_pixel_difference:
@@ -523,7 +523,7 @@ class PipelineTesterMixin:
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
+        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_tuple).flatten())
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):

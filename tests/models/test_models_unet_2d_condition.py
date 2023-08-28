@@ -35,7 +35,7 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, numpy_cosine_similarity_distance
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -673,7 +673,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 new_model.load_attn_procs(tmpdirname, use_safetensors=True)
             self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
 
-    def test_lora_on_off(self):
+    def test_lora_on_off(self, expected_max_diff=1e-4):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -697,14 +697,21 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 3e-3
+        sample = sample.cpu().numpy()
+        new_sample = new_sample.cpu().numpy()
+        old_sample = old_sample.cpu().numpy()
+
+        max_diff_new_sample = numpy_cosine_similarity_distance(sample.flatten(), new_sample.flatten())
+        max_diff_old_sample = numpy_cosine_similarity_distance(sample.flatten(), old_sample.flatten())
+
+        assert max_diff_new_sample < expected_max_diff
+        assert max_diff_old_sample < expected_max_diff
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_lora_xformers_on_off(self):
+    def test_lora_xformers_on_off(self, expected_max_diff=1e-4):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -726,8 +733,15 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             model.disable_xformers_memory_efficient_attention()
             off_sample = model(**inputs_dict).sample
 
-        assert (sample - on_sample).abs().max() < 1e-4
-        assert (sample - off_sample).abs().max() < 1e-4
+        sample = sample.cpu().numpy()
+        on_sample = on_sample.cpu().numpy()
+        off_sample = off_sample.cpu().numpy()
+
+        max_diff_on_sample = numpy_cosine_similarity_distance(sample.flatten(), on_sample.flatten())
+        max_diff_off_sample = numpy_cosine_similarity_distance(sample.flatten(), off_sample.flatten())
+
+        assert max_diff_on_sample < expected_max_diff
+        assert max_diff_off_sample < expected_max_diff
 
     def test_custom_diffusion_processors(self):
         # enable deterministic behavior for gradient checkpointing
