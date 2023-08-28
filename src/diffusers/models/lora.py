@@ -208,6 +208,10 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_down = None
 
     def forward(self, hidden_states, lora_scale: int = 1):
+        all_members = dir(self)
+        # Filter out methods to get only attributes
+        attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith("__")]
+        print(attributes)
         if self.lora_layer is None:
             print(self.weight.data.shape)
             print(self.hello.shape)
