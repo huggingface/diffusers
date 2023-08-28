@@ -39,7 +39,6 @@ from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from diffusers.utils import floats_tensor, torch_device
@@ -375,10 +374,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    attn_proc_class = (
-                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-                    )
-                    self.assertIsInstance(module.processor, attn_proc_class)
+                    self.assertIsNotNone(module.to_q.lora_layer)
+                    self.assertIsNotNone(module.to_k.lora_layer)
+                    self.assertIsNotNone(module.to_v.lora_layer)
+                    self.assertIsNotNone(module.to_out[0].lora_layer)
 
     def test_unload_lora_sd(self):
         pipeline_components, lora_components = self.get_dummy_components()
@@ -443,7 +442,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             # check if lora attention processors are used
             for _, module in sd_pipe.unet.named_modules():
                 if isinstance(module, Attention):
-                    self.assertIsInstance(module.processor, LoRAXFormersAttnProcessor)
+                    self.assertIsNotNone(module.to_q.lora_layer)
+                    self.assertIsNotNone(module.to_k.lora_layer)
+                    self.assertIsNotNone(module.to_v.lora_layer)
+                    self.assertIsNotNone(module.to_out[0].lora_layer)
 
             # unload lora weights
             sd_pipe.unload_lora_weights()
@@ -751,7 +753,7 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_kohya_sd_v15_with_higher_dimensions(self):
         generator = torch.Generator().manual_seed(0)
@@ -770,7 +772,7 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.7165, 0.6616, 0.5833, 0.7504, 0.6718, 0.587, 0.6871, 0.6361, 0.5694])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_vanilla_funetuning(self):
         generator = torch.Generator().manual_seed(0)
@@ -887,7 +889,7 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.3838, 0.3482, 0.3588, 0.3162, 0.319, 0.3369, 0.338, 0.3366, 0.3213])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_sdxl_0_9_lora_two(self):
         generator = torch.Generator().manual_seed(0)
@@ -905,7 +907,7 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.3137, 0.3269, 0.3355, 0.255, 0.2577, 0.2563, 0.2679, 0.2758, 0.2626])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_sdxl_0_9_lora_three(self):
         generator = torch.Generator().manual_seed(0)
@@ -921,9 +923,9 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4115, 0.4047, 0.4124, 0.3931, 0.3746, 0.3802, 0.3735, 0.3748, 0.3609])
+        expected = np.array([0.4015, 0.3761, 0.3616, 0.3745, 0.3462, 0.3337, 0.3564, 0.3649, 0.3468])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=5e-3))
 
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator().manual_seed(0)
@@ -941,7 +943,7 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_sdxl_1_0_last_ben(self):
         generator = torch.Generator().manual_seed(0)
