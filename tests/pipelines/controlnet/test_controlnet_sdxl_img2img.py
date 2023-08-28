@@ -182,6 +182,30 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_xl_controlnet_img2img_guess(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guess_mode"] = True
+
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1]
+        assert output.images.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array(
+            [0.5557202, 0.46418434, 0.46983826, 0.623529, 0.5557242, 0.49262643, 0.6070508, 0.5702978, 0.43777135]
+        )
+
+        # make sure that it's equal
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
