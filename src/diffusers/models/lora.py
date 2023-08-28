@@ -169,6 +169,7 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer is None:
             return
 
+        print(f"Before fusion: {self.lora_layer}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
         logger.info(f"Fusing LoRA weights for {self.__class__}")
 
@@ -184,6 +185,7 @@ class LoRACompatibleLinear(nn.Linear):
 
         # we can drop the lora layer now
         self.lora_layer = None
+        print(f"After fusion: {self.lora_layer}")
 
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
@@ -206,8 +208,8 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_down = None
 
     def forward(self, hidden_states, lora_scale: int = 1):
-        all_members = dir(self)
         # Filter out methods to get only attributes
+        all_members = dir(self)
         attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith(("__", "_"))]
         print(attributes)
         if self.lora_layer is None:
