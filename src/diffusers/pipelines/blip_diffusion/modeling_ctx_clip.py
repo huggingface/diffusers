@@ -16,7 +16,11 @@ from transformers.models.clip.modeling_clip import (
     _expand_mask,
 )
 
-
+'''
+This is a modified version of the CLIPTextModel from transformers.models.clip.modeling_clip
+Which allows for an extra input of "context embeddings", which are the query embeddings used in Qformer
+They pass through the clip model, along with the text embeddings, and interact with them using self attention
+'''
 class CtxCLIPTextModel(CLIPPreTrainedModel):
     config_class = CLIPTextConfig
 

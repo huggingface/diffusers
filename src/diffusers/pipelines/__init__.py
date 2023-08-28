@@ -51,7 +51,7 @@ else:
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
     )
-    from .blip_diffusion import BlipDiffusionPipeline
+    from .blip_diffusion import BlipDiffusionPipeline, BlipDiffusionControlNetPipeline
     from .deepfloyd_if import (
         IFImg2ImgPipeline,
         IFImg2ImgSuperResolutionPipeline,

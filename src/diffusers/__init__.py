@@ -61,6 +61,7 @@ else:
         AudioPipelineOutput,
         ConsistencyModelPipeline,
         BlipDiffusionPipeline,
+        BlipDiffusionControlNetPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,

@@ -1,4 +1,5 @@
-# coding=utf-8
+# Copyright 2023 The HuggingFace Team. All rights reserved.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -10,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" PyTorch BLIP-2 model."""
-
 import math
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
@@ -44,6 +43,11 @@ from transformers.models.blip_2.modeling_blip_2 import Blip2Attention, Blip2MLP,
 
 logger = logging.get_logger(__name__)
 
+""" PyTorch BLIP-2 model.
+    There is an implementation of Blip2 in Transformers : https://github.com/huggingface/transformers/blob/main/src/transformers/models/blip_2/modeling_blip_2.py
+    Which doesn't support getting multimodal embeddings for now
+    Will replace this with the Transformers version once it supports multimodal embeddings 
+"""
 
 
 class Blip2TextEmbeddings(nn.Module):

@@ -1,3 +1,8 @@
+'''
+This scripts requires you to build lavis from source, since the pip version doesn't have blip diffusion
+Follow instruction https://github.com/salesforce/LAVIS/tree/main
+'''
+
 from diffusers import (
     AutoencoderKL,
     PNDMScheduler,
@@ -10,7 +15,7 @@ from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from diffusers.pipelines import BlipDiffusionPipeline
 import tempfile
 from accelerate import load_checkpoint_and_dispatch
-from LAVIS.lavis.models import load_model_and_preprocess
+from lavis.models import load_model_and_preprocess
 import torch
 import argparse
 import os

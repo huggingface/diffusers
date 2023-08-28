@@ -16,4 +16,5 @@ except OptionalDependencyNotAvailable:
 else:
     from .modeling_ctx_clip import CtxCLIPTextModel
     from .pipeline_blip_diffusion import BlipDiffusionPipeline
+    from .pipeline_blip_diffusion_controlnet import BlipDiffusionControlNetPipeline
     from .modeling_blip2 import Blip2QFormerModel
