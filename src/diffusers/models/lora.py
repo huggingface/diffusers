@@ -165,7 +165,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
-        self.hello = torch.tensor([20]).cpu()
+        self.hello = torch.tensor([20])
 
     def _fuse_lora(self):
         if self.lora_layer is None:
