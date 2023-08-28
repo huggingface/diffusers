@@ -122,7 +122,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors")))
 
     def test_dreambooth(self):
         with tempfile.TemporaryDirectory() as tmpdir:
