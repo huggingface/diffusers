@@ -300,6 +300,26 @@ class StableDiffusionXLControlNetPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_controlnet_sdxl_guess(self):
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward without prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guess_mode"] = True
+
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.45368838, 0.38424692, 0.48627546, 0.4444831, 0.44288212, 0.42112032, 0.46950358, 0.5654028, 0.5325038]
+        )
+
+        # make sure that it's equal
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
     PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
