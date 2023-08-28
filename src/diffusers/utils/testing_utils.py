@@ -20,6 +20,7 @@ from numpy.linalg import norm
 import PIL.Image
 import PIL.ImageOps
 import requests
+from numpy.linalg import norm
 from packaging import version
 
 from .import_utils import (

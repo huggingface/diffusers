@@ -22,7 +22,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -63,7 +63,12 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
         tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
-
+    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
+    deprecate(
+        "prepare_mask_and_masked_image",
+        "0.30.0",
+        deprecation_message,
+    )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
@@ -280,6 +285,9 @@ class StableDiffusionInpaintPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
@@ -679,8 +687,8 @@ class StableDiffusionInpaintPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 1.0,
@@ -705,14 +713,20 @@ class StableDiffusionInpaintPipeline(
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            image (`PIL.Image.Image`):
-                `Image` or tensor representing an image batch to be inpainted (which parts of the image to be masked
-                out with `mask_image` and repainted according to `prompt`).
-            mask_image (`PIL.Image.Image`):
-                `Image` or tensor representing an image batch to mask `image`. White pixels in the mask are repainted
-                while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a single channel
-                (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3, so the
-                expected shape would be `(B, H, W, 1)`.
+            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
+                be masked out with `mask_image` and repainted according to `prompt`). For both numpy array and pytorch
+                tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the
+                expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays, the
+                expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image latents as `image`, but
+                if passing latents directly it is not encoded again.
+            mask_image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
+                are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
+                single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
+                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
+                H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
+                1)`, or `(H, W)`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -865,9 +879,14 @@ class StableDiffusionInpaintPipeline(
         is_strength_max = strength == 1.0
 
         # 5. Preprocess mask and image
-        mask, masked_image, init_image = prepare_mask_and_masked_image(
-            image, mask_image, height, width, return_image=True
-        )
+
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
+        masked_image = init_image * (mask < 0.5)
+
         mask_condition = mask.clone()
 
         # 6. Prepare latent variables

@@ -24,9 +24,9 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    numpy_cosine_similarity_distance,
     require_torch,
     torch_device,
-    numpy_cosine_similarity_distance,
 )
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
