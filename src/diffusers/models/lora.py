@@ -187,12 +187,12 @@ class LoRACompatibleLinear(nn.Linear):
 
         # we can drop the lora layer now
         self.lora_layer = None
-        print(f"After fusion: {self.lora_layer}")
-        print(self.hello)
+        self.hello = torch.tensor([30])
+        print(f"After fusion: {self.lora_layer}, {self.hello}")
 
         # offload the up and down matrices to CPU to not blow the memory
-        # self.w_up = w_up.cpu()
-        # self.w_down = w_down.cpu()
+        self.w_up = w_up.cpu()
+        self.w_down = w_down.cpu()
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -211,10 +211,6 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_down = None
 
     def forward(self, hidden_states, lora_scale: int = 1):
-        # Filter out methods to get only attributes
-        all_members = dir(self)
-        attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith(("__", "_"))]
-        print(attributes)
         if self.lora_layer is None:
             print(self.hello.shape)
             print(self.w_up.shape, self.w_down.shape)
