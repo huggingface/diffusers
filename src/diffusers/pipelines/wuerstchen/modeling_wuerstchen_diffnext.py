@@ -42,7 +42,6 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
         clip_embd=1024,
         kernel_size=3,
         dropout=0.1,
-        self_attn=True,
     ):
         super().__init__()
         self.c_r = c_r
@@ -70,7 +69,7 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
             if block_type == "C":
                 return ResBlockStageB(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
             elif block_type == "A":
-                return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
+                return AttnBlock(c_hidden, c_cond, nhead, self_attn=True, dropout=dropout)
             elif block_type == "T":
                 return TimestepBlock(c_hidden, c_r)
             else:
