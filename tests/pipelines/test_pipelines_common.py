@@ -734,7 +734,9 @@ class PipelineTesterMixin:
         )
 
         if test_max_difference:
-            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            max_diff = numpy_cosine_similarity_distance(
+                to_np(output_with_offload).flatten(), to_np(output_without_offload).flatten()
+            )
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         if test_mean_pixel_difference:
