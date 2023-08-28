@@ -806,14 +806,25 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        aesthetic_score,
+        negative_aesthetic_score,
+        negative_original_size,
+        negative_crops_coords_top_left,
+        negative_target_size,
+        dtype,
     ):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
-            add_neg_time_ids = list(original_size + crops_coords_top_left + (negative_aesthetic_score,))
+            add_neg_time_ids = list(
+                negative_original_size + negative_crops_coords_top_left + (negative_aesthetic_score,)
+            )
         else:
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
-            add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
+            add_neg_time_ids = list(negative_original_size + crops_coords_top_left + negative_target_size)
 
         passed_add_embed_dim = (
             self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
