@@ -161,6 +161,7 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
+        self.hello = torch.tensor([0.20]).cpu()
 
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
@@ -188,6 +189,7 @@ class LoRACompatibleLinear(nn.Linear):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
+        self.hello = self.hello.cpu()
         print(f"From {self.__class__}: {self.w_up.shape}, {self.w_down.shape}")
 
     def _unfuse_lora(self):
@@ -208,6 +210,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
+            print(self.hello.shape)
             print(self.w_up.shape, self.w_down.shape)
             return super().forward(hidden_states)
         else:
