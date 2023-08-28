@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from typing import Optional
 
 import torch
@@ -35,6 +34,8 @@ class LoRALinearLayer(nn.Module):
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         self.network_alpha = network_alpha
         self.rank = rank
+        self.out_features = out_features
+        self.in_features = in_features
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
@@ -98,7 +99,7 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def _fuse_lora(self):
         if self.lora_layer is None:
-            warnings.warn("Calling fuse_lora() is not supported. It will be a no-op.", RuntimeWarning)
+            logger.warn("Calling fuse_lora() is not supported. It will be a no-op.")
             return
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
@@ -165,7 +166,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def _fuse_lora(self):
         if self.lora_layer is None:
-            warnings.warn("Calling fuse_lora() is not supported. It will be a no-op.", RuntimeWarning)
+            logger.warn("Calling fuse_lora() is not supported. It will be a no-op.")
             return
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
@@ -204,8 +205,8 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, x):
+    def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
-            return super().forward(x)
+            return super().forward(hidden_states)
         else:
-            return super().forward(x) + self.lora_layer(x)
+            return super().forward(hidden_states) + lora_scale * self.lora_layer(hidden_states)
