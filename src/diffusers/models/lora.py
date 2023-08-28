@@ -161,7 +161,6 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
-        self.hello = None
 
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
@@ -182,7 +181,6 @@ class LoRACompatibleLinear(nn.Linear):
 
         fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
-        print(self.weight.data.shape)
 
         # we can drop the lora layer now
         self.lora_layer = None
@@ -190,7 +188,7 @@ class LoRACompatibleLinear(nn.Linear):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
-        self.hello = torch.tensor([20]).cpu()
+        setattr(self, "hello", torch.tensor([20]).cpu())
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
