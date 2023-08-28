@@ -107,7 +107,7 @@ Let's have a look at a simple example using the [Sketch Adapter](https://hugging
 ```python
 from diffusers.utils import load_image
 
-sketch_image = load_image('https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png').convert('L')
+sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
 ```
 
 ![img](https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png)
@@ -123,15 +123,15 @@ from diffusers import (
 )
 from diffusers.models.unet_2d_condition import UNet2DConditionModel
 
-model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
-adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder='sketch_sdxl_1.0',torch_dtype=torch.float16, adapter_type="full_adapter_xl")
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder="sketch_sdxl_1.0",torch_dtype=torch.float16, adapter_type="full_adapter_xl")
 scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     model_id, adapter=adapter, safety_checker=None, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
 )
 
-pipe.to('cuda')
+pipe.to("cuda")
 ```
 
 Finally, pass the prompt and control image to the pipeline
@@ -141,8 +141,8 @@ Finally, pass the prompt and control image to the pipeline
 generator = torch.Generator().manual_seed(42)
 
 sketch_image_out = pipe(
-    prompt='a photo of a dog in real world, high quality', 
-    negative_prompt='extra digit, fewer digits, cropped, worst quality, low quality', 
+    prompt="a photo of a dog in real world, high quality", 
+    negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality", 
     image=sketch_image, 
     generator=generator, 
     guidance_scale=7.5
