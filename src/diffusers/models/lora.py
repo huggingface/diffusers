@@ -182,6 +182,7 @@ class LoRACompatibleLinear(nn.Linear):
 
         fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
+        print(self.weight.data.shape)
 
         # we can drop the lora layer now
         self.lora_layer = None
