@@ -161,11 +161,9 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
-        self.hello = None
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
-        self.hello = torch.tensor([20])
 
     def _fuse_lora(self):
         if self.lora_layer is None:
@@ -210,7 +208,7 @@ class LoRACompatibleLinear(nn.Linear):
     def forward(self, hidden_states, lora_scale: int = 1):
         all_members = dir(self)
         # Filter out methods to get only attributes
-        attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith("__")]
+        attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith(("__", "_"))]
         print(attributes)
         if self.lora_layer is None:
             print(self.weight.data.shape)
