@@ -158,7 +158,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.weight_original  = self.weight.data.clone()
+        self.weight_original  = None
         self.lora_layer = lora_layer
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
@@ -172,6 +172,7 @@ class LoRACompatibleLinear(nn.Linear):
         logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.weight.data.float()
+        self.weight_original = w_orig.clone()
         w_up = self.lora_layer.up.weight.data.float()
         w_down = self.lora_layer.down.weight.data.float()
 
@@ -206,8 +207,6 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
-            if self.weight_original.dtype != self.weight.data.dtype:
-                self.weight_original = self.weight_original.to(dtype=self.weight.data.dtype)
             print(f"Check if the original weights differ: {torch.allclose(self.weight_original, self.weight.data)}")
             return super().forward(hidden_states)
         else:
