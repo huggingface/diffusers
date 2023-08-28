@@ -188,7 +188,7 @@ class LoRACompatibleLinear(nn.Linear):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
-        setattr(self, "hello", torch.tensor([20]).cpu())
+        self.hello = torch.tensor([20]).cpu()
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
