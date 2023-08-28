@@ -1026,7 +1026,7 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
     def test_sdxl_1_0_lora_fusion(self):
-        generator = torch.manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
