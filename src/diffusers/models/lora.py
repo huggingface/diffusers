@@ -144,7 +144,8 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def forward(self, x):
         if self.lora_layer is None:
-            print(self.w_up.shape, self.w_down.shape)
+            if hasattr(self, "w_up"):
+                print(self.w_up.shape, self.w_down.shape)
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
             return F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
