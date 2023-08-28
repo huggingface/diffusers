@@ -447,7 +447,7 @@ class UNet2DConditionLoadersMixin:
             if network_alphas is not None:
                 network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
         return state_dict, network_alphas
-
+ 
     def save_attn_procs(
         self,
         save_directory: Union[str, os.PathLike],
@@ -530,6 +530,7 @@ class UNet2DConditionLoadersMixin:
 
     def _fuse_lora_apply(self, module):
         if hasattr(module, "_fuse_lora"):
+            print("Anything in here?")
             module._fuse_lora()
 
     def unfuse_lora(self):
