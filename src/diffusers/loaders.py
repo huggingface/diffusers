@@ -1080,7 +1080,7 @@ class LoraLoaderMixin:
     @classmethod
     def _maybe_map_sgm_blocks_to_diffusers(cls, state_dict, unet_config, delimiter="_", block_slice_pos=5):
         # 1. get all state_dict_keys
-        all_keys = state_dict.keys()
+        all_keys = list(state_dict.keys())
         sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
 
         # 2. check if needs remapping, if not return original dict
