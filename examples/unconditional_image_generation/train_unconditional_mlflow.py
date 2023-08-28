@@ -312,6 +312,7 @@ def main(args):
         log_with=args.logger,
         project_dir=logging_dir,
         project_config=accelerator_project_config,
+        logging_dir=args.logging_dir,
     )
 
     if args.logger == "tensorboard":
