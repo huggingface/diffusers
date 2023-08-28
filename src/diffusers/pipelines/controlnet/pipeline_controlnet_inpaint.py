@@ -35,7 +35,7 @@ from ...utils import (
     is_compiled_module,
     logging,
     randn_tensor,
-    replace_example_docstring,
+    replace_example_docstring, BaseOutput,
 )
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput
@@ -103,6 +103,16 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.produce_latents
+def produce_latents(encoder_output: BaseOutput, generator):
+    if hasattr(encoder_output, 'latent_dist'):
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, 'latents'):
+        return encoder_output.latents
+    else:
+        raise AttributeError('Could not access latents of provided encoder_output')
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.prepare_mask_and_masked_image
@@ -952,12 +962,12 @@ class StableDiffusionControlNetInpaintPipeline(
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                produce_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            image_latents = produce_latents(self.vae.encode(image), generator=generator)
 
         image_latents = self.vae.config.scaling_factor * image_latents
 
