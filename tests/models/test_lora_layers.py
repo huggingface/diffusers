@@ -704,6 +704,11 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
@@ -732,6 +737,11 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
@@ -748,7 +758,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         lora_image_slice = lora_images[0, -3:, -3:, -1]
 
         # Unload LoRA parameters.
-        sd_pipe.unfuse_lora()
+        sd_pipe.unet.unfuse_lora()
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice_two = original_images[0, -3:, -3:, -1]
 
@@ -1011,7 +1021,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4239, 0.3993, 0.341, 0.2577, 0.2681, 0.3015, 0.3214, 0.3868, 0.3386])
+        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -1031,7 +1041,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         # This way we also test equivalence between LoRA fusion and the non-fusion behaviour.
-        expected = np.array([0.4239, 0.3993, 0.341, 0.2577, 0.2681, 0.3015, 0.3214, 0.3868, 0.3386])
+        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
