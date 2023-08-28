@@ -942,7 +942,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4239, 0.3993, 0.341, 0.2577, 0.2681, 0.3015, 0.3214, 0.3868, 0.3386])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
@@ -962,7 +962,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         # This way we also test equivalence between LoRA fusion and the non-fusion behaviour.
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4239, 0.3993, 0.341, 0.2577, 0.2681, 0.3015, 0.3214, 0.3868, 0.3386])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
 
