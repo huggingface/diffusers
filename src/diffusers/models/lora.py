@@ -161,15 +161,17 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
+        self.hello = None
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
+        self.hello = torch.tensor([20])
 
     def _fuse_lora(self):
         if self.lora_layer is None:
             return
 
-        print(f"Before fusion: {self.lora_layer}")
+        print(f"Before fusion: {self.lora_layer.__class__}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
         logger.info(f"Fusing LoRA weights for {self.__class__}")
 
@@ -186,6 +188,7 @@ class LoRACompatibleLinear(nn.Linear):
         # we can drop the lora layer now
         self.lora_layer = None
         print(f"After fusion: {self.lora_layer}")
+        print(self.hello)
 
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
@@ -213,7 +216,6 @@ class LoRACompatibleLinear(nn.Linear):
         attributes = [attr for attr in all_members if not callable(getattr(self, attr)) and not attr.startswith(("__", "_"))]
         print(attributes)
         if self.lora_layer is None:
-            print(self.weight.data.shape)
             print(self.hello.shape)
             print(self.w_up.shape, self.w_down.shape)
             return super().forward(hidden_states)
