@@ -209,6 +209,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
+            print(self.weight.data.shape)
             print(self.hello.shape)
             print(self.w_up.shape, self.w_down.shape)
             return super().forward(hidden_states)
