@@ -1721,6 +1721,7 @@ class LoraLoaderMixin:
         """
         for _, module in self.unet.named_modules():
             if hasattr(module, "set_lora_layer"):
+                print(f"Called from unload_lora_weights(): {module.lora_layer}")
                 module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
