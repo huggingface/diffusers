@@ -186,8 +186,8 @@ class LoRACompatibleLinear(nn.Linear):
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
-        self.lora_layer = None
         self.hello = torch.tensor([30])
+        self.lora_layer = None
         print(f"After fusion: {self.lora_layer}, {self.hello}")
 
         # offload the up and down matrices to CPU to not blow the memory
