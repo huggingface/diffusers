@@ -206,6 +206,8 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
+            if self.weight_original.dtype != self.weight.data.dtype:
+                self.weight_original = self.weight_original.to(dtype=self.weight.data.dtype)
             print(f"Check if the original weights differ: {torch.allclose(self.weight_original, self.weight.data)}")
             return super().forward(hidden_states)
         else:
