@@ -191,8 +191,8 @@ class LoRACompatibleLinear(nn.Linear):
         print(self.hello)
 
         # offload the up and down matrices to CPU to not blow the memory
-        self.w_up = w_up.cpu()
-        self.w_down = w_down.cpu()
+        # self.w_up = w_up.cpu()
+        # self.w_down = w_down.cpu()
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
