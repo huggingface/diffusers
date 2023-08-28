@@ -36,6 +36,7 @@ def rearrange_4(tensor):
     return torch.reshape(tensor, (B * F, D, C))
 
 
+# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero
 class CrossFrameAttnProcessor:
     """
     Cross frame attention processor. Each frame attends the first frame.
@@ -95,6 +96,7 @@ class CrossFrameAttnProcessor:
         return hidden_states
 
 
+# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero
 class CrossFrameAttnProcessor2_0:
     """
     Cross frame attention processor with scaled_dot_product attention of Pytorch 2.0.
@@ -191,6 +193,7 @@ def coords_grid(batch, ht, wd, device):
     return coords[None].repeat(batch, 1, 1, 1)
 
 
+# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero
 def warp_single_latent(latent, reference_flow):
     """
     Warp latent of a single frame with given flow
@@ -218,6 +221,7 @@ def warp_single_latent(latent, reference_flow):
     return warped
 
 
+# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero
 def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_ids, device, dtype):
     """
     Create translation motion field
@@ -241,6 +245,7 @@ def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_
     return reference_flow
 
 
+# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero
 def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_strength_y, frame_ids, latents):
     """
     Creates translation motion and warps the latents accordingly

@@ -99,7 +99,19 @@ imageio.mimsave("video.mp4", result, fps=4)
 ```
 
 
-### Text-To-Video with Pose Control
+#### SDXL Support
+In order to use the SDXL model when generating a video from prompt, use the `TextToVideoZeroSDXLPipeline` pipeline:
+
+```python
+import torch
+from diffusers import TextToVideoZeroSDXLPipeline
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
+    model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+```
+
 To generate a video from prompt with additional pose control
 
 1. Download a demo video
