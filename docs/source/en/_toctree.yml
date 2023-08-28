@@ -224,6 +224,8 @@
       title: Latent Diffusion
     - local: api/pipelines/panorama
       title: MultiDiffusion
+    - local: api/pipelines/musicldm
+      title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms

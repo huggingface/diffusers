@@ -23,6 +23,7 @@ The abstract of the paper is the following:
 - Stable Diffusion XL works especially well with images between 768 and 1024.
 - Stable Diffusion XL can pass a different prompt for each of the text encoders it was trained on as shown below. We can even pass different parts of the same prompt to the text encoders.
 - Stable Diffusion XL output image can be improved by making use of a refiner as shown below.
+- One can make use of `negative_original_size`, `negative_crops_coords_top_left`, and `negative_target_size` to influence the generation process.
 
 ### Available checkpoints:
 
@@ -73,6 +74,37 @@ pipe.to("cuda")
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt=prompt).images[0]
 ```
+
+You can additionally pass negative conditions about an image's size and position to avoid undesirable cropping behavior in the generated image, and improve image resolution. Let's take an example:
+
+```python
+from diffusers import StableDiffusionXLPipeline
+import torch
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+pipe.to("cuda")
+
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+image = pipe(
+    prompt=prompt,
+    negative_original_size=(512, 512),
+    negative_crops_coords_top_left=(0, 0),
+    negative_target_size=(1024, 1024),
+).images[0]
+```
+
+Here is a comparative example that shows the influence of using three `negative_original_size`s of
+(128, 128), (256, 256), and (512, 512) respectively:
+
+![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/negative_conditions.png)
+
+<Tip>
+
+One can use these negative conditions in the other SDXL pipelines ([Image-To-Image](#image-to-image), [Inpainting](#inpainting), [ControlNet](../controlnet_sdxl.md)) too!
+
+</Tip>
 
 ### Image-to-image 
 
