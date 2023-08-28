@@ -21,7 +21,7 @@ For example, to perform Image-to-Image with the SD1.5 checkpoint, you can do
 ```python
 from diffusers import PipelineForImageToImage
 
-pipe_i2i = PipelineForImageoImage.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe_i2i = PipelineForImageToImage.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
 It will also help you switch between tasks seamlessly using the same checkpoint without reallocating additional memory. For example, to re-use the Image-to-Image pipeline we just created for inpainting, you can do 
