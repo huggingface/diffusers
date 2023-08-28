@@ -649,6 +649,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
         adapter_conditioning_scale: Union[float, List[float]] = 1.0,
+        cond_tau: float = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -893,6 +894,12 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+                if i < int(num_inference_steps * cond_tau):
+                    down_block_additional_residuals = [state.clone() for state in adapter_state]
+                else:
+                    down_block_additional_residuals = None
+
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -900,7 +907,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
-                    down_block_additional_residuals=[state.clone() for state in adapter_state],
+                    down_block_additional_residuals=down_block_additional_residuals,
                 )[0]
 
                 # perform guidance
