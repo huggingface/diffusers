@@ -530,7 +530,6 @@ class UNet2DConditionLoadersMixin:
 
     def _fuse_lora_apply(self, module):
         if hasattr(module, "_fuse_lora"):
-            print("Anything in here?")
             module._fuse_lora()
 
     def unfuse_lora(self):
