@@ -191,6 +191,7 @@ else:
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLControlNetImg2ImgPipeline,
         StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
