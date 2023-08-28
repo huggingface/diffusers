@@ -889,7 +889,7 @@ def main():
                 if global_step % args.save_steps == 0:
                     weight_name = (
                         f"learned_embeds-steps-{global_step}.bin"
-                        if args.no_safe_serialization 
+                        if args.no_safe_serialization
                         else f"learned_embeds-steps-{global_step}.safetensors"
                     )
                     save_path = os.path.join(args.output_dir, weight_name)
