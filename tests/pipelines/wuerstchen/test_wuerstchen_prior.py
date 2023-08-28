@@ -187,3 +187,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
+
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1.1)
