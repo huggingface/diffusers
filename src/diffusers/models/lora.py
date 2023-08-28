@@ -159,6 +159,7 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
+        self.weight_original = None
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.weight_original  = self.weight.data.clone()
