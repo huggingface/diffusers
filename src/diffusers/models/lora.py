@@ -99,7 +99,6 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def _fuse_lora(self):
         if self.lora_layer is None:
-            logger.warn("Calling fuse_lora() is not supported. It will be a no-op.")
             return
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
@@ -166,7 +165,6 @@ class LoRACompatibleLinear(nn.Linear):
 
     def _fuse_lora(self):
         if self.lora_layer is None:
-            logger.warn("Calling fuse_lora() is not supported. It will be a no-op.")
             return
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
