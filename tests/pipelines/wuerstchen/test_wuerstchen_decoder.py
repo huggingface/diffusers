@@ -20,8 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenDecoderPipeline
-from diffusers.models import VQModelPaella
-from diffusers.pipelines.wuerstchen import WuerstchenDiffNeXt
+from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
 
@@ -90,8 +89,11 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         model_kwargs = {
             "in_channels": 3,
+            "embed_dim": 2,
+            "bottleneck_blocks": 1,
+            "num_vq_embeddings": 2,
         }
-        model = VQModelPaella(**model_kwargs)
+        model = PaellaVQModel(**model_kwargs)
         return model.eval()
 
     @property
@@ -99,7 +101,15 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         torch.manual_seed(0)
 
         model_kwargs = {
-            "c_in": 4,
+            "c_in": 1,
+            "c_cond": 1,
+            "c_r": 1,
+            "c_hidden": [2],
+            "effnet_embd": 1,
+            "nhead": [1],
+            "blocks": [1],
+            "level_config": ["CT"],
+            "clip_embd": self.text_embedder_hidden_size,
         }
 
         model = WuerstchenDiffNeXt(**model_kwargs)
@@ -129,7 +139,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "image_embeds": torch.ones(1, 3, 32, 32, device=device),
+            "image_embeds": torch.ones((1, 16, 21, 21), device=device),
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 1.0,
