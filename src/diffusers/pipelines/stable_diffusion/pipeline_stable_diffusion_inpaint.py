@@ -26,13 +26,23 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor, BaseOutput
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.produce_latents
+def produce_latents(encoder_output: BaseOutput, generator):
+    if hasattr(encoder_output, 'latent_dist'):
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, 'latents'):
+        return encoder_output.latents
+    else:
+        raise AttributeError('Could not access latents of provided encoder_output')
 
 
 def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
@@ -621,12 +631,12 @@ class StableDiffusionInpaintPipeline(
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                produce_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            image_latents = produce_latents(self.vae.encode(image), generator=generator)
 
         image_latents = self.vae.config.scaling_factor * image_latents
 
