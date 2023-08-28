@@ -307,7 +307,6 @@ class StableDiffusionXLControlNetPipelineFastTests(
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        # forward without prompt embeds
         inputs = self.get_dummy_inputs(torch_device)
         inputs["guess_mode"] = True
 
