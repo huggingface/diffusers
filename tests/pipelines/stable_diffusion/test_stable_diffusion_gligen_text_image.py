@@ -66,7 +66,7 @@ class GligenTextImagePipelineFastTests(
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
-            attention_type="GatedTextImage",
+            attention_type="gated-text-image",
         )
         # unet.position_net = PositionNet(32,32)
         scheduler = DDIMScheduler(
