@@ -85,12 +85,16 @@ class PatchedLoraProjection(nn.Module):
 
         self.lora_scale = lora_scale
 
+    # overwrite PyTorch's `state_dict` to be sure that only the 'regular_linear_layer' weights are saved
+    # when saving the whole text encoder model
+    def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
+        return self.regular_linear_layer.state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+
     def _fuse_lora(self):
         if self.lora_linear_layer is None:
             return
 
         dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.regular_linear_layer.weight.data.float()
         w_up = self.lora_linear_layer.up.weight.data.float()
@@ -112,14 +116,14 @@ class PatchedLoraProjection(nn.Module):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.regular_linear_layer.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
 
-        self.w_up = self.w_up.to(device=device, dtype=dtype)
-        self.w_down = self.w_down.to(device, dtype=dtype)
-        unfused_weight = fused_weight - torch.bmm(self.w_up[None, :], self.w_down[None, :])[0]
+        w_up = self.w_up.to(device=device).float()
+        w_down = self.w_down.to(device).float()
+
+        unfused_weight = fused_weight.float() - torch.bmm(w_up[None, :], w_down[None, :])[0]
         self.regular_linear_layer.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
@@ -1405,15 +1409,15 @@ class LoraLoaderMixin:
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                attn_module.q_proj = attn_module.q_proj.regular_linear_layer
-                attn_module.k_proj = attn_module.k_proj.regular_linear_layer
-                attn_module.v_proj = attn_module.v_proj.regular_linear_layer
-                attn_module.out_proj = attn_module.out_proj.regular_linear_layer
+                attn_module.q_proj.lora_linear_layer = None
+                attn_module.k_proj.lora_linear_layer = None
+                attn_module.v_proj.lora_linear_layer = None
+                attn_module.out_proj.linear_layer = None
 
         for _, mlp_module in text_encoder_mlp_modules(text_encoder):
             if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                mlp_module.fc1 = mlp_module.fc1.regular_linear_layer
-                mlp_module.fc2 = mlp_module.fc2.regular_linear_layer
+                mlp_module.fc1.lora_linear_layer = None
+                mlp_module.fc2.lora_linear_layer = None
 
     @classmethod
     def _modify_text_encoder(

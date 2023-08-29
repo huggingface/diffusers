@@ -168,7 +168,6 @@ class LoRACompatibleLinear(nn.Linear):
             return
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.weight.data.float()
         w_up = self.lora_layer.up.weight.data.float()
@@ -190,14 +189,14 @@ class LoRACompatibleLinear(nn.Linear):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
 
-        self.w_up = self.w_up.to(device=device, dtype=dtype)
-        self.w_down = self.w_down.to(device, dtype=dtype)
-        unfused_weight = fused_weight - torch.bmm(self.w_up[None, :], self.w_down[None, :])[0]
+        w_up = self.w_up.to(device=device).float()
+        w_down = self.w_down.to(device).float()
+
+        unfused_weight = fused_weight.float() - torch.bmm(w_up[None, :], w_down[None, :])[0]
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
