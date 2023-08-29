@@ -2023,3 +2023,40 @@ Let's have a look at the images (*512X512*)
 | Without Feedback            | With Feedback  (1st image)          |
 |---------------------|---------------------|
 | ![Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_wo_feedback.jpg) | ![Feedback Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_w_feedback.png) | 
+
+
+### Masked Im2Im Stable Diffusion Pipeline
+
+This pipeline reimplements sketch inpaint feature from A1111 for non-inpaint models. The following code reads two images, original and one with mask painted over it. It computes mask as a difference of two images and does the inpainting in the area defined by the mask.
+
+```python
+img = PIL.Image.open("./mech.png")
+# read image with mask painted over
+img_paint = PIL.Image.open("./mech_painted.png")
+neq = numpy.any(numpy.array(img) != numpy.array(img_paint), axis=-1)
+mask = neq / neq.max()
+
+pipeline = MaskedStableDiffusionImg2ImgPipeline.from_pretrained("frankjoshua/icbinpICantBelieveIts_v8")
+
+# works best with EulerAncestralDiscreteScheduler
+pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
+generator = torch.Generator(device="cpu").manual_seed(4)
+
+prompt = "a man wearing a mask"
+result = pipeline(prompt=prompt, image=img_paint, mask=mask, strength=0.75,
+                  generator=generator)
+result.images[0].save("result.png")
+```
+
+original image mech.png
+
+<img src=https://github.com/noskill/diffusers/assets/733626/10ad972d-d655-43cb-8de1-039e3d79e849 width="25%" >
+
+image with mask mech_painted.png
+
+<img src=https://github.com/noskill/diffusers/assets/733626/c334466a-67fe-4377-9ff7-f46021b9c224 width="25%" >
+
+result:
+
+<img src=https://github.com/noskill/diffusers/assets/733626/23a0a71d-51db-471e-926a-107ac62512a8 width="25%" >
+
