@@ -517,8 +517,6 @@ class StableDiffusionInpaintPipeline(
     def check_inputs(
         self,
         prompt,
-        image,
-        masked_image_latents,
         height,
         width,
         strength,
@@ -566,18 +564,6 @@ class StableDiffusionInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        latent_sample_size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if image.shape[1] == 4 and image.shape[-2:] != latent_sample_size:
-            raise ValueError(
-                f"`image` is passed as latent directly so must have the height and width: {latent_sample_size},"
-                f" but got: {image.shape[-2:]}"
-            )
-
-        if masked_image_latents is not None and masked_image_latents.shape[-2:] != latent_sample_size:
-            raise ValueError(
-                f"`masked_image_latents` must have the heigh and width: {latent_sample_size},"
-                f" but got: {masked_image_latents.shape[-2:]}"
-            )
 
     def prepare_latents(
         self,
@@ -847,8 +833,6 @@ class StableDiffusionInpaintPipeline(
         # 1. Check inputs
         self.check_inputs(
             prompt,
-            image,
-            masked_image_latents,
             height,
             width,
             strength,
