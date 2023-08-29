@@ -14,7 +14,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import ShapEPipeline
 else:
-    from .modeling_ctx_clip import CtxCLIPTextModel
+    from .modeling_ctx_clip import ContextCLIPTextModel
     from .pipeline_blip_diffusion import BlipDiffusionPipeline
     from .pipeline_blip_diffusion_controlnet import BlipDiffusionControlNetPipeline
     from .modeling_blip2 import Blip2QFormerModel
