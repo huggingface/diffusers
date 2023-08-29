@@ -245,7 +245,7 @@ class StableDiffusion2PipelineFastTests(
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
-            negeative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
+            text_embeddings_3, negeative_text_embeddings_3 = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
             if negeative_text_embeddings_3 is not None:
@@ -253,7 +253,7 @@ class StableDiffusion2PipelineFastTests(
 
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
-            negative_embeddings, text_embeddings = sd_pipe.encode_prompt(
+            text_embeddings, negative_embeddings = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
             if negative_embeddings is not None:
@@ -261,7 +261,7 @@ class StableDiffusion2PipelineFastTests(
 
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
-            negative_text_embeddings_2, text_embeddings_2 = sd_pipe._encode_prompt(
+            text_embeddings_2, negative_text_embeddings_2 = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
             if negative_text_embeddings_2 is not None:

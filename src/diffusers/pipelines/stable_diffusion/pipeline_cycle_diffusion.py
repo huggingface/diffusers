@@ -764,26 +764,25 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds_tuple = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
             do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=None,
             lora_scale=text_encoder_lora_scale,
         )
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        negative_source_prompt_embeds, source_prompt_embeds = self.encode_prompt(
+        source_prompt_embeds_tuple = self.encode_prompt(
             source_prompt, device, num_images_per_prompt, do_classifier_free_guidance, None
         )
-        if do_classifier_free_guidance:
-            source_prompt_embeds = torch.cat([negative_source_prompt_embeds, source_prompt_embeds])
+        if prompt_embeds_tuple[1] is not None:
+            prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
+        else:
+            prompt_embeds = prompt_embeds_tuple[0]
+        if source_prompt_embeds_tuple[1] is not None:
+            source_prompt_embeds = torch.cat([source_prompt_embeds_tuple[1], source_prompt_embeds_tuple[0]])
+        else:
+            source_prompt_embeds = source_prompt_embeds_tuple[0]
 
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)
