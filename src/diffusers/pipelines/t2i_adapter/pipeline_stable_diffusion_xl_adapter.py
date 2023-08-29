@@ -920,7 +920,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-        
+
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
