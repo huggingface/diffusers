@@ -293,6 +293,83 @@ image = refiner(prompt=prompt, image=image[None, :]).images[0]
 
 For inpainting, load the refiner model in the [`StableDiffusionXLInpaintPipeline`], remove the `denoising_end` and `denoising_start` parameters, and choose a smaller number of inference steps for the refiner.
 
+## Micro-conditioning
+
+SDXL adds two addition conditioning techniques, which are referred to as *micro-conditioning*. The model is conditioned on image size so at inference, you can set a desired resolution for the generated image. The second conditioning is based on cropping parameters, allowing you to control how the generated image is cropped.
+
+<Tip>
+
+Size and crop-conditioning parameters can be used together to generate high-resolution images that are centered on a subject. These micro-conditionings and negative micro-conditionings are available in the [`StableDiffusionXLPipeline`], [`StableDiffusionXLImageToImagePipeline`], [`StableDiffusionXLInpaintingPipeline`], and [`StableDiffusionXLControlNetPipeline`].
+
+</Tip>
+
+## Size conditioning
+
+Size conditioning takes advantage of what SDXL has learned about image features at different resolutions during training to generate higher quality images during inference. You can experiment with this by adjusting the [`original_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.original_size) and [`target_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.target_size) parameters. By default, both parameters are set to 1024 to generate better images. If your `original_size` and `target_size` don't match, then the image is either down or upsampled to match the `target_size`.
+
+🤗 Diffusers also lets you specify negative conditions about an image's size to steer generation away from certain image resolutions:
+
+```py
+from diffusers import StableDiffusionXLPipeline
+import torch
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+image = pipe(
+    prompt=prompt,
+    negative_original_size=(512, 512),
+    negative_target_size=(1024, 1024),
+).images[0]
+```
+
+<div class="flex flex-col justify-center">
+  <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/negative_conditions.png"/>
+  <figcaption class="text-center">Images negative conditioned on image resolutions of (128, 128), (256, 256), and (512, 512).</figcaption>
+</div>
+
+## Crop conditioning
+
+Images generated from previous Stable Diffusion models may sometimes appear to be randomly cropped due to how the model is trained. By conditioning SDXL on the cropping parameters, SDXL is able to generate images that are more centered and subjects in the images aren't randomly cut off. You can control the amount of cropping during inference with the [`crops_coords_top_left`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.crops_coords_top_left) parameter. By default, `crops_coords_top_left` is (0, 0) for a centered image.
+
+```py
+from diffusers import StableDiffusionXLPipeline
+import torch
+
+
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+image = pipeline(prompt=prompt, crops_coords_top_left=(256,0)).images[0]
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-cropped.png" alt="generated image of an astronaut in a jungle, slightly cropped"/>
+</div>
+
+You can also specify negative cropping coordinates to steer generation away from certain cropping parameters:
+
+```py
+from diffusers import StableDiffusionXLPipeline
+import torch
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+image = pipe(
+    prompt=prompt,
+    negative_original_size=(512, 512),
+    negative_crops_coords_top_left=(0, 0),
+    negative_target_size=(1024, 1024),
+).images[0]
+```
+
 ## Use a different prompt for each text-encoder
 
 SDXL uses two text-encoders so it is possible to pass a different prompt to each text-encoder which can [improve quality](https://github.com/huggingface/diffusers/issues/4004#issuecomment-1627764201). Pass your original prompt to `prompt` and the second prompt to `prompt_2` (use `negative_prompt` and `negative_prompt_2` if you're using a negative prompt):
@@ -314,27 +391,6 @@ image = pipeline(prompt=prompt, prompt_2=prompt_2).images[0]
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
-</div>
-
-## Cropped image generation
-
-Images generated from previous Stable Diffusion models may sometimes appear to be randomly cropped due to how the model is trained. By conditioning SDXL on the cropping parameters, SDXL is able to generate images that are more centered and subjects in the images aren't randomly cut off. You can control the amount of cropping during inference with the [`crops_coords_top_left`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.crops_coords_top_left) parameter. By default, `crops_coords_top_left` is (0, 0) for a centered image.
-
-```py
-from diffusers import StableDiffusionXLPipeline
-import torch
-
-
-pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
-
-prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
-image = pipeline(prompt=prompt, crops_coords_top_left=(256,0)).images[0]
-```
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-cropped.png" alt="generated image of an astronaut in a jungle, slightly cropped"/>
 </div>
 
 ## Optimizations
