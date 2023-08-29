@@ -39,7 +39,9 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |  
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
-|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) 
+|   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
+Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
+FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) | 
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -1529,6 +1531,44 @@ CLIP guided stable diffusion images mixing pipline allows to combine two images 
 This approach is using (optional) CoCa model to avoid writing image description.  
 [More code examples](https://github.com/TheDenk/images_mixing)
 
+
+### Stable Diffusion XL Long Weighted Prompt Pipeline
+
+This SDXL pipeline support unlimted length prompt and negative prompt, compatible with A1111 prompt weighted style. 
+
+You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0"
+    , torch_dtype       = torch.float16
+    , use_safetensors   = True
+    , variant           = "fp16"
+    , custom_pipeline   = "lpw_stable_diffusion_xl",
+)
+
+prompt = "photo of a cute (white) cat running on the grass"*20
+prompt2 = "chasing (birds:1.5)"*20
+prompt = f"{prompt},{prompt2}"
+neg_prompt = "blur, low quality, carton, animate"
+
+pipe.to("cuda")
+images = pipe(
+    prompt                  = prompt 
+    , negative_prompt       = neg_prompt 
+).images[0]
+
+pipe.to("cpu")
+torch.cuda.empty_cache()
+images
+```
+
+In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result. 
+![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
 ## Example Images Mixing (with CoCa)
 ```python
 import requests
@@ -1850,3 +1890,135 @@ for obj in range(bs):
 
 ```
 
+### Stable Diffusion XL Reference
+
+This pipeline uses the Reference . Refer to the [stable_diffusion_reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference).
+
+
+```py
+import torch
+from PIL import Image
+from diffusers.utils import load_image
+from diffusers import DiffusionPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
+input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+
+# pipe = DiffusionPipeline.from_pretrained(
+#     "stabilityai/stable-diffusion-xl-base-1.0",
+#     custom_pipeline="stable_diffusion_xl_reference",
+#     torch_dtype=torch.float16,
+#     use_safetensors=True,
+#     variant="fp16").to('cuda:0')
+
+pipe = StableDiffusionXLReferencePipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16").to('cuda:0')
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+result_img = pipe(ref_image=input_image,
+      prompt="1girl",
+      num_inference_steps=20,
+      reference_attn=True,
+      reference_adain=True).images[0]
+```
+
+Reference Image
+
+![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+
+Output Image   
+
+`prompt: 1 girl`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
+
+
+Output Image 
+
+`prompt: A dog`
+
+`reference_attn=True, reference_adain=False, num_inference_steps=20`
+![Output_image](https://github.com/huggingface/diffusers/assets/34944964/fff2f16f-6e91-434b-abcc-5259d866c31e)
+
+Reference Image
+![reference_image](https://github.com/huggingface/diffusers/assets/34944964/077ed4fe-2991-4b79-99a1-009f056227d1)
+
+Output Image
+
+`prompt: An astronaut riding a lion`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20`
+![output_image](https://github.com/huggingface/diffusers/assets/34944964/9b2f1aca-886f-49c3-89ec-d2031c8e3670)
+
+### Stable diffusion fabric pipeline
+
+FABRIC approach applicable to a wide range of popular diffusion models, which exploits
+the self-attention layer present in the most widely used architectures to condition
+the diffusion process on a set of feedback images.
+
+
+```python
+import requests
+import torch
+from PIL import Image
+from io import BytesIO
+
+from diffusers import Diffusionpipeline
+
+# load the pipeline
+# make sure you're logged in with `huggingface-cli login`
+model_id_or_path = "runwayml/stable-diffusion-v1-5"
+#can also be used with dreamlike-art/dreamlike-photoreal-2.0
+pipe = DiffusionPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
+
+# let's specify a prompt
+prompt = "An astronaut riding an elephant"
+negative_prompt = "lowres, cropped"
+
+# call the pipeline
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=20,
+    generator=torch.manual_seed(12)
+).images[0]
+
+image.save("horse_to_elephant.jpg")
+
+# let's try another example with feedback
+url = "https://raw.githubusercontent.com/ChenWu98/cycle-diffusion/main/data/dalle2/A%20black%20colored%20car.png"
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+prompt = "photo, A blue colored car, fish eye"
+liked = [init_image]
+## same goes with disliked
+
+# call the pipeline
+torch.manual_seed(0)
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    liked = liked,
+    num_inference_steps=20,
+).images[0]
+
+image.save("black_to_blue.png")
+```
+
+*With enough feedbacks you can create very similar high quality images.*
+
+The original codebase can be found at [sd-fabric/fabric](https://github.com/sd-fabric/fabric), and available checkpoints are [dreamlike-art/dreamlike-photoreal-2.0](https://huggingface.co/dreamlike-art/dreamlike-photoreal-2.0), [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), and [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (may give unexpected results).
+
+Let's have a look at the images (*512X512*)
+
+| Without Feedback            | With Feedback  (1st image)          |
+|---------------------|---------------------|
+| ![Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_wo_feedback.jpg) | ![Feedback Image 1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/fabric_w_feedback.png) | 

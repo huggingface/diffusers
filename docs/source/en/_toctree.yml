@@ -32,6 +32,8 @@
       title: Load safetensors
     - local: using-diffusers/other-formats
       title: Load different Stable Diffusion formats
+    - local: using-diffusers/push_to_hub
+      title: Push files to the Hub
     title: Loading & Hub
   - sections:
     - local: using-diffusers/pipeline_overview
@@ -188,6 +190,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/audioldm2
+      title: AudioLDM 2
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/consistency_models
@@ -220,6 +224,8 @@
       title: Latent Diffusion
     - local: api/pipelines/panorama
       title: MultiDiffusion
+    - local: api/pipelines/musicldm
+      title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
@@ -267,6 +273,8 @@
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
         title: Stable Diffusion T2I-adapter
+      - local: api/pipelines/stable_diffusion/gligen
+        title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP

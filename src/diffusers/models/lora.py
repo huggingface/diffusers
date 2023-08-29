@@ -22,15 +22,14 @@ class LoRALinearLayer(nn.Module):
     def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
         super().__init__()
 
-        if rank > min(in_features, out_features):
-            raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
-
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
         self.up = nn.Linear(rank, out_features, bias=False, device=device, dtype=dtype)
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         self.network_alpha = network_alpha
         self.rank = rank
+        self.out_features = out_features
+        self.in_features = in_features
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
@@ -53,9 +52,6 @@ class LoRAConv2dLayer(nn.Module):
         self, in_features, out_features, rank=4, kernel_size=(1, 1), stride=(1, 1), padding=0, network_alpha=None
     ):
         super().__init__()
-
-        if rank > min(in_features, out_features):
-            raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
 
         self.down = nn.Conv2d(in_features, rank, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         # according to the official kohya_ss trainer kernel_size are always fixed for the up layer
@@ -116,8 +112,8 @@ class LoRACompatibleLinear(nn.Linear):
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def forward(self, x):
+    def forward(self, hidden_states, lora_scale: int = 1):
         if self.lora_layer is None:
-            return super().forward(x)
+            return super().forward(hidden_states)
         else:
-            return super().forward(x) + self.lora_layer(x)
+            return super().forward(hidden_states) + lora_scale * self.lora_layer(hidden_states)

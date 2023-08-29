@@ -556,7 +556,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
         push_to_hub: bool = False,
         **kwargs,
@@ -569,7 +569,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save a pipeline to. Will be created if it doesn't exist.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
@@ -694,14 +694,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
+        if pipeline_is_sequentially_offloaded and torch_device and torch.device(torch_device).type == "cuda":
             raise ValueError(
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
-        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+        if pipeline_is_offloaded and torch_device and torch.device(torch_device).type == "cuda":
             logger.warning(
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
@@ -924,6 +924,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
         # 1. Download the checkpoints and configs
@@ -940,6 +941,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
                 from_flax=from_flax,
                 use_safetensors=use_safetensors,
+                use_onnx=use_onnx,
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
@@ -1010,8 +1012,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
-        # define init kwargs
-        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
+        # define init kwargs and make sure that optional component modules are filtered out
+        init_kwargs = {
+            k: init_dict.pop(k)
+            for k in optional_kwargs
+            if k in init_dict and k not in pipeline_class._optional_components
+        }
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components
