@@ -1,4 +1,5 @@
 from types import ModuleType
+from typing import Any
 
 
 class _BaseLazyModule(ModuleType):
