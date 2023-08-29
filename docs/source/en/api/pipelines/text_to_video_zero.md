@@ -112,6 +112,7 @@ pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
 ).to("cuda")
 ```
 
+### Text-To-Video with Pose Control
 To generate a video from prompt with additional pose control
 
 1. Download a demo video
