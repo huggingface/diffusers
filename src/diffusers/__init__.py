@@ -1,8 +1,11 @@
 __version__ = "0.21.0.dev0"
 
-import os
 import importlib
-from .file_utils import _BaseLazyModule
+import os
+from itertools import chain
+from types import ModuleType
+from typing import Any
+
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
@@ -15,6 +18,14 @@ from .utils import (
     is_torchsde_available,
     is_transformers_available,
 )
+
+
+# Lazy Import based on
+# https://github.com/huggingface/transformers/blob/main/src/transformers/__init__.py
+
+# When adding a new object to this init, please add it to `_import_structure`. The `_import_structure` is a dictionary submodule to list of object names,
+# and is used to defer the actual importing for when the objects are requested.
+# This way `import diffusers` provides the names in the namespace without actually importing anything (and especially none of the backends).
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
@@ -47,15 +58,23 @@ try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_onnx_objects import *  # noqa F403
+    from .utils import dummy_onnx_objects  # noqa F403
+
+    _import_structure["utils.dummy_onnx_objects"] = [
+        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
+    ]
+
 else:
-    from .pipelines import OnnxRuntimeModel
+    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
 
 try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_pt_objects import *  # noqa F403
+    from .utils import dummy_pt_objects  # noqa F403
+
+    _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
+
 else:
     _import_structure["models"].extend(
         [
@@ -142,7 +161,12 @@ try:
     if not (is_torch_available() and is_scipy_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
+    from .utils import dummy_torch_and_scipy_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_scipy_objects"] = [
+        name for name in dir(dummy_torch_and_scipy_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["schedulers"].extend(["LMSDiscreteScheduler"])
 
@@ -150,7 +174,12 @@ try:
     if not (is_torch_available() and is_torchsde_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+    from .utils import dummy_torch_and_torchsde_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
+        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["schedulers"].extend(["DPMSolverSDEScheduler"])
 
@@ -158,7 +187,12 @@ try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
+    from .utils import dummy_torch_and_transformers_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["pipelines"].extend(
         [
@@ -247,7 +281,12 @@ try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
+    from .utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_and_k_diffusion_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_k_diffusion_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["pipelines"].extend(["StableDiffusionKDiffusionPipeline"])
 
@@ -255,7 +294,12 @@ try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
+    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["pipelines"].extend(
         [
@@ -272,7 +316,12 @@ try:
     if not (is_torch_available() and is_librosa_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_librosa_objects import *  # noqa F403
+    from .utils import dummy_torch_and_librosa_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_librosa_objects"] = [
+        name for name in dir(dummy_torch_and_librosa_objects) if not name.startswith("_")
+    ]
+
 else:
     _import_structure["pipelines"].extend(["AudioDiffusionPipeline", "Mel"])
 
@@ -280,7 +329,13 @@ try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
+    from .utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
+
+    _import_structure["utils.dummy_transformers_and_torch_and_note_seq_objects"] = [
+        name for name in dir(dummy_transformers_and_torch_and_note_seq_objects) if not name.startswith("_")
+    ]
+
+
 else:
     _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
 
@@ -288,7 +343,13 @@ try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_flax_objects import *  # noqa F403
+    from .utils import dummy_flax_objects  # noqa F403
+
+    _import_structure["utils.dummy_flax_objects"] = [
+        name for name in dir(dummy_flax_objects) if not name.startswith("_")
+    ]
+
+
 else:
     _import_structure["models.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
@@ -313,7 +374,13 @@ try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+    from .utils import dummy_flax_and_transformers_objects  # noqa F403
+
+    _import_structure["utils.dummy_flax_and_transformers_objects"] = [
+        name for name in dir(dummy_flax_and_transformers_objects) if not name.startswith("_")
+    ]
+
+
 else:
     _import_structure["pipelines"].extend(
         [
@@ -328,29 +395,83 @@ try:
     if not (is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_note_seq_objects import *  # noqa F403
+    from .utils import dummy_note_seq_objects  # noqa F403
+
+    _import_structure["utils.dummy_note_seq_objects"] = [
+        name for name in dir(dummy_note_seq_objects) if not name.startswith("_")
+    ]
+
+
 else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
 import sys
 
 
-class _LazyModule(_BaseLazyModule):
+class _LazyModule(ModuleType):
     """
     Module class that surfaces all objects but only performs associated imports when the objects are requested.
     """
 
-    __file__ = globals()["__file__"]
-    __path__ = [os.path.dirname(__file__)]
+    # Very heavily inspired by optuna.integration._IntegrationModule
+    # https://github.com/optuna/optuna/blob/master/optuna/integration/__init__.py
+    def __init__(self, name, module_file, import_structure, module_spec=None, extra_objects=None):
+        super().__init__(name)
+        self._modules = set(import_structure.keys())
+        self._class_to_module = {}
+        for key, values in import_structure.items():
+            for value in values:
+                self._class_to_module[value] = key
+        # Needed for autocompletion in an IDE
+        self.__all__ = list(import_structure.keys()) + list(chain(*import_structure.values()))
+        self.__file__ = module_file
+        self.__spec__ = module_spec
+        self.__path__ = [os.path.dirname(module_file)]
+        self._objects = {} if extra_objects is None else extra_objects
+        self._name = name
+        self._import_structure = import_structure
+
+    # Needed for autocompletion in an IDE
+    def __dir__(self):
+        result = super().__dir__()
+        # The elements of self.__all__ that are submodules may or may not be in the dir already, depending on whether
+        # they have been accessed or not. So we only add the elements of self.__all__ that are not already in the dir.
+        for attr in self.__all__:
+            if attr not in result:
+                result.append(attr)
+        return result
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self._objects:
+            return self._objects[name]
+        if name in self._modules:
+            value = self._get_module(name)
+        elif name in self._class_to_module.keys():
+            module = self._get_module(self._class_to_module[name])
+            value = getattr(module, name)
+        else:
+            raise AttributeError(f"module {self.__name__} has no attribute {name}")
+
+        setattr(self, name, value)
+        return value
 
     def _get_module(self, module_name: str):
-        return importlib.import_module("." + module_name, self.__name__)
+        try:
+            return importlib.import_module("." + module_name, self.__name__)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to import {self.__name__}.{module_name} because of the following error (look up to see its"
+                f" traceback):\n{e}"
+            ) from e
 
-    def __getattr__(self, name: str):
-        # Special handling for the version, which is a constant from this module and not imported in a submodule.
-        if name == "__version__":
-            return __version__
-        return super().__getattr__(name)
+    def __reduce__(self):
+        return (self.__class__, (self._name, self.__file__, self._import_structure))
 
 
-sys.modules[__name__] = _LazyModule(__name__, _import_structure)
+sys.modules[__name__] = _LazyModule(
+    __name__,
+    globals()["__file__"],
+    _import_structure,
+    module_spec=__spec__,
+    extra_objects={"__version__": __version__},
+)
