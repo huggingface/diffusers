@@ -690,7 +690,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
 
         text_encoder_1_sd_keys = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-        text_encoder_2_sd_keys = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+        text_encoder_2_sd_keys = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
 
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -707,12 +707,13 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
             text_encoder_1_sd_keys_2 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-            text_encoder_2_sd_keys_2 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+            text_encoder_2_sd_keys_2 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
 
         sd_pipe.unload_lora_weights()
+        print("suh du")
 
         text_encoder_1_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-        text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+        text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
 
         # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_3

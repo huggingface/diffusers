@@ -90,6 +90,7 @@ class PatchedLoraProjection(nn.Module):
     def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
         if self.lora_linear_layer is None:
             return self.regular_linear_layer.state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+
         return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
     def _fuse_lora(self):
@@ -1414,7 +1415,7 @@ class LoraLoaderMixin:
                 attn_module.q_proj.lora_linear_layer = None
                 attn_module.k_proj.lora_linear_layer = None
                 attn_module.v_proj.lora_linear_layer = None
-                attn_module.out_proj.linear_layer = None
+                attn_module.out_proj.lora_linear_layer = None
 
         for _, mlp_module in text_encoder_mlp_modules(text_encoder):
             if isinstance(mlp_module.fc1, PatchedLoraProjection):
