@@ -502,7 +502,7 @@ def convert_gligen_to_diffusers(
     text_encoder = convert_open_clip_checkpoint(checkpoint)
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
-    if attention_type == "gated_text_image":
+    if attention_type == "gated-text-image":
         image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
 
@@ -564,7 +564,7 @@ if __name__ == "__main__":
         default=None,
         type=str,
         required=True,
-        help="Type of attention ex: gated or gated_text_image",
+        help="Type of attention ex: gated or gated-text-image",
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use.")
