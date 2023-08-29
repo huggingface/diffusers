@@ -35,7 +35,7 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, numpy_cosine_similarity_distance
+from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -673,7 +673,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 new_model.load_attn_procs(tmpdirname, use_safetensors=True)
             self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
 
-    def test_lora_on_off(self, expected_max_diff=1e-4):
+    def test_lora_on_off(self, expected_max_diff=1e-3):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -697,12 +697,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
 
-        sample = sample.cpu().numpy()
-        new_sample = new_sample.cpu().numpy()
-        old_sample = old_sample.cpu().numpy()
-
-        max_diff_new_sample = numpy_cosine_similarity_distance(sample.flatten(), new_sample.flatten())
-        max_diff_old_sample = numpy_cosine_similarity_distance(sample.flatten(), old_sample.flatten())
+        max_diff_new_sample = (sample - new_sample).abs().max()
+        max_diff_old_sample = (sample - old_sample).abs().max()
 
         assert max_diff_new_sample < expected_max_diff
         assert max_diff_old_sample < expected_max_diff
@@ -711,7 +707,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_lora_xformers_on_off(self, expected_max_diff=1e-4):
+    def test_lora_xformers_on_off(self, expected_max_diff=1e-3):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -737,8 +733,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         on_sample = on_sample.cpu().numpy()
         off_sample = off_sample.cpu().numpy()
 
-        max_diff_on_sample = numpy_cosine_similarity_distance(sample.flatten(), on_sample.flatten())
-        max_diff_off_sample = numpy_cosine_similarity_distance(sample.flatten(), off_sample.flatten())
+        max_diff_on_sample = (sample - on_sample).abs().max()
+        max_diff_off_sample = (sample - off_sample).abs().max()
 
         assert max_diff_on_sample < expected_max_diff
         assert max_diff_off_sample < expected_max_diff

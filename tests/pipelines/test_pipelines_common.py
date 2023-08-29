@@ -24,7 +24,6 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    numpy_cosine_similarity_distance,
     require_torch,
     torch_device,
 )
@@ -304,6 +303,10 @@ class PipelineTesterMixin:
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -329,7 +332,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
     def test_pipeline_call_signature(self):
@@ -508,7 +511,7 @@ class PipelineTesterMixin:
                 diff.sort()
                 max_diff = np.median(diff[-5:])
             else:
-                max_diff = numpy_cosine_similarity_distance(output_batch[0][0].flatten(), output[0][0].flatten())
+                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
             assert max_diff < expected_max_diff
 
         if test_mean_pixel_difference:
@@ -517,13 +520,17 @@ class PipelineTesterMixin:
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
-        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_tuple).flatten())
+        max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
@@ -537,18 +544,26 @@ class PipelineTesterMixin:
     def test_float16_inference(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         components = self.get_dummy_components()
         pipe_fp16 = self.pipeline_class(**components)
+        for component in pipe_fp16.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
-        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_fp16).flatten())
+        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
@@ -557,7 +572,11 @@ class PipelineTesterMixin:
         for name, module in components.items():
             if hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -567,6 +586,9 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -579,7 +601,7 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
-        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
@@ -590,6 +612,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -603,6 +628,9 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -615,7 +643,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = numpy_cosine_similarity_distance(to_np(output).flatten(), to_np(output_loaded).flatten())
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
@@ -661,6 +689,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -672,9 +703,7 @@ class PipelineTesterMixin:
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
-            max_diff = numpy_cosine_similarity_distance(
-                to_np(output_with_slicing).flatten(), to_np(output_without_slicing).flatten()
-            )
+            max_diff = np.abs(to_np(output_with_slicing) - to_np(output_without_slicing)).max()
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         if test_mean_pixel_difference:
@@ -687,6 +716,9 @@ class PipelineTesterMixin:
     def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -697,9 +729,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = numpy_cosine_similarity_distance(
-            to_np(output_with_offload).flatten(), to_np(output_without_offload).flatten()
-        )
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
@@ -717,6 +747,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -734,9 +767,7 @@ class PipelineTesterMixin:
         )
 
         if test_max_difference:
-            max_diff = numpy_cosine_similarity_distance(
-                to_np(output_with_offload).flatten(), to_np(output_without_offload).flatten()
-            )
+            max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         if test_mean_pixel_difference:
