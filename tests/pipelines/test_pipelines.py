@@ -122,7 +122,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
     except Exception:
         error = f"{traceback.format_exc()}"
 
@@ -1543,7 +1543,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
@@ -1568,7 +1568,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_from_pretrained_hub_pass_model(self):
         model_path = "google/ddpm-cifar10-32"
@@ -1591,7 +1591,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"

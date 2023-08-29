@@ -518,8 +518,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -659,7 +659,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
-        The [`UNet2DConditionModel`] forward method.
+        The [`AudioLDM2UNet2DConditionModel`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
