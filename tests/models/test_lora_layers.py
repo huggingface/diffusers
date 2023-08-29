@@ -714,11 +714,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         text_encoder_1_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
         text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
 
-        assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_2
+        # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_3
+        # default & loaded LoRA weights should NOT have identical state_dicts
+        assert text_encoder_1_sd_keys != text_encoder_1_sd_keys_2 # 
 
-        assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_2
+        # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_3
+        # default & loaded LoRA weights should NOT have identical state_dicts
+        assert text_encoder_2_sd_keys != text_encoder_2_sd_keys_2
 
     def test_load_lora_locally_safetensors(self):
         pipeline_components, lora_components = self.get_dummy_components()
