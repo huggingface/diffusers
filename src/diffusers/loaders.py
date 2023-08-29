@@ -85,7 +85,49 @@ class PatchedLoraProjection(nn.Module):
 
         self.lora_scale = lora_scale
 
+    def _fuse_lora(self):
+        if self.lora_linear_layer is None:
+            return
+
+        dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
+        logger.info(f"Fusing LoRA weights for {self.__class__}")
+
+        w_orig = self.regular_linear_layer.weight.data.float()
+        w_up = self.lora_linear_layer.up.weight.data.float()
+        w_down = self.lora_linear_layer.down.weight.data.float()
+
+        if self.lora_linear_layer.network_alpha is not None:
+            w_up = w_up * self.lora_linear_layer.network_alpha / self.lora_linear_layer.rank
+
+        fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
+        self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
+
+        # we can drop the lora layer now
+        self.lora_linear_layer = None
+
+        # offload the up and down matrices to CPU to not blow the memory
+        self.w_up = w_up.cpu()
+        self.w_down = w_down.cpu()
+
+    def _unfuse_lora(self):
+        if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
+            return
+        logger.info(f"Unfusing LoRA weights for {self.__class__}")
+
+        fused_weight = self.regular_linear_layer.weight.data
+        dtype, device = fused_weight.dtype, fused_weight.device
+
+        self.w_up = self.w_up.to(device=device, dtype=dtype)
+        self.w_down = self.w_down.to(device, dtype=dtype)
+        unfused_weight = fused_weight - torch.bmm(self.w_up[None, :], self.w_down[None, :])[0]
+        self.regular_linear_layer.weight.data = unfused_weight.to(device=device, dtype=dtype)
+
+        self.w_up = None
+        self.w_down = None
+
     def forward(self, input):
+        if self.lora_linear_layer is None:
+            return self.regular_linear_layer(input)
         return self.regular_linear_layer(input) + self.lora_scale * self.lora_linear_layer(input)
 
 
@@ -524,6 +566,20 @@ class UNet2DConditionLoadersMixin:
         # Save the model
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+
+    def fuse_lora(self):
+        self.apply(self._fuse_lora_apply)
+
+    def _fuse_lora_apply(self, module):
+        if hasattr(module, "_fuse_lora"):
+            module._fuse_lora()
+
+    def unfuse_lora(self):
+        self.apply(self._unfuse_lora_apply)
+
+    def _unfuse_lora_apply(self, module):
+        if hasattr(module, "_unfuse_lora"):
+            module._unfuse_lora()
 
 
 class TextualInversionLoaderMixin:
@@ -1711,6 +1767,83 @@ class LoraLoaderMixin:
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
+
+    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True):
+        r"""
+        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
+
+        <Tip warning={true}>
+
+        This is an experimental API.
+
+        </Tip>
+
+        Args:
+            fuse_unet (`bool`, defaults to `True`): Whether to fuse the UNet LoRA parameters.
+            fuse_text_encoder (`bool`, defaults to `True`):
+                Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
+                LoRA parameters then it won't have any effect.
+        """
+        if fuse_unet:
+            self.unet.fuse_lora()
+
+        def fuse_text_encoder_lora(text_encoder):
+            for _, attn_module in text_encoder_attn_modules(text_encoder):
+                if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                    attn_module.q_proj._fuse_lora()
+                    attn_module.k_proj._fuse_lora()
+                    attn_module.v_proj._fuse_lora()
+                    attn_module.out_proj._fuse_lora()
+
+            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+                if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                    mlp_module.fc1._fuse_lora()
+                    mlp_module.fc2._fuse_lora()
+
+        if fuse_text_encoder:
+            if hasattr(self, "text_encoder"):
+                fuse_text_encoder_lora(self.text_encoder)
+            if hasattr(self, "text_encoder_2"):
+                fuse_text_encoder_lora(self.text_encoder_2)
+
+    def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
+        r"""
+        Reverses the effect of
+        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
+
+        <Tip warning={true}>
+
+        This is an experimental API.
+
+        </Tip>
+
+        Args:
+            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+            unfuse_text_encoder (`bool`, defaults to `True`):
+                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
+                LoRA parameters then it won't have any effect.
+        """
+        if unfuse_unet:
+            self.unet.unfuse_lora()
+
+        def unfuse_text_encoder_lora(text_encoder):
+            for _, attn_module in text_encoder_attn_modules(text_encoder):
+                if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                    attn_module.q_proj._unfuse_lora()
+                    attn_module.k_proj._unfuse_lora()
+                    attn_module.v_proj._unfuse_lora()
+                    attn_module.out_proj._unfuse_lora()
+
+            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+                if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                    mlp_module.fc1._unfuse_lora()
+                    mlp_module.fc2._unfuse_lora()
+
+        if unfuse_text_encoder:
+            if hasattr(self, "text_encoder"):
+                unfuse_text_encoder_lora(self.text_encoder)
+            if hasattr(self, "text_encoder_2"):
+                unfuse_text_encoder_lora(self.text_encoder_2)
 
 
 class FromSingleFileMixin:
