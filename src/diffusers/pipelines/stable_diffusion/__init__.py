@@ -30,10 +30,13 @@ class StableDiffusionPipelineOutput(BaseOutput):
         nsfw_content_detected (`List[bool]`)
             List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
             `None` if safety checking could not be performed.
+        workflow (`dict`):
+            Dictionary containing pipeline component configurations and call arguments
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
+    workflow: dict
 
 
 try:

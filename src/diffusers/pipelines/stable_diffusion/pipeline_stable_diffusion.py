@@ -33,6 +33,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
+from ...workflow_utils import populate_workflow_from_pipeline
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -541,6 +542,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
+        return_workflow: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -597,6 +599,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
+            return_workflow(`bool`, *optional*, defaults to `False`):
+                Whether to return pipeline component configurations and call arguments.
 
         Examples:
 
@@ -718,7 +722,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
-        if not return_dict:
-            return (image, has_nsfw_concept)
+        workflow = None
+        if return_workflow:
+            signature = inspect.signature(self.__call__)
+            argument_names = [param.name for param in signature.parameters.values()]
+            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
+            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self.components)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        if not return_dict:
+            return (image, has_nsfw_concept, workflow)
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept, workflow=workflow)
