@@ -17,10 +17,12 @@ import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
+from ..utils import DIFFUSERS_CACHE
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
+    StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
@@ -72,6 +74,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
     ]
 )
 
@@ -295,7 +298,29 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> image = pipeline(prompt).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+            "subfolder": subfolder,
+            "user_agent": user_agent,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -303,6 +328,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
@@ -535,7 +561,29 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> image = pipeline(prompt, image).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+            "subfolder": subfolder,
+            "user_agent": user_agent,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -543,6 +591,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
@@ -776,7 +825,29 @@ class AutoPipelineForInpainting(ConfigMixin):
         >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+            "subfolder": subfolder,
+            "user_agent": user_agent,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -784,6 +855,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
